@@ -20,8 +20,14 @@ import java.util.function.Supplier;
 
 
 public class VeniceProperties {
+  private static final VeniceProperties EMPTY = new VeniceProperties();
+
   private final Map<String, String> props;
 
+  /**
+   * @deprecated Use {@link VeniceProperties#empty}
+   */
+  @Deprecated
   public VeniceProperties() {
     props = Collections.emptyMap();
   }
@@ -40,6 +46,10 @@ public class VeniceProperties {
       tmpProps.put(e.getKey().toString(), e.getValue() == null ? null : e.getValue().toString());
     }
     props = Collections.unmodifiableMap(tmpProps);
+  }
+
+  public static VeniceProperties empty() {
+    return EMPTY;
   }
 
   public Properties getPropertiesCopy() {
@@ -349,21 +359,25 @@ public class VeniceProperties {
     }
 
     String bytes = get(name);
-    String bytesLc = bytes.toLowerCase().trim();
-    if (bytesLc.endsWith("kb")) {
-      return Long.parseLong(bytes.substring(0, bytes.length() - 2)) * 1024;
-    } else if (bytesLc.endsWith("k")) {
-      return Long.parseLong(bytes.substring(0, bytes.length() - 1)) * 1024;
-    } else if (bytesLc.endsWith("mb")) {
-      return Long.parseLong(bytes.substring(0, bytes.length() - 2)) * 1024 * 1024;
-    } else if (bytesLc.endsWith("m")) {
-      return Long.parseLong(bytes.substring(0, bytes.length() - 1)) * 1024 * 1024;
-    } else if (bytesLc.endsWith("gb")) {
-      return Long.parseLong(bytes.substring(0, bytes.length() - 2)) * 1024 * 1024 * 1024;
-    } else if (bytesLc.endsWith("g")) {
-      return Long.parseLong(bytes.substring(0, bytes.length() - 1)) * 1024 * 1024 * 1024;
+    return convertSizeFromLiteral(bytes);
+  }
+
+  public static long convertSizeFromLiteral(String size) {
+    String sizeLc = size.toLowerCase().trim();
+    if (sizeLc.endsWith("kb")) {
+      return Long.parseLong(size.substring(0, size.length() - 2)) * 1024;
+    } else if (sizeLc.endsWith("k")) {
+      return Long.parseLong(size.substring(0, size.length() - 1)) * 1024;
+    } else if (sizeLc.endsWith("mb")) {
+      return Long.parseLong(size.substring(0, size.length() - 2)) * 1024 * 1024;
+    } else if (sizeLc.endsWith("m")) {
+      return Long.parseLong(size.substring(0, size.length() - 1)) * 1024 * 1024;
+    } else if (sizeLc.endsWith("gb")) {
+      return Long.parseLong(size.substring(0, size.length() - 2)) * 1024 * 1024 * 1024;
+    } else if (sizeLc.endsWith("g")) {
+      return Long.parseLong(size.substring(0, size.length() - 1)) * 1024 * 1024 * 1024;
     } else {
-      return Long.parseLong(bytes);
+      return Long.parseLong(size);
     }
   }
 

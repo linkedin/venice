@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_D
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -35,6 +36,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
@@ -44,6 +46,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_
 import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_TOPIC_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
@@ -74,6 +78,7 @@ import com.linkedin.venice.controllerapi.StoreComparisonResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
@@ -81,7 +86,6 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Store;
@@ -92,6 +96,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -323,6 +328,10 @@ public class StoresRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         veniceResponse.setCluster(clusterName);
+        Store store = admin.getStore(clusterName, storeName);
+        if (store == null) {
+          throw new VeniceNoStoreException(storeName);
+        }
         Map<String, String> storeStatusMap = admin.getFutureVersionsForMultiColos(clusterName, storeName);
         if (storeStatusMap.isEmpty()) {
           // Non parent controllers will return an empty map, so we'll just return the childs version of this api
@@ -360,11 +369,13 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setError(
               "Store " + storeName + " belongs to cluster " + clusterDiscovered
                   + ", which is different from the given src cluster name " + srcClusterName);
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
         // Store should not belong to dest cluster already
         if (clusterDiscovered.equals(destClusterName)) {
           veniceResponse.setError("Store " + storeName + " already belongs to cluster " + destClusterName);
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
 
@@ -399,11 +410,13 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setError(
               "Store " + storeName + " belongs to cluster " + clusterDiscovered
                   + ", which is different from the given src cluster name " + srcClusterName);
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
         // Store should not belong to dest cluster already
         if (clusterDiscovered.equals(destClusterName)) {
           veniceResponse.setError("Store " + storeName + " already belongs to cluster " + destClusterName);
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
 
@@ -506,7 +519,8 @@ public class StoresRoutes extends AbstractRoute {
         } catch (Exception e) {
           veniceResponse.setError(
               "Failed when updating store " + storeName + ". Exception type: " + e.getClass().toString()
-                  + ". Detailed message = " + e.getMessage());
+                  + ". Detailed message = " + e.getMessage(),
+              e);
         }
       }
     };
@@ -522,6 +536,7 @@ public class StoresRoutes extends AbstractRoute {
         // Only admin users are allowed to update owners; regular user can do it through Nuage
         if (!isAllowListUser(request)) {
           veniceResponse.setError("ACL failed for request " + request.url());
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
         AdminSparkServer.validateParams(request, SET_OWNER.getParams(), admin);
@@ -542,6 +557,7 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, PartitionResponse veniceResponse) {
         veniceResponse.setError("This operation is no longer supported, please use the update store endpoint");
+        veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
       }
     };
   }
@@ -585,6 +601,25 @@ public class StoresRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         admin.rollbackToBackupVersion(clusterName, storeName);
+
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+      }
+    };
+  }
+
+  public Route rollForwardToFutureVersion(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // Only allow allowlist users to run this command
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
+        AdminSparkServer.validateParams(request, ROLL_FORWARD_TO_FUTURE_VERSION.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        admin.rollForwardToFutureVersion(clusterName, storeName);
 
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
@@ -781,6 +816,7 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, StoreResponse veniceResponse) {
         if (!isAllowListUser(request)) {
           veniceResponse.setError("Access Denied!! Only admins can change topic compaction policy!");
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
         AdminSparkServer.validateParams(request, SET_TOPIC_COMPACTION.getParams(), admin);
@@ -790,7 +826,7 @@ public class StoresRoutes extends AbstractRoute {
                   pubSubTopicRepository.getTopic(request.queryParams(TOPIC)),
                   Boolean.getBoolean(request.queryParams(TOPIC_COMPACTION_POLICY)));
           veniceResponse.setName(request.queryParams(TOPIC));
-        } catch (TopicDoesNotExistException e) {
+        } catch (PubSubTopicDoesNotExistException e) {
           veniceResponse.setError("Topic does not exist!! Message: " + e.getMessage());
         }
       }
@@ -822,12 +858,12 @@ public class StoresRoutes extends AbstractRoute {
                 .extractVersionTopicsToCleanup(admin, topicsWithRetention, minNumberOfUnusedKafkaTopicsToPreserve, 0);
             if (!deletableTopicsForThisStore.isEmpty()) {
               deletableTopicsList
-                  .addAll(deletableTopicsForThisStore.stream().map(t -> t.getName()).collect(Collectors.toList()));
+                  .addAll(deletableTopicsForThisStore.stream().map(PubSubTopic::getName).collect(Collectors.toList()));
             }
           });
           veniceResponse.setTopics(deletableTopicsList);
         } catch (Exception e) {
-          veniceResponse.setError("Failed to list deletable store topics. Message: " + e.getMessage());
+          veniceResponse.setError("Failed to list deletable store topics.", e);
         }
       }
     };
@@ -853,7 +889,7 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setSchemaDiff(info.getSchemaDiff());
           veniceResponse.setVersionStateDiff(info.getVersionStateDiff());
         } catch (Exception e) {
-          veniceResponse.setError("Failed to compare store. Message: " + e.getMessage());
+          veniceResponse.setError("Failed to compare store.", e);
         }
       }
     };
@@ -985,6 +1021,56 @@ public class StoresRoutes extends AbstractRoute {
       } catch (Throwable throwable) {
         responseObject.setError(throwable);
         AdminSparkServer.handleError(new VeniceException(throwable), request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route sendHeartbeatToSystemStore(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
+        AdminSparkServer.validateParams(request, SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        long heartbeatTimestamp = Long.parseLong(request.queryParams(HEARTBEAT_TIMESTAMP));
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        admin.sendHeartbeatToSystemStore(clusterName, storeName, heartbeatTimestamp);
+      } catch (Throwable e) {
+        responseObject.setError(e);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route getHeartbeatFromSystemStore(Admin admin) {
+    return (request, response) -> {
+      SystemStoreHeartbeatResponse responseObject = new SystemStoreHeartbeatResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
+        AdminSparkServer.validateParams(request, GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        responseObject.setHeartbeatTimestamp(admin.getHeartbeatFromSystemStore(clusterName, storeName));
+        responseObject.setHeartbeatTimestamp(0);
+      } catch (Throwable e) {
+        responseObject.setError(e);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };

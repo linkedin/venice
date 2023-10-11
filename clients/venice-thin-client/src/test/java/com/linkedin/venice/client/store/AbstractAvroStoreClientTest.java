@@ -1,8 +1,7 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.client.schema.RouterBackedSchemaReader.*;
-import static com.linkedin.venice.client.store.AbstractAvroStoreClient.*;
-import static com.linkedin.venice.client.store.D2ServiceDiscovery.*;
+import static com.linkedin.venice.client.schema.RouterBackedSchemaReader.TYPE_KEY_SCHEMA;
+import static com.linkedin.venice.client.store.AbstractAvroStoreClient.TYPE_STORAGE;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
@@ -50,6 +49,8 @@ import org.testng.annotations.Test;
 
 public class AbstractAvroStoreClientTest {
   private static class SimpleStoreClient<K, V> extends AbstractAvroStoreClient<K, V> {
+    private final TransportClient transportClient;
+    private final String storeName;
     private final boolean overrideGetSchemaReader;
 
     public SimpleStoreClient(
@@ -70,12 +71,18 @@ public class AbstractAvroStoreClientTest {
           transportClient,
           needSchemaReader,
           ClientConfig.defaultGenericClientConfig(storeName).setDeserializationExecutor(deserializationExecutor));
+      this.transportClient = transportClient;
+      this.storeName = storeName;
       this.overrideGetSchemaReader = overrideGetSchemaReader;
     }
 
     @Override
     protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
-      return this;
+      return new SimpleStoreClient<>(
+          transportClient,
+          storeName,
+          false,
+          AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     }
 
     @Override

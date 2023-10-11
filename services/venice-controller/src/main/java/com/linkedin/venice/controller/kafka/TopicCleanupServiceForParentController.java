@@ -2,13 +2,13 @@ package com.linkedin.venice.controller.kafka;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -48,7 +48,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
         if (getAdmin().isTopicTruncatedBasedOnRetention(retention)) {
           // Topic may be deleted after delay
           int remainingFactor = storeToCountdownForDeletion.merge(
-              topic.getName() + "_" + topicManager.getKafkaBootstrapServers(),
+              topic.getName() + "_" + topicManager.getPubSubBootstrapServers(),
               delayFactor,
               (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
@@ -62,11 +62,11 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
                 "Retention policy for topic: {} is: {} ms, and it is deprecated, will delete it now.",
                 topic,
                 retention);
-            storeToCountdownForDeletion.remove(topic + "_" + topicManager.getKafkaBootstrapServers());
+            storeToCountdownForDeletion.remove(topic + "_" + topicManager.getPubSubBootstrapServers());
             try {
               topicManager.ensureTopicIsDeletedAndBlockWithRetry(topic);
-            } catch (ExecutionException e) {
-              LOGGER.warn("ExecutionException caught when trying to delete topic: {}", topic);
+            } catch (VeniceException e) {
+              LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic, e); // log headline of e only
               // No op, will try again in the next cleanup cycle.
             }
           }

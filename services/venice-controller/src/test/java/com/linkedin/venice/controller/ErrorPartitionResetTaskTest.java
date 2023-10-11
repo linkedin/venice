@@ -18,6 +18,7 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.utils.HelixUtils;
@@ -25,9 +26,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.testng.Assert;
@@ -72,24 +72,24 @@ public class ErrorPartitionResetTaskTest {
     // Setup a store where two of its partitions has exactly one error replica.
     Store store = getStoreWithCurrentVersion();
     String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
-    Map<String, List<Instance>> errorStateInstanceMap = new HashMap<>();
-    Map<String, List<Instance>> healthyStateInstanceMap = new HashMap<>();
-    errorStateInstanceMap.put(HelixState.ERROR_STATE, Arrays.asList(instances[0]));
+    EnumMap<HelixState, List<Instance>> errorStateInstanceMap = new EnumMap<>(HelixState.class);
+    EnumMap<HelixState, List<Instance>> healthyStateInstanceMap = new EnumMap<>(HelixState.class);
+    errorStateInstanceMap.put(HelixState.ERROR, Arrays.asList(instances[0]));
     // if a replica is error, then the left should be 1 leader and 1 standby.
-    errorStateInstanceMap.put(HelixState.LEADER_STATE, Arrays.asList(instances[1]));
-    errorStateInstanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(instances[2]));
-    healthyStateInstanceMap.put(HelixState.LEADER_STATE, Arrays.asList(instances[0]));
-    healthyStateInstanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(instances[1], instances[2]));
+    errorStateInstanceMap.put(HelixState.LEADER, Arrays.asList(instances[1]));
+    errorStateInstanceMap.put(HelixState.STANDBY, Arrays.asList(instances[2]));
+    healthyStateInstanceMap.put(HelixState.LEADER, Arrays.asList(instances[0]));
+    healthyStateInstanceMap.put(HelixState.STANDBY, Arrays.asList(instances[1], instances[2]));
 
-    Partition errorPartition0 = new Partition(0, errorStateInstanceMap);
-    Partition errorPartition1 = new Partition(1, errorStateInstanceMap);
-    Partition healthyPartition2 = new Partition(2, healthyStateInstanceMap);
+    Partition errorPartition0 = new Partition(0, errorStateInstanceMap, new EnumMap<>(ExecutionStatus.class));
+    Partition errorPartition1 = new Partition(1, errorStateInstanceMap, new EnumMap<>(ExecutionStatus.class));
+    Partition healthyPartition2 = new Partition(2, healthyStateInstanceMap, new EnumMap<>(ExecutionStatus.class));
     PartitionAssignment partitionAssignment1 = new PartitionAssignment(resourceName, PARTITION_COUNT);
     partitionAssignment1.addPartition(errorPartition0);
     partitionAssignment1.addPartition(errorPartition1);
     partitionAssignment1.addPartition(healthyPartition2);
     // Mock a post reset assignment where one of the partition remains in error state and the other one recovers
-    Partition healthyPartition1 = new Partition(1, healthyStateInstanceMap);
+    Partition healthyPartition1 = new Partition(1, healthyStateInstanceMap, new EnumMap<>(ExecutionStatus.class));
     PartitionAssignment partitionAssignment2 = new PartitionAssignment(resourceName, PARTITION_COUNT);
     partitionAssignment2.addPartition(errorPartition0);
     partitionAssignment2.addPartition(healthyPartition1);
@@ -153,22 +153,26 @@ public class ErrorPartitionResetTaskTest {
     // Setup a store where one of its partitions has excess error replicas.
     Store store = getStoreWithCurrentVersion();
     String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
-    Map<String, List<Instance>> errorStateInstanceMap = new HashMap<>();
-    errorStateInstanceMap.put(HelixState.ERROR_STATE, Arrays.asList(instances[0], instances[1]));
-    errorStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[2], instances[3], instances[4]));
-    Partition excessErrorPartition0 = new Partition(0, errorStateInstanceMap);
-    Map<String, List<Instance>> healthyStateInstanceMap = new HashMap<>();
-    healthyStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[0], instances[1], instances[2]));
-    Partition healthyPartition1 = new Partition(1, healthyStateInstanceMap);
-    Partition healthyPartition2 = new Partition(2, healthyStateInstanceMap);
+
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMap.put(HelixState.ERROR, Arrays.asList(instances[0], instances[1]));
+    helixStateToInstancesMap.put(HelixState.LEADER, Arrays.asList(instances[2]));
+    helixStateToInstancesMap.put(HelixState.STANDBY, Arrays.asList(instances[3], instances[4]));
+    Partition excessErrorPartition0 = new Partition(0, helixStateToInstancesMap, new EnumMap<>(ExecutionStatus.class));
+
+    EnumMap<HelixState, List<Instance>> healthyStateInstanceMap = new EnumMap<>(HelixState.class);
+    healthyStateInstanceMap.put(HelixState.LEADER, Arrays.asList(instances[0]));
+    healthyStateInstanceMap.put(HelixState.STANDBY, Arrays.asList(instances[1], instances[2]));
+    Partition healthyPartition1 = new Partition(1, healthyStateInstanceMap, new EnumMap<>(ExecutionStatus.class));
+    Partition healthyPartition2 = new Partition(2, healthyStateInstanceMap, new EnumMap<>(ExecutionStatus.class));
     PartitionAssignment partitionAssignment1 = new PartitionAssignment(resourceName, PARTITION_COUNT);
     partitionAssignment1.addPartition(excessErrorPartition0);
     partitionAssignment1.addPartition(healthyPartition1);
     partitionAssignment1.addPartition(healthyPartition2);
     PartitionAssignment partitionAssignment2 = new PartitionAssignment(resourceName, PARTITION_COUNT);
-    partitionAssignment2.addPartition(new Partition(0, healthyStateInstanceMap));
-    partitionAssignment2.addPartition(new Partition(1, healthyStateInstanceMap));
-    partitionAssignment2.addPartition(new Partition(2, healthyStateInstanceMap));
+    partitionAssignment2.addPartition(new Partition(0, healthyStateInstanceMap, new EnumMap<>(ExecutionStatus.class)));
+    partitionAssignment2.addPartition(new Partition(1, healthyStateInstanceMap, new EnumMap<>(ExecutionStatus.class)));
+    partitionAssignment2.addPartition(new Partition(2, healthyStateInstanceMap, new EnumMap<>(ExecutionStatus.class)));
     doReturn(Arrays.asList(store)).when(readOnlyStoreRepository).getAllStores();
     when(routingDataRepository.getPartitionAssignments(resourceName)).thenReturn(partitionAssignment1)
         .thenReturn(partitionAssignment2);

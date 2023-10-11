@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DETAILS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
@@ -20,6 +21,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -60,6 +62,7 @@ public class JobRoutes extends AbstractRoute {
         String store = request.queryParams(NAME);
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         String incrementalPushVersion = AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION);
+        String targetedRegions = request.queryParams(TARGETED_REGIONS);
         String region = AdminSparkServer.getOptionalParameterValue(request, FABRIC);
         responseObject = populateJobStatus(
             cluster,
@@ -67,7 +70,8 @@ public class JobRoutes extends AbstractRoute {
             versionNumber,
             admin,
             Optional.ofNullable(incrementalPushVersion),
-            region);
+            region,
+            targetedRegions);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -82,14 +86,15 @@ public class JobRoutes extends AbstractRoute {
       int versionNumber,
       Admin admin,
       Optional<String> incrementalPushVersion,
-      String region) {
+      String region,
+      String targetedRegions) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
     Version version = new VersionImpl(store, versionNumber);
     String kafkaTopicName = version.kafkaTopicName();
 
     Admin.OfflinePushStatusInfo offlineJobStatus =
-        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region);
+        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region, targetedRegions);
     responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
     responseObject.setStatusDetails(offlineJobStatus.getStatusDetails());
     responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
@@ -115,6 +120,7 @@ public class JobRoutes extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject
               .setError("You don't have permission to kill this push job; please grant write ACL for yourself.");
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, KILL_OFFLINE_PUSH_JOB.getParams(), admin);

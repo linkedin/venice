@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -68,6 +69,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
         mockIngestionBackend,
         mockConfigLoader,
         this.executorService,
+        Mockito.mock(ParticipantStateTransitionStats.class),
         mockReadOnlyStoreRepository,
         null,
         null);

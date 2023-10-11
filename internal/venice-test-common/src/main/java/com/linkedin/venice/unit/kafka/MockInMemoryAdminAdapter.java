@@ -4,15 +4,18 @@ import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -21,9 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
-import org.apache.kafka.common.errors.TimeoutException;
 
 
 public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
@@ -52,17 +52,14 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
     topicPubSubTopicConfigurationMap.put(topic, topicPubSubTopicConfiguration);
     topicPartitionNumMap.put(topic, new ArrayList<>());
     for (int i = 0; i < numPartitions; i++) {
-      topicPartitionNumMap.get(topic).add(new PubSubTopicPartitionInfo(topic, i, replication, true));
+      topicPartitionNumMap.get(topic).add(new PubSubTopicPartitionInfo(topic, i, true));
     }
   }
 
   @Override
-  public Future<Void> deleteTopic(PubSubTopic topicName) {
-    return CompletableFuture.supplyAsync(() -> {
-      topicPubSubTopicConfigurationMap.remove(topicName);
-      topicPartitionNumMap.remove(topicName);
-      return null;
-    });
+  public void deleteTopic(PubSubTopic topicName, Duration timeout) {
+    topicPubSubTopicConfigurationMap.remove(topicName);
+    topicPartitionNumMap.remove(topicName);
   }
 
   @Override
@@ -72,9 +69,9 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
 
   @Override
   public void setTopicConfig(PubSubTopic topicName, PubSubTopicConfiguration topicPubSubTopicConfiguration)
-      throws TopicDoesNotExistException {
+      throws PubSubTopicDoesNotExistException {
     if (!topicPubSubTopicConfigurationMap.containsKey(topicName)) {
-      throw new TopicDoesNotExistException("Topic " + topicName + " does not exist");
+      throw new PubSubTopicDoesNotExistException("Topic " + topicName + " does not exist");
     }
     topicPubSubTopicConfigurationMap.put(topicName, topicPubSubTopicConfiguration);
   }
@@ -88,28 +85,28 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
       if (retentionMs.isPresent()) {
         retentions.put(entry.getKey(), retentionMs.get());
       } else {
-        retentions.put(entry.getKey(), TopicManager.UNKNOWN_TOPIC_RETENTION);
+        retentions.put(entry.getKey(), PubSubConstants.UNKNOWN_TOPIC_RETENTION);
       }
     }
     return retentions;
   }
 
   @Override
-  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topic) throws TopicDoesNotExistException {
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topic) throws PubSubTopicDoesNotExistException {
     if (topicPubSubTopicConfigurationMap.containsKey(topic)) {
       return topicPubSubTopicConfigurationMap.get(topic);
     }
-    throw new TopicDoesNotExistException("Topic " + topic + " does not exist");
+    throw new PubSubTopicDoesNotExistException("Topic " + topic + " does not exist");
   }
 
   @Override
-  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topic) {
+  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic pubSubTopic) {
     long accumWaitTime = 0;
     long sleepIntervalInMs = 100;
     VeniceException veniceException = null;
     while (accumWaitTime < 1000) {
       try {
-        return getTopicConfig(topic);
+        return getTopicConfig(pubSubTopic);
       } catch (VeniceException e) {
         veniceException = e;
         Utils.sleep(sleepIntervalInMs);
@@ -118,7 +115,7 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
       }
     }
     throw new VeniceException(
-        "After retrying for " + accumWaitTime + "ms, failed to get topic configs for: " + topic,
+        "After retrying for " + accumWaitTime + "ms, failed to get topic configs for: " + pubSubTopic,
         veniceException);
   }
 
@@ -138,7 +135,11 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
 
   @Override
   public List<Class<? extends Throwable>> getRetriableExceptions() {
-    return Collections.unmodifiableList(Arrays.asList(VeniceRetriableException.class, TimeoutException.class));
+    return Collections.unmodifiableList(
+        Arrays.asList(
+            VeniceRetriableException.class,
+            PubSubOpTimeoutException.class,
+            PubSubClientRetriableException.class));
   }
 
   @Override
@@ -154,11 +155,6 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
 
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     return topicPartitionNumMap.get(topic);
-  }
-
-  @Override
-  public boolean isTopicDeletionUnderway() {
-    return false;
   }
 
   @Override

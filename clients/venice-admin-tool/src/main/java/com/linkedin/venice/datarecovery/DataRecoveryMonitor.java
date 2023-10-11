@@ -21,10 +21,12 @@ public class DataRecoveryMonitor extends DataRecoveryWorker {
   @Override
   public List<DataRecoveryTask> buildTasks(Set<String> storeNames, Command.Params params) {
     List<DataRecoveryTask> tasks = new ArrayList<>();
+    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder((MonitorCommand.Params) params);
     for (String name: storeNames) {
-      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, params);
-      tasks
-          .add(new DataRecoveryTask(new MonitorCommand((MonitorCommand.Params) taskParams.getCmdParams()), taskParams));
+      MonitorCommand.Params p = builder.build();
+      p.setStore(name);
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
+      tasks.add(new DataRecoveryTask(new MonitorCommand(p), taskParams));
     }
     return tasks;
   }

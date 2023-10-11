@@ -1,12 +1,19 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.chunking.ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK;
+import static com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl.DEFAULT_KAFKA_OFFSET_API_TIMEOUT;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
+import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
+import com.linkedin.venice.chunking.RawKeyBytesAndChunkedKeySuffix;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.etl.VeniceKafkaDecodedRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -15,18 +22,26 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serializer.AvroSpecificDeserializer;
+import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -36,39 +51,40 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.record.TimestampType;
+import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class KafkaTopicDumper implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(KafkaTopicDumper.class);
-  public static final String VENICE_ETL_KEY_FIELD = "key";
-  public static final String VENICE_ETL_VALUE_FIELD = "value";
-  public static final String VENICE_ETL_OFFSET_FIELD = "offset";
-  public static final String VENICE_ETL_DELETED_TS_FIELD = "DELETED_TS";
-  public static final String VENICE_ETL_METADATA_FIELD = "metadata";
+  private static final String VENICE_ETL_KEY_FIELD = "key";
+  private static final String VENICE_ETL_VALUE_FIELD = "value";
+  private static final String VENICE_ETL_OFFSET_FIELD = "offset";
+  private static final String VENICE_ETL_DELETED_TS_FIELD = "DELETED_TS";
+  private static final String VENICE_ETL_METADATA_FIELD = "metadata";
 
-  public static final String VENICE_ETL_BROKER_TIMESTAMP_FIELD = "brokerTimestamp";
-  public static final String VENICE_ETL_PRODUCER_TIMESTAMP_FIELD = "producerTimestamp";
-  public static final String VENICE_ETL_PARTITION_FIELD = "partition";
+  private static final String VENICE_ETL_BROKER_TIMESTAMP_FIELD = "brokerTimestamp";
+  private static final String VENICE_ETL_PRODUCER_TIMESTAMP_FIELD = "producerTimestamp";
+  private static final String VENICE_ETL_PARTITION_FIELD = "partition";
 
-  private final String storeName;
   private final String topicName;
   private final int partition;
   private final String keySchemaStr;
+  private final Schema keySchema;
   private final String latestValueSchemaStr;
   private final Schema[] allValueSchemas;
+  private final boolean isChunkingEnabled;
   private final String parentDirectory;
-  private final KafkaConsumer consumer;
+  private final PubSubConsumerAdapter consumer;
   private final long messageCount;
   private final long endOffset;
   private final int maxConsumeAttempts;
   private final boolean logMetadataOnly;
+
+  private final ChunkKeyValueTransformer chunkKeyValueTransformer;
+  private final AvroSpecificDeserializer<ChunkedKeySuffix> chunkedKeySuffixDeserializer;
+  private final ChunkedValueManifestSerializer manifestSerializer;
 
   // helper objects for saving records to a file
   private DataFileWriter<GenericRecord> dataFileWriter;
@@ -79,7 +95,7 @@ public class KafkaTopicDumper implements AutoCloseable {
 
   public KafkaTopicDumper(
       ControllerClient controllerClient,
-      Properties consumerProps,
+      PubSubConsumerAdapter consumer,
       String topic,
       int partitionNumber,
       long startingOffset,
@@ -87,44 +103,59 @@ public class KafkaTopicDumper implements AutoCloseable {
       String parentDir,
       int maxConsumeAttempts,
       boolean logMetadataOnly) {
+    this.consumer = consumer;
     this.maxConsumeAttempts = maxConsumeAttempts;
+    String storeName;
     if (Version.isVersionTopic(topic)) {
-      this.storeName = Version.parseStoreFromKafkaTopicName(topic);
+      storeName = Version.parseStoreFromKafkaTopicName(topic);
+      int version = Version.parseVersionFromVersionTopicName(topic);
+      this.isChunkingEnabled =
+          controllerClient.getStore(storeName).getStore().getVersion(version).get().isChunkingEnabled();
     } else {
-      this.storeName = Version.parseStoreFromRealTimeTopic(topic);
+      storeName = Version.parseStoreFromRealTimeTopic(topic);
+      this.isChunkingEnabled = false;
     }
+    this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
+    this.keySchema = AvroCompatibilityHelper.parse(keySchemaStr);
+
+    if (isChunkingEnabled) {
+      chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(keySchema);
+      chunkedKeySuffixDeserializer = new AvroSpecificDeserializer<>(new SpecificDatumReader<>(ChunkedKeySuffix.class));
+      manifestSerializer = new ChunkedValueManifestSerializer(true);
+    } else {
+      chunkKeyValueTransformer = null;
+      chunkedKeySuffixDeserializer = null;
+      manifestSerializer = null;
+    }
+
     this.topicName = topic;
     this.partition = partitionNumber;
     this.parentDirectory = parentDir;
     this.logMetadataOnly = logMetadataOnly;
     if (logMetadataOnly) {
-      this.keySchemaStr = null;
       this.latestValueSchemaStr = null;
-      allValueSchemas = null;
+      this.allValueSchemas = null;
     } else {
-      this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
       MultiSchemaResponse.Schema[] schemas = controllerClient.getAllValueSchema(storeName).getSchemas();
       LOGGER.info("Found {} value schemas for store {}", schemas.length, storeName);
       this.latestValueSchemaStr = schemas[schemas.length - 1].getSchemaStr();
-      allValueSchemas = new Schema[schemas.length];
+      this.allValueSchemas = new Schema[schemas.length];
       int i = 0;
       for (MultiSchemaResponse.Schema valueSchema: schemas) {
         this.allValueSchemas[i] = Schema.parse(valueSchema.getSchemaStr());
         i++;
       }
     }
-    this.consumer = new KafkaConsumer(consumerProps);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopicPartition partition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partitionNumber);
 
-    TopicPartition partition = new TopicPartition(topic, partitionNumber);
-    List<TopicPartition> partitions = Collections.singletonList(partition);
-    consumer.assign(partitions);
-    Map<TopicPartition, Long> partitionToBeginningOffset = consumer.beginningOffsets(partitions);
-    long computedStartingOffset = Math.max(partitionToBeginningOffset.get(partition), startingOffset);
+    Long partitionBeginningOffset = consumer.beginningOffset(partition, DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
+    long computedStartingOffset = Math.max(partitionBeginningOffset, startingOffset);
     LOGGER.info("Starting from offset: {}", computedStartingOffset);
-    consumer.seek(partition, computedStartingOffset);
-    Map<TopicPartition, Long> partitionToEndOffset = consumer.endOffsets(partitions);
-    this.endOffset = partitionToEndOffset.get(partition);
-    LOGGER.info("End offset for partition {} is {}", partition.partition(), this.endOffset);
+    consumer.subscribe(partition, computedStartingOffset - 1);
+    this.endOffset = consumer.endOffset(partition);
+    LOGGER.info("End offset for partition {} is {}", partition, this.endOffset);
     if (messageCount < 0) {
       this.messageCount = this.endOffset;
     } else {
@@ -140,18 +171,20 @@ public class KafkaTopicDumper implements AutoCloseable {
    * 1. Fetch up to {@link KafkaTopicDumper#messageCount} messages in this partition.
    * 2. Discard non-control messages.
    */
-  public void fetchAndProcess() {
+  public int fetchAndProcess() {
     int countdownBeforeStop = maxConsumeAttempts;
     int currentMessageCount = 0;
 
     int lastReportedConsumedCount = 0;
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> lastProcessRecord = null;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> lastProcessRecord = null;
     do {
-      ConsumerRecords records = consumer.poll(5000); // up to 5 seconds
-      Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> iter = records.iterator();
-      while (iter.hasNext() && currentMessageCount < messageCount) {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
+          consumer.poll(5000); // up to 5 seconds
+      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
+          Utils.iterateOnMapOfLists(records);
+      while (recordsIterator.hasNext() && currentMessageCount < messageCount) {
         currentMessageCount++;
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = iter.next();
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
         lastProcessRecord = record;
         processRecord(record);
       }
@@ -160,15 +193,16 @@ public class KafkaTopicDumper implements AutoCloseable {
         LOGGER.info(
             "Consumed {} messages; last consumed message offset:{}",
             currentMessageCount,
-            lastProcessRecord.offset());
+            lastProcessRecord.getOffset());
         lastReportedConsumedCount = currentMessageCount;
       }
-      countdownBeforeStop = records.count() == 0 ? countdownBeforeStop - 1 : maxConsumeAttempts;
-    } while ((lastProcessRecord != null && lastProcessRecord.offset() < (this.endOffset - 2))
+      countdownBeforeStop = records.isEmpty() ? countdownBeforeStop - 1 : maxConsumeAttempts;
+    } while ((lastProcessRecord != null && lastProcessRecord.getOffset() < (this.endOffset - 2))
         && currentMessageCount < messageCount && countdownBeforeStop > 0);
+    return currentMessageCount;
   }
 
-  public final void setupDumpFile() {
+  private void setupDumpFile() {
     // build file
     File dataFile = new File(this.parentDirectory + this.topicName + "_" + this.partition + ".avro");
     List<Schema.Field> outputSchemaFields = new ArrayList<>();
@@ -200,7 +234,6 @@ public class KafkaTopicDumper implements AutoCloseable {
     }
 
     // build key/value reader
-    Schema keySchema = Schema.parse(keySchemaStr);
     keyReader = new GenericDatumReader<>(keySchema, keySchema);
 
     int valueSchemaNum = allValueSchemas.length;
@@ -217,10 +250,10 @@ public class KafkaTopicDumper implements AutoCloseable {
   /**
    * Log the metadata for each kafka message.
    */
-  public void logRecordMetadata(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  private void logRecordMetadata(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     try {
-      KafkaKey kafkaKey = record.key();
-      KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
+      KafkaKey kafkaKey = record.getKey();
+      KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
       ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
 
       String msgType = kafkaKey.isControlMessage()
@@ -229,11 +262,13 @@ public class KafkaTopicDumper implements AutoCloseable {
 
       LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
 
+      final String chunkMetadata = getChunkMetadataLog(record);
+
       LOGGER.info(
-          "{} {} Offset:{} ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}) LeaderMd=(host:{},uo:{},ukcId:{})",
+          "{} {} Offset:{} ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}) LeaderMd=(host:{},uo:{},ukcId:{}){}",
           kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
           msgType,
-          record.offset(),
+          record.getOffset(),
           GuidUtils.getHexFromGuid(producerMetadata.producerGUID),
           producerMetadata.segmentNumber,
           producerMetadata.messageSequenceNumber,
@@ -241,13 +276,14 @@ public class KafkaTopicDumper implements AutoCloseable {
           producerMetadata.logicalTimestamp,
           leaderMetadata == null ? "-" : leaderMetadata.hostName,
           leaderMetadata == null ? "-" : leaderMetadata.upstreamOffset,
-          leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
+          leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
+          chunkMetadata);
     } catch (Exception e) {
-      LOGGER.error("Failed when building record for offset {}", record.offset(), e);
+      LOGGER.error("Failed when building record for offset {}", record.getOffset(), e);
     }
   }
 
-  private void processRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  private void processRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     if (logMetadataOnly) {
       logRecordMetadata(record);
       return;
@@ -255,17 +291,17 @@ public class KafkaTopicDumper implements AutoCloseable {
     writeToFile(record);
   }
 
-  private void writeToFile(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  private void writeToFile(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     try {
-      KafkaKey kafkaKey = record.key();
-      KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
+      KafkaKey kafkaKey = record.getKey();
+      KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
       if (kafkaKey.isControlMessage()) {
         LOGGER.info("Found a control message, continue");
         return;
       }
       // build the record
       GenericRecord convertedRecord = new GenericData.Record(outputSchema);
-      convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.offset());
+      convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.getOffset());
 
       byte[] keyBytes = kafkaKey.getKey();
       Decoder keyDecoder = decoderFactory.binaryDecoder(keyBytes, null);
@@ -273,13 +309,11 @@ public class KafkaTopicDumper implements AutoCloseable {
       convertedRecord.put(VENICE_ETL_KEY_FIELD, keyRecord);
       Map<CharSequence, CharSequence> metadataMap = new HashMap<>();
 
-      metadataMap.put(VENICE_ETL_PARTITION_FIELD, String.valueOf(record.partition()));
+      metadataMap.put(VENICE_ETL_PARTITION_FIELD, String.valueOf(record.getPartition()));
       metadataMap.put(
           VENICE_ETL_PRODUCER_TIMESTAMP_FIELD,
           String.valueOf(kafkaMessageEnvelope.producerMetadata.messageTimestamp));
-      metadataMap.put(
-          VENICE_ETL_BROKER_TIMESTAMP_FIELD,
-          String.valueOf(TimestampType.LOG_APPEND_TIME.equals(record.timestampType()) ? record.timestamp() : 0));
+      metadataMap.put(VENICE_ETL_BROKER_TIMESTAMP_FIELD, String.valueOf(record.getPubSubMessageTime()));
 
       convertedRecord.put(VENICE_ETL_METADATA_FIELD, metadataMap);
 
@@ -294,7 +328,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           convertedRecord.put(VENICE_ETL_VALUE_FIELD, valueRecord);
           break;
         case DELETE:
-          convertedRecord.put(VENICE_ETL_DELETED_TS_FIELD, record.offset());
+          convertedRecord.put(VENICE_ETL_DELETED_TS_FIELD, record.getOffset());
           break;
         case UPDATE:
           LOGGER.info("Found update message! continue");
@@ -304,7 +338,70 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
       dataFileWriter.append(convertedRecord);
     } catch (Exception e) {
-      LOGGER.error("Failed when building record for offset {}", record.offset(), e);
+      LOGGER.error("Failed when building record for offset {}", record.getOffset(), e);
+    }
+  }
+
+  // Visible for testing
+  String getChunkMetadataLog(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) throws IOException {
+    KafkaKey kafkaKey = record.getKey();
+    KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
+    if (this.isChunkingEnabled && !kafkaKey.isControlMessage()) {
+      MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
+      int schemaId;
+      switch (messageType) {
+        case PUT:
+          schemaId = ((Put) kafkaMessageEnvelope.payloadUnion).schemaId;
+          break;
+        case DELETE:
+          schemaId = ((Delete) kafkaMessageEnvelope.payloadUnion).schemaId;
+          break;
+        default:
+          throw new IOException(
+              "Unexpected '" + messageType + "' message from Topic: " + record.getTopicName() + " Partition: "
+                  + record.getPartition());
+      }
+
+      final ChunkKeyValueTransformer.KeyType keyType = ChunkKeyValueTransformer.getKeyType(messageType, schemaId);
+      switch (keyType) {
+        case WITH_FULL_VALUE:
+          return String.format(" ChunkMd=(type:%s)", keyType);
+        case WITH_VALUE_CHUNK:
+          final RawKeyBytesAndChunkedKeySuffix rawKeyBytesAndChunkedKeySuffix =
+              chunkKeyValueTransformer.splitChunkedKey(kafkaKey.getKey(), keyType);
+          final ByteBuffer chunkedKeySuffixBytes = rawKeyBytesAndChunkedKeySuffix.getChunkedKeySuffixBytes();
+          final ChunkedKeySuffix chunkedKeySuffix = chunkedKeySuffixDeserializer.deserialize(chunkedKeySuffixBytes);
+          return String.format(
+              " ChunkMd=(type:%s, ChunkIndex: %d, FirstChunkMd=(guid:%s,seg:%d,seq:%d))",
+              keyType,
+              chunkedKeySuffix.chunkId.chunkIndex,
+              GuidUtils.getHexFromGuid(chunkedKeySuffix.chunkId.producerGUID),
+              chunkedKeySuffix.chunkId.segmentNumber,
+              chunkedKeySuffix.chunkId.messageSequenceNumber);
+        case WITH_CHUNK_MANIFEST:
+          Put putMessage = (Put) kafkaMessageEnvelope.payloadUnion;
+          ChunkedValueManifest chunkedValueManifest =
+              manifestSerializer.deserialize(ByteUtils.extractByteArray(putMessage.putValue), putMessage.schemaId);
+
+          ByteBuffer firstChunkKeyWithChunkIdSuffix = chunkedValueManifest.keysWithChunkIdSuffix.get(0);
+          final RawKeyBytesAndChunkedKeySuffix firstChunkRawKeyBytesAndChunkedKeySuffix = chunkKeyValueTransformer
+              .splitChunkedKey(ByteUtils.extractByteArray(firstChunkKeyWithChunkIdSuffix), WITH_VALUE_CHUNK);
+          final ByteBuffer firstChunkKeySuffixBytes =
+              firstChunkRawKeyBytesAndChunkedKeySuffix.getChunkedKeySuffixBytes();
+          final ChunkedKeySuffix firstChunkedKeySuffix =
+              chunkedKeySuffixDeserializer.deserialize(firstChunkKeySuffixBytes);
+
+          return String.format(
+              " ChunkMd=(type:%s, FirstChunkMd=(guid:%s,seg:%d,seq:%d))",
+              keyType,
+              GuidUtils.getHexFromGuid(firstChunkedKeySuffix.chunkId.producerGUID),
+              firstChunkedKeySuffix.chunkId.segmentNumber,
+              firstChunkedKeySuffix.chunkId.messageSequenceNumber);
+        default:
+          throw new VeniceException("Unexpected key type: " + keyType);
+      }
+    } else {
+      return "";
     }
   }
 

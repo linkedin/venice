@@ -69,7 +69,7 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
     if (e instanceof VeniceException) {
       errorType = ((VeniceException) e).getErrorType();
     }
-    this.error = error + "," + e.getMessage();
+    this.error = error + ". Exception type: " + e.getClass().toString() + ". Detailed message: " + e.getMessage();
   }
 
   public void setError(Throwable e) {

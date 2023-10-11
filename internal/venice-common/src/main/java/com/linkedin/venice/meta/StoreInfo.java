@@ -64,6 +64,8 @@ public class StoreInfo {
     storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersion());
     storeInfo.setViewConfigs(store.getViewConfigs());
+    storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     return storeInfo;
   }
 
@@ -296,6 +298,13 @@ public class StoreInfo {
   private String kafkaBrokerUrl;
 
   private Map<String, ViewConfig> viewConfigs = new HashMap<>();
+
+  /**
+   * Whether storage node read quota is enabled for this store.
+   */
+  private boolean storageNodeReadQuotaEnabled;
+
+  private long minCompactionLagSeconds;
 
   public StoreInfo() {
   }
@@ -737,5 +746,21 @@ public class StoreInfo {
   public StoreInfo setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
     this.leaderFollowerModelEnabled = true;
     return this;
+  }
+
+  public boolean isStorageNodeReadQuotaEnabled() {
+    return storageNodeReadQuotaEnabled;
+  }
+
+  public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
+    this.storageNodeReadQuotaEnabled = storageNodeReadQuotaEnabled;
+  }
+
+  public long getMinCompactionLagSeconds() {
+    return minCompactionLagSeconds;
+  }
+
+  public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
+    this.minCompactionLagSeconds = minCompactionLagSeconds;
   }
 }

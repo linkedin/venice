@@ -137,7 +137,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
       spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
     }
     this.routingDataRepository = new HelixExternalViewRepository(spectatorManager);
-    this.customizedViewRepo = new HelixCustomizedViewOfflinePushRepository(this.helixManager, storeMetadataRepository);
+    this.customizedViewRepo =
+        new HelixCustomizedViewOfflinePushRepository(this.helixManager, storeMetadataRepository, true);
     this.messageChannel = new HelixStatusMessageChannel(
         helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName),
@@ -164,8 +165,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
         aggregateRealTimeSourceKafkaUrl,
         getActiveActiveRealTimeSourceKafkaURLs(config),
         helixAdminClient,
-        config.isErrorLeaderReplicaFailOverEnabled(),
-        config.getOffLineJobWaitTimeInMilliseconds());
+        config,
+        admin.getPushStatusStoreReader().orElse(null));
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(
         clusterName,
@@ -402,9 +403,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
    * acquired the lock, no other thread could operate for this cluster.
    */
   public AutoCloseableLock lockForShutdown() {
-    LOGGER.info(
-        "lockForShutdown() called. Will log the current stacktrace and then attempt to acquire the lock.",
-        new VeniceException("Not thrown, for logging purposes only."));
     return clusterLockManager.createClusterWriteLock();
   }
 

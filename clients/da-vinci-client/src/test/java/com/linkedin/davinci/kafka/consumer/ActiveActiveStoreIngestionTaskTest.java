@@ -1,5 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.utils.ByteUtils.SIZE_OF_INT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -13,27 +16,51 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -47,9 +74,15 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
+import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
@@ -57,10 +90,140 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.mockito.ArgumentCaptor;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class ActiveActiveStoreIngestionTaskTest {
+  String STORE_NAME = "Thvorusleikir_store";
+  String PUSH_JOB_ID = "yule";
+  String BOOTSTRAP_SERVER = "Stekkjastaur";
+  String TEST_CLUSTER_NAME = "venice-GRYLA";
+
+  @DataProvider(name = "CompressionStrategy")
+  public static Object[] compressionStrategyProvider() {
+    return new Object[] { CompressionStrategy.NO_OP, CompressionStrategy.GZIP, CompressionStrategy.ZSTD_WITH_DICT };
+  }
+
+  @Test(dataProvider = "CompressionStrategy")
+  public void testGetValueBytesFromTransientRecords(CompressionStrategy strategy) throws IOException {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    PartitionConsumptionState.TransientRecord transientRecord = mock(PartitionConsumptionState.TransientRecord.class);
+    VeniceCompressor compressor = getCompressor(strategy);
+    when(ingestionTask.getCompressor()).thenReturn(Lazy.of(() -> compressor));
+    when(ingestionTask.getCompressionStrategy()).thenReturn(strategy);
+    when(ingestionTask.getCurrentValueFromTransientRecord(any())).thenCallRealMethod();
+
+    byte[] dataBytes = "Hello World".getBytes();
+    byte[] transientRecordValueBytes = dataBytes;
+    int startPosition = 0;
+    int dataLength = dataBytes.length;
+    if (strategy != CompressionStrategy.NO_OP) {
+      ByteBuffer compressedByteBuffer = compressor.compress(ByteBuffer.wrap(dataBytes), 4);
+      transientRecordValueBytes = compressedByteBuffer.array();
+      startPosition = compressedByteBuffer.position();
+      dataLength = compressedByteBuffer.remaining();
+    }
+    when(transientRecord.getValue()).thenReturn(transientRecordValueBytes);
+    when(transientRecord.getValueOffset()).thenReturn(startPosition);
+    when(transientRecord.getValueLen()).thenReturn(dataLength);
+    ByteBuffer result = ingestionTask.getCurrentValueFromTransientRecord(transientRecord);
+    Assert.assertEquals(result.remaining(), dataBytes.length);
+    byte[] resultByteArray = new byte[result.remaining()];
+    result.get(resultByteArray);
+    Assert.assertEquals("Hello World", new String(resultByteArray));
+  }
+
+  @Test
+  public void testisReadyToServeAnnouncedWithRTLag() {
+    // Set up PubSubTopicRepository
+    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
+    PubSubTopic pubSubTopic = new TestPubSubTopic(STORE_NAME + "_v1", STORE_NAME, PubSubTopicType.VERSION_TOPIC);
+    when(pubSubTopicRepository.getTopic("Thvorusleikir_store_v1")).thenReturn(pubSubTopic);
+
+    // Setup store/schema/storage repository
+    ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
+    StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
+    when(storageEngineRepository.getLocalStorageEngine(any())).thenReturn(new BlackHoleStorageEngine(STORE_NAME));
+
+    // Setup server config
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists()).thenReturn(false);
+    when(serverConfig.getKafkaClusterUrlResolver()).thenReturn(null);
+    when(serverConfig.getKafkaClusterUrlToIdMap()).thenReturn(new Object2IntArrayMap<>());
+    when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(new Int2ObjectArrayMap<>());
+    when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(1);
+
+    // Set up IngestionTask Builder
+    StoreIngestionTaskFactory.Builder builder = new StoreIngestionTaskFactory.Builder();
+    builder.setPubSubTopicRepository(pubSubTopicRepository);
+    builder.setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class));
+    builder.setAggKafkaConsumerService(mock(AggKafkaConsumerService.class));
+    builder.setMetadataRepository(readOnlyStoreRepository);
+    builder.setServerConfig(serverConfig);
+    builder.setSchemaRepository(readOnlySchemaRepository);
+    builder.setStorageEngineRepository(storageEngineRepository);
+
+    // Set up version config and store config
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        100L,
+        100L,
+        100L,
+        DataReplicationPolicy.ACTIVE_ACTIVE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
+    mockVersion.setHybridStoreConfig(hybridStoreConfig);
+
+    Store store = new ZKStore(
+        STORE_NAME,
+        "Felix",
+        100L,
+        PersistenceType.BLACK_HOLE,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    store.setHybridStoreConfig(hybridStoreConfig);
+
+    Properties kafkaConsumerProperties = new Properties();
+    kafkaConsumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, BOOTSTRAP_SERVER);
+    kafkaConsumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
+    kafkaConsumerProperties.put(ZOOKEEPER_ADDRESS, BOOTSTRAP_SERVER);
+    VeniceStoreVersionConfig storeVersionConfig =
+        new VeniceStoreVersionConfig(STORE_NAME + "_v1", new VeniceProperties(kafkaConsumerProperties));
+    ActiveActiveStoreIngestionTask ingestionTask = new ActiveActiveStoreIngestionTask(
+        builder,
+        store,
+        mockVersion,
+        kafkaConsumerProperties,
+        () -> true,
+        storeVersionConfig,
+        1,
+        false,
+        Optional.empty());
+
+    PartitionConsumptionState badPartitionConsumptionState = mock(PartitionConsumptionState.class);
+    when(badPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
+    // short circuit isReadyToServe
+    when(badPartitionConsumptionState.isEndOfPushReceived()).thenReturn(false);
+    ingestionTask.addPartitionConsumptionState(1, badPartitionConsumptionState);
+
+    Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
+
+    PartitionConsumptionState goodPartitionConsumptionState = mock(PartitionConsumptionState.class);
+    when(goodPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
+    when(goodPartitionConsumptionState.isEndOfPushReceived()).thenReturn(true);
+    when(goodPartitionConsumptionState.isWaitingForReplicationLag()).thenReturn(false);
+    ingestionTask.addPartitionConsumptionState(1, goodPartitionConsumptionState);
+
+    Assert.assertFalse(ingestionTask.isReadyToServeAnnouncedWithRTLag());
+
+    ingestionTask.addPartitionConsumptionState(2, badPartitionConsumptionState);
+
+    Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
+  }
+
   @Test
   public void testLeaderCanSendValueChunksIntoDrainer()
       throws ExecutionException, InterruptedException, TimeoutException {
@@ -80,15 +243,16 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
     when(ingestionTask.createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
         .thenCallRealMethod();
-    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), anyInt(), anyBoolean())).thenCallRealMethod();
-    when(ingestionTask.getRmdProtocolVersionID()).thenReturn(rmdProtocolVersionID);
+    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), any(), any(), anyInt(), anyBoolean()))
+        .thenCallRealMethod();
+    when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
     doCallRealMethod().when(ingestionTask)
         .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
     byte[] key = "foo".getBytes();
     byte[] updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
 
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
-    Future mockedFuture = mock(Future.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
     AtomicLong offset = new AtomicLong(0);
@@ -121,9 +285,11 @@ public class ActiveActiveStoreIngestionTaskTest {
         new VeniceWriterOptions.Builder(testTopic).setPartitioner(new DefaultVenicePartitioner())
             .setTime(SystemTime.INSTANCE)
             .setChunkingEnabled(true)
+            .setRmdChunkingEnabled(true)
             .build();
     VeniceWriter<byte[], byte[], byte[]> writer =
-        new VeniceWriter(veniceWriterOptions, new VeniceProperties(new Properties()), mockedProducer);
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+    when(ingestionTask.isTransientRecordBufferUsed()).thenReturn(true);
     when(ingestionTask.getVeniceWriter()).thenReturn(Lazy.of(() -> writer));
     StringBuilder stringBuilder = new StringBuilder();
     for (int i = 0; i < 50000; i++) {
@@ -147,7 +313,14 @@ public class ActiveActiveStoreIngestionTaskTest {
     LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
         .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
 
+    PartitionConsumptionState.TransientRecord transientRecord =
+        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
+
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
+    when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    when(consumerRecord.getKey()).thenReturn(kafkaKey);
+    when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
     ingestionTask.produceToLocalKafka(
         consumerRecord,
         partitionConsumptionState,
@@ -156,6 +329,8 @@ public class ActiveActiveStoreIngestionTaskTest {
             updatedKeyBytes,
             updatedValueBytes,
             updatedRmdBytes,
+            null,
+            null,
             valueSchemaId,
             resultReuseInput),
         subPartition,
@@ -163,11 +338,17 @@ public class ActiveActiveStoreIngestionTaskTest {
         kafkaClusterId,
         beforeProcessingRecordTimestamp);
 
-    // Send 1 SOS, 2 Chunks, 1 Manifest.
-    verify(mockedProducer, times(4)).sendMessage(any(), any(), any(), any(), any(), any());
+    // RMD chunking not enabled in this case...
+    Assert.assertNotNull(transientRecord.getValueManifest());
+    Assert.assertNotNull(transientRecord.getRmdManifest());
+    Assert.assertEquals(transientRecord.getValueManifest().getKeysWithChunkIdSuffix().size(), 2);
+    Assert.assertEquals(transientRecord.getRmdManifest().getKeysWithChunkIdSuffix().size(), 1);
+
+    // Send 1 SOS, 2 Value Chunks, 1 RMD Chunk, 1 Manifest.
+    verify(mockedProducer, times(5)).sendMessage(any(), any(), any(), any(), any(), any());
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
-    verify(ingestionTask, times(3)).produceToStoreBufferService(
+    verify(ingestionTask, times(4)).produceToStoreBufferService(
         any(),
         leaderProducedRecordContextArgumentCaptor.capture(),
         anyInt(),
@@ -194,6 +375,9 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(2).getKeyBytes(),
         kafkaKeyArgumentCaptor.getAllValues().get(3).getKey());
+    Assert.assertEquals(
+        leaderProducedRecordContextArgumentCaptor.getAllValues().get(3).getKeyBytes(),
+        kafkaKeyArgumentCaptor.getAllValues().get(4).getKey());
   }
 
   @Test
@@ -247,7 +431,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     when(serverConfig.isComputeFastAvroEnabled()).thenReturn(false);
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    when(ingestionTask.getRmdProtocolVersionID()).thenReturn(1);
+    when(ingestionTask.getRmdProtocolVersionId()).thenReturn(1);
     Lazy<VeniceCompressor> compressor = Lazy.of(NoopCompressor::new);
     when(ingestionTask.getCompressor()).thenReturn(compressor);
     when(ingestionTask.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
@@ -255,13 +439,15 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getStorageEngine()).thenReturn(storageEngine);
     when(ingestionTask.getSchemaRepo()).thenReturn(schemaRepository);
     when(ingestionTask.getServerConfig()).thenReturn(serverConfig);
-    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(anyInt(), any(), anyLong())).thenCallRealMethod();
+    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(anyInt(), any(), any(), anyLong()))
+        .thenCallRealMethod();
     when(ingestionTask.isChunked()).thenReturn(true);
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
-
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey1)).thenReturn(expectedNonChunkedValue);
-    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1, 0L);
+    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1, container, 0L);
     Assert.assertNotNull(result);
+    Assert.assertNull(container.getManifest());
     Assert.assertEquals(result, expectedNonChunkedValue);
 
     /**
@@ -293,8 +479,10 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey2)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
-    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, 0L);
+    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, container, 0L);
     Assert.assertNotNull(result2);
+    Assert.assertNotNull(container.getManifest());
+    Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 1);
     Assert.assertEquals(result2, expectedChunkedValue1);
 
     /**
@@ -332,8 +520,18 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey3)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
-    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3, 0L);
+    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3, container, 0L);
     Assert.assertNotNull(result3);
+    Assert.assertNotNull(container.getManifest());
+    Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 2);
     Assert.assertEquals(result3, expectedChunkedValue2);
+  }
+
+  private VeniceCompressor getCompressor(CompressionStrategy strategy) {
+    if (Objects.requireNonNull(strategy) == CompressionStrategy.ZSTD_WITH_DICT) {
+      byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
+      return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
+    }
+    return new CompressorFactory().getCompressor(strategy);
   }
 }

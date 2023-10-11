@@ -8,7 +8,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Properties;
 import java.util.stream.Collectors;
 import org.apache.hadoop.io.BytesWritable;
 import org.testng.Assert;
@@ -46,7 +45,7 @@ public class ChunkedKeySuffixTest {
     List<byte[]> keys = new ArrayList<>();
     List<byte[]> keysWithSuffix = new ArrayList<>();
 
-    GUID guid = GuidUtils.getGUID(new VeniceProperties(new Properties()));
+    GUID guid = GuidUtils.getGUID(VeniceProperties.empty());
     for (int key = 0; key < 10; key++) {
       byte[] keyArray = new byte[1];
       keyArray[0] = (byte) key;

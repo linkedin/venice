@@ -103,7 +103,7 @@ public class ClientFactory {
         new DispatchingAvroSpecificStoreClient<>(storeMetadata, clientConfig);
     StatsAvroSpecificStoreClient<K, V> statsStoreClient;
 
-    if (clientConfig.isLongTailRetryEnabledForSingleGet()) {
+    if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()) {
       statsStoreClient = new StatsAvroSpecificStoreClient<>(
           new RetriableAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig),
           clientConfig);

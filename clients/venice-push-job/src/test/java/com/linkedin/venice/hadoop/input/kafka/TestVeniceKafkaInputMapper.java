@@ -58,13 +58,13 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
 
   @Test(expectedExceptions = UnsupportedOperationException.class)
   public void testUnsupportedGetRecordReader() {
-    newMapper().getRecordReader(new VeniceProperties());
+    newMapper().getRecordReader(VeniceProperties.empty());
   }
 
   @Test
   public void testEmptyFilterWhenTTLNotSpecified() {
     try (VeniceKafkaInputMapper mapper = new VeniceKafkaInputMapper()) {
-      Assert.assertNull(mapper.getFilterChain(new VeniceProperties()));
+      Assert.assertNull(mapper.getFilterChain(VeniceProperties.empty()));
     }
   }
 

@@ -13,7 +13,7 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.PushMonitorNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.stats.ThreadPoolStats;
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -27,6 +27,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -40,6 +41,8 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -136,11 +139,7 @@ public class HelixParticipationService extends AbstractVeniceService
   // Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
   // behavior is pool will create a new thread if the number of running threads is fewer than corePoolSize, otherwise
   // add this task into queue. If a thread is idle for more than 300 seconds, pool will collect this thread.
-  private ThreadPoolExecutor initHelixStateTransitionThreadPool(
-      int size,
-      String threadName,
-      MetricsRepository metricsRepository,
-      String statsName) {
+  private ThreadPoolExecutor initHelixStateTransitionThreadPool(int size, String threadName) {
     ThreadPoolExecutor helixStateTransitionThreadPool = new ThreadPoolExecutor(
         size,
         size,
@@ -149,9 +148,6 @@ public class HelixParticipationService extends AbstractVeniceService
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory(threadName));
     helixStateTransitionThreadPool.allowCoreThreadTimeOut(true);
-
-    // register stats that tracks the thread pool
-    new ThreadPoolStats(metricsRepository, helixStateTransitionThreadPool, statsName);
 
     return helixStateTransitionThreadPool;
   }
@@ -165,21 +161,29 @@ public class HelixParticipationService extends AbstractVeniceService
     VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
     leaderFollowerHelixStateTransitionThreadPool = initHelixStateTransitionThreadPool(
         config.getMaxLeaderFollowerStateTransitionThreadNumber(),
-        "Venice-L/F-state-transition",
+        "Venice-L/F-state-transition");
+    // register stats that tracks the thread pool
+    ParticipantStateTransitionStats stateTransitionStats = new ParticipantStateTransitionStats(
         metricsRepository,
+        leaderFollowerHelixStateTransitionThreadPool,
         "Venice_L/F_ST_thread_pool");
 
     if (config.getLeaderFollowerThreadPoolStrategy()
         .equals(LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY)) {
+      ThreadPoolExecutor futureVersionThreadPool = initHelixStateTransitionThreadPool(
+          config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
+          "venice-L/F-state-transition-future-version");
+      ParticipantStateTransitionStats futureVersionStateTransitionStats = new ParticipantStateTransitionStats(
+          metricsRepository,
+          futureVersionThreadPool,
+          "Venice_L/F_ST_thread_pool_future_version");
       leaderFollowerParticipantModelFactory = new LeaderFollowerPartitionStateModelDualPoolFactory(
           ingestionBackend,
           veniceConfigLoader,
           leaderFollowerHelixStateTransitionThreadPool,
-          initHelixStateTransitionThreadPool(
-              config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
-              "venice-L/F-state-transition-future-version",
-              metricsRepository,
-              "Venice_L/F_ST_thread_pool_future_version"),
+          stateTransitionStats,
+          futureVersionThreadPool,
+          futureVersionStateTransitionStats,
           helixReadOnlyStoreRepository,
           partitionPushStatusAccessorFuture,
           instance.getNodeId());
@@ -188,6 +192,7 @@ public class HelixParticipationService extends AbstractVeniceService
           ingestionBackend,
           veniceConfigLoader,
           leaderFollowerHelixStateTransitionThreadPool,
+          stateTransitionStats,
           helixReadOnlyStoreRepository,
           partitionPushStatusAccessorFuture,
           instance.getNodeId());
@@ -225,6 +230,11 @@ public class HelixParticipationService extends AbstractVeniceService
   public void stopInner() throws IOException {
     LOGGER.info("Attempting to stop HelixParticipation service.");
     ingestionBackend.prepareForShutdown();
+    if (helixManager != null) {
+      resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger);
+    } else {
+      logger.error("Can't reset instance CV states since HelixManager is null");
+    }
     if (helixManager != null) {
       try {
         helixManager.disconnect();
@@ -290,8 +300,12 @@ public class HelixParticipationService extends AbstractVeniceService
     zkClient = ZkClientFactory.newZkClient(zkAddress);
 
     // we use push status store for persisting incremental push statuses
-    VeniceProperties veniceProperties = veniceConfigLoader.getVeniceServerConfig().getClusterProperties();
-    VeniceWriterFactory writerFactory = new VeniceWriterFactory(veniceProperties.toProperties());
+    VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
+    VeniceProperties veniceProperties = veniceServerConfig.getClusterProperties();
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory writerFactory =
+        new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
     statusStoreWriter = new PushStatusStoreWriter(
         writerFactory,
         instance.getNodeId(),
@@ -313,6 +327,13 @@ public class HelixParticipationService extends AbstractVeniceService
         instance.getNodeId());
 
     ingestionBackend.addPushStatusNotifier(pushMonitorNotifier);
+    /**
+     * The accessor can only get created successfully after helix manager is created.
+     */
+    partitionPushStatusAccessor = new HelixPartitionStatusAccessor(
+        helixManager.getOriginalManager(),
+        instance.getNodeId(),
+        veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
 
     CompletableFuture.runAsync(() -> {
       try {
@@ -322,6 +343,8 @@ public class HelixParticipationService extends AbstractVeniceService
         // our
         // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
         checkBeforeJoinInCluster();
+        helixManager
+            .addPreConnectCallback(() -> resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger));
         helixManager.connect();
         managerFuture.complete(helixManager);
       } catch (Exception e) {
@@ -330,13 +353,6 @@ public class HelixParticipationService extends AbstractVeniceService
         Utils.exit("Failed to start HelixParticipationService");
       }
 
-      /**
-       * The accessor can only get created successfully after helix manager is created.
-       */
-      partitionPushStatusAccessor = new HelixPartitionStatusAccessor(
-          helixManager.getOriginalManager(),
-          instance.getNodeId(),
-          veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
       PartitionPushStatusNotifier partitionPushStatusNotifier =
           new PartitionPushStatusNotifier(partitionPushStatusAccessor);
       ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
@@ -351,6 +367,26 @@ public class HelixParticipationService extends AbstractVeniceService
       serviceState.set(ServiceState.STARTED);
       LOGGER.info("Successfully started Helix Participation Service.");
     });
+  }
+
+  static void resetAllInstanceCVStates(
+      HelixPartitionStatusAccessor accessor,
+      StorageService storageService,
+      Logger currentLogger) {
+    // Get all hosted stores
+    currentLogger.info("Started resetting all instance CV states");
+    Map<String, Set<Integer>> storePartitionMapping = storageService.getStoreAndUserPartitionsMapping();
+    storePartitionMapping.forEach((storeName, partitionIds) -> {
+      partitionIds.forEach(partitionId -> {
+        try {
+          accessor.deleteReplicaStatus(storeName, partitionId);
+        } catch (Exception e) {
+          currentLogger
+              .error("Failed to delete CV state for resource: {} and partition id: {}", storeName, partitionId, e);
+        }
+      });
+    });
+    currentLogger.info("Finished resetting all instance CV states");
   }
 
   // test only

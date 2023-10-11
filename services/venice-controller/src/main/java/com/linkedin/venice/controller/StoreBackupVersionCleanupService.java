@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -38,7 +39,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Thread cleanupThread;
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
-  private boolean stop = false;
+  private final AtomicBoolean stop = new AtomicBoolean(false);
 
   private final Time time;
 
@@ -62,7 +63,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   }
 
   /**
-   * @see {@link AbstractVeniceService#startInner()}
+   * @see AbstractVeniceService#startInner()
    */
   @Override
   public boolean startInner() throws Exception {
@@ -71,11 +72,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   }
 
   /**
-   * @see {@link AbstractVeniceService#stopInner()}
+   * @see AbstractVeniceService#stopInner()
    */
   @Override
   public void stopInner() throws Exception {
-    stop = true;
+    stop.set(true);
     cleanupThread.interrupt();
   }
 
@@ -87,8 +88,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     if (backupVersionRetentionMs < MINIMAL_BACKUP_VERSION_CLEANUP_DELAY) {
       backupVersionRetentionMs = MINIMAL_BACKUP_VERSION_CLEANUP_DELAY;
     }
-    long latestVersionPromoteToCurrentTimestamp = store.getLatestVersionPromoteToCurrentTimestamp();
-    return latestVersionPromoteToCurrentTimestamp + backupVersionRetentionMs < time.getMilliseconds();
+    return store.getLatestVersionPromoteToCurrentTimestamp() + backupVersionRetentionMs < time.getMilliseconds();
   }
 
   /**
@@ -147,7 +147,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     @Override
     public void run() {
       boolean interruptReceived = false;
-      while (!stop) {
+      while (!stop.get()) {
         try {
           time.sleep(sleepInterval);
         } catch (InterruptedException e) {

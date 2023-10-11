@@ -266,4 +266,36 @@ public class RetryUtilsTest {
     verify(obj, times(3)).getAnInteger();
     reset(obj);
   }
+
+  @Test
+  public void testFixAttemptDurationOnSupplier() {
+    SomeObj obj = mock(SomeObj.class);
+
+    // Case 1: no failure
+    when(obj.getAnInteger()).thenReturn(1);
+    Assert.assertEquals(
+        (int) RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(
+            () -> obj.getAnInteger() + 1,
+            3,
+            Duration.ofMillis(100),
+            Collections.singletonList(IllegalStateException.class)),
+        2);
+    verify(obj, times(1)).getAnInteger();
+    reset(obj);
+
+    // Case 2: succeed on the last attempt
+    when(obj.getAnInteger()).thenThrow(IllegalArgumentException.class)
+        .thenThrow(IllegalStateException.class)
+        .thenReturn(2);
+    long startTime = System.currentTimeMillis();
+    Assert.assertEquals((int) RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
+      // Give the action some non-trivial time to make sure no precision error.
+      Utils.sleep(100);
+      return obj.getAnInteger() + 1;
+    }, 2, Duration.ofMillis(1000), Arrays.asList(IllegalStateException.class, IllegalArgumentException.class)), 3);
+    long timeSpentInMs = (System.currentTimeMillis() - startTime);
+    Assert.assertTrue(timeSpentInMs > 2000, "Time spent in attempts " + timeSpentInMs + "ms");
+    verify(obj, times(3)).getAnInteger();
+    reset(obj);
+  }
 }

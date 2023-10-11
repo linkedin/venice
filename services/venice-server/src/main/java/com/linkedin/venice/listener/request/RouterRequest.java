@@ -29,6 +29,13 @@ public abstract class RouterRequest {
     this.storeName = Version.parseStoreFromKafkaTopicName(resourceName);
   }
 
+  public RouterRequest(String resourceName, boolean isRetryRequest, boolean isStreamingRequest) {
+    this.resourceName = resourceName;
+    this.storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+    this.isRetryRequest = isRetryRequest;
+    this.isStreamingRequest = isStreamingRequest;
+  }
+
   public void setRequestTimeoutInNS(long requestTimeoutInNS) {
     this.requestTimeoutInNS = requestTimeoutInNS;
   }

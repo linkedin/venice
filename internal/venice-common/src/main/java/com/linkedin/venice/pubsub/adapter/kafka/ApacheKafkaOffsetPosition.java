@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.adapter.kafka;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.io.ZeroCopyByteArrayOutputStream;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubPositionType;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
@@ -22,6 +23,9 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
   private final long offset;
 
   public ApacheKafkaOffsetPosition(long offset) {
+    if (offset < OffsetRecord.LOWEST_OFFSET) {
+      throw new IllegalArgumentException("Offset must be greater than or equal to " + OffsetRecord.LOWEST_OFFSET);
+    }
     this.offset = offset;
   }
 

@@ -23,28 +23,28 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
-import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
+import static com.linkedin.venice.ConfigKeys.ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
+import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
+import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTITION_COUNT_ROUND_UP;
 import static com.linkedin.venice.ConfigKeys.FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HELIX_REBALANCE_ALG;
 import static com.linkedin.venice.ConfigKeys.HELIX_SEND_MESSAGE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
@@ -53,7 +53,6 @@ import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME
 import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PARTITION_COUNT_ROUND_UP_SIZE;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -64,7 +63,7 @@ import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
@@ -110,9 +109,9 @@ public class VeniceControllerClusterConfig {
   private OfflinePushStrategy offlinePushStrategy;
   private RoutingStrategy routingStrategy;
   private int replicationFactor;
-  private int numberOfPartition;
-  private int numberOfPartitionForHybrid;
-  private int maxNumberOfPartition;
+  private int minNumberOfPartitions;
+  private int minNumberOfPartitionsForHybrid;
+  private int maxNumberOfPartitions;
   private long partitionSize;
   private boolean partitionCountRoundUpEnabled;
   private int partitionCountRoundUpSize;
@@ -146,12 +145,6 @@ public class VeniceControllerClusterConfig {
   private boolean nativeReplicationEnabledForBatchOnly;
 
   /**
-   * When this option is enabled, all new incremental push enabled store versions created will have native replication
-   * enabled so long as the store has leader follower also enabled.
-   */
-  private boolean nativeReplicationEnabledForIncremental;
-
-  /**
    * When this option is enabled, all new hybrid store versions created will have native replication enabled so long
    * as the store has leader follower also enabled.
    */
@@ -164,12 +157,6 @@ public class VeniceControllerClusterConfig {
   private boolean nativeReplicationEnabledAsDefaultForBatchOnly;
 
   /**
-   * When this option is enabled, all new incremental push enabled stores will have native replication enabled in store
-   * config so long as the store has leader follower also enabled.
-   */
-  private boolean nativeReplicationEnabledAsDefaultForIncremental;
-
-  /**
    * When this option is enabled, all new hybrid stores will have native replication enabled in store config so long
    * as the store has leader follower also enabled.
    */
@@ -177,7 +164,15 @@ public class VeniceControllerClusterConfig {
 
   private String nativeReplicationSourceFabricAsDefaultForBatchOnly;
   private String nativeReplicationSourceFabricAsDefaultForHybrid;
-  private String nativeReplicationSourceFabricAsDefaultForIncremental;
+
+  /**
+   * When the following option is enabled, active-active enabled new user hybrid store will automatically
+   * have incremental push enabled.
+   */
+  private boolean enabledIncrementalPushForHybridActiveActiveUserStores;
+
+  private boolean enablePartialUpdateForHybridActiveActiveUserStores;
+  private boolean enablePartialUpdateForHybridNonActiveActiveUserStores;
 
   /**
    * When this option is enabled, all new batch-only stores will have active-active replication enabled in store config so long
@@ -190,12 +185,6 @@ public class VeniceControllerClusterConfig {
    * as the store has leader follower also enabled.
    */
   private boolean activeActiveReplicationEnabledAsDefaultForHybrid;
-
-  /**
-   * When this option is enabled, all new incremental push enabled stores will have active-active replication enabled in store
-   * config so long as the store has leader follower also enabled.
-   */
-  private boolean activeActiveReplicationEnabledAsDefaultForIncremental;
 
   /**
    * When this option is enabled, new schema registration will validate the schema against all existing store value schemas.
@@ -230,7 +219,6 @@ public class VeniceControllerClusterConfig {
   private Optional<Integer> minInSyncReplicasRealTimeTopics;
   private Optional<Integer> minInSyncReplicasAdminTopics;
   private boolean kafkaLogCompactionForHybridStores;
-  private boolean kafkaLogCompactionForIncrementalPushStores;
   private long kafkaMinLogCompactionLagInMs;
 
   /**
@@ -291,16 +279,14 @@ public class VeniceControllerClusterConfig {
     minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
     minInSyncReplicasAdminTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS);
     kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
-    kafkaLogCompactionForIncrementalPushStores =
-        props.getBoolean(KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES, true);
     kafkaMinLogCompactionLagInMs =
         props.getLong(KAFKA_MIN_LOG_COMPACTION_LAG_MS, DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS);
     replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
-    numberOfPartition = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
-    numberOfPartitionForHybrid = props.getInt(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, numberOfPartition);
+    minNumberOfPartitions = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
+    minNumberOfPartitionsForHybrid = props.getInt(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, minNumberOfPartitions);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
-    maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
+    maxNumberOfPartitions = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
     partitionCountRoundUpEnabled = props.getBoolean(ENABLE_PARTITION_COUNT_ROUND_UP, false);
     partitionCountRoundUpSize = props.getInt(PARTITION_COUNT_ROUND_UP_SIZE, 1);
     // If the timeout is longer than 3min, we need to update controller client's timeout as well, otherwise creating
@@ -335,9 +321,6 @@ public class VeniceControllerClusterConfig {
     nativeReplicationEnabledForBatchOnly = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, false);
     nativeReplicationEnabledAsDefaultForBatchOnly =
         props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, false);
-    nativeReplicationEnabledForIncremental = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH, false);
-    nativeReplicationEnabledAsDefaultForIncremental =
-        props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH, false);
     nativeReplicationEnabledForHybrid = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, false);
     nativeReplicationEnabledAsDefaultForHybrid =
         props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, false);
@@ -345,19 +328,21 @@ public class VeniceControllerClusterConfig {
         props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "");
     nativeReplicationSourceFabricAsDefaultForHybrid =
         props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "");
-    nativeReplicationSourceFabricAsDefaultForIncremental =
-        props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, "");
     activeActiveReplicationEnabledAsDefaultForBatchOnly =
         props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE, false);
     activeActiveReplicationEnabledAsDefaultForHybrid =
         props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
-    activeActiveReplicationEnabledAsDefaultForIncremental =
-        props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE, false);
     controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
+    enabledIncrementalPushForHybridActiveActiveUserStores =
+        props.getBoolean(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
+    enablePartialUpdateForHybridActiveActiveUserStores =
+        props.getBoolean(ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
+    enablePartialUpdateForHybridNonActiveActiveUserStores =
+        props.getBoolean(ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES, false);
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
-    this.sslToKafka = props.getBoolean(SSL_TO_KAFKA, false);
+    this.sslToKafka = props.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false);
     // Enable ssl to kafka
     if (sslToKafka) {
       // In that case , ssl kafka broker list is an mandatory field
@@ -462,12 +447,12 @@ public class VeniceControllerClusterConfig {
     return replicationFactor;
   }
 
-  public int getNumberOfPartition() {
-    return numberOfPartition;
+  public int getMinNumberOfPartitions() {
+    return minNumberOfPartitions;
   }
 
-  public int getNumberOfPartitionForHybrid() {
-    return numberOfPartitionForHybrid;
+  public int getMinNumberOfPartitionsForHybrid() {
+    return minNumberOfPartitionsForHybrid;
   }
 
   public int getKafkaReplicationFactor() {
@@ -486,8 +471,8 @@ public class VeniceControllerClusterConfig {
     return disableParentRequestTopicForStreamPushes;
   }
 
-  public int getMaxNumberOfPartition() {
-    return maxNumberOfPartition;
+  public int getMaxNumberOfPartitions() {
+    return maxNumberOfPartitions;
   }
 
   public boolean isPartitionCountRoundUpEnabled() {
@@ -598,10 +583,6 @@ public class VeniceControllerClusterConfig {
     return kafkaLogCompactionForHybridStores;
   }
 
-  public boolean isKafkaLogCompactionForIncrementalPushStoresEnabled() {
-    return kafkaLogCompactionForIncrementalPushStores;
-  }
-
   public long getKafkaMinLogCompactionLagInMs() {
     return kafkaMinLogCompactionLagInMs;
   }
@@ -612,14 +593,6 @@ public class VeniceControllerClusterConfig {
 
   public boolean isNativeReplicationEnabledAsDefaultForBatchOnly() {
     return nativeReplicationEnabledAsDefaultForBatchOnly;
-  }
-
-  public boolean isNativeReplicationEnabledForIncremental() {
-    return nativeReplicationEnabledForIncremental;
-  }
-
-  public boolean isNativeReplicationEnabledAsDefaultForIncremental() {
-    return nativeReplicationEnabledAsDefaultForIncremental;
   }
 
   public boolean isNativeReplicationEnabledForHybrid() {
@@ -636,10 +609,6 @@ public class VeniceControllerClusterConfig {
 
   public boolean isActiveActiveReplicationEnabledAsDefaultForHybrid() {
     return activeActiveReplicationEnabledAsDefaultForHybrid;
-  }
-
-  public boolean isActiveActiveReplicationEnabledAsDefaultForIncremental() {
-    return activeActiveReplicationEnabledAsDefaultForIncremental;
   }
 
   public boolean isControllerSchemaValidationEnabled() {
@@ -662,10 +631,6 @@ public class VeniceControllerClusterConfig {
     return nativeReplicationSourceFabricAsDefaultForHybrid;
   }
 
-  public String getNativeReplicationSourceFabricAsDefaultForIncremental() {
-    return nativeReplicationSourceFabricAsDefaultForIncremental;
-  }
-
   public VeniceProperties getJettyConfigOverrides() {
     return jettyConfigOverrides;
   }
@@ -676,5 +641,17 @@ public class VeniceControllerClusterConfig {
 
   public String getChildDatacenters() {
     return childDatacenters;
+  }
+
+  public boolean enabledIncrementalPushForHybridActiveActiveUserStores() {
+    return enabledIncrementalPushForHybridActiveActiveUserStores;
+  }
+
+  public boolean isEnablePartialUpdateForHybridActiveActiveUserStores() {
+    return enablePartialUpdateForHybridActiveActiveUserStores;
+  }
+
+  public boolean isEnablePartialUpdateForHybridNonActiveActiveUserStores() {
+    return enablePartialUpdateForHybridNonActiveActiveUserStores;
   }
 }

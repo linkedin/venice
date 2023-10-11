@@ -82,6 +82,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   int getNumber();
 
+  void setNumber(int number);
+
   long getCreatedTime();
 
   @JsonIgnore
@@ -127,6 +129,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String getStoreName();
 
   String getPushJobId();
+
+  void setPushJobId(String pushJobId);
 
   PushType getPushType();
 

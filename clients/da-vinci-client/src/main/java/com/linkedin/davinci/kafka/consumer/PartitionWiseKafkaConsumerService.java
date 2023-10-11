@@ -2,11 +2,11 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -35,7 +35,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   private final Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> rtTopicPartitionToConsumerMap =
       new VeniceConcurrentHashMap<>();
 
-  private final Logger logger;
+  private final Logger LOGGER;
 
   private int shareConsumerIndex = 0;
 
@@ -52,7 +52,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final TopicExistenceChecker topicExistenceChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
-      KafkaPubSubMessageDeserializer pubSubDeserializer,
+      final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final KafkaConsumerServiceStats stats,
       final boolean isKafkaConsumerOffsetCollectionEnabled) {
@@ -73,7 +73,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         time,
         stats,
         isKafkaConsumerOffsetCollectionEnabled);
-    this.logger = LogManager.getLogger(PartitionWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
+    this.LOGGER = LogManager.getLogger(PartitionWiseKafkaConsumerService.class + " [" + kafkaUrlForLogger + "]");
   }
 
   @Override
@@ -110,7 +110,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
          * But one consumer cannot consume from several offsets of one partition at the same time.
          */
         if (alreadySubscribedRealtimeTopicPartition(consumer, topicPartition)) {
-          logger.info(
+          LOGGER.info(
               "Current consumer has already subscribed the same real time topic-partition: {} will skip it and try next consumer in consumer pool",
               topicPartition);
           seekNewConsumer = true;
@@ -125,7 +125,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       throw new IllegalStateException(
           "Did not find a suitable consumer after checking " + consumersChecked + " instances.");
     }
-    logger.info(
+    LOGGER.info(
         "Get shared consumer for: {} from the ingestion task belonging to version topic: {} with index: {}",
         topicPartition,
         versionTopic,

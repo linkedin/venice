@@ -3,24 +3,35 @@ package com.linkedin.venice;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.SERVER_ADMIN_RESPONSE;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.QueryTool;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -67,29 +78,43 @@ import com.linkedin.venice.helix.HelixSchemaAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
-import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.BufferedReader;
 import java.io.Console;
 import java.io.FileInputStream;
@@ -100,6 +125,9 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -114,12 +142,13 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.TimeZone;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -139,6 +168,11 @@ public class AdminTool {
   private static final String SUCCESS = "success";
 
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+
+  private static final PubSubClientsFactory PUB_SUB_CLIENTS_FACTORY = new PubSubClientsFactory(
+      new ApacheKafkaProducerAdapterFactory(),
+      new ApacheKafkaConsumerAdapterFactory(),
+      new ApacheKafkaAdminAdapterFactory());
 
   private static ControllerClient controllerClient;
   private static Optional<SSLFactory> sslFactory = Optional.empty();
@@ -175,24 +209,16 @@ public class AdminTool {
         LogConfigurator.disableLog();
       }
 
+      /**
+       * Initialize SSL config if provided.
+       */
+      buildSslFactory(cmd);
+
       if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL)
           && Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER)) {
         veniceUrl = getRequiredArgument(cmd, Arg.URL);
         clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-
-        /**
-         * SSL config file is not mandatory now; build the controller with SSL config if provided.
-         */
-        buildSslFactory(cmd);
         controllerClient = ControllerClient.constructClusterControllerClient(clusterName, veniceUrl, sslFactory);
-      }
-
-      if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER_SRC)) {
-        /**
-         * Build SSL factory for store migration commands if SSL config is provided.
-         * SSL factory will be used when constructing src/dest parent/child controller clients.
-         */
-        buildSslFactory(cmd);
       }
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())) {
@@ -510,6 +536,12 @@ public class AdminTool {
         case MONITOR_DATA_RECOVERY:
           monitorDataRecovery(cmd);
           break;
+        case REQUEST_BASED_METADATA:
+          getRequestBasedMetadata(cmd);
+          break;
+        case DUMP_INGESTION_STATE:
+          dumpIngestionState(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -620,44 +652,57 @@ public class AdminTool {
 
   private static void executeDataRecovery(CommandLine cmd) {
     String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
+    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
     String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
-    String stores = getRequiredArgument(cmd, Arg.STORES);
+    String timestamp = getRequiredArgument(cmd, Arg.DATETIME);
+    String parentUrl = getRequiredArgument(cmd, Arg.URL);
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
+    String stores = getOptionalArgument(cmd, Arg.STORES);
+    String cluster = getOptionalArgument(cmd, Arg.CLUSTER);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
     boolean isNonInteractive = cmd.hasOption(Arg.NON_INTERACTIVE.toString());
 
-    StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
-    cmdParams.setCommand(recoveryCommand);
-    cmdParams.setSourceFabric(sourceFabric);
+    StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder().setCommand(recoveryCommand)
+        .setDestFabric(destFabric)
+        .setSourceFabric(sourceFabric)
+        .setTimestamp(LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+        .setSSLFactory(sslFactory)
+        .setUrl(parentUrl);
     if (extraCommandArgs != null) {
-      cmdParams.setExtraCommandArgs(extraCommandArgs);
+      builder.setExtraCommandArgs(extraCommandArgs);
     }
-    cmdParams.setDebug(isDebuggingEnabled);
+    builder.setDebug(isDebuggingEnabled);
 
+    Set<String> storeSet = calculateRecoveryStoreNames(stores, cluster, parentUrl);
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(storeSet);
     params.setNonInteractive(isNonInteractive);
-    dataRecoveryClient.execute(params, cmdParams);
+
+    try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
+      builder.setPCtrlCliWithoutCluster(cli);
+      StoreRepushCommand.Params cmdParams = builder.build();
+      dataRecoveryClient.execute(params, cmdParams);
+    }
   }
 
   private static void estimateDataRecoveryTime(CommandLine cmd) {
-    String stores = getRequiredArgument(cmd, Arg.STORES);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
     String parentUrl = getRequiredArgument(cmd, Arg.URL);
 
+    String stores = getOptionalArgument(cmd, Arg.STORES);
+    String cluster = getOptionalArgument(cmd, Arg.CLUSTER);
+
+    Set<String> storeSet = calculateRecoveryStoreNames(stores, cluster, parentUrl);
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(storeSet);
 
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
-
-    EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
-    cmdParams.setTargetRegion(destFabric);
-    cmdParams.setParentUrl(parentUrl);
-    cmdParams.setSslFactory(sslFactory);
     Long total;
 
     try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
-      cmdParams.setPCtrlCliWithoutCluster(cli);
+      EstimateDataRecoveryTimeCommand.Params.Builder builder =
+          new EstimateDataRecoveryTimeCommand.Params.Builder(destFabric, cli, parentUrl, sslFactory);
+      EstimateDataRecoveryTimeCommand.Params cmdParams = builder.build();
       total = dataRecoveryClient.estimateRecoveryTime(params, cmdParams);
     }
 
@@ -675,25 +720,63 @@ public class AdminTool {
   private static void monitorDataRecovery(CommandLine cmd) {
     String parentUrl = getRequiredArgument(cmd, Arg.URL);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
-    String stores = getRequiredArgument(cmd, Arg.STORES);
+    String dateTimeStr = getRequiredArgument(cmd, Arg.DATETIME);
 
     String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
+    String stores = getOptionalArgument(cmd, Arg.STORES);
+    String cluster = getOptionalArgument(cmd, Arg.CLUSTER);
 
-    MonitorCommand.Params monitorParams = new MonitorCommand.Params();
-    monitorParams.setTargetRegion(destFabric);
-    monitorParams.setParentUrl(parentUrl);
-    monitorParams.setSslFactory(sslFactory);
+    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder().setTargetRegion(destFabric)
+        .setParentUrl(parentUrl)
+        .setSSLFactory(sslFactory);
 
+    try {
+      builder.setDateTime(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+    } catch (DateTimeParseException e) {
+      throw new VeniceException(
+          String.format(
+              "Can not parse: %s, supported format: %s",
+              e.getParsedString(),
+              DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+    }
+
+    Set<String> storeSet = calculateRecoveryStoreNames(stores, cluster, parentUrl);
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(storeSet);
     if (intervalStr != null) {
       params.setInterval(Integer.parseInt(intervalStr));
     }
 
     try (ControllerClient parentCtrlCli = new ControllerClient("*", parentUrl, sslFactory)) {
-      monitorParams.setPCtrlCliWithoutCluster(parentCtrlCli);
+      builder.setPCtrlCliWithoutCluster(parentCtrlCli);
+      MonitorCommand.Params monitorParams = builder.build();
       dataRecoveryClient.monitor(params, monitorParams);
     }
+  }
+
+  private static Set<String> calculateRecoveryStoreNames(String multiStores, String cluster, String parentUrl) {
+    if (!StringUtils.isEmpty(multiStores) && !StringUtils.isEmpty(cluster)) {
+      System.out.println(
+          String.format("[WARN] --%s overwrites --%s value.", Arg.STORES.getArgName(), Arg.CLUSTER.getArgName()));
+    }
+
+    if (!StringUtils.isEmpty(multiStores)) {
+      return Utils.parseCommaSeparatedStringToSet(multiStores);
+    }
+
+    if (!StringUtils.isEmpty(cluster)) {
+      try (ControllerClient parentCtrlCli = new ControllerClient(cluster, parentUrl, sslFactory)) {
+        MultiStoreResponse response = parentCtrlCli.queryStoreList(false);
+        if (response.isError()) {
+          throw new VeniceClientException("Error in getting store list for " + cluster + ": " + response.getError());
+        }
+        if (response.getStores() == null) {
+          return null;
+        }
+        return new HashSet<>(Arrays.asList(response.getStores()));
+      }
+    }
+    return null;
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {
@@ -930,7 +1013,7 @@ public class AdminTool {
 
   private static void updateStore(CommandLine cmd) {
     UpdateStoreQueryParams params = getUpdateStoreQueryParams(cmd);
-
+    params.setStoreViews(new HashMap<>());
     String storeName = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
     ControllerResponse response = controllerClient.updateStore(storeName, params);
     printSuccess(response);
@@ -958,6 +1041,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p), argSet);
     booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
     longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);
+    booleanParam(cmd, Arg.STORAGE_NODE_READ_QUOTA_ENABLED, p -> params.setStorageNodeReadQuotaEnabled(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_OVERHEAD_BYPASS, p -> params.setHybridStoreOverheadBypass(p), argSet);
     longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p), argSet);
     longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p), argSet);
@@ -1020,6 +1104,7 @@ public class AdminTool {
     genericParam(cmd, Arg.REGIONS_FILTER, s -> s, p -> params.setRegionsFilter(p), argSet);
     genericParam(cmd, Arg.STORAGE_PERSONA, s -> s, p -> params.setStoragePersona(p), argSet);
     integerParam(cmd, Arg.LATEST_SUPERSET_SCHEMA_ID, p -> params.setLatestSupersetSchemaId(p), argSet);
+    longParam(cmd, Arg.MIN_COMPACTION_LAG_SECONDS, p -> params.setMinCompactionLagSeconds(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -1325,8 +1410,8 @@ public class AdminTool {
         .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollingInterval)
         .setTopicMinLogCompactionLagMs(0L)
         .setLocalKafkaBootstrapServers(kafkaBootstrapServer)
-        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
-        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+        .setPubSubConsumerAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory())
+        .setPubSubAdminAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getAdminAdapterFactory())
         .setPubSubTopicRepository(pubSubTopicRepository)
         .build()) {
       TopicManager topicManager = topicManagerRepository.getTopicManager();
@@ -1335,9 +1420,9 @@ public class AdminTool {
         topicManager.ensureTopicIsDeletedAndBlock(PUB_SUB_TOPIC_REPOSITORY.getTopic(topicName));
         long runTime = System.currentTimeMillis() - startTime;
         printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
-      } catch (VeniceOperationAgainstKafkaTimedOut e) {
+      } catch (PubSubOpTimeoutException e) {
         printErrAndThrow(e, "Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.", null);
-      } catch (ExecutionException e) {
+      } catch (VeniceException e) {
         printErrAndThrow(e, "Topic deletion failed due to ExecutionException", null);
       }
     }
@@ -1345,10 +1430,12 @@ public class AdminTool {
 
   private static void dumpAdminMessages(CommandLine cmd) {
     Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
+    PubSubConsumerAdapter consumer = getConsumer(consumerProperties);
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
-        getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS),
+        consumer,
         getRequiredArgument(cmd, Arg.CLUSTER),
-        consumerProperties,
         Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)),
         Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
     printObject(adminMessages);
@@ -1371,9 +1458,9 @@ public class AdminTool {
     int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
     int startingOffset = Integer.parseInt(getRequiredArgument(cmd, Arg.STARTING_OFFSET));
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
-
-    new ControlMessageDumper(consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch()
-        .display();
+    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
+      new ControlMessageDumper(consumer, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch().display();
+    }
   }
 
   private static void queryKafkaTopic(CommandLine cmd) throws java.text.ParseException {
@@ -1389,14 +1476,16 @@ public class AdminTool {
 
     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
     dateFormat.setTimeZone(TimeZone.getTimeZone("America/Los_Angeles"));
-    TopicMessageFinder.find(
-        controllerClient,
-        consumerProps,
-        kafkaTopic,
-        keyString,
-        dateFormat.parse(startDateInPST).getTime(),
-        dateFormat.parse(endDateInPST).getTime(),
-        Long.parseLong(progressInterval));
+    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
+      TopicMessageFinder.find(
+          controllerClient,
+          consumer,
+          kafkaTopic,
+          keyString,
+          dateFormat.parse(startDateInPST).getTime(),
+          dateFormat.parse(endDateInPST).getTime(),
+          Long.parseLong(progressInterval));
+    }
   }
 
   private static void dumpKafkaTopic(CommandLine cmd) {
@@ -1428,20 +1517,22 @@ public class AdminTool {
     }
 
     boolean logMetadataOnly = cmd.hasOption(Arg.LOG_METADATA.toString());
-    try (KafkaTopicDumper ktd = new KafkaTopicDumper(
-        controllerClient,
-        consumerProps,
-        kafkaTopic,
-        partitionNumber,
-        startingOffset,
-        messageCount,
-        parentDir,
-        maxConsumeAttempts,
-        logMetadataOnly)) {
-      ktd.fetchAndProcess();
-    } catch (Exception e) {
-      System.err.println("Something went wrong during topic dump");
-      e.printStackTrace();
+    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
+      try (KafkaTopicDumper ktd = new KafkaTopicDumper(
+          controllerClient,
+          consumer,
+          kafkaTopic,
+          partitionNumber,
+          startingOffset,
+          messageCount,
+          parentDir,
+          maxConsumeAttempts,
+          logMetadataOnly)) {
+        ktd.fetchAndProcess();
+      } catch (Exception e) {
+        System.err.println("Something went wrong during topic dump");
+        e.printStackTrace();
+      }
     }
   }
 
@@ -2401,13 +2492,18 @@ public class AdminTool {
   private static void getKafkaTopicConfigs(CommandLine cmd) {
     String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
     String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
-    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
-    if (storeName.isEmpty()) {
-      throw new VeniceException("Please either provide a valid topic name.");
+    String clusterName = null;
+    if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
+      clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
+    } else {
+      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+      if (storeName.isEmpty()) {
+        throw new VeniceException("Please either provide a valid topic name.");
+      }
+      D2ServiceDiscoveryResponse clusterDiscovery =
+          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+      clusterName = clusterDiscovery.getCluster();
     }
-    D2ServiceDiscoveryResponse clusterDiscovery =
-        ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
-    String clusterName = clusterDiscovery.getCluster();
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
       PubSubTopicConfigResponse response = tmpControllerClient.getKafkaTopicConfigs(kafkaTopicName);
       printObject(response);
@@ -2449,13 +2545,17 @@ public class AdminTool {
      */
     String clusterName = getOptionalArgument(cmd, Arg.CLUSTER);
     if (clusterName == null) {
-      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
-      if (storeName.isEmpty()) {
-        throw new VeniceException("Please either provide a valid topic name or a cluster name.");
+      if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
+        clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
+      } else {
+        String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+        if (storeName.isEmpty()) {
+          throw new VeniceException("Please either provide a valid topic name or a cluster name.");
+        }
+        D2ServiceDiscoveryResponse clusterDiscovery =
+            ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+        clusterName = clusterDiscovery.getCluster();
       }
-      D2ServiceDiscoveryResponse clusterDiscovery =
-          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
-      clusterName = clusterDiscovery.getCluster();
     }
 
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
@@ -2734,6 +2834,123 @@ public class AdminTool {
     printObject(multiStoreTopicsResponse);
   }
 
+  private static void getRequestBasedMetadata(CommandLine cmd) throws JsonProcessingException {
+    String url = getRequiredArgument(cmd, Arg.URL);
+    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    TransportClient transportClient = null;
+    try {
+      transportClient = getTransportClientForServer(storeName, serverUrl);
+      getAndPrintRequestBasedMetadata(
+          transportClient,
+          () -> ControllerClientFactory.discoverAndConstructControllerClient(
+              AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(),
+              url,
+              sslFactory,
+              1),
+          serverUrl,
+          storeName);
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
+  private static TransportClient getTransportClientForServer(String storeName, String serverUrl) {
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
+    if (clientConfig.isHttps()) {
+      if (!sslFactory.isPresent()) {
+        throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
+      }
+      clientConfig.setSslFactory(sslFactory.get());
+    }
+    return ClientFactory.getTransportClient(clientConfig);
+  }
+
+  private static void dumpIngestionState(CommandLine cmd) throws Exception {
+    TransportClient transportClient = null;
+    try {
+      transportClient =
+          getTransportClientForServer(getRequiredArgument(cmd, Arg.STORE), getRequiredArgument(cmd, Arg.SERVER_URL));
+      dumpIngestionState(
+          transportClient,
+          getRequiredArgument(cmd, Arg.STORE),
+          getRequiredArgument(cmd, Arg.VERSION),
+          getOptionalArgument(cmd, Arg.PARTITION));
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
+  static void dumpIngestionState(TransportClient transportClient, String storeName, String version, String partition)
+      throws Exception {
+    StringBuilder sb = new StringBuilder(QueryAction.ADMIN.toString().toLowerCase()).append("/")
+        .append(Version.composeKafkaTopic(storeName, Integer.parseInt(version)))
+        .append("/")
+        .append(ServerAdminAction.DUMP_INGESTION_STATE.toString().toLowerCase());
+    if (partition != null) {
+      sb.append("/").append(partition);
+    }
+    String requestUrl = sb.toString();
+    TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
+    int writerSchemaId = transportClientResponse.getSchemaId();
+    if (writerSchemaId == 1) {
+      /**
+       * The bug in {@link AvroProtocolDefinition} will let the current Venice Server return schema id `1`, while
+       * the specific record is generated from schema: 2.
+       */
+      writerSchemaId = 2;
+    }
+    InternalAvroSpecificSerializer<AdminResponseRecord> serializer = SERVER_ADMIN_RESPONSE.getSerializer();
+    /**
+     * Here, this tool doesn't handle schema evolution, and if the writer schema is not known in the admin tool,
+     * the following deserialization will fail, and we need to rebuild the admin tool.
+     */
+    AdminResponseRecord responseRecord = serializer.deserialize(transportClientResponse.getBody(), writerSchemaId);
+    // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
+    // Use the Avro record's toString() instead and pretty print it.
+    Object printObject = ObjectMapperFactory.getInstance().readValue(responseRecord.toString(), Object.class);
+    System.out.println(jsonWriter.writeValueAsString(printObject));
+  }
+
+  static void getAndPrintRequestBasedMetadata(
+      TransportClient transportClient,
+      Supplier<ControllerClient> controllerClientSupplier,
+      String serverUrl,
+      String storeName) throws JsonProcessingException {
+    String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    byte[] body;
+    int writerSchemaId;
+    try {
+      TransportClientResponse transportClientResponse = transportClient.get(requestBasedMetadataURL).get();
+      writerSchemaId = transportClientResponse.getSchemaId();
+      body = transportClientResponse.getBody();
+    } catch (Exception e) {
+      throw new VeniceException(
+          "Encountered exception while trying to send metadata request to: " + serverUrl + "/"
+              + requestBasedMetadataURL,
+          e);
+    }
+    Schema writerSchema;
+    if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()) {
+      SchemaResponse schemaResponse = controllerClientSupplier.get()
+          .getValueSchema(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(), writerSchemaId);
+      if (schemaResponse.isError()) {
+        throw new VeniceException(
+            "Failed to fetch metadata response schema from controller, error: " + schemaResponse.getError());
+      }
+      writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
+    } else {
+      writerSchema = MetadataResponseRecord.SCHEMA$;
+    }
+    RecordDeserializer<GenericRecord> metadataResponseDeserializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
+    GenericRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
+    // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
+    // Use the Avro record's toString() instead and pretty print it.
+    Object printObject = ObjectMapperFactory.getInstance().readValue(metadataResponse.toString(), Object.class);
+    System.out.println(jsonWriter.writeValueAsString(printObject));
+  }
+
   private static Map<String, ControllerClient> getAndCheckChildControllerClientMap(
       String clusterName,
       String srcFabric,
@@ -2836,4 +3053,14 @@ public class AdminTool {
       System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
     }
   }
+
+  private static PubSubConsumerAdapter getConsumer(Properties consumerProps) {
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    return PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory()
+        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "admin-tool-topic-dumper");
+  }
+
 }

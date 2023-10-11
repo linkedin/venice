@@ -4,6 +4,7 @@ import static java.lang.Thread.currentThread;
 
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -56,32 +57,50 @@ public abstract class DataRecoveryWorker {
       return;
     }
 
-    List<DataRecoveryTask> concurrentTasks = tasks;
-    DataRecoveryTask firstTask = tasks.get(0);
-    if (needWaitForFirstTaskToComplete(firstTask)) {
-      // Let the main thread run the first task to completion if there is a need.
-      firstTask.run();
-      if (firstTask.getTaskResult().isError()) {
-        displayTaskResult(firstTask);
-        return;
+    // Only copy the pointers, don't need deep copy.
+    List<DataRecoveryTask> remainingTasks = new ArrayList<>(tasks);
+
+    DataRecoveryTask taskToRun = remainingTasks.get(0);
+    if (needWaitForFirstTaskToComplete(taskToRun)) {
+      boolean isFirstTaskCommandExecuted = false;
+      while (!isFirstTaskCommandExecuted && !remainingTasks.isEmpty()) {
+        // Let the main thread run the first task to completion if there is a need.
+        if (taskToRun == null) {
+          // All tasks have been executed, return.
+          return;
+        }
+        taskToRun.run();
+
+        displayTaskResult(taskToRun);
+
+        // Only StoreRepushCommand needs to wait first task to complete.
+        StoreRepushCommand repushCommand = (StoreRepushCommand) taskToRun.getCommand();
+        if (!repushCommand.isShellCmdExecuted()) {
+          remainingTasks.remove(0);
+          taskToRun = remainingTasks.isEmpty() ? null : remainingTasks.get(0);
+        } else if (taskToRun.getTaskResult().isError()) {
+          // ShellCommand has been executed, but there is an error, stop executing the following commands.
+          isFirstTaskCommandExecuted = true;
+          return;
+        } else {
+          remainingTasks.remove(0);
+          // ShellCommand is executed successfully.
+          isFirstTaskCommandExecuted = true;
+        }
       }
-      // Exclude the 1st item from the list as it has finished.
-      concurrentTasks = tasks.subList(1, tasks.size());
     }
 
     /*
      * Keep polling the states (for monitor) of all tasks at given intervals when interval is set to certain value
      * plus not all tasks are finished. Otherwise, if interval is unset, just do a one time execution for all tasks.
      */
-    boolean requireSleep = false;
     do {
-      final boolean finalRequireSleep = requireSleep;
       try (Timer ignored = Timer.run(elapsedTimeInMs -> {
-        if (finalRequireSleep) {
+        if (continuePollingState()) {
           Utils.sleep(computeTimeToSleepInMillis(elapsedTimeInMs));
         }
       })) {
-        List<CompletableFuture<Void>> taskFutures = concurrentTasks.stream()
+        List<CompletableFuture<Void>> taskFutures = remainingTasks.stream()
             .map(dataRecoveryTask -> CompletableFuture.runAsync(dataRecoveryTask, pool))
             .collect(Collectors.toList());
         taskFutures.stream().map(CompletableFuture::join).collect(Collectors.toList());
@@ -89,7 +108,7 @@ public abstract class DataRecoveryWorker {
         processData();
         displayAllTasksResult();
       }
-    } while (requireSleep = continuePollingState());
+    } while (continuePollingState());
   }
 
   public void processData() {

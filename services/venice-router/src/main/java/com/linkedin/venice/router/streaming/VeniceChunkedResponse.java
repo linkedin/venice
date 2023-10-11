@@ -34,7 +34,6 @@ import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
-import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
@@ -48,10 +47,10 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
@@ -87,63 +86,45 @@ public class VeniceChunkedResponse {
    * to include meta data info, which are only available after processing the full request.
    */
   private static final RecordSerializer<StreamingFooterRecordV1> STREAMING_FOOTER_SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(StreamingFooterRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(StreamingFooterRecordV1.getClassSchema());
   private static final Map<CharSequence, CharSequence> EMPTY_MAP = new HashMap<>();
   private static final RecordSerializer<MultiGetResponseRecordV1> MULTI_GET_RESPONSE_SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
   private static final RecordSerializer<ComputeResponseRecordV1> COMPUTE_RESPONSE_SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
 
   private final String storeName;
   private final RequestType requestType;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
+  private final Optional<Map<CharSequence, String>> optionalHeaders;
   private final ChannelHandlerContext ctx;
   private final VeniceChunkedWriteHandler chunkedWriteHandler;
   private final ChannelProgressivePromise writeFuture;
 
   // Whether the response has already completed or not
   private boolean responseCompleteCalled = false;
-  // Whether the response metadata has been sent or not
-  private final AtomicBoolean responseMetadataWriteInitiated = new AtomicBoolean(false);
-
   private final AtomicLong totalBytesReceived = new AtomicLong(0);
   private final Queue<Chunk> chunksToWrite = new ConcurrentLinkedQueue<Chunk>();
   private final Queue<Chunk> chunksAwaitingCallback = new ConcurrentLinkedQueue<Chunk>();
 
-  // Response metadata should be sent when everything is good.
-  private HttpResponse responseMetadata;
+  /**
+   * Initialized upon the first write. If null, then no writes occurred yet, and therefore the response metadata was
+   * not sent either.
+   *
+   * In the case of streaming batch gets, we expect that all servers should return the same value for this.
+   */
   private volatile CompressionStrategy responseCompression = null;
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
   /**
-   * Only two kinds of response meta could be sent out based on request types:
-   * 1. {@link RequestType#MULTI_GET};
-   * 2. {@link RequestType#COMPUTE};
-   *
-   * For {@link RequestType#MULTI_GET}, there will be one header map per {@link CompressionStrategy} since
-   * the Streaming response headers include {@link HttpConstants#VENICE_COMPRESSION_STRATEGY}.
-    */
-  private static final Map<CompressionStrategy, HttpResponse> RESPONSE_META_MAP_FOR_MULTI_GET = new HashMap<>();
-  static {
-    for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
-      final Map<CharSequence, String> headerMap = new HashMap<>(MULTI_GET_VALID_HEADER_MAP);
-      headerMap.put(HttpConstants.VENICE_COMPRESSION_STRATEGY, Integer.toString((compressionStrategy.getValue())));
-      RESPONSE_META_MAP_FOR_MULTI_GET.put(compressionStrategy, new StreamingResponseMeta(headerMap));
-    }
-  }
-  private static final HttpResponse RESPONSE_META_FOR_COMPUTE = new StreamingResponseMeta(COMPUTE_VALID_HEADER_MAP);
-
-  /**
    * This is the response header for streaming response.
    */
-  private static class StreamingResponseMeta extends DefaultHttpResponse {
-    public StreamingResponseMeta(Map<CharSequence, String> streamingResponseHeaders) {
+  private static class StreamingResponseMetadata extends DefaultHttpResponse {
+    public StreamingResponseMetadata(Map<CharSequence, String> headers) {
       super(HttpVersion.HTTP_1_1, HttpResponseStatus.OK); // So far, we choose 200 for streaming response
-      streamingResponseHeaders.forEach((k, v) -> {
-        headers().set(k, v);
-      });
+      headers.forEach(headers()::set);
       // Add chunked transfer encoding header here
       HttpUtil.setTransferEncodingChunked(this, true);
       headers().set(HttpConstants.VENICE_STREAMING_RESPONSE, "1");
@@ -155,10 +136,12 @@ public class VeniceChunkedResponse {
       RequestType requestType,
       ChannelHandlerContext ctx,
       VeniceChunkedWriteHandler handler,
-      RouterStats<AggRouterHttpRequestStats> routerStats) {
+      RouterStats<AggRouterHttpRequestStats> routerStats,
+      Optional<Map<CharSequence, String>> optionalHeaders) {
     this.storeName = storeName;
     this.requestType = requestType;
     this.routerStats = routerStats;
+    this.optionalHeaders = optionalHeaders;
     if (!requestType.equals(RequestType.MULTI_GET_STREAMING) && !requestType.equals(RequestType.COMPUTE_STREAMING)) {
       throw new VeniceException(
           "Unexpected request type for streaming: " + requestType + ", and currently only"
@@ -168,7 +151,6 @@ public class VeniceChunkedResponse {
     this.ctx = ctx;
     this.chunkedWriteHandler = handler;
     this.writeFuture = ctx.newProgressivePromise();
-
     this.chunkedWriteHandler.setWriteMessageCallback(new WriteMessageCallbackImpl());
   }
 
@@ -206,7 +188,7 @@ public class VeniceChunkedResponse {
      *  2. {@link ChunkDispenser} to dispense all the chunks;
      *  3. Final Response sent by {@link com.linkedin.alpini.netty4.handlers.AsyncFullHttpRequestHandler};
      *
-     *  For 1st type, it is the response meta for streaming response, and its type will be {@link StreamingResponseMeta},
+     *  For 1st type, it is the response meta for streaming response, and its type will be {@link StreamingResponseMetadata},
      *  and the write should be forwarded to the downstream handler.
      *  For 2nd type, it is the holder for all the data chunks, and it will be handled specifically by {@link ChunkedWriteHandler}.
      *  For 3rd type, there are multiple possibilities:
@@ -219,7 +201,7 @@ public class VeniceChunkedResponse {
      */
     @Override
     public boolean whetherToSkipMessage(Object msg, ChannelPromise promise) {
-      if (msg instanceof StreamingResponseMeta) {
+      if (msg instanceof StreamingResponseMetadata) {
         // Streaming response metadata
         return false;
       } else if (msg instanceof ChunkDispenser) {
@@ -230,7 +212,7 @@ public class VeniceChunkedResponse {
         finish(new StreamingCallbackOnlyFreeResponseOnSuccess<>(((SuccessfulStreamingResponse) msg), promise));
         return true;
       } else if (msg instanceof FullHttpResponse) {
-        if (!responseMetadataWriteInitiated.get()) {
+        if (VeniceChunkedResponse.this.responseCompression == null) {
           // Error response before sending out any data yet
           return false;
         }
@@ -246,7 +228,7 @@ public class VeniceChunkedResponse {
               "Unexpected response status: " + status + ", and only non 200 status is expected here");
         }
       }
-      throw new VeniceException("Unexpected message type received: " + msg.getClass());
+      throw new VeniceException("Unexpected message type received: " + (msg == null ? "null" : msg.getClass()));
     }
   }
 
@@ -274,41 +256,44 @@ public class VeniceChunkedResponse {
       ByteBuf byteBuf,
       CompressionStrategy compression,
       StreamingCallback<Long> callback) {
-    if (this.requestType.equals(RequestType.MULTI_GET_STREAMING)) {
-      if (this.responseCompression == null) {
-        synchronized (this) {
-          if (this.responseCompression == null) {
-            this.responseCompression = compression;
-            this.responseMetadata = RESPONSE_META_MAP_FOR_MULTI_GET.get(compression);
-          }
+    boolean isFirstWrite = false;
+    if (this.responseCompression == null) {
+      synchronized (this) {
+        if (this.responseCompression == null) {
+          this.responseCompression = compression;
+          isFirstWrite = true;
         }
       }
-      if (!this.responseCompression.equals(compression)) {
-        // Defensive code, not expected
-        LOGGER.error(
-            "Received inconsistent compression for the new write: {}, and previous compression: {}",
-            compression,
-            this.responseCompression);
-        /**
-         * Skip the write with wrong compression.
-         * {@link VeniceResponseAggregator#buildStreamingResponse} will perform the same check
-         * when all the responses returned by storage nodes are ready, and when the inconsistency happens,
-         * {@link VeniceResponseAggregator} will return an error response instead to indicate the issue.
-         */
-        return CompletableFuture.completedFuture(0l);
-      }
-    } else {
-      responseMetadata = RESPONSE_META_FOR_COMPUTE;
+    }
+
+    boolean isMultiGetStreaming = this.requestType.equals(RequestType.MULTI_GET_STREAMING);
+    if (isMultiGetStreaming && !this.responseCompression.equals(compression)) {
+      // Defensive code, not expected
+      LOGGER.error(
+          "Received inconsistent compression for the new write: {}, and previous compression: {}",
+          compression,
+          this.responseCompression);
+      /**
+       * Skip the write with wrong compression.
+       * {@link VeniceResponseAggregator#buildStreamingResponse} will perform the same check
+       * when all the responses returned by storage nodes are ready, and when the inconsistency happens,
+       * {@link VeniceResponseAggregator} will return an error response instead to indicate the issue.
+       */
+      return CompletableFuture.completedFuture(0L);
     }
 
     /**
-     * We would like to send out response metadata as late as possible, so that the error happened earlier
-     * (such as request parsing error) could still be sent out with the right status code
+      We would like to send out response metadata as late as possible, so that the error happened earlier
+      (such as request parsing error) could still be sent out with the right status code
      */
-    if (responseMetadataWriteInitiated.compareAndSet(false, true)) {
+    if (isFirstWrite) {
       // Send out response metadata
+      Map<CharSequence, String> headers =
+          new HashMap<>(isMultiGetStreaming ? MULTI_GET_VALID_HEADER_MAP : COMPUTE_VALID_HEADER_MAP);
+      optionalHeaders.ifPresent(headers::putAll);
+      headers.put(HttpConstants.VENICE_COMPRESSION_STRATEGY, Integer.toString(compression.getValue()));
       ChannelPromise writePromise = ctx.newPromise().addListener(new ResponseMetadataWriteListener());
-      chunkedWriteHandler.write(ctx, responseMetadata, writePromise);
+      chunkedWriteHandler.write(ctx, new StreamingResponseMetadata(headers), writePromise);
       /**
        * {@link ChunkedWriteHandler#resumeTransfer()} invocation will try to flush more data to the client since more
        * data is available because of the previous write.

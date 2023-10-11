@@ -16,9 +16,6 @@ import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.REPOR
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.SHUTDOWN_COMPONENT;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.UPDATE_METADATA;
 
-import com.linkedin.common.callback.Callback;
-import com.linkedin.common.util.None;
-import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServerAclHandler;
@@ -80,8 +77,6 @@ import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.avro.specific.SpecificRecordBase;
@@ -103,7 +98,6 @@ public class IsolatedIngestionUtils {
   public static final String PID = "pid";
 
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionUtils.class);
-  private static final int D2_STARTUP_TIMEOUT = 60000;
   private static final int SHELL_COMMAND_WAIT_TIME = 1000;
 
   private static final InternalAvroSpecificSerializer<IngestionTaskCommand> ingestionTaskCommandSerializer =
@@ -223,31 +217,6 @@ public class IsolatedIngestionUtils {
       throw new VeniceException(
           "Only able to parse POST requests for IngestionActions. Cannot support action: " + requestParts[1],
           e);
-    }
-  }
-
-  public static void startD2Client(D2Client d2Client) {
-    CountDownLatch latch = new CountDownLatch(1);
-    d2Client.start(new Callback<None>() {
-      @Override
-      public void onSuccess(None result) {
-        latch.countDown();
-        LOGGER.info("D2 client started successfully");
-      }
-
-      @Override
-      public void onError(Throwable e) {
-        latch.countDown();
-        LOGGER.error("D2 client failed to startup", e);
-      }
-    });
-    try {
-      if (!latch.await(D2_STARTUP_TIMEOUT, TimeUnit.MILLISECONDS)) {
-        throw new VeniceException("Time out after " + D2_STARTUP_TIMEOUT + "ms waiting for D2 client to startup");
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new VeniceException("latch wait was interrupted, d2 client may not have had enough time to startup", e);
     }
   }
 

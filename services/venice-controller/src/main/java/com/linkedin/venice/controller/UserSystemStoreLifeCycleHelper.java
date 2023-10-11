@@ -15,7 +15,6 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -63,49 +62,54 @@ public class UserSystemStoreLifeCycleHelper {
     }
   }
 
-  public List<VeniceSystemStoreType> maybeMaterializeSystemStoresForUserStore(
-      String clusterName,
-      String userStoreName) {
-    if (VeniceSystemStoreType.getSystemStoreType(userStoreName) != null) {
-      // Don't materialize system stores for system stores.
-      return Collections.emptyList();
-    }
+  public List<VeniceSystemStoreType> materializeSystemStoresForUserStore(String clusterName, String userStoreName) {
     List<VeniceSystemStoreType> createdSystemStoreTypes = new ArrayList<>();
     Set<VeniceSystemStoreType> autoCreateEnabledSystemStores =
         clusterToAutoCreateEnabledSystemStoresMap.get(clusterName);
     for (VeniceSystemStoreType systemStoreType: autoCreateEnabledSystemStores) {
       String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
       String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
-      final int systemStoreLargestUsedVersionNumber =
-          parentAdmin.getLargestUsedVersionFromStoreGraveyard(clusterName, systemStoreName);
-
-      int partitionCount = parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName);
-      int replicationFactor = parentAdmin.getReplicationFactor(clusterName, systemStoreName);
-      Version version;
-      if (systemStoreLargestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
-        version = parentAdmin
-            .incrementVersionIdempotent(clusterName, systemStoreName, pushJobId, partitionCount, replicationFactor);
-      } else {
-        version = parentAdmin.addVersionAndTopicOnly(
-            clusterName,
-            systemStoreName,
-            pushJobId,
-            systemStoreLargestUsedVersionNumber + 1,
-            partitionCount,
-            replicationFactor,
-            Version.PushType.BATCH,
-            false,
-            false,
-            null,
-            Optional.empty(),
-            -1,
-            Optional.empty(),
-            false);
-      }
-      parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
+      materializeSystemStore(parentAdmin, clusterName, systemStoreName, pushJobId);
       createdSystemStoreTypes.add(systemStoreType);
     }
     return createdSystemStoreTypes;
+  }
+
+  public static Version materializeSystemStore(
+      VeniceParentHelixAdmin parentAdmin,
+      String clusterName,
+      String systemStoreName,
+      String pushJobId) {
+    Version version;
+    final int systemStoreLargestUsedVersionNumber =
+        parentAdmin.getLargestUsedVersionFromStoreGraveyard(clusterName, systemStoreName);
+
+    int partitionCount = parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName);
+    int replicationFactor = parentAdmin.getReplicationFactor(clusterName, systemStoreName);
+
+    if (systemStoreLargestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
+      version = parentAdmin
+          .incrementVersionIdempotent(clusterName, systemStoreName, pushJobId, partitionCount, replicationFactor);
+    } else {
+      version = parentAdmin.addVersionAndTopicOnly(
+          clusterName,
+          systemStoreName,
+          pushJobId,
+          systemStoreLargestUsedVersionNumber + 1,
+          partitionCount,
+          replicationFactor,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null);
+    }
+    parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
+    return version;
   }
 
   public void maybeCreateSystemStoreWildcardAcl(String storeName) {

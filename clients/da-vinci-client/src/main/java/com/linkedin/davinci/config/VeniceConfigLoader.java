@@ -81,7 +81,7 @@ public class VeniceConfigLoader {
   private final VeniceProperties combinedProperties;
 
   public VeniceConfigLoader(VeniceProperties properties) {
-    this(properties, new VeniceProperties());
+    this(properties, VeniceProperties.empty());
   }
 
   public VeniceConfigLoader(VeniceProperties clusterProperties, VeniceProperties serverProperties) {

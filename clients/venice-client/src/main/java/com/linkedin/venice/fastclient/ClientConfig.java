@@ -11,7 +11,6 @@ import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -20,9 +19,12 @@ import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.specific.SpecificRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ClientConfig<K, V, T extends SpecificRecord> {
+  private static final Logger LOGGER = LogManager.getLogger(ClientConfig.class);
   private final Client r2Client;
   private final String statsPrefix;
   private final boolean speculativeQueryEnabled;
@@ -48,13 +50,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long routingUnavailableRequestCounterResetDelayMS;
   private final int routingPendingRequestCounterInstanceBlockThreshold;
 
-  /**
-   * The max allowed key count in batch-get request.
-   * Right now, the batch-get implementation will leverage single-get, which is inefficient, when there
-   * are many keys, since the requests to the same storage node won't be reused.
-   * But to temporarily unblock the first customer, we will only allow at most two keys in a batch-get request.
-   */
+  // Max allowed key count in batch-get request
   private final int maxAllowedKeyCntInBatchGetReq;
+  protected static final int MAX_ALLOWED_KEY_COUNT_IN_BATCHGET = 150;
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   private final AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
   private final long metadataRefreshIntervalInSeconds;
@@ -67,6 +65,21 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final StoreMetadataFetchMode storeMetadataFetchMode;
   private final D2Client d2Client;
   private final String clusterDiscoveryD2Service;
+  /**
+   * The choice of implementation for batch get: single get or streamingBatchget. The first version of batchGet in
+   * FC used single get in a loop to support a customer request for two-key batch-get. This config allows switching
+   * between the two implementations. The current default is single get based batchGet, but once the streamingBatchget
+   * is validated, the default should be changed to streamingBatchget based batchGet, or probably remove the single
+   * get based batchGet support.
+   */
+  private final boolean useStreamingBatchGetAsDefault;
+  private final boolean useGrpc;
+  /**
+   * This is a temporary solution to support gRPC with Venice, we will replace this with retrieving information about
+   * gRPC servers when we make a request to receive Metadata from a server to obtain information in order to successfully
+   * route requests to the correct server/partition
+   */
+  private final GrpcClientConfig grpcClientConfig;
 
   private ClientConfig(
       String storeName,
@@ -96,13 +109,21 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean isVsonStore,
       StoreMetadataFetchMode storeMetadataFetchMode,
       D2Client d2Client,
-      String clusterDiscoveryD2Service) {
+      String clusterDiscoveryD2Service,
+      boolean useStreamingBatchGetAsDefault,
+      boolean useGrpc,
+      GrpcClientConfig grpcClientConfig) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
-    if (r2Client == null) {
+    if (r2Client == null && !useGrpc) {
       throw new VeniceClientException("r2Client param shouldn't be null");
     }
+    if (useGrpc && grpcClientConfig == null) {
+      throw new UnsupportedOperationException(
+          "we require additional gRPC related configs when we create a gRPC enabled client");
+    }
+
     this.r2Client = r2Client;
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
@@ -199,13 +220,22 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     if (this.storeMetadataFetchMode == StoreMetadataFetchMode.SERVER_BASED_METADATA) {
       if (this.d2Client == null || this.clusterDiscoveryD2Service == null) {
         throw new VeniceClientException(
-            "Both param: d2Client and param: clusterDiscoveryD2Service must be specified when request based metadata is enabled");
+            "Both param: d2Client and param: clusterDiscoveryD2Service must be set for request based metadata");
       }
     }
     if (clientRoutingStrategyType == ClientRoutingStrategyType.HELIX_ASSISTED
         && this.storeMetadataFetchMode != StoreMetadataFetchMode.SERVER_BASED_METADATA) {
       throw new VeniceClientException("Helix assisted routing is only available with server based metadata enabled");
     }
+    this.useStreamingBatchGetAsDefault = useStreamingBatchGetAsDefault;
+    if (this.useStreamingBatchGetAsDefault) {
+      LOGGER.info("Batch get will use streaming batch get implementation");
+    } else {
+      LOGGER.warn("Deprecated: Batch get will use single get implementation");
+    }
+
+    this.useGrpc = useGrpc;
+    this.grpcClientConfig = grpcClientConfig;
   }
 
   public String getStoreName() {
@@ -321,6 +351,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this.clusterDiscoveryD2Service;
   }
 
+  public boolean useStreamingBatchGetAsDefault() {
+    return this.useStreamingBatchGetAsDefault;
+  }
+
+  public boolean useGrpc() {
+    return useGrpc;
+  }
+
+  public GrpcClientConfig getGrpcClientConfig() {
+    return grpcClientConfig;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -340,16 +382,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long routingUnavailableRequestCounterResetDelayMS = -1;
     private int routingPendingRequestCounterInstanceBlockThreshold = -1;
     /**
-     * TODO:
-     * maxAllowedKeyCntInBatchGetReq was set to 2 initially for singleGet based multiGet
-     * for a specific customer ask. This needs to be reevaluated for streamingBatchGet().
-     * Today, the batch-get size for thinclient is enforced in Venice Router via
-     * {@link VenicePathParser#getBatchGetLimit} and it is configurable in store-level.
-     * In Fast-Client, it is still an open question about how to setup the batch-get limit
-     * or whether we need any limit at all. To start with, this can be set similar to routers
-     * global config and evaluate from there.
+     * maxAllowedKeyCntInBatchGetReq is set to {@link #MAX_ALLOWED_KEY_COUNT_IN_BATCHGET}
+     * for fast-client and can be overridden by client config.
      */
-    private int maxAllowedKeyCntInBatchGetReq = 2;
+    private int maxAllowedKeyCntInBatchGetReq = MAX_ALLOWED_KEY_COUNT_IN_BATCHGET;
 
     private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
 
@@ -367,6 +403,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA;
     private D2Client d2Client;
     private String clusterDiscoveryD2Service;
+    private boolean useStreamingBatchGetAsDefault = false;
+    private boolean useGrpc = false;
+    private GrpcClientConfig grpcClientConfig = null;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -519,6 +558,21 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setUseStreamingBatchGetAsDefault(boolean useStreamingBatchGetAsDefault) {
+      this.useStreamingBatchGetAsDefault = useStreamingBatchGetAsDefault;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setUseGrpc(boolean useGrpc) {
+      this.useGrpc = useGrpc;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setGrpcClientConfig(GrpcClientConfig grpcClientConfig) {
+      this.grpcClientConfig = grpcClientConfig;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -547,7 +601,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setVsonStore(isVsonStore)
           .setStoreMetadataFetchMode(storeMetadataFetchMode)
           .setD2Client(d2Client)
-          .setClusterDiscoveryD2Service(clusterDiscoveryD2Service);
+          .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
+          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
+          .setUseGrpc(useGrpc)
+          .setGrpcClientConfig(grpcClientConfig);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -579,7 +636,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           isVsonStore,
           storeMetadataFetchMode,
           d2Client,
-          clusterDiscoveryD2Service);
+          clusterDiscoveryD2Service,
+          useStreamingBatchGetAsDefault,
+          useGrpc,
+          grpcClientConfig);
     }
   }
 }

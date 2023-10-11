@@ -1,9 +1,10 @@
 package com.linkedin.venice.client.schema;
 
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsStringQuietlyWithErrorLogged;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -27,10 +28,12 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
@@ -236,7 +239,8 @@ public class RouterBackedSchemaReaderTest {
           Arrays.asList(VALUE_SCHEMA_1, VALUE_SCHEMA_2, VALUE_SCHEMA_3, VALUE_SCHEMA_4),
           3,
           Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2, UPDATE_SCHEMA_3, UPDATE_SCHEMA_4),
-          true);
+          true,
+          0);
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         Assert.assertEquals(schemaReader.getValueSchema(1), VALUE_SCHEMA_1);
         Assert.assertEquals(schemaReader.getValueSchema(2), VALUE_SCHEMA_2);
@@ -254,6 +258,33 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
+  public void testConcurrentRefreshValueAndUpdateSchemas()
+      throws IOException, ExecutionException, InterruptedException {
+    AbstractAvroStoreClient storeClient = getMockStoreClient(true, 500);
+
+    try (SchemaReader schemaReader =
+        new RouterBackedSchemaReader(() -> storeClient, Optional.empty(), Optional.empty(), Duration.ofMinutes(2))) {
+      // This will create 2 threads that will try to refresh the schemas concurrently. When querying Venice backend for
+      // schemas, one thread will sleep for 500 ms. In that time, we expect the other thread to also start waiting to
+      // acquire the lock.
+      CompletableFuture<DerivedSchemaEntry> future1 =
+          CompletableFuture.supplyAsync(() -> schemaReader.getLatestUpdateSchema());
+      CompletableFuture<DerivedSchemaEntry> future2 =
+          CompletableFuture.supplyAsync(() -> schemaReader.getLatestUpdateSchema());
+      Assert.assertNotNull(future1.get());
+      Assert.assertNotNull(future2.get());
+
+      /**
+       * 'getRaw' Should be called 3 times:
+       * 1. Fetch value schemas on start up
+       * 2. Fetch value schemas in one of the futures
+       * 3. Fetch update schemas in one of the futures
+       */
+      Mockito.verify(storeClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
+    }
+  }
+
+  @Test
   public void testGetLatestValueSchemaWithSupersetSchema() throws Exception {
     AbstractAvroStoreClient mockClient = getMockStoreClient(false);
     configureSchemaResponseMocks(
@@ -261,7 +292,8 @@ public class RouterBackedSchemaReaderTest {
         Arrays.asList(VALUE_SCHEMA_1, VALUE_SCHEMA_2, VALUE_SCHEMA_3),
         1,
         Collections.emptyList(),
-        false);
+        false,
+        0);
 
     try (SchemaReader schemaReader = new RouterBackedSchemaReader(
         () -> mockClient,
@@ -296,6 +328,21 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
+  public void testGetSchemasOnStartup()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+    AbstractAvroStoreClient mockClient = getMockStoreClient(false);
+
+    try (SchemaReader schemaReader =
+        new RouterBackedSchemaReader(() -> mockClient, Optional.empty(), Optional.empty(), Duration.ofMinutes(2))) {
+      // Schemas should be fetched on startup
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+      Assert.assertNotNull(schemaReader.getLatestValueSchema());
+      // Should not be checked again
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+    }
+  }
+
+  @Test
   public void testGetLatestValueSchemaWhenNoValueSchema()
       throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     AbstractAvroStoreClient mockClient = getMockStoreClient(false);
@@ -304,7 +351,8 @@ public class RouterBackedSchemaReaderTest {
         Collections.emptyList(),
         SchemaData.INVALID_VALUE_SCHEMA_ID,
         Collections.emptyList(),
-        false);
+        false,
+        0);
 
     try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
       Assert.assertNull(schemaReader.getLatestValueSchema());
@@ -444,6 +492,11 @@ public class RouterBackedSchemaReaderTest {
 
   private AbstractAvroStoreClient getMockStoreClient(boolean updateEnabled)
       throws IOException, ExecutionException, InterruptedException {
+    return getMockStoreClient(updateEnabled, 0);
+  }
+
+  private AbstractAvroStoreClient getMockStoreClient(boolean updateEnabled, int delayInResponseMs)
+      throws IOException, ExecutionException, InterruptedException {
     int partitionCount = 10;
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     Version version = new VersionImpl(storeName, 1, "test-job-id");
@@ -499,7 +552,8 @@ public class RouterBackedSchemaReaderTest {
         Arrays.asList(VALUE_SCHEMA_1, VALUE_SCHEMA_2),
         2,
         Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2),
-        updateEnabled);
+        updateEnabled,
+        delayInResponseMs);
 
     return storeClient;
   }
@@ -509,15 +563,16 @@ public class RouterBackedSchemaReaderTest {
       List<Schema> valueSchemas,
       int supersetSchemaId,
       List<Schema> updateSchemas,
-      boolean updateEnabled) throws JsonProcessingException, ExecutionException, InterruptedException {
+      boolean updateEnabled,
+      int delayInResponseMs) {
     String keySchemaStr = KEY_SCHEMA.toString();
     SchemaResponse keySchemaResponse = new SchemaResponse();
     keySchemaResponse.setId(1);
     keySchemaResponse.setSchemaStr(keySchemaStr);
 
-    CompletableFuture<byte[]> keySchemaFuture = mock(CompletableFuture.class);
-    Mockito.doReturn(MAPPER.writeValueAsBytes(keySchemaResponse)).when(keySchemaFuture).get();
-    Mockito.doReturn(keySchemaFuture).when(storeClient).getRaw("key_schema/" + storeName);
+    doAnswer(invocation -> getResponseWithDelay(MAPPER.writeValueAsBytes(keySchemaResponse), delayInResponseMs))
+        .when(storeClient)
+        .getRaw(eq("key_schema/" + storeName));
 
     MultiSchemaResponse.Schema[] valueSchemaArr = new MultiSchemaResponse.Schema[valueSchemas.size()];
     for (int i = 0; i < valueSchemas.size(); i++) {
@@ -535,9 +590,9 @@ public class RouterBackedSchemaReaderTest {
       multiSchemaResponse.setSuperSetSchemaId(supersetSchemaId);
     }
 
-    CompletableFuture<byte[]> valueSchemasFuture = mock(CompletableFuture.class);
-    Mockito.doReturn(MAPPER.writeValueAsBytes(multiSchemaResponse)).when(valueSchemasFuture).get();
-    Mockito.doReturn(valueSchemasFuture).when(storeClient).getRaw("value_schema/" + storeName);
+    doAnswer(invocation -> getResponseWithDelay(MAPPER.writeValueAsBytes(multiSchemaResponse), delayInResponseMs))
+        .when(storeClient)
+        .getRaw(eq("value_schema/" + storeName));
 
     if (updateEnabled) {
       MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
@@ -553,9 +608,9 @@ public class RouterBackedSchemaReaderTest {
         updateSchemaResponse.setDerivedSchemaId(1);
         updateSchemaResponse.setSchemaStr(updateSchemas.get(i).toString());
 
-        CompletableFuture<byte[]> updateSchemaFuture = mock(CompletableFuture.class);
-        Mockito.doReturn(MAPPER.writeValueAsBytes(updateSchemaResponse)).when(updateSchemaFuture).get();
-        Mockito.doReturn(updateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName + "/" + (i + 1));
+        doAnswer(invocation -> getResponseWithDelay(MAPPER.writeValueAsBytes(updateSchemaResponse), delayInResponseMs))
+            .when(storeClient)
+            .getRaw(eq("update_schema/" + storeName + "/" + (i + 1)));
 
         MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
         schema.setId(i + 1);
@@ -563,31 +618,46 @@ public class RouterBackedSchemaReaderTest {
         schema.setSchemaStr(updateSchemas.get(i).toString());
         multiSchemas[i] = schema;
       }
-
       allUpdateSchemaResponse.setSchemas(multiSchemas);
-      CompletableFuture<byte[]> allUpdateSchemaFuture = mock(CompletableFuture.class);
-      Mockito.doReturn(MAPPER.writeValueAsBytes(allUpdateSchemaResponse)).when(allUpdateSchemaFuture).get();
-      Mockito.doReturn(allUpdateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName);
+
+      doAnswer(invocation -> getResponseWithDelay(MAPPER.writeValueAsBytes(allUpdateSchemaResponse), delayInResponseMs))
+          .when(storeClient)
+          .getRaw(eq("update_schema/" + storeName));
     } else {
       for (int i = 0; i < updateSchemas.size(); i++) {
         SchemaResponse noUpdateSchemaResponse = new SchemaResponse();
         noUpdateSchemaResponse
             .setError("Update schema doesn't exist for value schema id: " + (i + 1) + " of store: " + storeName);
 
-        CompletableFuture<byte[]> updateSchemaFuture = mock(CompletableFuture.class);
-        Mockito.doReturn(MAPPER.writeValueAsBytes(noUpdateSchemaResponse)).when(updateSchemaFuture).get();
-        Mockito.doReturn(updateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName + "/" + (i + 1));
-
-        MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
-        allUpdateSchemaResponse.setCluster(clusterName);
-        allUpdateSchemaResponse.setName(storeName);
-
-        MultiSchemaResponse.Schema[] multiSchemas = new MultiSchemaResponse.Schema[0];
-        allUpdateSchemaResponse.setSchemas(multiSchemas);
-        CompletableFuture<byte[]> allUpdateSchemaFuture = mock(CompletableFuture.class);
-        Mockito.doReturn(MAPPER.writeValueAsBytes(allUpdateSchemaResponse)).when(allUpdateSchemaFuture).get();
-        Mockito.doReturn(allUpdateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName);
+        doAnswer(
+            invocation -> getResponseWithDelay(MAPPER.writeValueAsBytes(noUpdateSchemaResponse), delayInResponseMs))
+                .when(storeClient)
+                .getRaw(eq("update_schema/" + storeName + "/" + (i + 1)));
       }
+
+      MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
+      allUpdateSchemaResponse.setCluster(clusterName);
+      allUpdateSchemaResponse.setName(storeName);
+
+      MultiSchemaResponse.Schema[] multiSchemas = new MultiSchemaResponse.Schema[0];
+      allUpdateSchemaResponse.setSchemas(multiSchemas);
+
+      doAnswer(invocation -> getResponseWithDelay(MAPPER.writeValueAsBytes(allUpdateSchemaResponse), delayInResponseMs))
+          .when(storeClient)
+          .getRaw(eq("update_schema/" + storeName));
     }
+  }
+
+  private CompletableFuture<byte[]> getResponseWithDelay(byte[] body, long delayInResponseMs) {
+    return CompletableFuture.supplyAsync(() -> {
+      try {
+        if (delayInResponseMs > 0) {
+          Utils.sleep(delayInResponseMs);
+        }
+        return body;
+      } catch (Throwable t) {
+        return null;
+      }
+    });
   }
 }

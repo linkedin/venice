@@ -15,6 +15,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
@@ -70,7 +71,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(70, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(73, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -135,7 +136,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(13, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(16, StoreMetaValue.class),
 
   /**
    * Key schema for push status system store.
@@ -148,14 +149,19 @@ public enum AvroProtocolDefinition {
   PUSH_STATUS_SYSTEM_SCHEMA_STORE(1, PushStatusValue.class),
 
   /**
-   * Response record for admin request v1.
+   * Value schema for participant system stores.
    */
-  SERVER_ADMIN_RESPONSE_V1(1, AdminResponseRecord.class),
+  PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE(1, ParticipantMessageValue.class),
 
   /**
-   * Response record for metadata fetch request v1
+   * Response record for admin request.
    */
-  SERVER_METADATA_RESPONSE_V1(1, MetadataResponseRecord.class),
+  SERVER_ADMIN_RESPONSE(2, AdminResponseRecord.class),
+
+  /**
+   * Response record for metadata fetch request.
+   */
+  SERVER_METADATA_RESPONSE(1, MetadataResponseRecord.class),
 
   /**
    * Value schema for change capture event.
@@ -230,7 +236,7 @@ public enum AvroProtocolDefinition {
    * extra header prepended in front. These are either un-evolvable or have their
    * schema ID stored out of band from the record.
    *
-   * For example, everything that goes inside of the Put of a {@link KafkaMessageEnvelope}
+   * For example, everything that goes inside the Put message of a {@link KafkaMessageEnvelope}
    * and uses the {@link com.linkedin.venice.kafka.protocol.Put#schemaId} to store
    * the protocol version.
    */
@@ -267,7 +273,10 @@ public enum AvroProtocolDefinition {
   }
 
   public <T extends SpecificRecord> InternalAvroSpecificSerializer<T> getSerializer() {
-    return new InternalAvroSpecificSerializer<>(this);
+    if (magicByte.isPresent() || protocolVersionStoredInHeader) {
+      return new InternalAvroSpecificSerializer<>(this);
+    }
+    return new InternalAvroSpecificSerializer<>(this, 0);
   }
 
   public int getCurrentProtocolVersion() {

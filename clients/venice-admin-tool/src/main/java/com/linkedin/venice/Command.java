@@ -17,6 +17,7 @@ import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.Arg.DATETIME;
 import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
@@ -58,12 +59,14 @@ import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.Arg.MESSAGE_COUNT;
 import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
+import static com.linkedin.venice.Arg.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
 import static com.linkedin.venice.Arg.OWNER;
+import static com.linkedin.venice.Arg.PARTITION;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
@@ -83,11 +86,13 @@ import static com.linkedin.venice.Arg.REPLICATION_FACTOR;
 import static com.linkedin.venice.Arg.RETRY;
 import static com.linkedin.venice.Arg.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.Arg.SERVER_URL;
 import static com.linkedin.venice.Arg.SKIP_DIV;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
 import static com.linkedin.venice.Arg.START_DATE;
 import static com.linkedin.venice.Arg.STORAGE_NODE;
+import static com.linkedin.venice.Arg.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.Arg.STORAGE_PERSONA;
 import static com.linkedin.venice.Arg.STORAGE_QUOTA;
 import static com.linkedin.venice.Arg.STORE;
@@ -208,16 +213,17 @@ public enum Command {
   UPDATE_STORE(
       "update-store", "update store metadata", new Arg[] { URL, CLUSTER, STORE },
       new Arg[] { OWNER, VERSION, LARGEST_USED_VERSION_NUMBER, PARTITION_COUNT, PARTITIONER_CLASS, PARTITIONER_PARAMS,
-          AMPLIFICATION_FACTOR, READABILITY, WRITEABILITY, STORAGE_QUOTA, HYBRID_STORE_OVERHEAD_BYPASS, READ_QUOTA,
-          HYBRID_REWIND_SECONDS, HYBRID_OFFSET_LAG, HYBRID_TIME_LAG, HYBRID_DATA_REPLICATION_POLICY,
-          HYBRID_BUFFER_REPLAY_POLICY, ACCESS_CONTROL, COMPRESSION_STRATEGY, CLIENT_DECOMPRESSION_ENABLED,
-          CHUNKING_ENABLED, RMD_CHUNKING_ENABLED, BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED,
-          READ_COMPUTATION_ENABLED, BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
-          BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
-          FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
+          AMPLIFICATION_FACTOR, READABILITY, WRITEABILITY, STORAGE_QUOTA, STORAGE_NODE_READ_QUOTA_ENABLED,
+          HYBRID_STORE_OVERHEAD_BYPASS, READ_QUOTA, HYBRID_REWIND_SECONDS, HYBRID_OFFSET_LAG, HYBRID_TIME_LAG,
+          HYBRID_DATA_REPLICATION_POLICY, HYBRID_BUFFER_REPLAY_POLICY, ACCESS_CONTROL, COMPRESSION_STRATEGY,
+          CLIENT_DECOMPRESSION_ENABLED, CHUNKING_ENABLED, RMD_CHUNKING_ENABLED, BATCH_GET_LIMIT,
+          NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED, READ_COMPUTATION_ENABLED, BACKUP_STRATEGY,
+          AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
+          HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED,
+          ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
-          STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID }
+          STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -445,16 +451,29 @@ public enum Command {
       new Arg[] { URL, CLUSTER }
   ),
   EXECUTE_DATA_RECOVERY(
-      "execute-data-recovery", "Execute data recovery for a group of stores",
-      new Arg[] { RECOVERY_COMMAND, STORES, SOURCE_FABRIC }, new Arg[] { EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
+      "execute-data-recovery", "Execute data recovery for a group of stores. ('--stores' overwrites '--cluster' value)",
+      new Arg[] { URL, RECOVERY_COMMAND, SOURCE_FABRIC, DEST_FABRIC, DATETIME },
+      new Arg[] { STORES, CLUSTER, EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
   ),
   ESTIMATE_DATA_RECOVERY_TIME(
-      "estimate-data-recovery-time", "Estimates the time it would take to execute data recovery for a group of stores.",
-      new Arg[] { URL, STORES, DEST_FABRIC }
+      "estimate-data-recovery-time",
+      "Estimates the time it would take to execute data recovery for a group of stores. ('--stores' overwrites '--cluster' value)",
+      new Arg[] { URL, DEST_FABRIC }, new Arg[] { STORES, CLUSTER }
   ),
   MONITOR_DATA_RECOVERY(
-      "monitor-data-recovery", "Monitor data recovery progress for a group of stores",
-      new Arg[] { URL, STORES, DEST_FABRIC }, new Arg[] { INTERVAL }
+      "monitor-data-recovery",
+      "Monitor data recovery progress for a group of stores. ('--stores' overwrites '--cluster' value)",
+      new Arg[] { URL, DEST_FABRIC, DATETIME }, new Arg[] { STORES, CLUSTER, INTERVAL }
+  ),
+  REQUEST_BASED_METADATA(
+      "request-based-metadata",
+      "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
+      new Arg[] { URL, SERVER_URL, STORE }
+  ),
+  DUMP_INGESTION_STATE(
+      "dump-ingestion-state",
+      "Dump the real-time ingestion state for a certain store version in a certain storage node",
+      new Arg[] { SERVER_URL, STORE, VERSION }, new Arg[] { PARTITION }
   );
 
   private final String commandName;

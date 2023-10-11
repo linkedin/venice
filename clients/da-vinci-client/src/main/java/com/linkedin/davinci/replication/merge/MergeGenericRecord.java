@@ -1,17 +1,17 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
+import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.schema.merge.UpdateResultStatus;
+import com.linkedin.davinci.schema.merge.ValueAndRmd;
+import com.linkedin.davinci.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.merge.MergeRecordHelper;
-import com.linkedin.venice.schema.merge.UpdateResultStatus;
-import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
-import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.List;
@@ -61,7 +61,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       long newValueSourceOffset,
       int newValueSourceBrokerID) {
     validatePutInputParams(oldValueAndRmd, newValue);
-    final Object tsObject = oldValueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
+    final Object tsObject = oldValueAndRmd.getRmd().get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(tsObject);
 
     switch (rmdTimestampType) {
@@ -120,13 +120,14 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
     List<Schema.Field> fieldsInNewRecord = newValue.getSchema().getFields();
     boolean noFieldUpdated = true;
     // Iterate fields in the new record because old record fields set must be a superset of the new record fields set.
+    Schema.Field oldValueField;
     for (Schema.Field newRecordField: fieldsInNewRecord) {
-      final String fieldName = newRecordField.name();
+      oldValueField = oldValue.getSchema().getField(newRecordField.name());
       UpdateResultStatus fieldUpdateResult = mergeRecordHelper.putOnField(
           oldValue,
           timestampRecordForOldValue,
-          fieldName,
-          newValue.get(fieldName),
+          oldValueField,
+          newValue.get(newRecordField.pos()),
           putOperationTimestamp,
           putOperationColoID);
       noFieldUpdated &= (fieldUpdateResult == UpdateResultStatus.NOT_UPDATED_AT_ALL);
@@ -151,7 +152,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
     }
 
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
-    final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
+    final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(tsObject);
 
     switch (rmdTimestampType) {

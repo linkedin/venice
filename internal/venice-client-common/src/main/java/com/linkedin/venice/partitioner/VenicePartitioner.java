@@ -3,7 +3,6 @@ package com.linkedin.venice.partitioner;
 import com.linkedin.venice.exceptions.PartitionerSchemaMismatchException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
-import java.util.Properties;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 
@@ -19,7 +18,7 @@ public abstract class VenicePartitioner {
   protected final VeniceProperties props; // available for sub-classes to use.
 
   public VenicePartitioner() {
-    this(new VeniceProperties(new Properties()), null);
+    this(VeniceProperties.empty(), null);
   }
 
   public VenicePartitioner(VeniceProperties props) {

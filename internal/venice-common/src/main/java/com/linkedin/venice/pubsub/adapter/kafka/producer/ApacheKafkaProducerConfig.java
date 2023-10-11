@@ -1,5 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -24,7 +26,6 @@ public class ApacheKafkaProducerConfig {
   public static final String KAFKA_BOOTSTRAP_SERVERS = KAFKA_CONFIG_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG;
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = KAFKA_CONFIG_PREFIX + ProducerConfig.RETRIES_CONFIG;
   public static final String KAFKA_LINGER_MS = KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
-  public static final String KAFKA_BATCH_SIZE = KAFKA_CONFIG_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG;
   public static final String KAFKA_BUFFER_MEMORY = KAFKA_CONFIG_PREFIX + ProducerConfig.BUFFER_MEMORY_CONFIG;
   public static final String KAFKA_CLIENT_ID = KAFKA_CONFIG_PREFIX + ProducerConfig.CLIENT_ID_CONFIG;
   public static final String KAFKA_KEY_SERIALIZER = KAFKA_CONFIG_PREFIX + ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG;
@@ -35,9 +36,21 @@ public class ApacheKafkaProducerConfig {
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
       KAFKA_CONFIG_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl." + KAFKA_BOOTSTRAP_SERVERS;
-  // N.B. do not attempt to change spelling, "kakfa", without carefully replacing all instances in use and some
-  // of them may be external to this repo
-  public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
+
+  /**
+   * N.B. do not attempt to change spelling, "kakfa", without carefully replacing all instances in use and some of them
+   * may be external to this repo
+   * @deprecated Use {@link #KAFKA_OVER_SSL} instead
+   */
+  @Deprecated
+  public static final String SSL_TO_KAFKA_LEGACY = "ssl.to.kakfa";
+  public static final String KAFKA_OVER_SSL = KAFKA_CONFIG_PREFIX + "over.ssl";
+
+  /**
+   * Default Kafka batch size and linger time for better producer performance during ingestion.
+   */
+  public static final String DEFAULT_KAFKA_BATCH_SIZE = "524288";
+  public static final String DEFAULT_KAFKA_LINGER_MS = "1000";
 
   private final Properties producerProperties;
 
@@ -52,11 +65,16 @@ public class ApacheKafkaProducerConfig {
       boolean strictConfigs) {
     String brokerAddress =
         brokerAddressToOverride != null ? brokerAddressToOverride : getPubsubBrokerAddress(allVeniceProperties);
-    this.producerProperties = allVeniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties();
+    this.producerProperties =
+        getValidProducerProperties(allVeniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
     this.producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
     validateAndUpdateProperties(this.producerProperties, strictConfigs);
     if (producerName != null) {
       this.producerProperties.put(ProducerConfig.CLIENT_ID_CONFIG, producerName);
+    }
+
+    if (allVeniceProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, false)) {
+      addHighThroughputDefaults();
     }
 
     // Setup ssl config if needed.
@@ -67,12 +85,25 @@ public class ApacheKafkaProducerConfig {
     }
   }
 
+  /**
+   * Setup default batch size and linger time for better producing performance during server new push ingestion.
+   * These configs are set for large volume ingestion, not for integration test.
+   */
+  private void addHighThroughputDefaults() {
+    if (!producerProperties.containsKey(ProducerConfig.BATCH_SIZE_CONFIG)) {
+      producerProperties.put(ProducerConfig.BATCH_SIZE_CONFIG, DEFAULT_KAFKA_BATCH_SIZE);
+    }
+    if (!producerProperties.containsKey(ProducerConfig.LINGER_MS_CONFIG)) {
+      producerProperties.put(ProducerConfig.LINGER_MS_CONFIG, DEFAULT_KAFKA_LINGER_MS);
+    }
+  }
+
   public Properties getProducerProperties() {
     return producerProperties;
   }
 
   public static String getPubsubBrokerAddress(VeniceProperties properties) {
-    if (Boolean.parseBoolean(properties.getString(SSL_TO_KAFKA, "false"))) {
+    if (Boolean.parseBoolean(properties.getStringWithAlternative(SSL_TO_KAFKA_LEGACY, KAFKA_OVER_SSL, "false"))) {
       checkProperty(properties, SSL_KAFKA_BOOTSTRAP_SERVERS);
       return properties.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
     }
@@ -173,6 +204,16 @@ public class ApacheKafkaProducerConfig {
     }
   }
 
+  public static Properties getValidProducerProperties(Properties extractedProperties) {
+    Properties validProperties = new Properties();
+    extractedProperties.forEach((configKey, configVal) -> {
+      if (ProducerConfig.configNames().contains(configKey)) {
+        validProperties.put(configKey, configVal);
+      }
+    });
+    return validProperties;
+  }
+
   /**
    * Validate and load Class properties.
    */
@@ -198,6 +239,42 @@ public class ApacheKafkaProducerConfig {
       throw new VeniceException(
           "Failed to load the specified class: " + className + " for key: " + requiredConfigKey,
           e);
+    }
+  }
+
+  public static void copyKafkaSASLProperties(
+      VeniceProperties configuration,
+      Properties properties,
+      boolean stripPrefix) {
+    copyKafkaSASLProperties(configuration.toProperties(), properties, stripPrefix);
+  }
+
+  public static void copyKafkaSASLProperties(Properties configuration, Properties properties, boolean stripPrefix) {
+    String saslConfiguration = configuration.getProperty("kafka.sasl.jaas.config", "");
+    if (saslConfiguration != null && !saslConfiguration.isEmpty()) {
+      if (stripPrefix) {
+        properties.put("sasl.jaas.config", saslConfiguration);
+      } else {
+        properties.put("kafka.sasl.jaas.config", saslConfiguration);
+      }
+    }
+
+    String saslMechanism = configuration.getProperty("kafka.sasl.mechanism", "");
+    if (saslMechanism != null && !saslMechanism.isEmpty()) {
+      if (stripPrefix) {
+        properties.put("sasl.mechanism", saslMechanism);
+      } else {
+        properties.put("kafka.sasl.mechanism", saslMechanism);
+      }
+    }
+
+    String securityProtocol = configuration.getProperty("kafka.security.protocol", "");
+    if (securityProtocol != null && !securityProtocol.isEmpty()) {
+      if (stripPrefix) {
+        properties.put("security.protocol", securityProtocol);
+      } else {
+        properties.put("kafka.security.protocol", securityProtocol);
+      }
     }
   }
 }

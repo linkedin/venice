@@ -19,19 +19,14 @@ public class StorageNodeStatus {
     replicaToStatusMap = new HashMap<>();
   }
 
-  void addStatusForReplica(String partitionName, String status) {
-    HelixState state = HelixState.valueOf(status);
+  void addStatusForReplica(String partitionName, HelixState state) {
     replicaToStatusMap.put(partitionName, state);
   }
 
   int getStatusValueForReplica(String partitionName) {
-    if (replicaToStatusMap.containsKey(partitionName)) {
-      return replicaToStatusMap.get(partitionName).getStateValue();
-    } else {
-      // By default, the status value is 0. So when the new server status does not contain the given replica, the
-      // status of this replica is 0.
-      return HelixState.UNKNOWN.getStateValue();
-    }
+    // By default, the status value is 0. So when the new server status does not contain the given replica, the
+    // status of this replica is 0.
+    return replicaToStatusMap.getOrDefault(partitionName, HelixState.UNKNOWN).getStateValue();
   }
 
   /**

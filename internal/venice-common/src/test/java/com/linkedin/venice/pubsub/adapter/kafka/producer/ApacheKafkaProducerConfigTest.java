@@ -4,17 +4,22 @@ import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProdu
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_KEY_SERIALIZER;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_TO_KAFKA;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
+import java.util.function.BiConsumer;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -29,7 +34,7 @@ public class ApacheKafkaProducerConfigTest {
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Required property: kafka.bootstrap.servers is missing.*")
   public void testConfiguratorThrowsAnExceptionWhenBrokerAddressIsMissing() {
-    VeniceProperties veniceProperties = new VeniceProperties();
+    VeniceProperties veniceProperties = VeniceProperties.empty();
     new ApacheKafkaProducerConfig(veniceProperties, null, PRODUCER_NAME, true);
   }
 
@@ -50,9 +55,8 @@ public class ApacheKafkaProducerConfigTest {
 
   @Test
   public void testValidateOrPopulatePropCanFillMissingConfigs() {
-    Properties props = new Properties();
     Properties resultantProps =
-        new ApacheKafkaProducerConfig(new VeniceProperties(props), KAFKA_BROKER_ADDR, PRODUCER_NAME, true)
+        new ApacheKafkaProducerConfig(VeniceProperties.empty(), KAFKA_BROKER_ADDR, PRODUCER_NAME, true)
             .getProducerProperties();
     assertTrue(resultantProps.containsKey(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG));
     assertTrue(resultantProps.containsKey(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG));
@@ -86,7 +90,7 @@ public class ApacheKafkaProducerConfigTest {
   public void testGetBrokerAddressReturnsSslAddrIfKafkaSslIsEnabled() {
     // broker address from props should be used
     Properties props = new Properties();
-    props.put(SSL_TO_KAFKA, true);
+    props.put(SSL_TO_KAFKA_LEGACY, true);
     props.put(KAFKA_BOOTSTRAP_SERVERS, KAFKA_BROKER_ADDR);
     props.put(SSL_KAFKA_BOOTSTRAP_SERVERS, "ssl.kafka.broker.com:8182");
     assertEquals(new ApacheKafkaProducerConfig(props).getBrokerAddress(), "ssl.kafka.broker.com:8182");
@@ -96,7 +100,7 @@ public class ApacheKafkaProducerConfigTest {
   public void testSaslConfiguration() {
     // broker address from props should be used
     Properties props = new Properties();
-    props.put(SSL_TO_KAFKA, true);
+    props.put(SSL_TO_KAFKA_LEGACY, true);
     props.put(KAFKA_BOOTSTRAP_SERVERS, KAFKA_BROKER_ADDR);
     props.put(SSL_KAFKA_BOOTSTRAP_SERVERS, "ssl.kafka.broker.com:8182");
     props.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
@@ -107,5 +111,95 @@ public class ApacheKafkaProducerConfigTest {
     assertEquals(SASL_JAAS_CONFIG, producerProperties.get("sasl.jaas.config"));
     assertEquals(SASL_MECHANISM, producerProperties.get("sasl.mechanism"));
     assertEquals("SASL_SSL", producerProperties.get("security.protocol"));
+  }
+
+  @DataProvider(name = "stripPrefix")
+  public static Object[][] stripPrefix() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "stripPrefix")
+  public void testCopySaslConfiguration(boolean stripPrefix) {
+    Properties config = new Properties();
+    config.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
+    config.put("kafka.sasl.mechanism", SASL_MECHANISM);
+    config.put("kafka.security.protocol", "SASL_SSL");
+
+    testCopy(
+        stripPrefix,
+        config,
+        (input, output) -> ApacheKafkaProducerConfig
+            .copyKafkaSASLProperties(new VeniceProperties(input), output, stripPrefix));
+
+    testCopy(
+        stripPrefix,
+        config,
+        (input, output) -> ApacheKafkaProducerConfig.copyKafkaSASLProperties(input, output, stripPrefix));
+  }
+
+  private static void testCopy(boolean stripPrefix, Properties input, BiConsumer<Properties, Properties> copy) {
+    Properties output = new Properties();
+    copy.accept(input, output);
+    if (stripPrefix) {
+      assertEquals(SASL_JAAS_CONFIG, output.get("sasl.jaas.config"));
+      assertEquals(SASL_MECHANISM, output.get("sasl.mechanism"));
+      assertEquals("SASL_SSL", output.get("security.protocol"));
+    } else {
+      assertEquals(SASL_JAAS_CONFIG, output.get("kafka.sasl.jaas.config"));
+      assertEquals(SASL_MECHANISM, output.get("kafka.sasl.mechanism"));
+      assertEquals("SASL_SSL", output.get("kafka.security.protocol"));
+    }
+  }
+
+  @Test
+  public void testAddHighThroughputDefaultsCanSetProperConfigs() {
+    // should not set batch size and linger ms if high throughput defaults are not enabled
+    ApacheKafkaProducerConfig apacheKafkaProducerConfig =
+        new ApacheKafkaProducerConfig(VeniceProperties.empty(), KAFKA_BROKER_ADDR, PRODUCER_NAME, false);
+    Properties actualProps = apacheKafkaProducerConfig.getProducerProperties();
+    assertFalse(actualProps.containsKey(ProducerConfig.BATCH_SIZE_CONFIG));
+    assertFalse(actualProps.containsKey(ProducerConfig.LINGER_MS_CONFIG));
+
+    Properties veniceProperties = new Properties();
+
+    // should set batch size and linger ms if high throughput defaults are enabled and batch size and linger ms are not
+    // set
+    veniceProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
+    ApacheKafkaProducerConfig apacheKafkaProducerConfig1 =
+        new ApacheKafkaProducerConfig(new VeniceProperties(veniceProperties), KAFKA_BROKER_ADDR, PRODUCER_NAME, false);
+    Properties actualProps1 = apacheKafkaProducerConfig1.getProducerProperties();
+    assertTrue(actualProps1.containsKey(ProducerConfig.BATCH_SIZE_CONFIG));
+    assertEquals(
+        actualProps1.get(ProducerConfig.BATCH_SIZE_CONFIG),
+        ApacheKafkaProducerConfig.DEFAULT_KAFKA_BATCH_SIZE);
+    assertTrue(actualProps1.containsKey(ProducerConfig.LINGER_MS_CONFIG));
+    assertEquals(actualProps1.get(ProducerConfig.LINGER_MS_CONFIG), ApacheKafkaProducerConfig.DEFAULT_KAFKA_LINGER_MS);
+
+    // should not override if already set
+    veniceProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
+    veniceProperties.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG, "55");
+    veniceProperties.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG, "66");
+    ApacheKafkaProducerConfig apacheKafkaProducerConfig2 =
+        new ApacheKafkaProducerConfig(new VeniceProperties(veniceProperties), KAFKA_BROKER_ADDR, PRODUCER_NAME, false);
+    Properties actualProps2 = apacheKafkaProducerConfig2.getProducerProperties();
+    assertTrue(actualProps2.containsKey(ProducerConfig.BATCH_SIZE_CONFIG));
+    assertEquals(actualProps2.get(ProducerConfig.BATCH_SIZE_CONFIG), "55");
+    assertTrue(actualProps2.containsKey(ProducerConfig.LINGER_MS_CONFIG));
+    assertEquals(actualProps2.get(ProducerConfig.LINGER_MS_CONFIG), "66");
+  }
+
+  @Test
+  public void testGetValidProducerProperties() {
+    Properties allProps = new Properties();
+    allProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "1000");
+    allProps.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "2000");
+    // this is common config; there are no admin specific configs
+    allProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+    allProps.put("bogus.kafka.config", "bogusValue");
+
+    Properties validProps = ApacheKafkaProducerConfig.getValidProducerProperties(allProps);
+    assertEquals(validProps.size(), 2);
+    assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
+    assertEquals(validProps.get(ProducerConfig.MAX_BLOCK_MS_CONFIG), "1000");
   }
 }

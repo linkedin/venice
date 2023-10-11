@@ -1,0 +1,40 @@
+name: Deploy Javadoc
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  PublishJavaDoc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+          git config --global user.name "JavaDoc Bot"
+          git config --global user.email "javadoc_bot@invalid.com"
+          git switch -C javadoc
+          git rebase upstream/main
+          git push -f origin javadoc
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: "aggregateJavadoc"
+      - name: Deploy to GitHub Page
+        uses: JamesIves/github-pages-deploy-action@v4.4.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: javadoc
+          clean: true
+          folder: "build/javadoc"
+          target-folder: docs/javadoc

@@ -1,7 +1,13 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig;
+import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
+
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
+import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -19,6 +25,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -31,6 +38,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -72,6 +80,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
+  private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
 
@@ -86,6 +95,18 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
     this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
+    InternalAvroStoreClient metadataSchemaResponseStoreClient = new AvroGenericStoreClientImpl(
+        // Create a new D2TransportClient since the other one will be set to point to server d2 after cluster discovery
+        new D2TransportClient(clusterDiscoveryD2ServiceName, transportClient.getD2Client()),
+        false,
+        defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
+    this.metadataResponseSchemaReader =
+        new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
+  }
+
+  // For unit tests only
+  synchronized void setMetadataResponseSchemaReader(RouterBackedSchemaReader metadataResponseSchemaReader) {
+    this.metadataResponseSchemaReader = metadataResponseSchemaReader;
   }
 
   @Override
@@ -152,101 +173,97 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @param onDemandRefresh
    * @return if the fetched metadata was an updated version
    */
-  private synchronized boolean updateCache(boolean onDemandRefresh) throws InterruptedException {
-    boolean updateComplete = true;
-    boolean newVersion = false;
+  private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
-      byte[] body = fetchMetadata().get().getBody();
-      RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer = FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(MetadataResponseRecord.SCHEMA$, MetadataResponseRecord.class);
+      TransportClientResponse transportClientResponse = fetchMetadata().get();
+      // Metadata response schema forward compatibility support via router backed schema reader
+      int writerSchemaId = transportClientResponse.getSchemaId();
+      Schema writerSchema = metadataResponseSchemaReader.getValueSchema(writerSchemaId);
+      byte[] body = transportClientResponse.getBody();
+      RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer =
+          FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writerSchema, MetadataResponseRecord.class);
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
       int fetchedVersion = versionMetadata.getCurrentVersion();
 
-      if (fetchedVersion != getCurrentStoreVersion()) {
-        newVersion = true;
-        // call the DICTIONARY endpoint if needed
-        CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
-        if (!versionZstdDictionaryMap.containsKey(fetchedVersion)
-            && versionMetadata.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
-          dictionaryFetchFuture = fetchCompressionDictionary(fetchedVersion);
-        }
-
-        // Update partitioner pair map (versionPartitionerMap)
-        int partitionCount = versionMetadata.getPartitionCount();
-        Properties params = new Properties();
-        params.putAll(versionMetadata.getPartitionerParams());
-        VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(
-            versionMetadata.getPartitionerClass().toString(),
-            versionMetadata.getAmplificationFactor(),
-            new VeniceProperties(params));
-        versionPartitionerMap.put(fetchedVersion, partitioner);
-        versionPartitionCountMap.put(fetchedVersion, partitionCount);
-
-        // Update readyToServeInstanceMap
-        Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
-            .entrySet()
-            .stream()
-            .collect(
-                Collectors.toMap(
-                    e -> Integer.valueOf(e.getKey().toString()),
-                    e -> e.getValue().stream().map(CharSequence::toString).collect(Collectors.toList())));
-
-        for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-          String key = getVersionPartitionMapKey(fetchedVersion, partitionId);
-          readyToServeInstancesMap.put(key, routingInfo.get(partitionId));
-        }
-
-        // Update schemas
-        SchemaData schemaData = new SchemaData(storeName);
-        for (Map.Entry<CharSequence, CharSequence> entry: metadataResponse.getKeySchema().entrySet()) {
-          schemaData
-              .setKeySchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
-        }
-        for (Map.Entry<CharSequence, CharSequence> entry: metadataResponse.getValueSchemas().entrySet()) {
-          schemaData.addValueSchema(
-              new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
-        }
-        schemas.set(schemaData);
-
-        // Update helix group info
-        helixGroupInfo.clear();
-        for (Map.Entry<CharSequence, Integer> entry: metadataResponse.getHelixGroupInfo().entrySet()) {
-          helixGroupInfo.put(entry.getKey().toString(), entry.getValue());
-        }
-
-        // Wait for dictionary fetch to finish if there is one
-        try {
-          if (dictionaryFetchFuture != null) {
-            dictionaryFetchFuture.get(ZSTD_DICT_FETCH_TIMEOUT, TimeUnit.SECONDS);
-          }
-          currentVersion.set(fetchedVersion);
-          clusterStats.updateCurrentVersion(getCurrentStoreVersion());
-          latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
-        } catch (ExecutionException | TimeoutException e) {
-          LOGGER.warn(
-              "Dictionary fetch operation could not complete in time for some of the versions. "
-                  + "Will be retried on next refresh",
-              e);
-          clusterStats.recordVersionUpdateFailure();
-          updateComplete = false;
-        }
-
-        // Evict entries from inactive versions
-        Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
-        readyToServeInstancesMap.entrySet()
-            .removeIf(entry -> !activeVersions.contains(getVersionFromKey(entry.getKey())));
-        versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
-        versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
-        versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      // call the DICTIONARY endpoint if needed
+      CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
+      if (!versionZstdDictionaryMap.containsKey(fetchedVersion)
+          && versionMetadata.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
+        dictionaryFetchFuture = fetchCompressionDictionary(fetchedVersion);
       }
 
-      if (updateComplete) {
-        clientStats.updateCacheTimestamp(currentTimeMs);
+      // Update partitioner pair map (versionPartitionerMap)
+      int partitionCount = versionMetadata.getPartitionCount();
+      Properties params = new Properties();
+      params.putAll(versionMetadata.getPartitionerParams());
+      VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(
+          versionMetadata.getPartitionerClass().toString(),
+          versionMetadata.getAmplificationFactor(),
+          new VeniceProperties(params));
+      versionPartitionerMap.put(fetchedVersion, partitioner);
+      versionPartitionCountMap.put(fetchedVersion, partitionCount);
+
+      // Update readyToServeInstanceMap
+      Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
+          .entrySet()
+          .stream()
+          .collect(
+              Collectors.toMap(
+                  e -> Integer.valueOf(e.getKey().toString()),
+                  e -> e.getValue().stream().map(CharSequence::toString).collect(Collectors.toList())));
+
+      for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
+        String key = getVersionPartitionMapKey(fetchedVersion, partitionId);
+        readyToServeInstancesMap.put(key, routingInfo.get(partitionId));
       }
+
+      // Update schemas
+      Map.Entry<CharSequence, CharSequence> lastEntry = null;
+      for (Map.Entry<CharSequence, CharSequence> entry: metadataResponse.getKeySchema().entrySet()) {
+        lastEntry = entry;
+      }
+      SchemaEntry keySchema = lastEntry == null
+          ? null
+          : new SchemaEntry(Integer.parseInt(lastEntry.getKey().toString()), lastEntry.getValue().toString());
+      SchemaData schemaData = new SchemaData(storeName, keySchema);
+      for (Map.Entry<CharSequence, CharSequence> entry: metadataResponse.getValueSchemas().entrySet()) {
+        schemaData
+            .addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
+      }
+      schemas.set(schemaData);
+
+      // Update helix group info
+      for (Map.Entry<CharSequence, Integer> entry: metadataResponse.getHelixGroupInfo().entrySet()) {
+        helixGroupInfo.put(entry.getKey().toString(), entry.getValue());
+      }
+      latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
+      // Wait for dictionary fetch to finish if there is one
+      try {
+        if (dictionaryFetchFuture != null) {
+          dictionaryFetchFuture.get(ZSTD_DICT_FETCH_TIMEOUT, TimeUnit.SECONDS);
+        }
+      } catch (ExecutionException | TimeoutException e) {
+        LOGGER.warn(
+            "Dictionary fetch operation could not complete in time for some of the versions. "
+                + "Will be retried on next refresh",
+            e);
+        return;
+      }
+      // Evict entries from inactive versions
+      Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
+      readyToServeInstancesMap.entrySet()
+          .removeIf(entry -> !activeVersions.contains(getVersionFromKey(entry.getKey())));
+      versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      currentVersion.set(fetchedVersion);
+      clusterStats.updateCurrentVersion(getCurrentStoreVersion());
+      // Update the metadata timestamp only if all updates are successful
+      clientStats.updateCacheTimestamp(currentTimeMs);
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration
@@ -257,20 +274,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         updateCache(true);
       } else {
         // pass the error along if the on demand refresh also fails
+        clusterStats.recordVersionUpdateFailure();
         throw new VeniceClientException("Metadata fetch retry has failed", e.getCause());
       }
     }
-
-    return newVersion;
   }
 
   private void refresh() {
     try {
-      if (updateCache(false)) {
-        if (routingStrategy instanceof HelixScatterGatherRoutingStrategy) {
-          ((HelixScatterGatherRoutingStrategy) routingStrategy).updateHelixGroupInfo(helixGroupInfo);
-        }
-      }
+      updateCache(false);
+      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
       isReady = true;
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
@@ -292,6 +305,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     }
     readyToServeInstancesMap.clear();
     versionPartitionerMap.clear();
+    Utils.closeQuietlyWithErrorLogged(metadataResponseSchemaReader);
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
@@ -352,7 +366,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public int getValueSchemaId(Schema schema) {
-    SchemaEntry schemaEntry = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, schema);
+    SchemaEntry schemaEntry = new SchemaEntry(INVALID_VALUE_SCHEMA_ID, schema);
     return schemas.get().getSchemaID(schemaEntry);
   }
 
@@ -364,7 +378,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   @Override
   public Integer getLatestValueSchemaId() {
     int latestValueSchemaId = latestSuperSetValueSchemaId.get();
-    if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+    if (latestValueSchemaId == INVALID_VALUE_SCHEMA_ID) {
       latestValueSchemaId = schemas.get().getMaxValueSchemaId();
     }
     return latestValueSchemaId;
@@ -391,7 +405,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * Used for test only
    * @param d2ServiceDiscovery
    */
-  synchronized void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
+  public synchronized void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
     this.d2ServiceDiscovery = d2ServiceDiscovery;
   }
 }

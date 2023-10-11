@@ -32,7 +32,7 @@ import org.testng.annotations.BeforeClass;
 public class ReplicationMeadataRocksDBStoragePartitionCFTest extends ReplicationMetadataRocksDBStoragePartitionTest {
   private static final int PARTITION_ID = 0;
 
-  private static final String storeName = Utils.getUniqueString("rocksdb_store_test");
+  private static final String storeName = Version.composeKafkaTopic(Utils.getUniqueString("rocksdb_store_test"), 1);
   private final ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
   private static final int versionNumber = 0;
   private static final String topicName = Version.composeKafkaTopic(storeName, versionNumber);

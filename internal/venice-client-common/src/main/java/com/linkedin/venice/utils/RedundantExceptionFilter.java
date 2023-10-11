@@ -19,6 +19,10 @@ public class RedundantExceptionFilter {
   private BitSet activeBitset;
   private BitSet oldBitSet;
 
+  public RedundantExceptionFilter() {
+    this(DEFAULT_BITSET_SIZE, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
+  }
+
   public RedundantExceptionFilter(int bitSetSize, long noRedundantExceptionDurationMs) {
     this.bitSetSize = bitSetSize;
     activeBitset = new BitSet(bitSetSize);
@@ -31,24 +35,22 @@ public class RedundantExceptionFilter {
   }
 
   public synchronized static RedundantExceptionFilter getRedundantExceptionFilter() {
-    return getRedundantExceptionFilter(DEFAULT_BITSET_SIZE, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
-  }
-
-  public synchronized static RedundantExceptionFilter getRedundantExceptionFilter(
-      int bitSetSize,
-      long noRedundantExceptionDurationMs) {
     if (singleton == null) {
-      singleton = new RedundantExceptionFilter(bitSetSize, noRedundantExceptionDurationMs);
+      singleton = new RedundantExceptionFilter(DEFAULT_BITSET_SIZE, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
     }
     return singleton;
   }
 
   public boolean isRedundantException(String exceptionMessage) {
+    return isRedundantException(exceptionMessage, true);
+  }
+
+  public boolean isRedundantException(String exceptionMessage, boolean updateRedundancy) {
     if (exceptionMessage == null) {
       return true;
     }
     int index = getIndex(exceptionMessage);
-    return isRedundant(index);
+    return isRedundant(index, updateRedundancy);
   }
 
   public boolean isRedundantException(String storeName, Throwable e) {
@@ -59,12 +61,12 @@ public class RedundantExceptionFilter {
       exceptionType = String.valueOf(((VeniceException) e).getHttpStatusCode());
     }
     int index = getIndex(storeName + exceptionType);
-    return isRedundant(index);
+    return isRedundant(index, true);
   }
 
   public boolean isRedundantException(String storeName, String exceptionType) {
     int index = getIndex(storeName + exceptionType);
-    return isRedundant(index);
+    return isRedundant(index, true);
   }
 
   public final void clearBitSet() {
@@ -81,15 +83,17 @@ public class RedundantExceptionFilter {
     cleanerExecutor.shutdownNow();
   }
 
-  private int getIndex(String key) {
+  protected int getIndex(String key) {
     return Math.abs((key).hashCode() % bitSetSize);
   }
 
-  private boolean isRedundant(int index) {
+  protected boolean isRedundant(int index, boolean updateRedundancy) {
     if (!activeBitset.get(index)) {
       // It's possible that we found the bit was not set, then activeBitset is changed, and we set the bit in the new
       // set. But it doesn't matter.
-      activeBitset.set(index);
+      if (updateRedundancy) {
+        activeBitset.set(index);
+      }
       return false;
     }
     return true;

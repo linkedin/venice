@@ -30,11 +30,15 @@ public class ApacheKafkaConsumerConfig {
       KAFKA_CONFIG_PREFIX + ApacheKafkaConsumerAdapter.CONSUMER_POLL_RETRY_TIMES_CONFIG;
   public static final String KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG =
       KAFKA_CONFIG_PREFIX + ApacheKafkaConsumerAdapter.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
+  public static final String KAFKA_CLIENT_ID_CONFIG = KAFKA_CONFIG_PREFIX + ConsumerConfig.CLIENT_ID_CONFIG;
+  public static final String KAFKA_GROUP_ID_CONFIG = KAFKA_CONFIG_PREFIX + ConsumerConfig.GROUP_ID_CONFIG;
+  public static final int DEFAULT_RECEIVE_BUFFER_SIZE = 1024 * 1024;
 
   private final Properties consumerProperties;
 
   public ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
-    this.consumerProperties = veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties();
+    this.consumerProperties =
+        getValidConsumerProperties(veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
     if (consumerName != null) {
       consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerName);
     }
@@ -45,13 +49,25 @@ public class ApacheKafkaConsumerConfig {
       LOGGER.info("Will initialize a non-SSL Kafka consumer client");
     }
 
-    // Copied from KafkaClientFactory
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    if (!consumerProperties.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG)) {
+      consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, DEFAULT_RECEIVE_BUFFER_SIZE);
+    }
+
     consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
   }
 
   public Properties getConsumerProperties() {
     return consumerProperties;
+  }
+
+  public static Properties getValidConsumerProperties(Properties extractedProperties) {
+    Properties validProperties = new Properties();
+    extractedProperties.forEach((configKey, configVal) -> {
+      if (ConsumerConfig.configNames().contains(configKey)) {
+        validProperties.put(configKey, configVal);
+      }
+    });
+    return validProperties;
   }
 }

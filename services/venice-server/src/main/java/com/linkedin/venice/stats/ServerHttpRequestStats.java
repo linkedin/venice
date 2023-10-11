@@ -43,6 +43,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor readComputeLatencyForLargeValueSensor;
   private final Sensor readComputeDeserializationLatencySensor;
   private final Sensor readComputeSerializationLatencySensor;
+  private final Sensor readComputeEfficiencySensor;
   private final Sensor dotProductCountSensor;
   private final Sensor cosineSimilaritySensor;
   private final Sensor hadamardProductSensor;
@@ -56,6 +57,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
   private final Sensor successRequestKeyRatioSensor, successRequestRatioSensor;
+  private final Sensor misroutedStoreVersionSensor;
 
   public ServerHttpRequestStats(
       MetricsRepository metricsRepository,
@@ -250,6 +252,14 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
             getName(),
             getFullMetricName("storage_engine_read_compute_serialization_latency")));
 
+    readComputeEfficiencySensor = registerPerStoreAndTotal(
+        "storage_engine_read_compute_efficiency",
+        totalStats,
+        () -> totalStats.readComputeEfficiencySensor,
+        new Avg(),
+        new Min(),
+        new Max());
+
     /**
      * Total will reflect counts for the entire server host, while Avg will reflect the counts for each request.
      */
@@ -296,6 +306,11 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           TehutiUtils
               .getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName(requestKeySizeSensorName)));
     }
+    misroutedStoreVersionSensor = registerPerStoreAndTotal(
+        "misrouted_store_version_request_count",
+        totalStats,
+        () -> totalStats.misroutedStoreVersionSensor,
+        new OccurrenceRate());
   }
 
   private Sensor registerPerStoreAndTotal(
@@ -389,6 +404,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     readComputeSerializationLatencySensor.record(latency);
   }
 
+  public void recordReadComputeEfficiency(double efficiency) {
+    readComputeEfficiencySensor.record(efficiency);
+  }
+
   public void recordDotProductCount(int count) {
     dotProductCountSensor.record(count);
   }
@@ -415,5 +434,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordValueSizeInByte(long valueSize) {
     requestValueSizeSensor.record(valueSize);
+  }
+
+  public void recordMisroutedStoreVersionRequest() {
+    misroutedStoreVersionSensor.record();
   }
 }

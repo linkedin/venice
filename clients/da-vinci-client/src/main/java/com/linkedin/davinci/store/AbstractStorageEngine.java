@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -60,11 +59,13 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public static final int METADATA_PARTITION_ID = 1000_000_000;
 
   private final String storeName;
-  private final List<Partition> partitionList = new SparseConcurrentList<>();
+  private final SparseConcurrentList<Partition> partitionList = new SparseConcurrentList<>();
   private Partition metadataPartition;
   private final AtomicReference<StoreVersionState> versionStateCache = new AtomicReference<>();
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+
+  private boolean suppressLogs = false;
 
   /**
    * This lock is used to guard the re-opening logic in {@link #adjustStoragePartition} since
@@ -275,7 +276,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       LOGGER.error("Failed to remove a non existing partition: {} Store {}", partitionId, getStoreName());
       return;
     }
-    LOGGER.info("Removing Partition: {} Store {}", partitionId, getStoreName());
+    if (!suppressLogs) {
+      LOGGER.info("Removing Partition: {} Store {}", partitionId, getStoreName());
+    }
 
     /**
      * Partition offset should be cleared by StorageEngine drops the corresponding partition. Here we may not be able to
@@ -290,7 +293,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.drop();
 
     if (getNumberOfPartitions() == 0) {
-      LOGGER.info("All Partitions deleted for Store {}", getStoreName());
+      if (!suppressLogs) {
+        LOGGER.info("All Partitions deleted for Store {}", getStoreName());
+      }
       /**
        * The reason to invoke {@link #drop} here is that storage engine might need to do some cleanup
        * in the store level.
@@ -315,8 +320,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (getNumberOfPartitions() == 0 && !metadataPartitionCreated()) {
       return;
     }
+    if (!suppressLogs) {
+      LOGGER.info("Started dropping store: {}", getStoreName());
+    }
 
-    LOGGER.info("Started dropping store: {}", getStoreName());
     // partitionList is implementation of SparseConcurrentList which sets element to null on `remove`. So its fine
     // to call size() while removing elements from the list.
     for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
@@ -326,7 +333,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       dropPartition(partitionId);
     }
     dropMetadataPartition();
-    LOGGER.info("Finished dropping store: {}", getStoreName());
+    if (!suppressLogs) {
+      LOGGER.info("Finished dropping store: {}", getStoreName());
+    }
   }
 
   public synchronized Map<String, String> sync(int partitionId) {
@@ -352,6 +361,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
         LatencyUtils.getElapsedTimeInMs(startTime));
     partitionList.clear();
     closeMetadataPartition();
+  }
+
+  public boolean isClosed() {
+    return this.partitionList.isEmpty();
   }
 
   /**
@@ -656,7 +669,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * @return the number of non-null partitions in {@link #partitionList}
    */
   public synchronized long getNumberOfPartitions() {
-    return this.partitionList.stream().filter(Objects::nonNull).count();
+    return this.partitionList.nonNullSize();
   }
 
   /**
@@ -665,10 +678,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * @return partition Ids that are hosted in the current Storage Engine.
    */
   public synchronized Set<Integer> getPartitionIds() {
-    return this.partitionList.stream()
-        .filter(Objects::nonNull)
-        .map(Partition::getPartitionId)
-        .collect(Collectors.toSet());
+    return this.partitionList.values().stream().map(Partition::getPartitionId).collect(Collectors.toSet());
   }
 
   public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
@@ -683,7 +693,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (partition == null) {
       VeniceException e = new PersistenceFailureException(
           "Partition: " + partitionId + " of store: " + getStoreName() + " does not exist");
-      LOGGER.error("Msg: {} Cause: {}", e.getMessage(), e.getCause());
+      LOGGER.error("Failed to get the partition with msg: {}", e.getMessage());
       throw e;
     }
     return partition;
@@ -718,5 +728,13 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public boolean isChunked() {
     StoreVersionState svs = getStoreVersionState();
     return svs == null ? false : svs.chunked;
+  }
+
+  public void suppressLogs(boolean suppressLogs) {
+    this.suppressLogs = suppressLogs;
+  }
+
+  public boolean hasMemorySpaceLeft() {
+    return true;
   }
 }

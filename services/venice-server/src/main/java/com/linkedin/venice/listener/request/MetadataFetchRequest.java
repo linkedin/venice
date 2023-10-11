@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.request.RequestHelper;
 import io.netty.handler.codec.http.HttpRequest;
 
 

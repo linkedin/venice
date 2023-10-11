@@ -6,7 +6,7 @@ import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSO
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaData;
@@ -15,6 +15,7 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
@@ -57,7 +58,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final Map<Integer, DerivedSchemaEntry> valueSchemaIdToUpdateSchemaMap = new VeniceConcurrentHashMap<>();
 
   private final String storeName;
-  private final AbstractAvroStoreClient storeClient;
+  private final InternalAvroStoreClient storeClient;
+  private final boolean externalClient;
   /**
    * In Venice, schemas are Avro schemas that allow setting arbitrary field-level attributes.
    * Internally, Venice may choose to add new schemas (e.g. superset schema) to support some features. However, Venice
@@ -67,25 +69,24 @@ public class RouterBackedSchemaReader implements SchemaReader {
    * schema are the latest value and update schemas.
    */
   private final Predicate<Schema> preferredSchemaFilter;
-  private final Duration valueSchemaRefreshPeriod;
   private final ScheduledExecutorService refreshSchemaExecutor;
   private final ScheduledFuture schemaRefreshFuture;
   private final ICProvider icProvider;
   private final AtomicReference<Integer> maxValueSchemaId = new AtomicReference<>(SchemaData.INVALID_VALUE_SCHEMA_ID);
 
-  RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
+  RouterBackedSchemaReader(Supplier<InternalAvroStoreClient> clientSupplier) throws VeniceClientException {
     this(clientSupplier, Optional.empty(), Optional.empty());
   }
 
   public RouterBackedSchemaReader(
-      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Supplier<InternalAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter) {
     this(clientSupplier, readerSchema, preferredSchemaFilter, (ICProvider) null);
   }
 
   public RouterBackedSchemaReader(
-      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Supplier<InternalAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
       ICProvider icProvider) {
@@ -93,7 +94,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   public RouterBackedSchemaReader(
-      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Supplier<InternalAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
       Duration valueSchemaRefreshPeriod) {
@@ -101,25 +102,54 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   public RouterBackedSchemaReader(
-      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Supplier<InternalAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
       Duration valueSchemaRefreshPeriod,
       ICProvider icProvider) {
-    this.storeClient = clientSupplier.get();
+    this(clientSupplier.get(), false, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriod, icProvider);
+  }
+
+  public RouterBackedSchemaReader(
+      InternalAvroStoreClient storeClient,
+      Optional<Schema> readerSchema,
+      Optional<Predicate<Schema>> preferredSchemaFilter,
+      Duration valueSchemaRefreshPeriod,
+      ICProvider icProvider) {
+    this(storeClient, true, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriod, icProvider);
+  }
+
+  private RouterBackedSchemaReader(
+      InternalAvroStoreClient storeClient,
+      boolean externalClient,
+      Optional<Schema> readerSchema,
+      Optional<Predicate<Schema>> preferredSchemaFilter,
+      Duration valueSchemaRefreshPeriod,
+      ICProvider icProvider) {
+    this.storeClient = storeClient;
+    this.externalClient = externalClient;
     this.storeName = this.storeClient.getStoreName();
     this.readerSchema = readerSchema;
     this.preferredSchemaFilter = preferredSchemaFilter.orElse(schema -> false);
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
-    this.valueSchemaRefreshPeriod = valueSchemaRefreshPeriod;
     this.icProvider = icProvider;
 
-    this.refreshSchemaExecutor = Executors.newSingleThreadScheduledExecutor();
-    schemaRefreshFuture = refreshSchemaExecutor.scheduleAtFixedRate(
-        () -> this.ensureSchemasAreRefreshed(loadUpdateSchemas.get(), true),
-        valueSchemaRefreshPeriod.getSeconds(),
-        valueSchemaRefreshPeriod.getSeconds(),
-        TimeUnit.SECONDS);
+    if (valueSchemaRefreshPeriod.toMillis() > 0) {
+      this.refreshSchemaExecutor =
+          Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("schema-refresh"));
+      Runnable schemaRefresher = () -> this.ensureSchemasAreRefreshed(loadUpdateSchemas.get(), true);
+      // Fetch schemas once on start up
+      schemaRefresher.run();
+      // Schedule periodic schema refresh
+      this.schemaRefreshFuture = refreshSchemaExecutor.scheduleAtFixedRate(
+          schemaRefresher,
+          valueSchemaRefreshPeriod.getSeconds(),
+          valueSchemaRefreshPeriod.getSeconds(),
+          TimeUnit.SECONDS);
+    } else {
+      this.refreshSchemaExecutor = null;
+      this.schemaRefreshFuture = null;
+    }
   }
 
   @Override
@@ -216,14 +246,20 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public void close() throws IOException {
-    schemaRefreshFuture.cancel(true);
-    refreshSchemaExecutor.shutdownNow();
-    try {
-      refreshSchemaExecutor.awaitTermination(60, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+    if (schemaRefreshFuture != null) {
+      schemaRefreshFuture.cancel(true);
     }
-    IOUtils.closeQuietly(storeClient, LOGGER::error);
+    if (refreshSchemaExecutor != null) {
+      refreshSchemaExecutor.shutdownNow();
+      try {
+        refreshSchemaExecutor.awaitTermination(60, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+      }
+    }
+    if (!externalClient) {
+      IOUtils.closeQuietly(storeClient, LOGGER::error);
+    }
   }
 
   /**
@@ -236,8 +272,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
    */
   private void ensureSchemasAreRefreshed(boolean needsDerivedSchemas, boolean forceSchemaRefresh) {
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
-      loadUpdateSchemas.compareAndSet(false, needsDerivedSchemas);
-      this.refreshAllSchemas();
+      boolean shouldFetchUpdateSchemas = loadUpdateSchemas.get() || needsDerivedSchemas;
+      this.refreshAllSchemas(shouldFetchUpdateSchemas);
+
+      // Only update this at the end to prevent the conditional check to incorrectly pass for other concurrent threads
+      loadUpdateSchemas.compareAndSet(false, shouldFetchUpdateSchemas);
     },
         () -> forceSchemaRefresh || latestValueSchemaEntry.get() == null
             || (needsDerivedSchemas && !loadUpdateSchemas.get()),
@@ -342,9 +381,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
     return fetchSingleSchema(requestPath, false);
   }
 
-  private void refreshAllSchemas() throws VeniceClientException {
+  private void refreshAllSchemas(boolean fetchUpdateSchemas) throws VeniceClientException {
     refreshAllValueSchemas();
-    if (loadUpdateSchemas.get()) {
+    if (fetchUpdateSchemas) {
       refreshAllUpdateSchemas();
     }
   }
@@ -416,6 +455,10 @@ public class RouterBackedSchemaReader implements SchemaReader {
         }
       }
     } catch (Exception e) {
+      if (e instanceof InterruptedException) {
+        throw e;
+      }
+
       throw new VeniceClientException(
           "Got exception while trying to fetch all value schemas. " + getExceptionDetails(requestPath),
           e);
@@ -439,6 +482,10 @@ public class RouterBackedSchemaReader implements SchemaReader {
             .computeIfAbsent(valueSchemaId, id -> new DerivedSchemaEntry(valueSchemaId, updateSchemaId, schemaStr));
       }
     } catch (Exception e) {
+      if (e instanceof InterruptedException) {
+        throw e;
+      }
+
       throw new VeniceClientException(
           "Got exception while trying to fetch all update schemas. " + getExceptionDetails(requestPath),
           e);

@@ -1,7 +1,7 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.stats.VeniceWriterStats;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -15,6 +15,7 @@ public class VeniceWriterFactory {
   private final Properties properties;
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
+  @Deprecated
   public VeniceWriterFactory(Properties properties) {
     this(properties, null, null);
   }

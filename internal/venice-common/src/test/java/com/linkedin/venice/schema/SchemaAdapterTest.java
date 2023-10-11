@@ -1,6 +1,7 @@
 package com.linkedin.venice.schema;
 
 import com.linkedin.alpini.io.IOUtils;
+import com.linkedin.venice.utils.TestUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -77,8 +78,8 @@ public class SchemaAdapterTest {
     Assert.assertEquals(adaptedGenericRecord.getSchema(), OLD_RECORD_SCHEMA);
     Assert.assertTrue(adaptedGenericRecord.get("field1") instanceof GenericRecord);
     Assert.assertEquals(((GenericRecord) adaptedGenericRecord.get("field1")).get("field1_1"), 1);
-    Assert.assertNull(((GenericRecord) adaptedGenericRecord.get("field1")).get("field1_2"));
-    Assert.assertNull(adaptedGenericRecord.get("field2"));
+    TestUtils.checkMissingFieldInAvroRecord((GenericRecord) adaptedGenericRecord.get("field1"), "field1_2");
+    TestUtils.checkMissingFieldInAvroRecord(adaptedGenericRecord, "field2");
   }
 
   @Test

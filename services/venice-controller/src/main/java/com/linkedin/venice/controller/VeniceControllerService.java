@@ -7,15 +7,18 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.controller.init.DelegatingClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedCheckerStats;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -23,11 +26,16 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BiConsumer;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,6 +50,8 @@ public class VeniceControllerService extends AbstractVeniceService {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Map<String, AdminConsumerService> consumerServicesByClusters;
 
+  private final BiConsumer<Integer, Schema> newSchemaEncountered;
+
   public VeniceControllerService(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
@@ -53,8 +63,25 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<ClientConfig> routerClientConfig,
       Optional<ICProvider> icProvider,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubClientsFactory pubSubClientsFactory) {
     this.multiClusterConfigs = multiClusterConfigs;
+
+    DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
+        new DelegatingClusterLeaderInitializationRoutine();
+    DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore =
+        new DelegatingClusterLeaderInitializationRoutine();
+
+    /**
+     * In child controller, we do not set these system stores up explicitly. The parent controller creates and
+     * configures them. They will get set up in child regions when the child controller consumes the corresponding
+     * messages from the admin channel.
+     */
+    if (!multiClusterConfigs.isParent()) {
+      initRoutineForPushJobDetailsSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+      initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+    }
+
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
         multiClusterConfigs,
         metricsRepository,
@@ -63,7 +90,9 @@ public class VeniceControllerService extends AbstractVeniceService {
         sslConfig,
         accessController,
         icProvider,
-        pubSubTopicRepository);
+        pubSubTopicRepository,
+        pubSubClientsFactory,
+        Arrays.asList(initRoutineForPushJobDetailsSystemStore, initRoutineForHeartbeatSystemStore));
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(
@@ -76,7 +105,9 @@ public class VeniceControllerService extends AbstractVeniceService {
           createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository),
           WriteComputeSchemaConverter.getInstance(),
           externalSupersetSchemaGenerator,
-          pubSubTopicRepository);
+          pubSubTopicRepository,
+          initRoutineForPushJobDetailsSystemStore,
+          initRoutineForHeartbeatSystemStore);
       LOGGER.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
@@ -96,25 +127,52 @@ public class VeniceControllerService extends AbstractVeniceService {
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
-    /** N.B. The code below is copied from {@link com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine */
-    // BiConsumer<Integer, Schema> newSchemaEncountered = (schemaId, schema) -> internalAdmin.addValueSchema(
-    // "?", // TODO: Figure out a clean way to retrieve the cluster name param
-    // AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
-    // schema.toString(),
-    // schemaId,
-    // DirectionalSchemaCompatibilityType.NONE,
-    // false);
-    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer(
-    // newSchemaEncountered // TODO: Wire in this hook once we figure out a clean way to do it
-    );
+
+    /**
+     * Register a callback function to handle the case when a new KME value schema is encountered when the child controller
+     * consumes the admin topics.
+     */
+    String systemClusterName = multiClusterConfigs.getSystemSchemaClusterName();
+    VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemClusterName);
+    newSchemaEncountered = (schemaId, schema) -> {
+      LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
+      try {
+        ControllerClientBackedSystemSchemaInitializer schemaInitializer =
+            new ControllerClientBackedSystemSchemaInitializer(
+                AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+                systemClusterName,
+                null,
+                null,
+                false,
+                ((VeniceHelixAdmin) admin).getSslFactory(),
+                systemStoreClusterConfig.getChildControllerUrl(systemStoreClusterConfig.getRegionName()),
+                systemStoreClusterConfig.getChildControllerD2ServiceName(),
+                systemStoreClusterConfig.getChildControllerD2ZkHost(systemStoreClusterConfig.getRegionName()),
+                systemStoreClusterConfig.isControllerEnforceSSLOnly());
+
+        schemaInitializer.execute(Collections.singletonMap(schemaId, schema));
+      } catch (VeniceException e) {
+        LOGGER.error(
+            "Exception in registering '{}' schema version '{}'",
+            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.name(),
+            schemaId,
+            e);
+        throw e;
+      }
+    };
+
+    KafkaValueSerializer kafkaValueSerializer =
+        (!multiClusterConfigs.isParent() && systemStoreClusterConfig.isKMERegistrationFromMessageHeaderEnabled())
+            ? new OptimizedKafkaValueSerializer(newSchemaEncountered)
+            : new OptimizedKafkaValueSerializer();
+
     kafkaMessageEnvelopeSchemaReader.ifPresent(kafkaValueSerializer::setSchemaReader);
-    KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     for (String cluster: multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService = new AdminConsumerService(
-          cluster,
           internalAdmin,
           multiClusterConfigs.getControllerConfig(cluster),
           metricsRepository,
@@ -124,6 +182,7 @@ public class VeniceControllerService extends AbstractVeniceService {
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);
     }
+
   }
 
   private LingeringStoreVersionChecker createLingeringStoreVersionChecker(
@@ -195,5 +254,13 @@ public class VeniceControllerService extends AbstractVeniceService {
    */
   public AdminConsumerService getAdminConsumerServiceByCluster(String cluster) {
     return consumerServicesByClusters.get(cluster);
+  }
+
+  // For testing only.
+  public KafkaValueSerializer getKafkaValueSerializer() {
+    for (Map.Entry<String, AdminConsumerService> entry: consumerServicesByClusters.entrySet()) {
+      return entry.getValue().getDeserializer().getValueSerializer();
+    }
+    return null;
   }
 }

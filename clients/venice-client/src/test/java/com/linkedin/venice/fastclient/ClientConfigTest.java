@@ -79,13 +79,27 @@ public class ClientConfigTest {
 
   @Test
   public void testLongTailRetryWithDualRead() {
-    new ClientConfig.ClientConfigBuilder<>().setSpeculativeQueryEnabled(false)
-        .setR2Client(mock(Client.class))
-        .setStoreName("test_store")
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+    clientConfigBuilder.setSpeculativeQueryEnabled(false)
         .setDualReadEnabled(true)
         .setGenericThinClient(mock(AvroGenericStoreClient.class))
         .setLongTailRetryEnabledForSingleGet(true)
         .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000)
         .build();
+  }
+
+  /** Setting useStreamingBatchGetAsDefault, no exceptions thrown */
+  @Test
+  public void testUseStreamingBatchGetAsDefault() {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+    ClientConfig clientConfig = clientConfigBuilder.build();
+
+    if (clientConfig.useStreamingBatchGetAsDefault()) {
+      // should be disabled by default
+      throw new VeniceClientException("Batch get using streaming batch get should be disabled by default");
+    }
+
+    clientConfigBuilder.setUseStreamingBatchGetAsDefault(true);
+    clientConfigBuilder.build();
   }
 }

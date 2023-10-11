@@ -1,10 +1,9 @@
 package com.linkedin.venice.schema.rmd;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -42,19 +41,12 @@ public class TestRmdUtils {
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
     rmdRecordWithValueLevelTimeStamp = new GenericData.Record(rmdSchema);
     rmdRecordWithValueLevelTimeStamp.put(TIMESTAMP_FIELD_NAME, 20L);
-    rmdRecordWithValueLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, vectors);
+    rmdRecordWithValueLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, vectors);
 
     rmdRecordWithPerFieldLevelTimeStamp = new GenericData.Record(rmdSchema);
     // This is not a valid value for PER_FIELD_TIMESTAMP type. Use this for testing purpose only.
     rmdRecordWithPerFieldLevelTimeStamp.put(TIMESTAMP_FIELD_NAME, new GenericData.Record(valueSchema));
-    rmdRecordWithPerFieldLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, vectors);
-  }
-
-  @Test
-  public void testDeserializeRmdBytes() {
-    ByteBuffer bytes = RmdUtils.serializeRmdRecord(rmdSchema, rmdRecordWithValueLevelTimeStamp);
-    GenericRecord reverted = RmdUtils.deserializeRmdBytes(rmdSchema, rmdSchema, bytes);
-    Assert.assertEquals(reverted.getSchema().toString(), rmdRecordWithValueLevelTimeStamp.getSchema().toString());
+    rmdRecordWithPerFieldLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, vectors);
   }
 
   @Test

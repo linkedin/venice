@@ -1,6 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
 import com.linkedin.avro.fastserde.coldstart.ColdPrimitiveLongList;
@@ -31,7 +31,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
 
     GenericRecord rmdRecord = new GenericData.Record(userRmdSchemaV1);
     rmdRecord.put(TIMESTAMP_FIELD_NAME, 20L);
-    rmdRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, Collections.emptyList());
+    rmdRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, Collections.emptyList());
 
     GenericRecord newValueRecord = new GenericData.Record(userSchemaV1);
     newValueRecord.put("id", "id10");

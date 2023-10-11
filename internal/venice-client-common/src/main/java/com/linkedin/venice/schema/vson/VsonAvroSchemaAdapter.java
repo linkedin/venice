@@ -116,7 +116,7 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
 
   public static Schema stripFromUnion(Schema schema) {
     if (schema.getType() != Schema.Type.UNION) {
-      throw new IllegalArgumentException("Schema: " + schema.toString() + "has to be Union");
+      throw new IllegalArgumentException("Schema: " + schema + " has to be Union");
     }
 
     List<Schema> subtypes = schema.getTypes();

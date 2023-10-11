@@ -20,6 +20,8 @@ public abstract class ReadResponse {
   private boolean isStreamingResponse = false;
   private IntList keySizeList;
   private IntList valueSizeList;
+  private int valueSize = 0;
+  private int readComputeOutputSize = 0;
   private int dotProductCount = 0;
   private int cosineSimilarityCount = 0;
   private int hadamardProductCount = 0;
@@ -94,20 +96,36 @@ public abstract class ReadResponse {
     this.readComputeSerializationLatency += latency;
   }
 
-  public void incrementDotProductCount() {
-    dotProductCount++;
+  public void addValueSize(int size) {
+    this.valueSize += size;
   }
 
-  public void incrementCountOperatorCount() {
-    countOperatorCount++;
+  public int getValueSize() {
+    return valueSize;
   }
 
-  public void incrementCosineSimilarityCount() {
-    cosineSimilarityCount++;
+  public void addReadComputeOutputSize(int size) {
+    this.readComputeOutputSize += size;
   }
 
-  public void incrementHadamardProductCount() {
-    hadamardProductCount++;
+  public int getReadComputeOutputSize() {
+    return readComputeOutputSize;
+  }
+
+  public void incrementDotProductCount(int count) {
+    dotProductCount += count;
+  }
+
+  public void incrementCountOperatorCount(int count) {
+    countOperatorCount += count;
+  }
+
+  public void incrementCosineSimilarityCount(int count) {
+    cosineSimilarityCount += count;
+  }
+
+  public void incrementHadamardProductCount(int count) {
+    hadamardProductCount += count;
   }
 
   public double getReadComputeSerializationLatency() {

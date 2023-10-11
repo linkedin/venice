@@ -163,7 +163,8 @@ public class CreateVersionTest {
             Optional.of(certificate),
             -1,
             Optional.empty(),
-            false);
+            false,
+            null);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -215,7 +216,8 @@ public class CreateVersionTest {
             Optional.of(certificate),
             -1,
             Optional.empty(),
-            false);
+            false,
+            null);
 
     Assert.assertFalse(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -242,12 +244,13 @@ public class CreateVersionTest {
     Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
     Optional<String> emergencySrcRegion = Optional.of("dc-1");
 
+    doReturn("dc-0").when(admin).getRegionName();
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doReturn(true).when(admin).isParent();
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
     doReturn("default-src.region.io").when(admin).getKafkaBootstrapServers(anyBoolean());
-    doReturn(emergencySrcRegion).when(admin).getEmergencySourceRegion();
+    doReturn(emergencySrcRegion).when(admin).getEmergencySourceRegion(CLUSTER_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
     doReturn("dc-1.region.io").when(admin).getNativeReplicationKafkaBootstrapServerAddress(emergencySrcRegion.get());
@@ -266,7 +269,8 @@ public class CreateVersionTest {
             Optional.of(certificate),
             -1,
             emergencySrcRegion,
-            false);
+            false,
+            null);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -280,6 +284,7 @@ public class CreateVersionTest {
     VersionCreationResponse versionCreationResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
     assertEquals(versionCreationResponse.getKafkaBootstrapServers(), "dc-1.region.io");
+    assertEquals(versionCreationResponse.getKafkaSourceRegion(), "dc-0");
   }
 
   private Store getHybridTestStore() {

@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store.view;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 
@@ -16,6 +16,8 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -31,7 +33,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -80,19 +83,23 @@ public class ChangeCaptureViewWriterTest {
     controlMessage.controlMessageUnion = versionSwapMessage;
 
     Store mockStore = Mockito.mock(Store.class);
-    VeniceProperties props = new VeniceProperties();
+    VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     // Add ID's to the region's to name the sort order of the RMD
     urlMappingMap.put(LTX_1, 0);
     urlMappingMap.put(LVA_1, 1);
     urlMappingMap.put(LOR_1, 2);
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
 
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
     Mockito.when(mockVeniceServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(urlMappingMap);
+    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = Mockito.mock(PubSubProducerAdapterFactory.class);
+    PubSubClientsFactory mockPubSubClientsFactory = Mockito.mock(PubSubClientsFactory.class);
+    Mockito.when(mockPubSubClientsFactory.getProducerAdapterFactory()).thenReturn(mockPubSubProducerAdapterFactory);
+    Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
 
     VeniceConfigLoader mockVeniceConfigLoader = Mockito.mock(VeniceConfigLoader.class);
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
@@ -156,9 +163,9 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockStore.getVersion(1)).thenReturn(Optional.of(version));
     Mockito.when(mockStore.getName()).thenReturn(STORE_NAME);
 
-    VeniceProperties props = new VeniceProperties();
+    VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
@@ -168,6 +175,10 @@ public class ChangeCaptureViewWriterTest {
 
     VeniceConfigLoader mockVeniceConfigLoader = Mockito.mock(VeniceConfigLoader.class);
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
+    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = Mockito.mock(PubSubProducerAdapterFactory.class);
+    PubSubClientsFactory mockPubSubClientsFactory = Mockito.mock(PubSubClientsFactory.class);
+    Mockito.when(mockPubSubClientsFactory.getProducerAdapterFactory()).thenReturn(mockPubSubProducerAdapterFactory);
+    Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     ChangeCaptureViewWriter changeCaptureViewWriter =
@@ -184,12 +195,12 @@ public class ChangeCaptureViewWriterTest {
   }
 
   @Test
-  public void testProcessRecord() {
+  public void testProcessRecord() throws ExecutionException, InterruptedException {
     // Set up mocks
     Store mockStore = Mockito.mock(Store.class);
-    VeniceProperties props = new VeniceProperties();
+    VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
@@ -198,6 +209,10 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(urlMappingMap);
 
     VeniceConfigLoader mockVeniceConfigLoader = Mockito.mock(VeniceConfigLoader.class);
+    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = Mockito.mock(PubSubProducerAdapterFactory.class);
+    PubSubClientsFactory mockPubSubClientsFactory = Mockito.mock(PubSubClientsFactory.class);
+    Mockito.when(mockPubSubClientsFactory.getProducerAdapterFactory()).thenReturn(mockPubSubProducerAdapterFactory);
+    Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
@@ -208,17 +223,17 @@ public class ChangeCaptureViewWriterTest {
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
     GenericRecord rmdRecordWithValueLevelTimeStamp = new GenericData.Record(rmdSchema);
     rmdRecordWithValueLevelTimeStamp.put(TIMESTAMP_FIELD_NAME, 20L);
-    rmdRecordWithValueLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, vectors);
+    rmdRecordWithValueLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, vectors);
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Update Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp);
+    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Insert Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp);
+    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Deletion Case
-    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp);
+    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Set up argument captors
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);

@@ -57,6 +57,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
   private final Sensor ingestionFailureSensor;
+
+  private final Sensor viewProducerLatencySensor;
   /**
    * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
    */
@@ -129,6 +131,16 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    * Measure the count of tombstones created
    */
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
+
+  /**
+   * Measure the number of time request based metadata endpoint was invoked
+   */
+  private final Sensor requestBasedMetadataInvokeCount;
+
+  /**
+   * Measure the number of time request based metadata endpoint failed to respond
+   */
+  private final Sensor requestBasedMetadataFailureCount;
 
   private Sensor registerPerStoreAndTotalSensor(
       String sensorName,
@@ -257,6 +269,14 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
                         ? task.getStorageEngine().getCachedRMDSizeInBytes()
                         : task.getStorageEngine().getRMDSizeInBytes())
                 .sum()));
+    registerSensor(
+        "ingestion_stuck_by_memory_constraint",
+        new Gauge(
+            () -> ingestionTaskMap.values()
+                .stream()
+                .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
+                .mapToLong(task -> task.isStuckByMemoryConstraint() ? 1 : 0)
+                .sum()));
 
     // Stats which are per-store only:
     this.diskQuotaSensor =
@@ -277,6 +297,13 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Min(),
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
+
+    String viewTimerSensorName = "total_view_writer_latency";
+    this.viewProducerLatencySensor = registerPerStoreAndTotalSensor(
+        viewTimerSensorName,
+        totalStats,
+        () -> totalStats.viewProducerLatencySensor,
+        avgAndMax());
 
     this.storageQuotaUsedSensor =
         registerSensor("storage_quota_used", new Gauge(() -> hybridQuotaUsageGauge), new Avg(), new Min(), new Max());
@@ -381,6 +408,18 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.leaderIngestionReplicationMetadataLookUpLatencySensor,
         avgAndMax());
+
+    this.requestBasedMetadataInvokeCount = registerPerStoreAndTotalSensor(
+        "request_based_metadata_invoke_count",
+        totalStats,
+        () -> totalStats.requestBasedMetadataInvokeCount,
+        new Rate());
+
+    this.requestBasedMetadataFailureCount = registerPerStoreAndTotalSensor(
+        "request_based_metadata_failure_count",
+        totalStats,
+        () -> totalStats.requestBasedMetadataFailureCount,
+        new Rate());
   }
 
   /** Record a host-level byte consumption rate across all store versions */
@@ -409,6 +448,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordConsumerRecordsQueuePutLatency(double latency, long currentTimeMs) {
     consumerRecordsQueuePutLatencySensor.record(latency, currentTimeMs);
+  }
+
+  public void recordViewProducerLatency(double latency) {
+    viewProducerLatencySensor.record(latency);
   }
 
   public void recordUnexpectedMessage() {
@@ -529,5 +572,13 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordOffsetRegressionDCRError() {
     totalOffsetRegressionDCRErrorRate.record();
+  }
+
+  public void recordRequestBasedMetadataInvokeCount() {
+    requestBasedMetadataInvokeCount.record();
+  }
+
+  public void recordRequestBasedMetadataFailureCount() {
+    requestBasedMetadataFailureCount.record();
   }
 }

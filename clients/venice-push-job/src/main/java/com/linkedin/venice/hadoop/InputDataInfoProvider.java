@@ -17,7 +17,7 @@ public interface InputDataInfoProvider extends Closeable {
   /**
    * A POJO that contains input data information (schema information and input data file size)
    */
-  Logger LOGGER = LogManager.getLogger(InputDataInfoProvider.class.getName());
+  Logger LOGGER = LogManager.getLogger(InputDataInfoProvider.class);
 
   class InputDataInfo {
     private final PushJobSchemaInfo pushJobSchemaInfo;
@@ -101,22 +101,23 @@ public interface InputDataInfoProvider extends Closeable {
         continue;
       }
 
-      if (fileSampleSize + data.length > pushJobZstdConfig.getMaxBytesPerFile()) {
-        String perFileLimitErrorMsg = String.format(
-            "Read %s to build dictionary. Reached limit per file of %s.",
-            ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
-            ByteUtils.generateHumanReadableByteCountString(pushJobZstdConfig.getMaxBytesPerFile()));
-        LOGGER.debug(perFileLimitErrorMsg);
-        return;
+      // At least 1 sample per file should be added until the max sample size is reached
+      if (fileSampleSize > 0) {
+        if (fileSampleSize + data.length > pushJobZstdConfig.getMaxBytesPerFile()) {
+          LOGGER.debug(
+              "Read {} to build dictionary. Reached limit per file of {}.",
+              ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
+              ByteUtils.generateHumanReadableByteCountString(pushJobZstdConfig.getMaxBytesPerFile()));
+          return;
+        }
       }
 
       // addSample returns false when the data read no longer fits in the 'sample' buffer limit
       if (!pushJobZstdConfig.getZstdDictTrainer().addSample(data)) {
-        String maxSamplesReadErrorMsg = String.format(
-            "Read %s to build dictionary. Reached sample limit of %s.",
+        LOGGER.debug(
+            "Read {} to build dictionary. Reached sample limit of {}.",
             ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
             ByteUtils.generateHumanReadableByteCountString(pushJobZstdConfig.getMaxSampleSize()));
-        LOGGER.debug(maxSamplesReadErrorMsg);
         return;
       }
       fileSampleSize += data.length;

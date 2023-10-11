@@ -1,0 +1,32 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols;
+
+option java_multiple_files = true;
+
+service VeniceReadService {
+  rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
+  rpc batchGet(VeniceClientRequest) returns (VeniceServerResponse) {}
+}
+
+message VeniceClientRequest {
+  uint32 partition = 1;
+  string keyString = 2;           // used for single get
+  bytes  keyBytes = 3;            // used for batch get
+  string resourceName = 5;
+  bool   isStreamingRequest = 7;
+  bool   isRetryRequest = 8;
+  bool   isBatchRequest = 9;
+
+  string method = 10;
+}
+
+message VeniceServerResponse {
+  sint32 schemaId = 1;
+  bytes  data = 2;
+  uint32 compressionStrategy = 3;
+  uint32 responseRCU = 4;
+  bool   isStreamingResponse = 5;
+
+  uint32 errorCode = 6;
+  string errorMessage = 7;
+}

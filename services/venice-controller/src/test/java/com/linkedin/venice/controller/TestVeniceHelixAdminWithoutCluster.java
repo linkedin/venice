@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -241,5 +242,70 @@ public class TestVeniceHelixAdminWithoutCluster {
         .checkKafkaTopicAndHelixResource(anyString(), anyString(), anyBoolean(), anyBoolean(), anyBoolean());
 
     testExecution.accept(admin);
+  }
+
+  @Test
+  public void testSourceRegionSelectionForTargetedRegionPush() {
+    // cluster config setup
+    VeniceControllerMultiClusterConfig multiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
+    VeniceControllerConfig config = mock(VeniceControllerConfig.class);
+    doReturn(config).when(multiClusterConfigs).getControllerConfig("test_cluster");
+    doReturn("dc-4").when(config).getNativeReplicationSourceFabric();
+
+    // store setup
+    Store store = mock(Store.class);
+    doReturn("dc-3").when(store).getNativeReplicationSourceFabric();
+
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(admin).getNativeReplicationSourceFabric(anyString(), any(), any(), any(), any());
+    doReturn(multiClusterConfigs).when(admin).getMultiClusterConfigs();
+
+    // Note that for some weird reasons, if this test case is moved below the store cannot return mocked response
+    // even if the reference doesn't change.
+    // store config (dc-3) is specified as 4th priority
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.empty(), Optional.empty(), null),
+        "dc-3");
+
+    // emergencySourceRegion (dc-0) is specified as 1st priority
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.of("dc-2"), Optional.of("dc-0"), "dc-1"),
+        "dc-0");
+
+    // VPJ plugin targeted region config (dc-1) is specified as 2nd priority
+    doReturn(null).when(store).getNativeReplicationSourceFabric();
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.of("dc-2"), Optional.empty(), "dc-1"),
+        "dc-1");
+
+    // VPJ source fabric (dc-2) is specified as 3rd priority
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.of("dc-2"), Optional.empty(), null),
+        "dc-2");
+
+    // cluster config (dc-4) is specified as 5th priority
+    doReturn(null).when(store).getNativeReplicationSourceFabric();
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.empty(), Optional.empty(), null),
+        "dc-4");
+
+    /**
+     * When we have the following setup:
+     * source fabric is dc-1,
+     * store config is dc-3,
+     * cluster config is dc-4,
+     * targeted regions is dc-0, dc-2, dc-4, dc-99
+     *
+     * we should pick dc-4 as the source fabric even though it has lower priority than dc-3, but it's in the targeted list
+     */
+    doReturn("dc-3").when(store).getNativeReplicationSourceFabric();
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric(
+            "test_cluster",
+            store,
+            Optional.of("dc-1"),
+            Optional.empty(),
+            "dc-99, dc-0, dc-4, dc-2"),
+        "dc-4");
   }
 }

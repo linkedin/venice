@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
+import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -8,6 +9,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.pubsub.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.utils.ExceptionUtils;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -20,7 +22,8 @@ public class ApacheKafkaProducerCallbackTest {
   @Test
   public void testOnCompletionWithNullExceptionShouldInvokeInternalCallbackWithNullException() {
     PubSubProducerCallbackSimpleImpl internalCallback = new PubSubProducerCallbackSimpleImpl();
-    ApacheKafkaProducerCallback kafkaProducerCallback = new ApacheKafkaProducerCallback(internalCallback);
+    ApacheKafkaProducerCallback kafkaProducerCallback =
+        new ApacheKafkaProducerCallback(internalCallback, mock(ApacheKafkaProducerAdapter.class));
     RecordMetadata recordMetadata = new RecordMetadata(new TopicPartition("topicX", 42), 0, 1, 1676397545, 1L, 11, 12);
 
     kafkaProducerCallback.onCompletion(recordMetadata, null);
@@ -38,7 +41,8 @@ public class ApacheKafkaProducerCallbackTest {
   @Test
   public void testOnCompletionWithNonNullExceptionShouldInvokeInternalCallbackWithNonNullException() {
     PubSubProducerCallbackSimpleImpl internalCallback = new PubSubProducerCallbackSimpleImpl();
-    ApacheKafkaProducerCallback kafkaProducerCallback = new ApacheKafkaProducerCallback(internalCallback);
+    ApacheKafkaProducerCallback kafkaProducerCallback =
+        new ApacheKafkaProducerCallback(internalCallback, mock(ApacheKafkaProducerAdapter.class));
     RecordMetadata recordMetadata = new RecordMetadata(new TopicPartition("topicX", 42), -1, -1, -1, -1L, -1, -1);
 
     UnknownTopicOrPartitionException exception = new UnknownTopicOrPartitionException("Unknown topic: topicX");
@@ -46,20 +50,17 @@ public class ApacheKafkaProducerCallbackTest {
 
     assertTrue(internalCallback.isInvoked());
     assertNotNull(internalCallback.getException());
-    assertEquals(internalCallback.getException(), exception);
-    assertNotNull(internalCallback.getProduceResult());
-
-    PubSubProduceResult produceResult = internalCallback.getProduceResult();
-    assertEquals(produceResult.getTopic(), recordMetadata.topic());
-    assertEquals(produceResult.getPartition(), recordMetadata.partition());
-    assertEquals(produceResult.getOffset(), recordMetadata.offset());
+    assertTrue(
+        ExceptionUtils.recursiveClassEquals(internalCallback.getException(), UnknownTopicOrPartitionException.class));
+    assertNull(internalCallback.getProduceResult());
   }
 
-  @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Unknown topic: topicX.*")
+  @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Topic does not exists.*")
   public void testOnCompletionWithNonNullExceptionShouldCompleteFutureExceptionally()
       throws ExecutionException, InterruptedException {
     PubSubProducerCallbackSimpleImpl internalCallback = new PubSubProducerCallbackSimpleImpl();
-    ApacheKafkaProducerCallback kafkaProducerCallback = new ApacheKafkaProducerCallback(internalCallback);
+    ApacheKafkaProducerCallback kafkaProducerCallback =
+        new ApacheKafkaProducerCallback(internalCallback, mock(ApacheKafkaProducerAdapter.class));
     Future<PubSubProduceResult> produceResultFuture = kafkaProducerCallback.getProduceResultFuture();
     assertFalse(produceResultFuture.isDone());
     assertFalse(produceResultFuture.isCancelled());
@@ -77,7 +78,8 @@ public class ApacheKafkaProducerCallbackTest {
   public void testOnCompletionWithNonNullExceptionShouldCompleteFuture()
       throws ExecutionException, InterruptedException {
     PubSubProducerCallbackSimpleImpl internalCallback = new PubSubProducerCallbackSimpleImpl();
-    ApacheKafkaProducerCallback kafkaProducerCallback = new ApacheKafkaProducerCallback(internalCallback);
+    ApacheKafkaProducerCallback kafkaProducerCallback =
+        new ApacheKafkaProducerCallback(internalCallback, mock(ApacheKafkaProducerAdapter.class));
     Future<PubSubProduceResult> produceResultFuture = kafkaProducerCallback.getProduceResultFuture();
     assertFalse(produceResultFuture.isDone());
     assertFalse(produceResultFuture.isCancelled());

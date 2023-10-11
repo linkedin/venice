@@ -1,0 +1,26 @@
+{
+  "type": "record",
+  "name": "ValueRecord",
+  "fields": [
+    {
+      "name": "favorite_number",
+      "type": "long",
+      "default": 0
+    },
+    {
+      "name": "favorite_color",
+      "type": "string",
+      "default": "blue"
+    },
+    {
+      "name": "favorite_company",
+      "type": "string",
+      "default": "COMPANY_1"
+    },
+    {
+      "name": "favorite_car",
+      "type": "string",
+      "default": "Ferrari"
+    }
+  ]
+}

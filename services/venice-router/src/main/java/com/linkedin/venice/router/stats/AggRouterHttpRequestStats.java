@@ -235,6 +235,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     getStoreStats(storeName).recordRequestUsage(usage);
   }
 
+  public void recordMultiGetFallback(String storeName, int keyCount) {
+    totalStats.recordMultiGetFallback(keyCount);
+    getStoreStats(storeName).recordMultiGetFallback(keyCount);
+  }
+
   public void recordRequestParsingLatency(String storeName, double latency) {
     totalStats.recordRequestParsingLatency(latency);
     getStoreStats(storeName).recordRequestParsingLatency(latency);
@@ -267,7 +272,6 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
 
   public void recordKeySize(String storeName, long keySize) {
     totalStats.recordKeySizeInByte(keySize);
-    getStoreStats(storeName).recordKeySizeInByte(keySize);
   }
 
   public void recordAllowedRetryRequest(String storeName) {

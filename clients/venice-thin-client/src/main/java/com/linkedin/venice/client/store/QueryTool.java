@@ -105,16 +105,22 @@ public class QueryTool {
       case INT:
         key = Integer.parseInt(keyString);
         break;
+      case LONG:
+        key = Long.parseLong(keyString);
+        break;
+      case FLOAT:
+        key = Float.parseFloat(keyString);
+        break;
       case DOUBLE:
         key = Double.parseDouble(keyString);
         break;
-      case LONG:
-        key = Long.parseLong(keyString);
+      case BOOLEAN:
+        key = Boolean.parseBoolean(keyString);
         break;
       case STRING:
         key = keyString;
         break;
-      case RECORD:
+      default:
         try {
           key = new GenericDatumReader<>(keySchema, keySchema).read(
               null,
@@ -123,8 +129,6 @@ public class QueryTool {
           throw new VeniceException("Invalid input key:" + keyString, e);
         }
         break;
-      default:
-        throw new VeniceException("Cannot handle key type, found key schema: " + keySchema);
     }
     return key;
   }

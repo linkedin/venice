@@ -34,13 +34,14 @@ public class ConfigKeys {
   public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
   public static final String KAFKA_LINGER_MS = ApacheKafkaProducerConfig.KAFKA_LINGER_MS;
-  public static final String KAFKA_BATCH_SIZE = ApacheKafkaProducerConfig.KAFKA_BATCH_SIZE;
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
       ApacheKafkaProducerConfig.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = ApacheKafkaProducerConfig.KAFKA_PRODUCER_RETRIES_CONFIG;
   public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
       ApacheKafkaProducerConfig.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 
+  public static final String KAFKA_CLIENT_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_CLIENT_ID_CONFIG;
+  public static final String KAFKA_GROUP_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_GROUP_ID_CONFIG;
   public static final String KAFKA_AUTO_OFFSET_RESET_CONFIG = ApacheKafkaConsumerConfig.KAFKA_AUTO_OFFSET_RESET_CONFIG;
   public static final String KAFKA_ENABLE_AUTO_COMMIT_CONFIG =
       ApacheKafkaConsumerConfig.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
@@ -99,14 +100,6 @@ public class ConfigKeys {
   public static final String KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES = "kafka.log.compaction.for.hybrid.stores";
 
   /**
-   * Whether to turn on Kafka's log compaction for the store-version topics of incremental push stores.
-   *
-   * Will take effect at topic creation time, and when the incremental push config for the store is turned on.
-   */
-  public static final String KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES =
-      "kafka.log.compaction.for.incremental.push.stores";
-
-  /**
    * For log compaction enabled topics, this config will define the minimum time a message will remain uncompacted in the log.
    */
   public static final String KAFKA_MIN_LOG_COMPACTION_LAG_MS = "kafka.min.log.compaction.lag.ms";
@@ -153,12 +146,6 @@ public class ConfigKeys {
   public static final String ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY = "enable.native.replication.for.batch.only";
 
   /**
-   * Cluster-level config to enable native replication for all incremental push stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH =
-      "enable.native.replication.for.incremental.push";
-
-  /**
    * Cluster-level config to enable native replication for all hybrid stores.
    */
   public static final String ENABLE_NATIVE_REPLICATION_FOR_HYBRID = "enable.native.replication.for.hybrid";
@@ -168,12 +155,6 @@ public class ConfigKeys {
    */
   public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY =
       "enable.native.replication.as.default.for.batch.only";
-
-  /**
-   * Cluster-level config to enable native replication for new incremental push stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH =
-      "enable.native.replication.as.default.for.incremental.push";
 
   /**
    * Cluster-level config to enable native replication for new hybrid stores.
@@ -192,12 +173,6 @@ public class ConfigKeys {
    */
   public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE =
       "enable.active.active.replication.as.default.for.hybrid.store";
-
-  /**
-   * Cluster-level config to enable active-active replication for new incremental push stores.
-   */
-  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE =
-      "enable.active.active.replication.as.default.for.incremental.push.store";
 
   /**
    * Sets the default for whether or not do schema validation for all stores
@@ -362,8 +337,46 @@ public class ConfigKeys {
   public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
       "controller.parent.external.superset.schema.generation.enabled";
 
+  /**
+   * Whether to check system store health in parent controller. Default is false.
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED =
+      "controller.parent.system.store.repair.service.enabled";
+
+  /**
+   * Frequency to run system store health check in parent controller. Default is 30 minute (1800s).
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS =
+      "controller.parent.system.store.repair.check.interval.seconds";
+
+  /**
+   * The wait time before validating system store heartbeat during system store health check in parent controller.
+   * Default is 1min.
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS =
+      "controller.parent.system.store.heartbeat.check.wait.time.seconds";
+
+  /**
+   * The maximum retry count for parent controller to fix a bad system store.
+   * Default is 1.
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT =
+      "controller.parent.system.store.repair.retry.count";
+
+  /**
+   * Whether to initialize system schemas when controller starts. Default is true.
+   */
+  public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
+      "system.schema.initialization.at.start.time.enabled";
+
+  public static final String KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED =
+      "kme.registration.from.message.header.enabled";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
+  public static final String GRPC_READ_SERVER_PORT = "grpc.read.server.port";
+  public static final String ENABLE_GRPC_READ_SERVER = "grpc.read.server.enabled";
+  public static final String GRPC_SERVER_WORKER_THREAD_COUNT = "grpc.server.worker.thread.count";
 
   public static final String LISTENER_HOSTNAME = "listener.hostname";
 
@@ -382,6 +395,8 @@ public class ConfigKeys {
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
       "store.writer.buffer.after.leader.logic.enabled";
+
+  public static final String SERVER_INGESTION_TASK_MAX_IDLE_COUNT = "server.ingestion.task.max.idle.count";
   public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
   public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
   public static final String SERVER_REST_SERVICE_STORAGE_THREAD_NUM = "server.rest.service.storage.thread.num";
@@ -392,13 +407,32 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
-  public static final String SSL_TO_KAFKA = ApacheKafkaProducerConfig.SSL_TO_KAFKA;
+
+  /**
+   * This config key is a misspelling. It is now considered deprecated.
+   * @deprecated Use {@link #KAFKA_OVER_SSL}
+   */
+  @Deprecated
+  public static final String SSL_TO_KAFKA_LEGACY = ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
+  public static final String KAFKA_OVER_SSL = ApacheKafkaProducerConfig.KAFKA_OVER_SSL;
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
   public static final String SERVER_DATABASE_MEMORY_STATS_ENABLED = "server.database.memory.stats.enabled";
 
   public static final String ROUTER_MAX_READ_CAPACITY = "router.max.read.capacity";
   public static final String ROUTER_QUOTA_CHECK_WINDOW = "router.quota.check.window";
+
+  /**
+   * This instructs the router to start running with self signed TLS certificates as opposed to those
+   * provided via other properties. This should only be used for testing and defaults to true when running
+   * RouterServer.main().
+   */
+  public static final String ROUTER_USE_LOCAL_SSL_SETTINGS = "router.local.ssl";
+
+  /**
+   * This instructs the router to open an ssl port. This defaults to true.
+   */
+  public static final String ROUTER_ENABLE_SSL = "router.enable.ssl";
 
   public static final String SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS =
       "server.remote.ingestion.repair.sleep.interval.seconds";
@@ -478,7 +512,7 @@ public class ConfigKeys {
 
   /**
    * This config is used to control how many times Kafka consumer would retry polling during ingestion
-   * when hitting {@literal org.apache.kafka.common.errors.RetriableException}.
+   * when RetriableException happens.
    */
   public static final String SERVER_KAFKA_POLL_RETRY_TIMES = "server.kafka.poll.retry.times";
 
@@ -606,7 +640,7 @@ public class ConfigKeys {
   /**
    * Number of retries allowed for stopConsumptionAndWait() API in StoreIngestionService.
    */
-  public static final String SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM = "server.stop.consumption.wait.retries.num";
+  public static final String SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS = "server.stop.consumption.timeout.in.seconds";
 
   /**
    * Service listening port number for main ingestion service.
@@ -746,6 +780,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT = "server.schema.fast.class.warmup.timeout";
 
+  /**
+   * The following 3 configs define controller url, d2 service name and d2 zk host in the region that server is located.
+   * Either url or d2 configs must be specified if {@link #SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED} is true.
+   */
+  public static final String LOCAL_CONTROLLER_URL = "local.controller.url";
+  public static final String LOCAL_CONTROLLER_D2_SERVICE_NAME = "local.controller.d2.service.name";
+  public static final String LOCAL_D2_ZK_HOST = "local.d2.zk.host";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
@@ -851,11 +893,6 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
   /**
-   * Enable per router per storage node throttler by distributing the store quota among the partitions and replicas.
-   */
-  public static final String ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED = "router.per.storage.node.throttler.enabled";
-
-  /**
    * This config is used to bound the pending request.
    * Without this config, the accumulated requests in Http Async Client could grow unlimitedly,
    * which would put Router in a non-recoverable state because of long GC pause introduced
@@ -883,11 +920,6 @@ public class ConfigKeys {
    */
   public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY =
       "router.helix.assisted.routing.group.selection.strategy";
-
-  /**
-   * The buffer we will add to the per storage node read quota. E.g 0.5 means 50% extra quota.
-   */
-  public static final String ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER = "router.per.storage.node.read.quota.buffer";
 
   public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
@@ -1112,10 +1144,27 @@ public class ConfigKeys {
       "native.replication.source.fabric.as.default.for.hybrid.stores";
 
   /**
-   * The default source fabric used for native replication for incremental push stores.
+   * We will use this config to determine whether we should enable incremental push for hybrid active-active user stores.
+   * If this config is set to true, we will enable incremental push for hybrid active-active user stores.
    */
-  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES =
-      "native.replication.source.fabric.as.default.for.incremental.push.stores";
+  public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
+      "enable.incremental.push.for.hybrid.active.active.user.stores";
+  /**
+   * We will use this config to determine whether we should enable partial update for hybrid active-active user stores.
+   * If this config is set to true, we will enable partial update for hybrid active-active user stores whose latest value
+   * schema meets partial update feature requirement.
+   */
+  public static final String ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
+      "enable.partial.update.for.hybrid.active.active.user.stores";
+
+  /**
+   * We will use this config to determine whether we should enable partial update for hybrid non-active-active user stores.
+   * If this config is set to true, we will enable partial update for hybrid active-active user stores whose latest value
+   * schema meets partial update feature requirement.
+   */
+  public static final String ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES =
+      "enable.partial.update.for.hybrid.non.active.active.user.stores";
+
   /**
    * The highest priority source fabric selection config, specified in parent controller.
    */
@@ -1176,7 +1225,7 @@ public class ConfigKeys {
    * A list of fabrics that are source(s) of the active active real time replication. When active-active replication
    * is enabled on the controller {@link #ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
    * where the Venice server should consume from when it accepts the TS (TopicSwitch) message.
-   * Example value of this config: "dc-0,dc-1,dc-2".
+   * Example value of this config: "dc-0, dc-1, dc-2".
    */
   public static final String ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST = "active.active.real.time.source.fabric.list";
 
@@ -1626,6 +1675,27 @@ public class ConfigKeys {
    */
   public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
 
+  // Config to check whether the offline push will also monitor Da Vinci push status.
+  public static final String DAVINCI_PUSH_STATUS_SCAN_ENABLED = "davinci.push.status.scan.enabled";
+
+  // Config to determine the Da Vinci push status scanning interval in seconds.
+  public static final String DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS =
+      "davinci.push.status.scan.interval.in.seconds";
+
+  // Config to determine the Da Vinci push status scanning worker thread number.
+  public static final String DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER = "davinci.push.status.scan.thread.number";
+
+  /**
+   * Max retry when not receiving any DaVinci status report.
+   * This is mainly for testing purpose since in local integration test, the push job runs too fast in the backend,
+   * and no DaVinci status report will mark the push job succeed right away.
+   */
+  public static final String DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS =
+      "davinci.push.status.scan.no.report.retry.max.attempts";
+
+  public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE =
+      "davinci.push.status.scan.max.offline.instance";
+
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 
@@ -1868,4 +1938,65 @@ public class ConfigKeys {
    * Config to control the queue capacity for the thread pool executor used for ssl handshake in servers.
    */
   public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
+
+  /**
+   * Number of threads for online Venice producer controlling the number of concurrent write operations.
+   */
+  public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
+
+  /**
+   * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
+   */
+  public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =
+      "client.producer.schema.refresh.interval.seconds";
+
+  /*
+   * The memory up-limit for the ingestion path while using RocksDB Plaintable format.
+   * Currently, this option is only meaningful for DaVinci use cases.
+   */
+  public static final String INGESTION_MEMORY_LIMIT = "ingestion.memory.limit";
+
+  /**
+   * Whether the ingestion is using mlock or not.
+   * Currently, this option is only meaningful for DaVinci use cases.
+   *
+   * Actually, this config option is being actively used, and it is a placeholder for the future optimization.
+   * The memory limit logic implemented today is assuming mlock usage, and to make it backward compatible when
+   * we want to do more optimization for non-mlock usage, we will ask the mlock user to enable this flag.
+   */
+  public static final String INGESTION_MLOCK_ENABLED = "ingestion.mlock.enabled";
+
+  /**
+   * Only applies the memory limiter to the stores listed in this config.
+   * This is mainly used for testing purpose since ultimately, we want to enforce memory limiter against
+   * all the stores to avoid node crash.
+   * Empty config means ingestion memory limiter will apply to all the stores.
+   */
+  public static final String INGESTION_MEMORY_LIMIT_STORE_LIST = "ingestion.memory.limit.store.list";
+
+  /**
+   * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
+   * can prevent OOMing in cases where there is a lot of historical churn in RT producers. The age of a given
+   * producer's state is defined as:
+   *
+   * most_recent_timestamp_of_all_producers - most_recent_timestamp_of_given_producer
+   *
+   * This math is computed within a single partition, not across partitions. If enabled, the clearing of old
+   * state will happen when subscribing to a partition (e.g. on server start up), and prior to syncing progress
+   * to disk (e.g. when {@link #SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE} is reached).
+   *
+   * Old state clearing is disabled if this config is set to -1.
+   */
+  public static final String DIV_PRODUCER_STATE_MAX_AGE_MS = "div.producer.state.max.age.ms";
+
+  public static final String PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS = "pub.sub.admin.adapter.factory.class";
+
+  public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
+
+  public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
+
+  /**
+   * Venice router's principal name used for ssl. Default should contain "venice-router".
+   */
+  public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
 }

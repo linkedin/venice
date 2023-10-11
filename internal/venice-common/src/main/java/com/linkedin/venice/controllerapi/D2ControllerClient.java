@@ -6,6 +6,7 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -104,7 +105,7 @@ public class D2ControllerClient extends ControllerClient {
     try {
       RestResponse response = D2ClientUtils.sendD2GetRequest(requestPath, d2Client);
       String responseBody = response.getEntity().asString(StandardCharsets.UTF_8);
-      return ControllerTransport.getObjectMapper().readValue(responseBody, responseClass);
+      return ObjectMapperFactory.getInstance().readValue(responseBody, responseClass);
     } catch (Exception e) {
       throw new VeniceException("Failed to get response for url: " + requestPath + " with D2 Client", e);
     }
@@ -119,35 +120,37 @@ public class D2ControllerClient extends ControllerClient {
         D2ServiceDiscoveryResponse.class);
   }
 
+  @Deprecated
   public static D2ServiceDiscoveryResponse discoverCluster(
       String d2ZkHost,
       String d2ServiceName,
       String storeName,
       int retryAttempts) {
+    return discoverCluster(d2ZkHost, d2ServiceName, storeName, retryAttempts, Optional.empty());
+  }
+
+  public static D2ServiceDiscoveryResponse discoverCluster(
+      String d2ZkHost,
+      String d2ServiceName,
+      String storeName,
+      int retryAttempts,
+      Optional<SSLFactory> sslFactory) {
     D2Client d2Client;
     try {
-      d2Client = D2ClientFactory.getD2Client(d2ZkHost, Optional.empty());
+      d2Client = D2ClientFactory.getD2Client(d2ZkHost, sslFactory);
       return discoverCluster(d2Client, d2ServiceName, storeName, retryAttempts);
     } finally {
       D2ClientFactory.release(d2ZkHost);
     }
   }
 
-  /**
-   * Here, if discovery fails, we will throw a VeniceException.
-   */
   public static D2ServiceDiscoveryResponse discoverCluster(
       D2Client d2Client,
       String d2ServiceName,
       String storeName,
       int retryAttempts) {
     try (D2ControllerClient client = new D2ControllerClient(d2ServiceName, "*", d2Client)) {
-      D2ServiceDiscoveryResponse discoResponse =
-          retryableRequest(client, retryAttempts, c -> discoverCluster(d2Client, d2ServiceName, storeName));
-      if (discoResponse.isError()) {
-        throw new VeniceException(discoResponse.getError());
-      }
-      return discoResponse;
+      return retryableRequest(client, retryAttempts, c -> discoverCluster(d2Client, d2ServiceName, storeName));
     }
   }
 

@@ -1,0 +1,27 @@
+{
+  "name": "SampleRecord",
+  "type": "record",
+  "fields": [
+    {
+      "name": "name",
+      "type": "string",
+      "default": "default_name"
+    },
+    {
+      "name": "floatArray",
+      "type": {
+        "type": "array",
+        "items": "float"
+      },
+      "default": []
+    },
+    {
+      "name": "stringMap",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {}
+    }
+  ]
+}

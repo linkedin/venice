@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
@@ -44,6 +45,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   protected HelixManager mockHelixManager;
   protected HelixPartitionStatusAccessor mockPushStatusAccessor;
   protected CustomizedStateProvider mockCustomizedStateProvider;
+  protected ParticipantStateTransitionStats mockParticipantStateTransitionStats;
 
   @BeforeMethod
   public void setUp() {
@@ -57,6 +59,9 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     Mockito.when(mockIngestionBackend.getStorageService()).thenReturn(mockStorageService);
     Mockito.when(mockIngestionBackend.getStoreIngestionService()).thenReturn(mockStoreIngestionService);
     mockStoreConfig = Mockito.mock(VeniceStoreVersionConfig.class);
+    Mockito.when(mockStoreConfig.getPartitionGracefulDropDelaySeconds()).thenReturn(1); // 1 second.
+    Mockito.when(mockStoreConfig.getStoreVersionName()).thenReturn(resourceName);
+    mockParticipantStateTransitionStats = Mockito.mock(ParticipantStateTransitionStats.class);
 
     mockAggVersionedIngestionStats = Mockito.mock(AggVersionedIngestionStats.class);
     mockMessage = Mockito.mock(Message.class);

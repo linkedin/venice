@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener.response;
 
 import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.venice.serializer.RecordSerializer;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import java.util.ArrayList;
@@ -18,7 +19,7 @@ public abstract class MultiKeyResponseWrapper<K> extends ReadResponse {
     records.add(record);
   }
 
-  protected abstract byte[] serializedResponse();
+  protected abstract RecordSerializer<K> getResponseSerializer();
 
   public abstract int getResponseSchemaIdHeader();
 
@@ -28,7 +29,7 @@ public abstract class MultiKeyResponseWrapper<K> extends ReadResponse {
 
   @Override
   public ByteBuf getResponseBody() {
-    return Unpooled.wrappedBuffer(serializedResponse());
+    return Unpooled.wrappedBuffer(getResponseSerializer().serializeObjects(records));
   }
 
   /**

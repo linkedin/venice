@@ -41,8 +41,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaReader;
@@ -71,7 +70,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -79,7 +78,6 @@ import org.apache.logging.log4j.Logger;
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
 
-  private final ZkClient zkClient;
   private final VeniceConfigLoader configLoader;
   private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -104,7 +102,7 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig) {
-    LOGGER.info("Creating Da Vinci backend");
+    LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
       this.configLoader = configLoader;
@@ -121,7 +119,6 @@ public class DaVinciBackend implements Closeable {
       }
       storeRepository = (SubscriptionBasedReadOnlyStoreRepository) readOnlyStoreRepository;
       schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
-      zkClient = veniceMetadataRepositoryBuilder.getZkClient();
 
       VeniceProperties backendProps = backendConfig.getClusterProperties();
 
@@ -155,17 +152,40 @@ public class DaVinciBackend implements Closeable {
       // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage
       // services.
       IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(configLoader);
+      /**
+       * The constructor of {@link #storageService} will take care of unused store/store version cleanup.
+       *
+       * When Ingestion Isolation is enabled, we don't want to restore data partitions here:
+       * 1. It is a waste of effort since all the opened partitioned will be closed right after.
+       * 2. When DaVinci memory limiter is enabled, currently, SSTFileManager doesn't clean up the entries belonging
+       *    to the closed database, which means when the Isolated process hands the database back to the main process,
+       *    some removed SST files (some SST files can be removed in Isolated Process because of log compaction) will
+       *    remain in SSTFileManager tracked file list.
+       * 3. We still want to open metadata partition, otherwise {@link StorageService} won't scan the local db folder.
+       *    Also opening metadata partition in main process won't cause much side effect from DaVinci memory limiter's
+       *    POV, since metadata partition won't be handed back to main process in the future.
+       * 4. When Ingestion Isolation is enabled with suppressing live update feature, main process needs to open all the
+       *    data partitions since Isolated Process won't re-ingest the existing partitions.
+       */
+      boolean whetherToRestoreDataPartitions = !isIsolatedIngestion()
+          || configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
+      LOGGER.info("DaVinci {} restore data partitions.", whetherToRestoreDataPartitions ? "will" : "won't");
       storageService = new StorageService(
           configLoader,
           aggVersionedStorageEngineStats,
           rocksDBMemoryStats,
           storeVersionStateSerializer,
           partitionStateSerializer,
-          storeRepository);
+          storeRepository,
+          whetherToRestoreDataPartitions,
+          true,
+          functionToCheckWhetherStorageEngineShouldBeKeptOrNot(managedClients));
       storageService.start();
-
-      VeniceWriterFactory writerFactory = new VeniceWriterFactory(backendProps.toProperties());
-      String instanceName = Utils.getHostName() + "_" + Utils.getPid();
+      PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
+      VeniceWriterFactory writerFactory =
+          new VeniceWriterFactory(backendProps.toProperties(), pubSubClientsFactory.getProducerAdapterFactory(), null);
+      String pid = Utils.getPid();
+      String instanceName = Utils.getHostName() + "_" + (pid == null ? "NA" : pid);
       int derivedSchemaID = backendProps.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
       pushStatusStoreWriter = new PushStatusStoreWriter(writerFactory, instanceName, derivedSchemaID);
 
@@ -200,6 +220,7 @@ public class DaVinciBackend implements Closeable {
 
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
+
       ingestionService = new KafkaStoreIngestionService(
           storageService.getStorageEngineRepository(),
           configLoader,
@@ -222,7 +243,8 @@ public class DaVinciBackend implements Closeable {
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
-          new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()));
+          pubSubClientsFactory,
+          Optional.empty());
 
       ingestionService.start();
       ingestionService.addIngestionNotifier(ingestionListener);
@@ -237,7 +259,7 @@ public class DaVinciBackend implements Closeable {
             "Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
       }
 
-      bootstrap(managedClients);
+      bootstrap();
 
       storeRepository.registerStoreDataChangedListener(storeChangeListener);
       cacheBackend.ifPresent(
@@ -251,14 +273,69 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  protected synchronized void bootstrap(Optional<Set<String>> managedClients) {
+  private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot(
+      Optional<Set<String>> managedClients) {
+    return storageEngineName -> {
+      String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+      if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
+        // Do not bootstrap meta system store via DaVinci backend initialization since the operation is not supported by
+        // ThinClientMetaStoreBasedRepository. This shouldn't happen normally, but it's possible if the user was using
+        // DVC based metadata for the same store and switched to thin client based metadata.
+        return true;
+      }
+      /**
+       * If the corresponding Venice store doesn't even exist, the local storage engine will be removed.
+       * If the managed client feature is enabled, but the storage engine is not on the list, the local
+       * storage engine will be removed.
+       */
+      boolean storeShouldBeDeleted = false;
+      try {
+        StoreBackend storeBackend = getStoreOrThrow(storeName); // throws VeniceNoStoreException
+        if (managedClients.isPresent() && !managedClients.get().contains(storeName) && storeBackend.isManaged()) {
+          // If the store is not-managed, all its versions will be removed.
+          LOGGER.info("Will delete unused managed version: {}", storageEngineName);
+          storeShouldBeDeleted = true;
+        }
+      } catch (VeniceNoStoreException e) {
+        // The store does not exist in Venice anymore, so it will be deleted.
+        LOGGER.warn("Store does not exist, will delete invalid local version: {}", storageEngineName);
+        storeShouldBeDeleted = true;
+      }
+      if (storeShouldBeDeleted) {
+        /**
+         * Clean up the local state.
+         * Since it is possible there could multiple versions for the same store, the following cleanup
+         * logic should work for multiple times of cleanup for the same store.
+         */
+        deleteStore(storeName);
+        String baseDataPath = configLoader.getVeniceServerConfig().getDataBasePath();
+        new StoreBackendConfig(baseDataPath, storeName).delete();
+        return false;
+      }
+
+      // Check whether the local storage engine belongs to any valid store version or not
+      Set<Integer> validVersionNumbers = new HashSet<>();
+      Optional<Version> latestVersion = getVeniceLatestNonFaultyVersion(storeName, Collections.emptySet());
+      Optional<Version> currentVersion = getVeniceCurrentVersion(storeName);
+      currentVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
+      latestVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
+
+      int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
+      // The version is no longer valid (stale version), it will be deleted.
+      if (!validVersionNumbers.contains(versionNumber)) {
+        LOGGER.info("Will delete obsolete local version: {}", storageEngineName);
+        return false;
+      }
+      return true;
+    };
+  }
+
+  private synchronized void bootstrap() {
     List<AbstractStorageEngine> storageEngines =
         storageService.getStorageEngineRepository().getAllLocalStorageEngines();
-    LOGGER.info("Starting bootstrap, storageEngines: {}, managedClients: {}", storageEngines, managedClients);
-    Map<String, Set<Integer>> expectedBootstrapVersions = new HashMap<>();
+    LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
-    Set<String> unusedStores = new HashSet<>();
     for (AbstractStorageEngine storageEngine: storageEngines) {
       String kafkaTopicName = storageEngine.getStoreName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
@@ -270,39 +347,12 @@ public class DaVinciBackend implements Closeable {
       }
 
       try {
-        StoreBackend storeBackend = getStoreOrThrow(storeName); // throws VeniceNoStoreException
-        if (managedClients.isPresent() && !managedClients.get().contains(storeName) && storeBackend.isManaged()) {
-          // If the store is not-managed, all its versions will be removed.
-          LOGGER.info("Deleting unused managed version: {}", kafkaTopicName);
-          unusedStores.add(storeName);
-          storageService.removeStorageEngine(kafkaTopicName);
-          continue;
-        }
+        getStoreOrThrow(storeName); // throws VeniceNoStoreException
       } catch (VeniceNoStoreException e) {
-        // The store does not exist in Venice anymore, so it will be deleted.
-        LOGGER.info("Store does not exist, deleting invalid local version: {}", kafkaTopicName);
-        unusedStores.add(storeName);
-        storageService.removeStorageEngine(kafkaTopicName);
-        continue;
-      }
-
-      // Initialize expected version numbers for each store.
-      if (!expectedBootstrapVersions.containsKey(storeName)) {
-        Set<Integer> validVersionNumbers = new HashSet<>();
-        Optional<Version> latestVersion = getVeniceLatestNonFaultyVersion(storeName, Collections.emptySet());
-        Optional<Version> currentVersion = getVeniceCurrentVersion(storeName);
-        currentVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
-        latestVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
-        expectedBootstrapVersions.put(storeName, validVersionNumbers);
+        throw new VeniceException("Unexpected to encounter non-existing store here: " + storeName);
       }
 
       int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopicName);
-      // The version is no longer valid (stale version), it will be deleted.
-      if (!expectedBootstrapVersions.get(storeName).contains(versionNumber)) {
-        LOGGER.info("Deleting obsolete local version: {}", kafkaTopicName);
-        storageService.removeStorageEngine(kafkaTopicName);
-        continue;
-      }
 
       Version version = storeRepository.getStoreOrThrow(storeName)
           .getVersion(versionNumber)
@@ -321,21 +371,6 @@ public class DaVinciBackend implements Closeable {
           && (storeNameToBootstrapVersionMap.get(storeName).getNumber() < versionNumber))) {
         storeNameToBootstrapVersionMap.put(storeName, version);
         storeNameToPartitionListMap.put(storeName, storageService.getUserPartitions(kafkaTopicName));
-      }
-    }
-    /**
-     * Remove unused store's {@link StoreBackend} to avoid duplicate metrics registration issues when iterating storage
-     * engines for different versions of the same store.
-     */
-    for (String unusedStoreName: unusedStores) {
-      deleteStore(unusedStoreName);
-    }
-
-    // Cleanup stale StaleBackendConfig
-    String baseDataPath = configLoader.getVeniceServerConfig().getDataBasePath();
-    for (String storeName: StoreBackendConfig.listConfigs(baseDataPath)) {
-      if (!storeByNameMap.containsKey(storeName)) {
-        new StoreBackendConfig(baseDataPath, storeName).delete();
       }
     }
 
@@ -417,9 +452,6 @@ public class DaVinciBackend implements Closeable {
       ingestionBackend.close();
       ingestionService.stop();
       storageService.stop();
-      if (zkClient != null) {
-        zkClient.close();
-      }
       metricsRepository.close();
       storeRepository.clear();
       schemaRepository.clear();
@@ -594,9 +626,13 @@ public class DaVinciBackend implements Closeable {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
+          /**
+           * Report push status needs to be executed before deleting the {@link VersionBackend}.
+           */
+          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
+
           versionBackend.completePartitionExceptionally(partitionId, e);
           versionBackend.tryStopHeartbeat();
-          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
         }
       });
     }

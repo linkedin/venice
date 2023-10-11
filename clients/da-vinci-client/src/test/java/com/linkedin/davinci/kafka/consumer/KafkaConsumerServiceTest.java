@@ -11,14 +11,14 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.SystemTime;
@@ -36,7 +36,7 @@ import org.testng.annotations.Test;
 
 public class KafkaConsumerServiceTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private final KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+  private final PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
       new OptimizedKafkaValueSerializer(),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new));

@@ -21,7 +21,7 @@ public class MainIngestionStorageMetadataServiceTest {
   @Test
   public void testGetLastOffset() {
     VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
-    when(configLoader.getCombinedProperties()).thenReturn(new VeniceProperties());
+    when(configLoader.getCombinedProperties()).thenReturn(VeniceProperties.empty());
     when(configLoader.getVeniceServerConfig()).thenReturn(mock(VeniceServerConfig.class));
 
     MainIngestionStorageMetadataService mainIngestionStorageMetadataService = new MainIngestionStorageMetadataService(

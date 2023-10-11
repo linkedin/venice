@@ -41,6 +41,10 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
@@ -48,6 +52,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
@@ -57,6 +66,7 @@ import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
+import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
@@ -66,10 +76,14 @@ import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
@@ -85,7 +99,14 @@ import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
@@ -115,6 +136,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerConfig.class);
+  private static final String LIST_SEPARATOR = ",\\s*";
 
   private final int adminPort;
 
@@ -124,6 +146,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
   private final boolean parent;
+  private final List<String> childDataCenterAllowlist;
   private final Map<String, String> childDataCenterControllerUrlMap;
   private final String d2ServiceName;
   private final String clusterDiscoveryD2ServiceName;
@@ -186,6 +209,15 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * To decide whether to initialize push status store related components.
    */
   private final boolean isDaVinciPushStatusStoreEnabled;
+
+  private final boolean daVinciPushStatusScanEnabled;
+  private final int daVinciPushStatusScanIntervalInSeconds;
+
+  private final int daVinciPushStatusScanThreadNumber;
+
+  private final int daVinciPushStatusScanNoReportRetryMaxAttempt;
+
+  private final int daVinciPushStatusScanMaxOfflineInstance;
 
   private final boolean zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
 
@@ -250,7 +282,21 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
+  private final boolean parentSystemStoreRepairServiceEnabled;
+
+  private final int parentSystemStoreRepairCheckIntervalSeconds;
+
+  private final int parentSystemStoreHeartbeatCheckWaitTimeSeconds;
+
+  private final int parentSystemStoreRepairRetryCount;
+
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
+
+  private final boolean systemSchemaInitializationAtStartTimeEnabled;
+
+  private final boolean isKMERegistrationFromMessageHeaderEnabled;
+
+  private final PubSubClientsFactory pubSubClientsFactory;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -277,9 +323,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     if (dataCenterAllowlist.isEmpty()) {
       this.childDataCenterControllerUrlMap = Collections.emptyMap();
       this.childDataCenterControllerD2Map = Collections.emptyMap();
+      this.childDataCenterAllowlist = Collections.emptyList();
     } else {
       this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterAllowlist);
       this.childDataCenterControllerD2Map = parseClusterMap(props, dataCenterAllowlist, true);
+      this.childDataCenterAllowlist = Arrays.asList(dataCenterAllowlist.split(LIST_SEPARATOR));
     }
     this.d2ServiceName =
         childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
@@ -329,6 +377,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.adminConsumptionTimeoutMinute = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
     this.adminConsumptionCycleTimeoutMs =
         props.getLong(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
+    // A value of one will result in a bad message for one store to block the admin message consumption of other stores.
+    // Consider changing the config to > 1
     this.adminConsumptionMaxWorkerThreadPoolSize = props.getInt(ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 1);
     this.storageEngineOverheadRatio = props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO, 0.85d);
 
@@ -410,6 +460,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds =
         props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
     this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+    this.daVinciPushStatusScanEnabled =
+        props.getBoolean(DAVINCI_PUSH_STATUS_SCAN_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
+    this.daVinciPushStatusScanIntervalInSeconds = props.getInt(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 30);
+    this.daVinciPushStatusScanThreadNumber = props.getInt(DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER, 4);
+    this.daVinciPushStatusScanNoReportRetryMaxAttempt =
+        props.getInt(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 6);
+    this.daVinciPushStatusScanMaxOfflineInstance = props.getInt(DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE, 10);
+
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     this.systemStoreAclSynchronizationDelayMs =
@@ -440,10 +498,45 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
     this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
+    this.parentSystemStoreRepairServiceEnabled =
+        props.getBoolean(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED, false);
+    this.parentSystemStoreRepairCheckIntervalSeconds =
+        props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS, 1800);
+    this.parentSystemStoreHeartbeatCheckWaitTimeSeconds =
+        props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS, 60);
+    this.parentSystemStoreRepairRetryCount = props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT, 1);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     this.parentExternalSupersetSchemaGenerationEnabled =
         props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
+    this.systemSchemaInitializationAtStartTimeEnabled =
+        props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
+    this.isKMERegistrationFromMessageHeaderEnabled =
+        props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
+
+    try {
+      String producerFactoryClassName =
+          props.getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
+      String consumerFactoryClassName =
+          props.getString(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
+      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
+          (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
+      String adminFactoryClassName =
+          props.getString(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
+      PubSubAdminAdapterFactory pubSubAdminAdapterFactory =
+          (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
+
+      pubSubClientsFactory = new PubSubClientsFactory(
+          pubSubProducerAdapterFactory,
+          pubSubConsumerAdapterFactory,
+          pubSubAdminAdapterFactory);
+    } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
+      LOGGER.error("Failed to create an instance of pub sub clients factory", e);
+      throw new VeniceException(e);
+    }
+
   }
 
   private void validateActiveActiveConfigs() {
@@ -519,6 +612,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return topicCleanupSleepIntervalBetweenTopicListFetchMs;
   }
 
+  public int getDaVinciPushStatusScanMaxOfflineInstance() {
+    return daVinciPushStatusScanMaxOfflineInstance;
+  }
+
   public int getTopicCleanupDelayFactor() {
     return topicCleanupDelayFactor;
   }
@@ -547,6 +644,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public Map<String, String> getChildDataCenterKafkaUrlMap() {
     return childDataCenterKafkaUrlMap;
+  }
+
+  public List<String> getChildDataCenterAllowlist() {
+    return childDataCenterAllowlist;
   }
 
   public Set<String> getActiveActiveRealTimeSourceFabrics() {
@@ -717,6 +818,22 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return isDaVinciPushStatusStoreEnabled;
   }
 
+  public int getDaVinciPushStatusScanIntervalInSeconds() {
+    return daVinciPushStatusScanIntervalInSeconds;
+  }
+
+  public boolean isDaVinciPushStatusScanEnabled() {
+    return daVinciPushStatusScanEnabled;
+  }
+
+  public int getDaVinciPushStatusScanThreadNumber() {
+    return daVinciPushStatusScanThreadNumber;
+  }
+
+  public int getDaVinciPushStatusScanNoReportRetryMaxAttempt() {
+    return daVinciPushStatusScanNoReportRetryMaxAttempt;
+  }
+
   public boolean isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled() {
     return zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
   }
@@ -772,6 +889,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return getProps().getString(CHILD_CLUSTER_URL_PREFIX + fabric, "");
   }
 
+  public String getChildControllerD2ServiceName() {
+    return getProps().getString(CHILD_CLUSTER_D2_SERVICE_NAME, "");
+  }
+
   public String getChildControllerD2ZkHost(String fabric) {
     return getProps().getString(CHILD_CLUSTER_D2_PREFIX + fabric, "");
   }
@@ -816,8 +937,36 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
   }
 
+  public boolean isParentSystemStoreRepairServiceEnabled() {
+    return parentSystemStoreRepairServiceEnabled;
+  }
+
+  public int getParentSystemStoreRepairCheckIntervalSeconds() {
+    return parentSystemStoreRepairCheckIntervalSeconds;
+  }
+
+  public int getParentSystemStoreHeartbeatCheckWaitTimeSeconds() {
+    return parentSystemStoreHeartbeatCheckWaitTimeSeconds;
+  }
+
+  public int getParentSystemStoreRepairRetryCount() {
+    return parentSystemStoreRepairRetryCount;
+  }
+
   public boolean isParentExternalSupersetSchemaGenerationEnabled() {
     return parentExternalSupersetSchemaGenerationEnabled;
+  }
+
+  public boolean isSystemSchemaInitializationAtStartTimeEnabled() {
+    return systemSchemaInitializationAtStartTimeEnabled;
+  }
+
+  public boolean isKMERegistrationFromMessageHeaderEnabled() {
+    return isKMERegistrationFromMessageHeaderEnabled;
+  }
+
+  public PubSubClientsFactory getPubSubClientsFactory() {
+    return pubSubClientsFactory;
   }
 
   /**
@@ -839,7 +988,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     String propsPrefix = D2Routing ? CHILD_CLUSTER_D2_PREFIX : CHILD_CLUSTER_URL_PREFIX;
     return parseChildDataCenterToValue(propsPrefix, clusterPros, datacenterAllowlist, (m, k, v, errMsg) -> {
       m.computeIfAbsent(k, key -> {
-        String[] uriList = v.split(",\\s*");
+        String[] uriList = v.split(LIST_SEPARATOR);
 
         if (D2Routing && uriList.length != 1) {
           throw new VeniceException(errMsg + ": can only have 1 zookeeper url");
@@ -890,7 +1039,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
 
     Map<String, String> outputMap = new HashMap<>();
-    List<String> allowlist = Arrays.asList(datacenterAllowlist.split(",\\s*"));
+    List<String> allowlist = Arrays.asList(datacenterAllowlist.split(LIST_SEPARATOR));
 
     for (Map.Entry<Object, Object> uriEntry: childDataCenterKafkaUriProps.entrySet()) {
       String datacenter = (String) uriEntry.getKey();

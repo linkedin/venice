@@ -5,13 +5,13 @@ import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
@@ -28,8 +28,10 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
@@ -41,8 +43,7 @@ import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -70,10 +71,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -149,9 +150,13 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private IsolatedIngestionRequestClient reportClient;
   private IsolatedIngestionRequestClient metricClient;
   private volatile long heartbeatTimeInMs = System.currentTimeMillis();
-  private int stopConsumptionWaitRetriesNum;
+  private int stopConsumptionTimeoutInSeconds;
   private DefaultIngestionBackend ingestionBackend;
   private final RemoteIngestionRepairService repairService;
+
+  private LeakedResourceCleaner leakedResourceCleaner;
+
+  private final VeniceServerConfig serverConfig;
 
   public IsolatedIngestionServer(String configPath) throws FileNotFoundException {
     VeniceProperties loadedVeniceProperties = IsolatedIngestionUtils.loadVenicePropertiesFromFile(configPath);
@@ -161,7 +166,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     Map<String, Map<String, String>> kafkaClusterMap =
         IsolatedIngestionUtils.loadForkedIngestionKafkaClusterMapConfig(configBasePath);
     this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties, kafkaClusterMap);
-    this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
+    this.serverConfig = configLoader.getVeniceServerConfig();
+
+    this.servicePort = serverConfig.getIngestionServicePort();
     this.connectionTimeoutMs =
         configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 180)
             * Time.MS_PER_SECOND;
@@ -236,6 +243,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       LOGGER.info("StorageService has been shutdown.");
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Ingestion Service", e);
+    }
+
+    if (leakedResourceCleaner != null) {
+      leakedResourceCleaner.stop();
     }
 
     heartbeatCheckScheduler.shutdownNow();
@@ -330,8 +341,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     return storeVersionStateSerializer;
   }
 
-  public int getStopConsumptionWaitRetriesNum() {
-    return stopConsumptionWaitRetriesNum;
+  public int getStopConsumptionTimeoutInSeconds() {
+    return stopConsumptionTimeoutInSeconds;
   }
 
   public Map<String, Double> getMetricsMap() {
@@ -364,7 +375,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
    * and child process.
    * One previous example of the deadlock situation could happen when VersionBackend is trying to unsubscribe a topic partition,
    * it will hold VersionBackend instance lock, and send a blocking call to isolated ingestion service to call
-   * {@link KafkaStoreIngestionService#stopConsumptionAndWait(VeniceStoreVersionConfig, int, int, int)}, inside which it will
+   * {@link KafkaStoreIngestionService#stopConsumptionAndWait(VeniceStoreVersionConfig, int, int, int, boolean)}, inside which it will
    * wait up to 30 seconds to drain internal messages for the partition. For SOP message, it will call
    * {@link com.linkedin.davinci.notifier.VeniceNotifier#started(String, int)} and in ingestion isolation case it will
    * send a blocking call to main process to report progress. The logic inside Da Vinci Client ingestion notifier's
@@ -481,42 +492,84 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   void stopConsumptionAndReport(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
-    Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
+    // Unsubscribe resource here so all incoming requests should be rejected and retried until handover is completed.
+    setResourceToBeUnsubscribed(topicName, partitionId);
+
+    CompletableFuture<Boolean> asyncShutdownResourceTaskFuture =
+        submitStopConsumptionAndCloseStorageTask(topicName, partitionId);
     getStatusReportingExecutor().execute(() -> {
       try {
-        executionFuture.get();
+        if (!asyncShutdownResourceTaskFuture.get()) {
+          return;
+        }
       } catch (ExecutionException | InterruptedException e) {
         LOGGER.warn(
-            "Encounter exception when trying to stop consumption and close storage for {} of topic: {}",
+            "Encounter exception when waiting future execution of stop consumption and close storage for {} of topic: {}",
             partitionId,
             topicName);
       }
-      if (getReportClient().reportIngestionStatus(report)) {
-        setResourceToBeUnsubscribed(topicName, partitionId);
+      /**
+       * Only when we actively stop partition consumption do we report the ingestion status here. Otherwise, we will not
+       * perform ingestion handover.
+       */
+      if (!getReportClient().reportIngestionStatus(report)) {
+        LOGGER.warn("Failed to deliver ingestion report to main process");
       }
     });
+
   }
 
   /**
    * Handle the logic of COMPLETED/ERROR here since we need to stop related ingestion task and close RocksDB partition.
    * Since the logic takes time to wait for completion, we need to execute it in async fashion to prevent blocking other operations.
    */
-  Future<?> submitStopConsumptionAndCloseStorageTask(IngestionTaskReport report) {
-    String topicName = report.topicName.toString();
-    int partitionId = report.partitionId;
-    return longRunningTaskExecutor.submit(() -> {
-      VeniceStoreVersionConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
-      // Make sure partition is not consuming so we can safely close the rocksdb partition
-      long startTimeInMs = System.currentTimeMillis();
-      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum);
-      // Close all RocksDB sub-Partitions in Ingestion Service.
-      getStorageService().closeStorePartition(storeConfig, partitionId);
-      LOGGER.info(
-          "Partition: {} of topic: {} closed in {} ms.",
-          partitionId,
-          topicName,
-          LatencyUtils.getElapsedTimeInMs(startTimeInMs));
-    });
+  CompletableFuture<Boolean> submitStopConsumptionAndCloseStorageTask(String topicName, int partitionId) {
+    return CompletableFuture.supplyAsync(() -> {
+      /**
+       * Wait for all pending ingestion action on this partition to be completed in async fashion, which is expected to
+       * be fast. This check must be executed in async fashion as startConsumption may report COMPLETED directly and the
+       * pending action counter will not be 0 if it is called in the same thread.
+       */
+      getStoreIngestionService()
+          .waitIngestionTaskToCompleteAllPartitionPendingActions(topicName, partitionId, 100, 300);
+      /**
+       * For Da Vinci Live Update suppression, it is actively stopping ingestion so isPartitionConsuming() is not working.
+       * Since Da Vinci does not have issue of receiving stopConsumption and handover at the same time, original race
+       * condition won't be an issue for DVC.
+       */
+      boolean shouldHandoverResource = getStoreIngestionService().isPartitionConsuming(topicName, partitionId)
+          || getStoreIngestionService().isLiveUpdateSuppressionEnabled();
+      if (shouldHandoverResource) {
+        VeniceStoreVersionConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
+        // Make sure partition is not consuming, so we can safely close the rocksdb partition
+        long startTimeInMs = System.currentTimeMillis();
+        final int stopConsumptionWaitIntervalInSeconds = 1;
+        getStoreIngestionService().stopConsumptionAndWait(
+            storeConfig,
+            partitionId,
+            stopConsumptionWaitIntervalInSeconds,
+            stopConsumptionTimeoutInSeconds / stopConsumptionWaitIntervalInSeconds,
+            false);
+        // Close all RocksDB sub-Partitions in Ingestion Service.
+        getStorageService().closeStorePartition(storeConfig, partitionId);
+        LOGGER.info(
+            "Partition: {} of topic: {} closed in {} ms.",
+            partitionId,
+            topicName,
+            LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+        return true;
+      } else {
+        // If pending ingestion action stops consumption (unsubscribe), we will not handover ingestion and we should
+        // restore the subscribed state.
+        LOGGER.warn("Topic: {}, partition: {} is not consuming, will not handover ingestion.", topicName, partitionId);
+        setResourceToBeSubscribed(topicName, partitionId);
+        return false;
+      }
+    }, getLongRunningTaskExecutor());
+  }
+
+  ExecutorService getLongRunningTaskExecutor() {
+    return longRunningTaskExecutor;
   }
 
   private void checkHeartbeatTimeout() {
@@ -586,24 +639,13 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   private void initializeIsolatedIngestionServer() {
-    stopConsumptionWaitRetriesNum =
-        configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 180);
+    stopConsumptionTimeoutInSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
 
     // Initialize D2Client.
-    SSLFactory sslFactory = null;
-    D2Client d2Client;
     String d2ZkHosts = configLoader.getCombinedProperties().getString(D2_ZK_HOSTS_ADDRESS);
-    sslFactory = IsolatedIngestionUtils.getSSLFactoryForIngestion(configLoader).orElse(null);
-    if (sslFactory != null) {
-      d2Client = new D2ClientBuilder().setZkHosts(d2ZkHosts)
-          .setIsSSLEnabled(true)
-          .setSSLParameters(sslFactory.getSSLParameters())
-          .setSSLContext(sslFactory.getSSLContext())
-          .build();
-    } else {
-      d2Client = new D2ClientBuilder().setZkHosts(d2ZkHosts).build();
-    }
-    IsolatedIngestionUtils.startD2Client(d2Client);
+    Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactoryForIngestion(configLoader);
+    D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
 
     final String clusterDiscoveryD2ServiceName = configLoader.getCombinedProperties()
         .getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
@@ -639,9 +681,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
 
     // Create RocksDBMemoryStats.
-    boolean plainTableEnabled =
-        configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
-    RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()
+    boolean plainTableEnabled = serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
+    RocksDBMemoryStats rocksDBMemoryStats = serverConfig.isDatabaseMemoryStatsEnabled()
         ? new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled)
         : null;
 
@@ -673,7 +714,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
         metricsRepository,
         storeRepository,
-        configLoader.getVeniceServerConfig().isUnregisterMetricForDeletedStoreEnabled());
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
     /**
      * The reason of not to restore the data partitions during initialization of storage service is:
      * 1. During first fresh start up with no data on disk, we don't need to restore anything
@@ -685,6 +726,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
      * automatically open the metadata partitions. Also, during Da Vinci bootstrap, main process will need to open the
      * metadata partition of storage engines in order to perform full cleanup of stale versions.
      */
+    boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
+
     storageService = new StorageService(
         configLoader,
         storageEngineStats,
@@ -708,7 +751,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     StorageEngineBackedCompressorFactory compressorFactory =
         new StorageEngineBackedCompressorFactory(storageMetadataService);
 
-    boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
+    PubSubClientsFactory pubSubClientsFactory = serverConfig.getPubSubClientsFactory();
+
     // Create KafkaStoreIngestionService
     storeIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -731,14 +775,23 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         Optional.empty(),
         isDaVinciClient,
         repairService,
-        new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()));
+        pubSubClientsFactory,
+        sslFactory);
     storeIngestionService.start();
     storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));
     ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);
 
-    LOGGER.info(
-        "Starting report client with target application port: {}",
-        configLoader.getVeniceServerConfig().getIngestionApplicationPort());
+    if (serverConfig.isLeakedResourceCleanupEnabled()) {
+      this.leakedResourceCleaner = new LeakedResourceCleaner(
+          storageService.getStorageEngineRepository(),
+          serverConfig.getLeakedResourceCleanUpIntervalInMS(),
+          storeRepository,
+          storeIngestionService,
+          storageService,
+          metricsRepository);
+      leakedResourceCleaner.start();
+    }
+    LOGGER.info("Starting report client with target application port: {}", serverConfig.getIngestionApplicationPort());
     // Create Netty client to report ingestion status back to main process.
     reportClient = new IsolatedIngestionRequestClient(configLoader);
     // Create Netty client to report metrics update back to main process.

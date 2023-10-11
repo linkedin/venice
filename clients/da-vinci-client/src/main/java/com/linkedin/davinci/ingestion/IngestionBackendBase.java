@@ -8,6 +8,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import java.io.Closeable;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 
 public interface IngestionBackendBase extends Closeable {
@@ -20,7 +21,7 @@ public interface IngestionBackendBase extends Closeable {
       int partition,
       Optional<LeaderFollowerStateType> leaderState);
 
-  void stopConsumption(VeniceStoreVersionConfig storeConfig, int partition);
+  CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition);
 
   void killConsumptionTask(String topicName);
 

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -29,7 +30,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
@@ -64,6 +64,10 @@ import org.apache.logging.log4j.Logger;
  * This class is used to create a task, which will consume the admin messages from the special admin topics.
  */
 public class AdminConsumptionTask implements Runnable, Closeable {
+  // Setting this to a value so that admin queue will not go out of memory in case of too many admin messages.
+  // If we hit this number , there is most likely something seriously wrong with the system.
+  private static final int MAX_WORKER_QUEUE_SIZE = 10000;
+
   private static class AdminErrorInfo {
     long offset;
     Exception exception;
@@ -237,6 +241,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
 
+  /**
+   * The local region name of the controller.
+   */
+  private final String regionName;
+
   public AdminConsumptionTask(
       String clusterName,
       PubSubConsumerAdapter consumer,
@@ -252,7 +261,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       long processingCycleTimeoutInMs,
       int maxWorkerThreadPoolSize,
       PubSubTopicRepository pubSubTopicRepository,
-      KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      String regionName) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
@@ -274,18 +284,20 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
+    // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
-        1,
+        maxWorkerThreadPoolSize,
         maxWorkerThreadPoolSize,
         60,
         TimeUnit.SECONDS,
-        new LinkedBlockingQueue<>(),
+        new LinkedBlockingQueue<>(MAX_WORKER_QUEUE_SIZE),
         new DaemonThreadFactory("Venice-Admin-Execution-Task"));
     this.undelegatedRecords = new LinkedList<>();
     this.stats.setAdminConsumptionFailedOffset(failingOffset);
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     this.pubSubTopic = pubSubTopicRepository.getTopic(topic);
+    this.regionName = regionName;
 
     if (remoteConsumptionEnabled) {
       if (!remoteKafkaServerUrl.isPresent()) {
@@ -497,7 +509,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 admin,
                 executionIdAccessor,
                 isParentController,
-                stats));
+                stats,
+                regionName));
         stores.add(entry.getKey());
       }
     }
@@ -815,6 +828,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                   + " because it does not contain a storeName field");
         }
     }
+    storeName = VeniceSystemStoreType.extractUserStoreName(storeName);
     return storeName;
   }
 

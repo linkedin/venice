@@ -267,6 +267,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public int getDataRecoverySourceVersionNumber() {
+      return delegate.getDataRecoverySourceVersionNumber();
+    }
+
+    @Override
+    public void setDataRecoverySourceVersionNumber(int dataRecoverySourceVersionNumber) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public DataRecoveryVersionConfig clone() {
       return this.delegate.clone();
     }
@@ -285,6 +295,11 @@ public class ReadOnlyStore implements Store {
     @Override
     public int getNumber() {
       return this.delegate.getNumber();
+    }
+
+    @Override
+    public void setNumber(int number) {
+      throw new UnsupportedOperationException();
     }
 
     @Override
@@ -375,6 +390,11 @@ public class ReadOnlyStore implements Store {
     @Override
     public String getPushJobId() {
       return this.delegate.getPushJobId();
+    }
+
+    @Override
+    public void setPushJobId(String pushJobId) {
+      throw new UnsupportedOperationException();
     }
 
     @Override
@@ -1202,6 +1222,11 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void addVersion(Version version, boolean isClonedVersion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public void forceAddVersion(Version version, boolean isClonedVersion) {
     throw new UnsupportedOperationException();
   }
@@ -1260,6 +1285,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void fixMissingFields() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isStorageNodeReadQuotaEnabled() {
+    return this.delegate.isStorageNodeReadQuotaEnabled();
+  }
+
+  @Override
+  public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getMinCompactionLagSeconds() {
+    return this.delegate.getMinCompactionLagSeconds();
+  }
+
+  @Override
+  public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
     throw new UnsupportedOperationException();
   }
 

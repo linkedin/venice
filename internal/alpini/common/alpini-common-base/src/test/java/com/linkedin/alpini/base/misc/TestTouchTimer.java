@@ -75,7 +75,6 @@ public class TestTouchTimer {
 
     // Make sure the final output has all the important bits of info
     String s = timer.toString();
-    System.out.println(s);
     Assert.assertTrue(s.contains("first"), "toString was missing \"first\" touch.");
     Assert.assertTrue(s.contains("second(string)"), "toString was missing \"second\" touch.");
     Assert.assertTrue(s.contains("third"), "toString was missing \"third\" touch.");

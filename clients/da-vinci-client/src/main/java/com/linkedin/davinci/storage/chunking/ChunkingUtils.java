@@ -5,12 +5,11 @@ import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
+import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -74,21 +73,7 @@ public class ChunkingUtils {
       int partition,
       ByteBuffer keyBuffer,
       ReadResponse response) {
-    return getFromStorage(
-        adapter,
-        store,
-        -1,
-        partition,
-        keyBuffer,
-        response,
-        null,
-        null,
-        null,
-        false,
-        null,
-        null,
-        null,
-        false);
+    return getFromStorage(adapter, store, partition, keyBuffer, response, null, null, -1, null, null, false, null);
   }
 
   static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getReplicationMetadataFromStorage(
@@ -96,22 +81,21 @@ public class ChunkingUtils {
       AbstractStorageEngine store,
       int partition,
       ByteBuffer keyBuffer,
-      ReadResponse response) {
+      ReadResponse response,
+      ChunkedValueManifestContainer manifestContainer) {
     return getFromStorage(
         adapter,
         store,
-        -1,
         partition,
         keyBuffer,
         response,
         null,
         null,
-        null,
-        false,
-        null,
+        -1,
         null,
         null,
-        true);
+        true,
+        manifestContainer);
   }
 
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
@@ -123,10 +107,8 @@ public class ChunkingUtils {
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
       ReadResponse response,
-      CompressionStrategy compressionStrategy,
-      boolean fastAvroEnabled,
-      ReadOnlySchemaRepository schemaRepo,
-      String storeName,
+      int readerSchemaId,
+      StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
     reusedRawValue = store.get(partition, keyBuffer, reusedRawValue);
@@ -139,17 +121,15 @@ public class ChunkingUtils {
         databaseLookupStartTimeInNS,
         adapter,
         store,
-        schemaRepo.getSupersetOrLatestValueSchema(storeName).getId(),
         partition,
         response,
         reusedValue,
         reusedDecoder,
-        compressionStrategy,
-        fastAvroEnabled,
-        schemaRepo,
-        storeName,
+        readerSchemaId,
+        storeDeserializerCache,
         compressor,
-        false);
+        false,
+        null);
   }
 
   static <CHUNKS_CONTAINER, VALUE> void getFromStorageByPartialKey(
@@ -161,10 +141,8 @@ public class ChunkingUtils {
       RecordDeserializer<GenericRecord> keyRecordDeserializer,
       BinaryDecoder reusedDecoder,
       ReadResponse response,
-      CompressionStrategy compressionStrategy,
-      boolean fastAvroEnabled,
-      ReadOnlySchemaRepository schemaRepo,
-      String storeName,
+      int readerSchemaId,
+      StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
       StreamingCallback<GenericRecord, GenericRecord> computingCallback) {
 
@@ -191,17 +169,14 @@ public class ChunkingUtils {
           GenericRecord deserializedKey = keyRecordDeserializer.deserialize(key);
 
           deserializedValueRecord = (GenericRecord) adapter.constructValue(
-              writerSchemaId,
-              schemaRepo.getSupersetOrLatestValueSchema(storeName).getId(),
               value,
               value.length,
               reusedValue,
               reusedDecoder,
               response,
-              compressionStrategy,
-              fastAvroEnabled,
-              schemaRepo,
-              storeName,
+              writerSchemaId,
+              readerSchemaId,
+              storeDeserializerCache,
               compressor);
 
           computingCallback.onRecordReceived(deserializedKey, deserializedValueRecord);
@@ -232,23 +207,20 @@ public class ChunkingUtils {
    *
    * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponse)
    * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponse)
-   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, int, ByteBuffer, boolean, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, VeniceCompressor)
    */
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
       AbstractStorageEngine store,
-      int readerSchemaID,
       int partition,
       ByteBuffer keyBuffer,
       ReadResponse response,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
-      CompressionStrategy compressionStrategy,
-      boolean fastAvroEnabled,
-      ReadOnlySchemaRepository schemaRepo,
-      String storeName,
+      int readerSchemaID,
+      StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
-      boolean isRmdValue) {
+      boolean isRmdValue,
+      ChunkedValueManifestContainer manifestContainer) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
     byte[] value =
         isRmdValue ? store.getReplicationMetadata(partition, keyBuffer.array()) : store.get(partition, keyBuffer);
@@ -259,17 +231,31 @@ public class ChunkingUtils {
         databaseLookupStartTimeInNS,
         adapter,
         store,
-        readerSchemaID,
         partition,
         response,
         reusedValue,
         reusedDecoder,
-        compressionStrategy,
-        fastAvroEnabled,
-        schemaRepo,
-        storeName,
+        readerSchemaID,
+        storeDeserializerCache,
         compressor,
-        isRmdValue);
+        isRmdValue,
+        manifestContainer);
+  }
+
+  public static ChunkedValueManifest getChunkValueManifestFromStorage(
+      byte[] key,
+      int partition,
+      boolean isRmd,
+      AbstractStorageEngine store) {
+    byte[] value = isRmd ? store.getReplicationMetadata(partition, key) : store.get(partition, key);
+    if (value == null) {
+      return null;
+    }
+    int writerSchemaId = ValueRecord.parseSchemaId(value);
+    if (writerSchemaId > 0) {
+      return null;
+    }
+    return CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
   }
 
   /**
@@ -283,7 +269,6 @@ public class ChunkingUtils {
    *
    * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponse)
    * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponse)
-   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, VeniceCompressor, boolean)
    */
   private static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       byte[] value,
@@ -291,17 +276,15 @@ public class ChunkingUtils {
       long databaseLookupStartTimeInNS,
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
       AbstractStorageEngine store,
-      int readerSchemaId,
       int partition,
       ReadResponse response,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
-      CompressionStrategy compressionStrategy,
-      boolean fastAvroEnabled,
-      ReadOnlySchemaRepository schemaRepo,
-      String storeName,
+      int readerSchemaId,
+      StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
-      boolean isRmdValue) {
+      boolean isRmdValue,
+      ChunkedValueManifestContainer manifestContainer) {
 
     if (value == null) {
       return null;
@@ -313,19 +296,17 @@ public class ChunkingUtils {
 
       if (response != null) {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+        response.addValueSize(valueLength);
       }
       return adapter.constructValue(
-          writerSchemaId,
-          readerSchemaId,
           value,
           valueLength,
           reusedValue,
           reusedDecoder,
           response,
-          compressionStrategy,
-          fastAvroEnabled,
-          schemaRepo,
-          storeName,
+          writerSchemaId,
+          readerSchemaId,
+          storeDeserializerCache,
           compressor);
     } else if (writerSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       throw new VeniceException("Found a record with invalid schema ID: " + writerSchemaId);
@@ -334,6 +315,9 @@ public class ChunkingUtils {
     // End of initial sanity checks. We have a chunked value, so we need to fetch all chunks
 
     ChunkedValueManifest chunkedValueManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
+    if (manifestContainer != null) {
+      manifestContainer.setManifest(chunkedValueManifest);
+    }
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);
     int actualSize = 0;
 
@@ -370,19 +354,18 @@ public class ChunkingUtils {
 
     if (response != null) {
       response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+      response.addValueSize(actualSize);
       response.incrementMultiChunkLargeValueCount();
     }
 
     return adapter.constructValue(
-        chunkedValueManifest.schemaId,
         assembledValueContainer,
         reusedValue,
         reusedDecoder,
         response,
-        compressionStrategy,
-        fastAvroEnabled,
-        schemaRepo,
-        storeName,
+        chunkedValueManifest.schemaId,
+        readerSchemaId,
+        storeDeserializerCache,
         compressor);
   }
 

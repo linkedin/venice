@@ -27,6 +27,7 @@ import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -44,8 +45,7 @@ import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -58,14 +58,15 @@ import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.BackupVersionOptimizationServiceStats;
 import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
+import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -149,7 +150,6 @@ public class VeniceServer {
             .setClientConfigForConsumer(clientConfigForConsumer.orElse(null))
             .setIcProvider(icProvider)
             .setServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers)
-            .setPubSubClientsFactory(new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()))
             .build());
   }
 
@@ -173,7 +173,8 @@ public class VeniceServer {
     this.metricsRepository = ctx.getMetricsRepository();
     this.icProvider = ctx.getIcProvider();
     this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
-    this.pubSubClientsFactory = Objects.requireNonNull(ctx.getPubSubClientsFactory(), "PubSubClientsFactory is null");
+    VeniceServerConfig veniceServerConfig = ctx.getVeniceConfigLoader().getVeniceServerConfig();
+    this.pubSubClientsFactory = veniceServerConfig.getPubSubClientsFactory();
     this.sslFactory = Optional.ofNullable(ctx.getSslFactory());
     this.routerAccessController = Optional.ofNullable(ctx.getRouterAccessController());
     this.storeAccessController = Optional.ofNullable(ctx.getStoreAccessController());
@@ -202,6 +203,39 @@ public class VeniceServer {
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
+    if (serverConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+      String localControllerUrl = serverConfig.getLocalControllerUrl();
+      String d2ServiceName = serverConfig.getLocalControllerD2ServiceName();
+      String d2ZkHost = serverConfig.getLocalD2ZkHost();
+      String systemStoreCluster = serverConfig.getSystemSchemaClusterName();
+      ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+              systemStoreCluster,
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
+              VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
+              true,
+              sslFactory,
+              localControllerUrl,
+              d2ServiceName,
+              d2ZkHost,
+              false);
+      ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+              systemStoreCluster,
+              null,
+              null,
+              false,
+              sslFactory,
+              localControllerUrl,
+              d2ServiceName,
+              d2ZkHost,
+              false);
+      metaSystemStoreSchemaInitializer.execute();
+      kmeSchemaInitializer.execute();
+    }
+
     Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(
         cc -> ClientFactory
             .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()), icProvider));
@@ -209,24 +243,40 @@ public class VeniceServer {
         cc -> ClientFactory.getSchemaReader(
             cc.setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()),
             icProvider));
+    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(
+        cc -> ClientFactory.getSchemaReader(
+            cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
+            icProvider));
+
+    // Verify the current version of the system schemas are registered in ZK before moving ahead
+    if (serverConfig.isSchemaPresenceCheckEnabled()) {
+      partitionStateSchemaReader.ifPresent(
+          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.PARTITION_STATE)
+              .verifySchemaVersionPresentOrExit());
+      storeVersionStateSchemaReader.ifPresent(
+          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.STORE_VERSION_STATE)
+              .verifySchemaVersionPresentOrExit());
+      // For system schemas initialized via controller client, no need to verify again because they should already exist
+      if (!serverConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+        kafkaMessageEnvelopeSchemaReader.ifPresent(
+            schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+                .verifySchemaVersionPresentOrExit());
+        Optional<SchemaReader> metaSystemStoreSchemaReader = clientConfigForConsumer.map(
+            cc -> ClientFactory.getSchemaReader(
+                cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName()),
+                icProvider));
+        metaSystemStoreSchemaReader.ifPresent(
+            schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE)
+                .verifySchemaVersionPresentOrExit());
+      }
+    }
+
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSchemaReader.ifPresent(partitionStateSerializer::setSchemaReader);
     final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
     storeVersionStateSchemaReader.ifPresent(storeVersionStateSerializer::setSchemaReader);
-
-    // Verify the current version of PARTITION_STATE and STORE_VERSION_STATE schema is registered in ZK before moving
-    // ahead.
-    if (serverConfig.isSchemaPresenceCheckEnabled()) {
-      partitionStateSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.PARTITION_STATE)
-              .verifySchemaVersionPresentOrExit());
-
-      storeVersionStateSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.STORE_VERSION_STATE)
-              .verifySchemaVersionPresentOrExit());
-    }
 
     // Create and add Offset Service.
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
@@ -298,26 +348,6 @@ public class VeniceServer {
     // Create stats for RocksDB
     storageService.getRocksDBAggregatedStatistics().ifPresent(stat -> new AggRocksDBStats(metricsRepository, stat));
 
-    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(
-        cc -> ClientFactory.getSchemaReader(
-            cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
-            icProvider));
-    Optional<SchemaReader> metaSystemStoreSchemaReader = clientConfigForConsumer.map(
-        cc -> ClientFactory.getSchemaReader(
-            cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName()),
-            icProvider));
-
-    // verify the current version of the system schemas are registered in ZK before moving ahead
-    if (serverConfig.isSchemaPresenceCheckEnabled()) {
-      kafkaMessageEnvelopeSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
-              .verifySchemaVersionPresentOrExit());
-
-      metaSystemStoreSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE)
-              .verifySchemaVersionPresentOrExit());
-    }
-
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     /**
@@ -335,7 +365,7 @@ public class VeniceServer {
     CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture =
         managerFuture.thenApply(manager -> {
           HelixCustomizedViewOfflinePushRepository customizedView =
-              new HelixCustomizedViewOfflinePushRepository(manager, metadataRepo);
+              new HelixCustomizedViewOfflinePushRepository(manager, metadataRepo, false);
           customizedView.refresh();
           return customizedView;
         });
@@ -368,7 +398,8 @@ public class VeniceServer {
         Optional.empty(),
         false,
         remoteIngestionRepairService,
-        pubSubClientsFactory);
+        pubSubClientsFactory,
+        sslFactory);
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     this.diskHealthCheckService = new DiskHealthCheckService(
@@ -558,6 +589,7 @@ public class VeniceServer {
    * */
   public void shutdown() throws VeniceException {
     List<Exception> exceptions = new ArrayList<>();
+    long startTimeMS = System.currentTimeMillis();
     LOGGER.info("Stopping all services");
 
     /* Stop in reverse order */
@@ -588,7 +620,6 @@ public class VeniceServer {
         }
       }
       LOGGER.info("All services have been stopped");
-
       compressorFactory.close();
 
       try {
@@ -605,6 +636,7 @@ public class VeniceServer {
         LOGGER.error("Exception while closing: {}", zkClient.getClass().getSimpleName(), e);
       }
 
+      LOGGER.info("Shutdown completed in {} ms", LatencyUtils.getLatencyInMS(startTimeMS));
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }
@@ -704,10 +736,8 @@ public class VeniceServer {
   }
 
   public static void run(VeniceConfigLoader veniceConfigService, boolean joinThread) throws Exception {
-
-    VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService)
-        .setPubSubClientsFactory(new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()))
-        .build();
+    VeniceServerContext serverContext =
+        new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService).build();
     final VeniceServer server = new VeniceServer(serverContext);
     if (!server.isStarted()) {
       server.start();

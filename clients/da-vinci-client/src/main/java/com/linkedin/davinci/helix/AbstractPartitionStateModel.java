@@ -51,7 +51,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private final VeniceIngestionBackend ingestionBackend;
   private final ReadOnlyStoreRepository storeRepository;
-  private final VeniceStoreVersionConfig storeConfig;
+  private final VeniceStoreVersionConfig storeAndServerConfigs;
   private final int partition;
   private final String storePartitionDescription;
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionStatusAccessorFuture;
@@ -62,16 +62,16 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   public AbstractPartitionStateModel(
       VeniceIngestionBackend ingestionBackend,
       ReadOnlyStoreRepository storeRepository,
-      VeniceStoreVersionConfig storeConfig,
+      VeniceStoreVersionConfig storeAndServerConfigs,
       int partition,
       CompletableFuture<HelixPartitionStatusAccessor> accessorFuture,
       String instanceName) {
     this.ingestionBackend = ingestionBackend;
     this.storeRepository = storeRepository;
-    this.storeConfig = storeConfig;
+    this.storeAndServerConfigs = storeAndServerConfigs;
     this.partition = partition;
     this.storePartitionDescription =
-        String.format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreVersionName(), partition);
+        String.format(STORE_PARTITION_DESCRIPTION_FORMAT, storeAndServerConfigs.getStoreVersionName(), partition);
     /**
      * We cannot block here because helix manager connection depends on the state model constructing in helix logic.
      * If we block here in the constructor, it will cause deadlocks.
@@ -110,7 +110,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
         rollback ? "rolling back" : "initiating",
         from,
         to,
-        getStoreConfig().getStoreVersionName(),
+        getStoreAndServerConfigs().getStoreVersionName(),
         partition,
         message,
         context);
@@ -123,7 +123,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
         rollback ? "rolled back" : "completed",
         from,
         to,
-        getStoreConfig().getStoreVersionName(),
+        getStoreAndServerConfigs().getStoreVersionName(),
         partition,
         message,
         context);
@@ -143,8 +143,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       /**
        * When state transition fails, we shouldn't remove the corresponding database here since the database could
        * be either recovered by bounce/Helix Reset or completely dropped after going through 'ERROR' to 'DROPPED' state transition.
+       *
+       * Also the CV state will be updated to `ERROR` state, no need to remove it from here.
        */
-      stopConsumption();
+      stopConsumption(false);
     }, true);
   }
 
@@ -168,7 +170,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   @Override
   public void reset() {
     try {
-      stopConsumption();
+      stopConsumption(false);
     } catch (Exception e) {
       logger.error(
           "Error when trying to stop any ongoing consumption during reset for: {}",
@@ -185,9 +187,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
      */
     if (partitionPushStatusAccessor != null) {
       partitionPushStatusAccessor
-          .updateReplicaStatus(storeConfig.getStoreVersionName(), partition, ExecutionStatus.STARTED);
+          .updateReplicaStatus(storeAndServerConfigs.getStoreVersionName(), partition, ExecutionStatus.STARTED);
       partitionPushStatusAccessor.updateHybridQuotaReplicaStatus(
-          storeConfig.getStoreVersionName(),
+          storeAndServerConfigs.getStoreVersionName(),
           partition,
           HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     }
@@ -204,10 +206,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
      */
     final Consumer<Double> waitTimeLogging = elapsedTimeInMs -> {
       // TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
-      if (storeConfig.isDebugLoggingEnabled()) {
+      if (storeAndServerConfigs.isDebugLoggingEnabled()) {
         logger.info(
             "Completed waiting for partition push status accessor for resource {}, partition {}. Total elapsed time: {} ms",
-            storeConfig.getStoreVersionName(),
+            storeAndServerConfigs.getStoreVersionName(),
             partition,
             elapsedTimeInMs);
       }
@@ -228,16 +230,16 @@ public abstract class AbstractPartitionStateModel extends StateModel {
      */
     final Consumer<Double> setupTimeLogging = elapsedTimeInMs -> {
       // TODO Evaluate if debugLoggingEnabled config can be removed, as logging level can be changed at run time.
-      if (storeConfig.isDebugLoggingEnabled()) {
+      if (storeAndServerConfigs.isDebugLoggingEnabled()) {
         logger.info(
             "Completed starting the consumption for resource {} partition {}. Total elapsed time: {} ms",
-            storeConfig.getStoreVersionName(),
+            storeAndServerConfigs.getStoreVersionName(),
             partition,
             elapsedTimeInMs);
       }
     };
     try (Timer t = Timer.run(setupTimeLogging)) {
-      ingestionBackend.startConsumption(storeConfig, partition);
+      ingestionBackend.startConsumption(storeAndServerConfigs, partition);
     }
   }
 
@@ -249,9 +251,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // lead to NPE and other issues.
     // Adding a topic unsubscribe call for those race conditions as a safeguard before dropping the partition.
     ingestionBackend.dropStoragePartitionGracefully(
-        storeConfig,
+        storeAndServerConfigs,
         partition,
-        getStoreConfig().getPartitionGracefulDropDelaySeconds());
+        getStoreAndServerConfigs().getStopConsumptionTimeoutInSeconds());
     removeCustomizedState();
   }
 
@@ -267,7 +269,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
           e);
     }
     if (partitionPushStatusAccessor != null) {
-      String storeName = getStoreConfig().getStoreVersionName();
+      String storeName = getStoreAndServerConfigs().getStoreVersionName();
       boolean isSuccess = false;
       int attempt = 0;
       while (!isSuccess && attempt <= RETRY_COUNT) {
@@ -343,15 +345,31 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   private void initializePartitionPushStatus() {
     if (partitionPushStatusAccessor != null) {
-      partitionPushStatusAccessor
-          .updateReplicaStatus(storeConfig.getStoreVersionName(), getPartition(), ExecutionStatus.NOT_STARTED);
+      partitionPushStatusAccessor.updateReplicaStatus(
+          storeAndServerConfigs.getStoreVersionName(),
+          getPartition(),
+          ExecutionStatus.NOT_STARTED);
     } else {
       throw new VeniceException("HelixPartitionStatusAccessor is expected not to be null.");
     }
   }
 
-  protected void stopConsumption() {
-    ingestionBackend.stopConsumption(storeConfig, partition);
+  protected void stopConsumption(boolean dropCVState) {
+    CompletableFuture<Void> future = ingestionBackend.stopConsumption(storeAndServerConfigs, partition);
+    if (dropCVState) {
+      future.whenComplete((ignored, throwable) -> {
+        if (throwable != null) {
+          logger.warn(
+              "Failed to stop consumption for resource: {}, partition: {}",
+              storeAndServerConfigs.getStoreVersionName(),
+              partition);
+        }
+        /**
+         * Drop CV state anyway, and it may not work well in error condition, but it is fine since it is still a best effort.
+         */
+        removeCustomizedState();
+      });
+    }
   }
 
   protected VeniceIngestionBackend getIngestionBackend() {
@@ -370,8 +388,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     return ingestionBackend.getStorageService();
   }
 
-  protected VeniceStoreVersionConfig getStoreConfig() {
-    return storeConfig;
+  protected VeniceStoreVersionConfig getStoreAndServerConfigs() {
+    return storeAndServerConfigs;
   }
 
   protected int getPartition() {

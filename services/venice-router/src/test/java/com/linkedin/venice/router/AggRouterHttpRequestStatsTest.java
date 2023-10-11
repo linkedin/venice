@@ -62,11 +62,16 @@ public class AggRouterHttpRequestStatsTest {
 
     for (int i = 1; i <= 100; i += 1) {
       stats.recordKeySize("store1", i);
+      stats.recordResponseSize("store1", i);
     }
 
     Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.1thPercentile").value(), 1);
     Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.2thPercentile").value(), 2);
-    Assert.assertEquals((int) reporter.query(".store1--compute_key_size_in_byte.3thPercentile").value(), 3);
-    Assert.assertEquals((int) reporter.query(".store1--compute_key_size_in_byte.4thPercentile").value(), 4);
+    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.3thPercentile").value(), 3);
+    Assert.assertEquals((int) reporter.query(".total--compute_key_size_in_byte.4thPercentile").value(), 4);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.1thPercentile").value(), 1);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.2thPercentile").value(), 2);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.3thPercentile").value(), 3);
+    Assert.assertEquals((int) reporter.query(".total--compute_response_size.4thPercentile").value(), 4);
   }
 }

@@ -1,5 +1,8 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+
 import com.linkedin.alpini.base.concurrency.AsyncFuture;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.alpini.base.concurrency.impl.SuccessAsyncFuture;
@@ -64,7 +67,6 @@ import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
-import com.linkedin.venice.router.throttle.NoopRouterThrottler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
@@ -157,7 +159,6 @@ public class RouterServer extends AbstractVeniceService {
   private Router secureRouter;
   private DictionaryRetrievalService dictionaryRetrievalService;
   private RouterThrottler readRequestThrottler;
-  private RouterThrottler noopRequestThrottler;
 
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
@@ -201,7 +202,18 @@ public class RouterServer extends AbstractVeniceService {
     LOGGER.info("SSL Port: {}", props.getInt(ConfigKeys.LISTENER_SSL_PORT));
     LOGGER.info("IO worker count: {}", props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT));
 
-    Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+    Optional<SSLFactory> sslFactory;
+    if (props.getBoolean(ConfigKeys.ROUTER_ENABLE_SSL, true)) {
+      if (props.getBoolean(ConfigKeys.ROUTER_USE_LOCAL_SSL_SETTINGS, true)) {
+        sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+      } else {
+        String sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+        sslFactory = Optional.of(SslUtils.getSSLFactory(props.toProperties(), sslFactoryClassName));
+      }
+    } else {
+      sslFactory = Optional.empty();
+    }
+
     RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory);
     server.start();
 
@@ -288,7 +300,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metaStoreShadowReader = config.isMetaStoreShadowReadEnabled()
         ? Optional.of(new MetaStoreShadowReader(this.schemaRepository))
         : Optional.empty();
-    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager, metadataRepository);
+    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager, metadataRepository, false);
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();
@@ -480,7 +492,8 @@ public class RouterServer extends AbstractVeniceService {
         hybridStoreQuotaRepository,
         config.getClusterName(),
         config.getZkConnection(),
-        config.getKafkaBootstrapServers());
+        config.getKafkaBootstrapServers(),
+        config.isSslToKafka());
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository, routerStats, healthMonitor);
 
@@ -885,12 +898,8 @@ public class RouterServer extends AbstractVeniceService {
           routerStats.getStatsByType(RequestType.SINGLE_GET),
           config);
 
-      noopRequestThrottler = new NoopRouterThrottler(
-          routersClusterManager,
-          metadataRepository,
-          routerStats.getStatsByType(RequestType.SINGLE_GET));
-
       // Setup read requests throttler.
+      scatterGatherMode.initReadRequestThrottler(readRequestThrottler);
       setReadRequestThrottling(config.isReadThrottlingEnabled());
 
       if (config.getMultiKeyRoutingStrategy().equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING)) {
@@ -970,8 +979,8 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   public void setReadRequestThrottling(boolean throttle) {
-    RouterThrottler throttler = throttle ? readRequestThrottler : noopRequestThrottler;
-    scatterGatherMode.initReadRequestThrottler(throttler);
+    boolean isNoopThrottlerEnabled = !throttle;
+    readRequestThrottler.setIsNoopThrottlerEnabled(isNoopThrottlerEnabled);
   }
 
   /* test-only */

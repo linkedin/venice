@@ -8,6 +8,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -28,11 +30,16 @@ public class VeniceViewWriterFactoryTest {
 
   @Test
   public void testConstructStoreViewWriters() {
-    VeniceProperties props = new VeniceProperties();
+    VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
     Mockito.when(mockVeniceServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(urlMappingMap);
     VeniceConfigLoader mockVeniceConfigLoader = Mockito.mock(VeniceConfigLoader.class);
+    Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
+    PubSubClientsFactory mockPubSubClientsFactory = Mockito.mock(PubSubClientsFactory.class);
+    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = Mockito.mock(PubSubProducerAdapterFactory.class);
+    Mockito.when(mockPubSubClientsFactory.getProducerAdapterFactory()).thenReturn(mockPubSubProducerAdapterFactory);
+    Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 

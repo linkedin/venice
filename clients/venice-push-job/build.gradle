@@ -46,6 +46,8 @@ dependencies {
   implementation libraries.xerces
   implementation libraries.zstd
 
+  testImplementation project(':internal:venice-common').sourceSets.test.output
+
   runtimeOnly libraries.commonsConfiguration
   runtimeOnly libraries.commonsLang
   runtimeOnly libraries.httpCore

@@ -1,15 +1,16 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedDerivedSchemaEntry;
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedRmdSchemaEntry;
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedValueSchemaEntry;
+import static com.linkedin.davinci.schema.SchemaUtils.getAnnotatedDerivedSchemaEntry;
+import static com.linkedin.davinci.schema.SchemaUtils.getAnnotatedRmdSchemaEntry;
+import static com.linkedin.davinci.schema.SchemaUtils.getAnnotatedValueSchemaEntry;
 
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.Map;
+import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.collections.BiIntKeyCache;
+import java.util.function.IntFunction;
 import org.apache.avro.util.Utf8;
 
 
@@ -24,13 +25,37 @@ import org.apache.avro.util.Utf8;
 public class StringAnnotatedStoreSchemaCache {
   private final ReadOnlySchemaRepository internalSchemaRepo;
   private final String storeName;
-  private final Map<Integer, SchemaEntry> valueSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
-  private final Map<String, DerivedSchemaEntry> partialUpdateSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
-  private final Map<String, RmdSchemaEntry> rmdSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
+  private final SparseConcurrentList<SchemaEntry> valueSchemaEntryMapCache = new SparseConcurrentList<>();
+  private final IntFunction<SchemaEntry> valueSchemaGenerator;
+  private final BiIntKeyCache<DerivedSchemaEntry> partialUpdateSchemaEntryMapCache;
+  private final BiIntKeyCache<RmdSchemaEntry> rmdSchemaEntryMapCache;
 
   public StringAnnotatedStoreSchemaCache(String storeName, ReadOnlySchemaRepository internalSchemaRepo) {
     this.storeName = storeName;
     this.internalSchemaRepo = internalSchemaRepo;
+    this.valueSchemaGenerator = schemaId -> {
+      SchemaEntry schemaEntry = internalSchemaRepo.getValueSchema(storeName, schemaId);
+      if (schemaEntry == null) {
+        return null;
+      }
+      return getAnnotatedValueSchemaEntry(schemaEntry);
+    };
+    this.partialUpdateSchemaEntryMapCache = new BiIntKeyCache<>((valueSchemaId, partialUpdateProtocolId) -> {
+      DerivedSchemaEntry derivedSchemaEntry =
+          internalSchemaRepo.getDerivedSchema(storeName, valueSchemaId, partialUpdateProtocolId);
+      if (derivedSchemaEntry == null) {
+        return null;
+      }
+      return getAnnotatedDerivedSchemaEntry(derivedSchemaEntry);
+    });
+    this.rmdSchemaEntryMapCache = new BiIntKeyCache<>((valueSchemaId, rmdSchemaProtocolId) -> {
+      RmdSchemaEntry rmdSchemaEntry =
+          internalSchemaRepo.getReplicationMetadataSchema(storeName, valueSchemaId, rmdSchemaProtocolId);
+      if (rmdSchemaEntry == null) {
+        return null;
+      }
+      return getAnnotatedRmdSchemaEntry(rmdSchemaEntry);
+    });
   }
 
   /**
@@ -38,13 +63,7 @@ public class StringAnnotatedStoreSchemaCache {
    * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
   public SchemaEntry getValueSchema(int id) {
-    return valueSchemaEntryMapCache.computeIfAbsent(id, k -> {
-      SchemaEntry schemaEntry = internalSchemaRepo.getValueSchema(storeName, id);
-      if (schemaEntry == null) {
-        return null;
-      }
-      return getAnnotatedValueSchemaEntry(schemaEntry);
-    });
+    return valueSchemaEntryMapCache.computeIfAbsent(id, this.valueSchemaGenerator);
   }
 
   /**
@@ -56,8 +75,7 @@ public class StringAnnotatedStoreSchemaCache {
     if (schemaEntry == null) {
       return null;
     }
-    return valueSchemaEntryMapCache
-        .computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedValueSchemaEntry(schemaEntry));
+    return valueSchemaEntryMapCache.computeIfAbsent(schemaEntry.getId(), this.valueSchemaGenerator);
   }
 
   /**
@@ -69,8 +87,7 @@ public class StringAnnotatedStoreSchemaCache {
     if (schemaEntry == null) {
       return null;
     }
-    return valueSchemaEntryMapCache
-        .computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedValueSchemaEntry(schemaEntry));
+    return valueSchemaEntryMapCache.computeIfAbsent(schemaEntry.getId(), this.valueSchemaGenerator);
   }
 
   /**
@@ -78,15 +95,7 @@ public class StringAnnotatedStoreSchemaCache {
    * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
   public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int partialUpdateProtocolId) {
-    String partialUpdateSchemaId = valueSchemaId + "-" + partialUpdateProtocolId;
-    return partialUpdateSchemaEntryMapCache.computeIfAbsent(partialUpdateSchemaId, k -> {
-      DerivedSchemaEntry derivedSchemaEntry =
-          internalSchemaRepo.getDerivedSchema(storeName, valueSchemaId, partialUpdateProtocolId);
-      if (derivedSchemaEntry == null) {
-        return null;
-      }
-      return getAnnotatedDerivedSchemaEntry(derivedSchemaEntry);
-    });
+    return partialUpdateSchemaEntryMapCache.get(valueSchemaId, partialUpdateProtocolId);
   }
 
   /**
@@ -94,15 +103,6 @@ public class StringAnnotatedStoreSchemaCache {
    * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
   public RmdSchemaEntry getRmdSchema(int valueSchemaId, int rmdSchemaProtocolId) {
-    String rmdSchemaId = valueSchemaId + "-" + rmdSchemaProtocolId;
-    return rmdSchemaEntryMapCache.computeIfAbsent(rmdSchemaId, k -> {
-      RmdSchemaEntry rmdSchemaEntry =
-          internalSchemaRepo.getReplicationMetadataSchema(storeName, valueSchemaId, rmdSchemaProtocolId);
-      if (rmdSchemaEntry == null) {
-        return null;
-      }
-      return getAnnotatedRmdSchemaEntry(rmdSchemaEntry);
-    });
-
+    return rmdSchemaEntryMapCache.get(valueSchemaId, rmdSchemaProtocolId);
   }
 }

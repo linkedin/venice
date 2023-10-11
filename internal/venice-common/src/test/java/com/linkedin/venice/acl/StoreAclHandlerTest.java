@@ -39,7 +39,6 @@ public class StoreAclHandlerTest {
   private HttpRequest req;
   private StoreAclHandler aclHandler;
   private Store store;
-
   private boolean[] hasAccess = { false };
   private boolean[] hasAcl = { false };
   private boolean[] hasStore = { false };
@@ -181,7 +180,7 @@ public class StoreAclHandlerTest {
     if (isMetadata[0]) {
       when(req.uri()).thenReturn("/metadata/storename/random");
     } else {
-      when(req.uri()).thenReturn("/random/storename/random");
+      when(req.uri()).thenReturn("/storage/storename/random");
     }
   }
 

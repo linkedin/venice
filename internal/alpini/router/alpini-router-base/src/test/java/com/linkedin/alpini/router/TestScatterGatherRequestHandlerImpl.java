@@ -43,6 +43,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
@@ -86,14 +87,35 @@ public class TestScatterGatherRequestHandlerImpl {
     void setKeepAlive(boolean keepAlive);
   }
 
-  private enum Status {
-    OK(200), MULTI_STATUS(207), BAD_REQUEST(400), NOT_FOUND(404), TOO_BUSY(429), INTERNAL_SERVER_ERROR(500),
-    GATEWAY_TIMEOUT(502), SERVICE_UNAVAILABLE(503);
+  private static class Status extends HttpResponseStatus {
+    static final Status OK = new Status(200, "OK");
+    static final Status MULTI_STATUS = new Status(207, "Multi-Status");
+    static final Status BAD_REQUEST = new Status(400, "Bad Request");
+    static final Status NOT_FOUND = new Status(404, "Not Found");
+    static final Status TOO_BUSY = new Status(429, "Too Busy");
+    static final Status INTERNAL_SERVER_ERROR = new Status(500, "Internal Server Error");
+    static final Status GATEWAY_TIMEOUT = new Status(502, "Gateway Timeout");
+    static final Status SERVICE_UNAVAILABLE = new Status(503, "Service Unavailable");
+    static final List<Status> VALUES = Collections.unmodifiableList(
+        Stream
+            .of(
+                OK,
+                MULTI_STATUS,
+                BAD_REQUEST,
+                NOT_FOUND,
+                TOO_BUSY,
+                INTERNAL_SERVER_ERROR,
+                GATEWAY_TIMEOUT,
+                SERVICE_UNAVAILABLE)
+            .collect(Collectors.toList()));
 
     final int _code;
+    final String _name;
 
-    Status(int code) {
+    public Status(int code, String reasonPhrase) {
+      super(code, reasonPhrase);
       _code = code;
+      _name = reasonPhrase;
     }
   }
 
@@ -139,7 +161,7 @@ public class TestScatterGatherRequestHandlerImpl {
 
       @Override
       protected Status statusOf(int code) {
-        return Stream.of(Status.values())
+        return Status.VALUES.stream()
             .filter(s -> s._code == code)
             .findFirst()
             .orElseThrow(IllegalArgumentException::new);
@@ -193,7 +215,7 @@ public class TestScatterGatherRequestHandlerImpl {
 
       @Override
       protected String getReasonPhrase(Status status) {
-        return status.name();
+        return status._name;
       }
 
       @Override
@@ -331,7 +353,7 @@ public class TestScatterGatherRequestHandlerImpl {
     AsyncPromise mockResponseFuture = mock(AsyncPromise.class);
     setupTestRetryFailure(mockRetryPath, mockResponseFuture)
         .operationComplete(AsyncFuture.success(Status.GATEWAY_TIMEOUT));
-    verify(mockRetryPath).setRetryRequest();
+    verify(mockRetryPath).setRetryRequest(any());
     verify(mockResponseFuture, never()).setSuccess(any());
   }
 
@@ -341,7 +363,7 @@ public class TestScatterGatherRequestHandlerImpl {
     AsyncPromise mockResponseFuture = mock(AsyncPromise.class);
     setupTestRetryFailure(mockRetryPath, mockResponseFuture)
         .operationComplete(AsyncFuture.failed(new NullPointerException()));
-    verify(mockRetryPath).setRetryRequest();
+    verify(mockRetryPath).setRetryRequest(any());
     verify(mockResponseFuture, never()).setSuccess(any());
   }
 
@@ -355,9 +377,9 @@ public class TestScatterGatherRequestHandlerImpl {
                 Status.class,
                 Status.GATEWAY_TIMEOUT,
                 Status.GATEWAY_TIMEOUT._code,
-                Status.GATEWAY_TIMEOUT.name(),
+                Status.GATEWAY_TIMEOUT._name,
                 false)));
-    verify(mockRetryPath).setRetryRequest();
+    verify(mockRetryPath).setRetryRequest(any());
     verify(mockResponseFuture, never()).setSuccess(any());
   }
 
@@ -391,7 +413,7 @@ public class TestScatterGatherRequestHandlerImpl {
 
     // hostFuture should be set as we retry the request
     verify(hostFuture).isSuccess();
-    verify(mockRetryPath).setRetryRequest();
+    verify(mockRetryPath).setRetryRequest(any());
     verify(mockResponseFuture, never()).setSuccess(any());
   }
 

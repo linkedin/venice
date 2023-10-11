@@ -33,6 +33,9 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   private final byte[] dictionary;
   private final int level;
 
+  public static final ByteBuffer EMPTY_PUSH_ZSTD_DICTIONARY =
+      ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
+
   public ZstdWithDictCompressor(final byte[] dictionary, int level) {
     super(CompressionStrategy.ZSTD_WITH_DICT);
     this.dictionary = dictionary;
@@ -118,6 +121,20 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
     validateActualDecompressedSize(actualSize, expectedSize);
     returnedData.position(0);
     return returnedData;
+  }
+
+  @Override
+  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int offset, int length, int schemaHeader)
+      throws IOException {
+    int expectedDecompressedDataSize = validateExpectedDecompressedSize(Zstd.decompressedSize(data, offset, length));
+
+    ByteBuffer result = ByteBuffer.allocate(expectedDecompressedDataSize + SCHEMA_HEADER_LENGTH);
+    result.putInt(schemaHeader);
+    int actualSize = decompressor.get()
+        .decompressByteArray(result.array(), result.position(), result.remaining(), data, offset, length);
+    validateActualDecompressedSize(actualSize, expectedDecompressedDataSize);
+    result.position(SCHEMA_HEADER_LENGTH);
+    return result;
   }
 
   @Override

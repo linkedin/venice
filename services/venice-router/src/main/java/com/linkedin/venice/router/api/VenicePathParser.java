@@ -2,6 +2,7 @@ package com.linkedin.venice.router.api;
 
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
+import static io.netty.handler.codec.http.HttpResponseStatus.METHOD_NOT_ALLOWED;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_GATEWAY;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_REQUEST;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.MOVED_PERMANENTLY;
@@ -10,6 +11,7 @@ import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.router.api.ExtendedResourcePathParser;
 import com.linkedin.alpini.router.api.RouterException;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -32,6 +34,7 @@ import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.streaming.StreamingUtils;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -46,7 +49,7 @@ import org.apache.commons.lang.StringUtils;
  *   'read' is a literal, meaning we will request the value for a single key
  *   storename will be the name of the requested store
  *   key is the key being looked up
- *   fmt is an optional format parameter, one of 'string' or 'b64'.  If ommitted, assumed to be 'string'
+ *   fmt is an optional format parameter, one of 'string' or 'b64'. If omitted, assumed to be 'string'
  *
  *   The VenicePathParser is responsible for looking up the active version of the store, and constructing the store-version
  */
@@ -142,14 +145,18 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       // this method may throw store not exist exception; track the exception under unhealthy request metric
       int version = versionFinder.getVersion(storeName, fullHttpRequest);
       String resourceName = Version.composeKafkaTopic(storeName, version);
-
-      RouterStats<AggRouterHttpRequestStats> stats = routerConfig.isKeyValueProfilingEnabled() ? routerStats : null;
-
       String method = fullHttpRequest.method().name();
+
       if (VeniceRouterUtils.isHttpGet(method)) {
         // single-get request
-        path =
-            new VeniceSingleGetPath(storeName, version, resourceName, pathHelper.getKey(), uri, partitionFinder, stats);
+        path = new VeniceSingleGetPath(
+            storeName,
+            version,
+            resourceName,
+            pathHelper.getKey(),
+            uri,
+            partitionFinder,
+            routerStats);
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         if (resourceType == RouterResourceType.TYPE_STORAGE) {
           // multi-get request
@@ -162,11 +169,15 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               getBatchGetLimit(storeName),
               routerConfig.isSmartLongTailRetryEnabled(),
               routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              stats,
+              routerStats,
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
+          path.setResponseHeaders(
+              Collections.singletonMap(
+                  HttpConstants.VENICE_CLIENT_COMPUTE,
+                  storeRepository.isReadComputationEnabled(storeName) ? "0" : "1"));
         } else if (resourceType == RouterResourceType.TYPE_COMPUTE) {
           // read compute request
-          path = new VeniceComputePath(
+          VeniceComputePath computePath = new VeniceComputePath(
               storeName,
               version,
               resourceName,
@@ -175,8 +186,23 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               getBatchGetLimit(storeName),
               routerConfig.isSmartLongTailRetryEnabled(),
               routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              routerConfig.isComputeFastAvroEnabled(),
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
+
+          if (storeRepository.isReadComputationEnabled(storeName)) {
+            path = computePath;
+          } else {
+            if (!request.headers().contains(HttpConstants.VENICE_CLIENT_COMPUTE)) {
+              throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+                  Optional.of(storeName),
+                  Optional.of(computePath.getRequestType()),
+                  METHOD_NOT_ALLOWED,
+                  "Read compute is not enabled for the store. Please contact Venice team to enable the feature.");
+            }
+            path = computePath.toMultiGetPath();
+            path.setResponseHeaders(Collections.singletonMap(HttpConstants.VENICE_CLIENT_COMPUTE, "1"));
+            routerStats.getStatsByType(RequestType.COMPUTE)
+                .recordMultiGetFallback(storeName, path.getPartitionKeys().size());
+          }
         } else {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
               Optional.of(storeName),

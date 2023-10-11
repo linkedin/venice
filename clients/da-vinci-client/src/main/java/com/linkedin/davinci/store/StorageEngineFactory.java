@@ -55,6 +55,13 @@ public abstract class StorageEngineFactory {
   public abstract void removeStorageEngine(AbstractStorageEngine engine);
 
   /**
+   * Remove the storage engine without opening it.
+   */
+  public abstract void removeStorageEngine(String storeName);
+
+  public abstract void removeStorageEnginePartition(String storeName, int partition);
+
+  /**
    * Close the storage engine from the underlying storage configuration
    *
    * @param engine Specifies the storage engine to be removed

@@ -6,6 +6,7 @@ import static com.linkedin.venice.HttpConstants.HTTP_GET;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
@@ -25,7 +26,7 @@ import org.apache.logging.log4j.Logger;
 
 public class D2ClientUtils {
   private static final Logger LOGGER = LogManager.getLogger(D2ClientUtils.class);
-  private static long DEFAULT_D2_STARTUP_TIMEOUT_MS = 5_000;
+  private static long DEFAULT_D2_STARTUP_TIMEOUT_MS = 60_000;
   private static long DEFAULT_D2_SHUTDOWN_TIMEOUT_MS = 60_000;
 
   public static void startClient(D2Client client) {
@@ -112,7 +113,11 @@ public class D2ClientUtils {
     try {
       response = client.restRequest(createD2GetRequest(requestPath)).get();
     } catch (Exception e) {
-      throw new VeniceException("D2 client failed to sent request, " + requestPath, e);
+      if (e.getCause() instanceof RestException) {
+        response = ((RestException) e.getCause()).getResponse();
+      } else {
+        throw new VeniceException("D2 client failed to send request, " + requestPath, e);
+      }
     }
 
     return response;

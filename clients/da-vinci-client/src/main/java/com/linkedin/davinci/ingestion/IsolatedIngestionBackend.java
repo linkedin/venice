@@ -29,6 +29,7 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -109,14 +110,26 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   }
 
   @Override
-  public void stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+  public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+    final CompletableFuture<Void> future = new CompletableFuture<>();
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(
-        topicName,
-        partition,
-        STOP_CONSUMPTION,
-        () -> getMainIngestionRequestClient().stopConsumption(storeConfig.getStoreVersionName(), partition),
-        () -> super.stopConsumption(storeConfig, partition));
+    executeCommandWithRetry(topicName, partition, STOP_CONSUMPTION, () -> {
+      /**
+       * For stopping consumption in II process, it is not easy to acknowledge when the action is finished.
+       * So we will go ahead to mark the future as completed right away.
+       */
+      boolean res = getMainIngestionRequestClient().stopConsumption(storeConfig.getStoreVersionName(), partition);
+      future.complete(null);
+      return res;
+    }, () -> super.stopConsumption(storeConfig, partition).whenComplete((ignored, throwable) -> {
+      if (throwable != null) {
+        future.completeExceptionally(throwable);
+      } else {
+        future.complete(null);
+      }
+    }));
+
+    return future;
   }
 
   @Override
@@ -282,7 +295,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         .equals(MainPartitionIngestionStatus.MAIN);
   }
 
-  boolean isTopicPartitionIngesting(String topicName, int partition) {
+  boolean isTopicPartitionHosted(String topicName, int partition) {
     return !getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.NOT_EXIST);
   }
@@ -295,6 +308,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     return configLoader;
   }
 
+  void startConsumptionLocally(
+      VeniceStoreVersionConfig storeVersionConfig,
+      int partition,
+      Optional<LeaderFollowerStateType> leaderState) {
+    super.startConsumption(storeVersionConfig, partition, leaderState);
+  }
+
   VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
@@ -305,13 +325,26 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           String message,
           Optional<LeaderFollowerStateType> leaderState) {
         // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
-        if (isTopicPartitionIngesting(kafkaTopic, partition)) {
+        if (isTopicPartitionHosted(kafkaTopic, partition)) {
           getCompletionHandlingExecutor().submit(() -> {
-            VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
-            config.setRestoreDataPartitions(false);
-            config.setRestoreMetadataPartition(false);
-            // Start partition consumption locally.
-            startConsumption(config, partition, leaderState);
+            /**
+             * Start partition consumption locally.
+             * If any error happens when starting the consumption, error will be reported.
+             */
+            try {
+              VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
+              config.setRestoreDataPartitions(false);
+              config.setRestoreMetadataPartition(false);
+              startConsumptionLocally(config, partition, leaderState);
+            } catch (Exception e) {
+              notifier.error(
+                  kafkaTopic,
+                  partition,
+                  "Failed to resume the ingestion in main process for topic: " + kafkaTopic,
+                  e);
+            } finally {
+              getMainIngestionMonitorService().setVersionPartitionToLocalIngestion(kafkaTopic, partition);
+            }
           });
         } else {
           LOGGER.error(
@@ -327,17 +360,21 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       String topicName,
       int partition,
       IngestionCommandType command,
-      Supplier<Boolean> remoteCommandSupplier,
-      Runnable localCommandRunnable) {
+      Supplier<Boolean> isolatedProcessCommandSupplier,
+      Runnable mainProcessCommandRunnable) {
+    boolean isTopicPartitionHosted = isTopicPartitionHosted(topicName, partition);
+
+    // drop storage partition in main process if it does not exist
+    if (command == REMOVE_PARTITION && !isTopicPartitionHosted) {
+      mainProcessCommandRunnable.run();
+      return;
+    }
+
     do {
       if (isTopicPartitionHostedInMainProcess(topicName, partition)
-          || (!isTopicPartitionIngesting(topicName, partition) && command != START_CONSUMPTION)) {
-        LOGGER.info(
-            "Executing command {} of topic: {}, partition: {} in main process process.",
-            command,
-            topicName,
-            partition);
-        localCommandRunnable.run();
+          || !isTopicPartitionHosted && command != START_CONSUMPTION) {
+        LOGGER.info("Executing command {} of topic: {}, partition: {} in main process.", command, topicName, partition);
+        mainProcessCommandRunnable.run();
         return;
       }
       LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
@@ -356,7 +393,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       try (AutoCloseableLock ignored =
           AutoCloseableSingleLock.of(getMainIngestionMonitorService().getForkProcessActionLock().readLock())) {
         try {
-          if (remoteCommandSupplier.get()) {
+          if (isolatedProcessCommandSupplier.get()) {
             return;
           }
         } catch (Exception e) {
@@ -383,7 +420,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
             topicName,
             partition,
             command);
-        localCommandRunnable.run();
+        mainProcessCommandRunnable.run();
         return;
       }
       /**

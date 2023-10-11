@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
-import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.anyInt;
@@ -65,6 +64,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
@@ -79,8 +79,8 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.net.ServerSocket;
 import java.nio.ByteBuffer;
-import java.nio.file.Paths;
 import java.security.Permission;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -102,6 +102,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.avro.AvroRuntimeException;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -260,14 +262,18 @@ public class TestUtils {
       String storeName,
       String keySchema,
       String valueSchema,
-      Stream<Map.Entry> batchData) {
+      Stream<Map.Entry> batchData,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     return createVersionWithBatchData(
         controllerClient,
         storeName,
         keySchema,
         valueSchema,
         batchData,
-        HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+        HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
+        pubSubProducerAdapterFactory,
+        additionalProperties);
   }
 
   public static VersionCreationResponse createVersionWithBatchData(
@@ -276,7 +282,9 @@ public class TestUtils {
       String keySchema,
       String valueSchema,
       Stream<Map.Entry> batchData,
-      int valueSchemaId) {
+      int valueSchemaId,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     VersionCreationResponse response = TestUtils.assertCommand(
         controllerClient.requestTopicForWrites(
             storeName,
@@ -291,7 +299,14 @@ public class TestUtils {
             Optional.empty(),
             false,
             -1));
-    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId);
+    writeBatchData(
+        response,
+        keySchema,
+        valueSchema,
+        batchData,
+        valueSchemaId,
+        pubSubProducerAdapterFactory,
+        additionalProperties);
     return response;
   }
 
@@ -300,8 +315,19 @@ public class TestUtils {
       String keySchema,
       String valueSchema,
       Stream<Map.Entry> batchData,
-      int valueSchemaId) {
-    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId, CompressionStrategy.NO_OP, null);
+      int valueSchemaId,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
+    writeBatchData(
+        response,
+        keySchema,
+        valueSchema,
+        batchData,
+        valueSchemaId,
+        CompressionStrategy.NO_OP,
+        null,
+        pubSubProducerAdapterFactory,
+        additionalProperties);
   }
 
   public static void writeBatchData(
@@ -311,13 +337,16 @@ public class TestUtils {
       Stream<Map.Entry> batchData,
       int valueSchemaId,
       CompressionStrategy compressionStrategy,
-      Function<String, ByteBuffer> compressionDictionaryGenerator) {
+      Function<String, ByteBuffer> compressionDictionaryGenerator,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
     props.putAll(response.getPartitionerParams());
     props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
-    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props);
+    props.putAll(additionalProperties);
+    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory);
 
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(response.getPartitionerParams());
@@ -525,19 +554,14 @@ public class TestUtils {
     return new VeniceControllerMultiClusterConfig(configMap);
   }
 
-  public static Properties getPropertiesForControllerConfig() throws IOException {
-    String currentPath = Paths.get("").toAbsolutePath().toString();
-    if (currentPath.endsWith("venice-controller")) {
-      currentPath += "/..";
-    } else if (currentPath.endsWith("venice-test-common")) {
-      currentPath += "/../../services";
-    }
-    VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
-    VeniceProperties baseControllerProps =
-        Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
+  public static Properties getPropertiesForControllerConfig() {
     Properties properties = new Properties();
-    properties.putAll(clusterProps.toProperties());
-    properties.putAll(baseControllerProps.toProperties());
+    properties.put(ConfigKeys.CLUSTER_NAME, "test-cluster");
+    properties.put(ConfigKeys.CONTROLLER_NAME, "venice-controller");
+    properties.put(ConfigKeys.DEFAULT_REPLICA_FACTOR, "1");
+    properties.put(ConfigKeys.DEFAULT_NUMBER_OF_PARTITION, "1");
+    properties.put(ConfigKeys.ADMIN_PORT, TestUtils.getFreePort());
+    properties.put(ConfigKeys.ADMIN_SECURE_PORT, TestUtils.getFreePort());
     return properties;
   }
 
@@ -545,16 +569,12 @@ public class TestUtils {
     return clusterToD2.entrySet().stream().map(e -> e.getKey() + ":" + e.getValue()).collect(Collectors.joining(","));
   }
 
-  public static VeniceWriterFactory getVeniceWriterFactory(String kafkaBootstrapServers) {
-    Properties properties = new Properties();
-    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    return getVeniceWriterFactory(properties);
-  }
-
-  public static VeniceWriterFactory getVeniceWriterFactory(Properties properties) {
+  public static VeniceWriterFactory getVeniceWriterFactory(
+      Properties properties,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     Properties factoryProperties = new Properties();
     factoryProperties.putAll(properties);
-    return new VeniceWriterFactory(factoryProperties);
+    return new VeniceWriterFactory(factoryProperties, pubSubProducerAdapterFactory, null);
   }
 
   public static SharedKafkaProducerAdapterFactory getSharedKafkaProducerService(Properties properties) {
@@ -637,8 +657,7 @@ public class TestUtils {
       String storeName,
       ControllerClient parentControllerClient,
       List<ControllerClient> controllerClientList) {
-    Assert
-        .assertFalse(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA).isError());
+    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\"").isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       for (ControllerClient client: controllerClientList) {
         Assert.assertFalse(client.getStore(storeName).isError());
@@ -822,6 +841,41 @@ public class TestUtils {
       return getUniqueString(prefix);
     } else {
       throw new VeniceException("Unsupported topic type for: " + pubSubTopicType);
+    }
+  }
+
+  /**
+   * WARNING: The code which generates the free port and uses it must always be called within
+   * a try/catch and a loop. There is no guarantee that the port returned will still be
+   * available at the time it is used. This is best-effort only.
+   *
+   * @return a free port to be used by tests.
+   */
+  public static int getFreePort() {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  public static Map<String, String> mergeConfigs(List<Map<String, String>> configMaps) {
+    Map<String, String> aggregateConfigMap = new HashMap<>(2);
+
+    for (Map<String, String> configMap: configMaps) {
+      for (Map.Entry<String, String> entry: configMap.entrySet()) {
+        aggregateConfigMap.compute(entry.getKey(), (k, v) -> v == null ? entry.getValue() : v + "," + entry.getValue());
+      }
+    }
+    return aggregateConfigMap;
+  }
+
+  public static void checkMissingFieldInAvroRecord(GenericRecord record, String fieldName) {
+    try {
+      Assert.assertNull(record.get(fieldName));
+    } catch (AvroRuntimeException e) {
+      // But in Avro 1.10+, it throws instead...
+      Assert.assertEquals(e.getMessage(), "Not a valid schema field: " + fieldName);
     }
   }
 }

@@ -1,26 +1,41 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.metadata.response.VersionProperties;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.ParseException;
@@ -144,5 +159,129 @@ public class TestAdminTool {
     String[] args =
         { "--get-kafka-topic-configs", "--url", "http://localhost:7036", "--kafka-topic-name", badTopicName };
     Assert.assertThrows(VeniceException.class, () -> AdminTool.main(args));
+  }
+
+  @Test
+  public void testAdminTopicIsAllowedByTopicConfigsRelatedApi() {
+    String topicName = "venice_admin_testCluster";
+    String[] args = { "--update-kafka-topic-retention", "--url", "http://localhost:7036", "--kafka-topic-name",
+        topicName, "--kafka-topic-retention-in-ms", "1000" };
+    try {
+      AdminTool.main(args);
+    } catch (Exception e) {
+      Assert.fail("AdminTool should allow admin topic to be updated by config update API", e);
+    }
+
+    String[] args2 = { "--get-kafka-topic-configs", "--url", "http://localhost:7036", "--kafka-topic-name", topicName };
+    try {
+      AdminTool.main(args2);
+    } catch (Exception e) {
+      Assert.fail("AdminTool should allow admin topic to be queried by config query API", e);
+    }
+  }
+
+  @Test
+  public void testAdminToolDataRecoveryApi() {
+    String storeNames = "test1,test2,test3";
+
+    String[] estimateArgs = { "--estimate-data-recovery-time", "--url", "http://localhost:7036", "--stores", storeNames,
+        "--dest-fabric", "ei-ltx1" };
+
+    String[] executeArgs = { "--execute-data-recovery", "--recovery-command", "venice-tools", "--extra-command-args",
+        "repush kafka --force --format", "--url", "http://localhost:7036", "--stores", storeNames, "--source-fabric",
+        "ei4", "--dest-fabric", "ei-ltx1", "--non-interactive", "--datetime", "2023-06-27T14:19:25" };
+
+    String[] monitorArgs = { "--monitor-data-recovery", "--url", "http://localhost:7036", "--stores", storeNames,
+        "--dest-fabric", "ei-ltx1", "--datetime", "2023-06-27T14:19:25", "--interval", "300" };
+
+    String[] estimateArgs2 = { "--estimate-data-recovery-time", "--url", "http://localhost:7036", "--cluster",
+        "venice-1", "--dest-fabric", "ei-ltx1" };
+
+    String[][] commands = { estimateArgs, estimateArgs2, executeArgs, monitorArgs };
+    try {
+      for (String[] command: commands) {
+        AdminTool.main(command);
+      }
+    } catch (VeniceClientException e) {
+      // Expected exception.
+    } catch (Exception err) {
+      Assert.fail("Unexpected exception happens in data recovery APIs: ", err);
+    }
+  }
+
+  @Test
+  public void testAdminToolRequestBasedMetadata()
+      throws ExecutionException, InterruptedException, JsonProcessingException {
+    String storeName = "test-store1";
+    String[] getMetadataArgs = { "--request-based-metadata", "--url", "http://localhost:7036", "--server-url",
+        "http://localhost:7036", "--store", storeName };
+    VeniceException requestException =
+        Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgs));
+    Assert.assertTrue(requestException.getMessage().contains("Encountered exception while trying to send metadata"));
+    String[] getMetadataArgsSSL = { "--request-based-metadata", "--url", "https://localhost:7036", "--server-url",
+        "https://localhost:7036", "--store", storeName };
+    VeniceException sslException = Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgsSSL));
+    Assert.assertTrue(sslException.getMessage().contains("requires admin tool to be executed with cert"));
+
+    TransportClient transportClient = mock(TransportClient.class);
+    CompletableFuture<TransportClientResponse> completableFuture = mock(CompletableFuture.class);
+    TransportClientResponse response = mock(TransportClientResponse.class);
+    RecordSerializer<MetadataResponseRecord> metadataResponseSerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MetadataResponseRecord.SCHEMA$);
+    MetadataResponseRecord record = new MetadataResponseRecord();
+    record.setRoutingInfo(Collections.singletonMap("0", Collections.singletonList("host1")));
+    record.setVersions(Collections.singletonList(1));
+    record.setHelixGroupInfo(Collections.emptyMap());
+    VersionProperties versionProperties = new VersionProperties();
+    versionProperties.setCurrentVersion(1);
+    versionProperties.setAmplificationFactor(1);
+    versionProperties.setCompressionStrategy(1);
+    versionProperties.setPartitionCount(1);
+    versionProperties.setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner");
+    versionProperties.setPartitionerParams(Collections.emptyMap());
+    record.setVersionMetadata(versionProperties);
+    record.setKeySchema(Collections.singletonMap("1", "\"string\""));
+    record.setValueSchemas(Collections.singletonMap("1", "\"string\""));
+    record.setLatestSuperSetValueSchemaId(1);
+    byte[] responseByte = metadataResponseSerializer.serialize(record);
+    doReturn(responseByte).when(response).getBody();
+    doReturn(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion() + 1).when(response)
+        .getSchemaId();
+    doReturn(response).when(completableFuture).get();
+    String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    doReturn(completableFuture).when(transportClient).get(requestBasedMetadataURL);
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    SchemaResponse schemaResponse = mock(SchemaResponse.class);
+    doReturn(false).when(schemaResponse).isError();
+    doReturn(MetadataResponseRecord.SCHEMA$.toString()).when(schemaResponse).getSchemaStr();
+    doReturn(schemaResponse).when(controllerClient)
+        .getValueSchema(
+            AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(),
+            AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion() + 1);
+    AdminTool
+        .getAndPrintRequestBasedMetadata(transportClient, () -> controllerClient, "http://localhost:7036", storeName);
+  }
+
+  @Test
+  public void testAdminToolDumpIngestionState() throws Exception {
+    String storeName = "test-store1";
+    String version = "1";
+
+    TransportClient transportClient = mock(TransportClient.class);
+    CompletableFuture<TransportClientResponse> completableFuture = mock(CompletableFuture.class);
+    TransportClientResponse response = mock(TransportClientResponse.class);
+    RecordSerializer<AdminResponseRecord> adminResponseSerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(AdminResponseRecord.SCHEMA$);
+    AdminResponseRecord record = new AdminResponseRecord();
+    record.partitionConsumptionStates = Collections.emptyList();
+    record.storeVersionState = null;
+    record.serverConfigs = null;
+
+    byte[] responseByte = adminResponseSerializer.serialize(record);
+    doReturn(responseByte).when(response).getBody();
+    doReturn(AvroProtocolDefinition.SERVER_ADMIN_RESPONSE.getCurrentProtocolVersion()).when(response).getSchemaId();
+    doReturn(response).when(completableFuture).get();
+    doReturn(completableFuture).when(transportClient).get(anyString());
+    AdminTool.dumpIngestionState(transportClient, storeName, version, null);
   }
 }

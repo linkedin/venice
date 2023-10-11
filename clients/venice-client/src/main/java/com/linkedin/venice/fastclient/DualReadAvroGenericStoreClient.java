@@ -23,6 +23,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   private final AvroGenericStoreClient<K, V> thinClient;
   private final FastClientStats clientStatsForSingleGet;
   private final FastClientStats clientStatsForMultiGet;
+  private final boolean useStreamingBatchGetAsDefault;
 
   public DualReadAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig config) {
     this(delegate, config, config.getGenericThinClient());
@@ -40,6 +41,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     this.thinClient = thinClient;
     this.clientStatsForSingleGet = config.getStats(RequestType.SINGLE_GET);
     this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET);
+    this.useStreamingBatchGetAsDefault = config.useStreamingBatchGetAsDefault();
   }
 
   private static <T> CompletableFuture<T> sendRequest(
@@ -137,7 +139,13 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   }
 
   @Override
-  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    return dualExecute(() -> super.batchGet(keys), () -> thinClient.batchGet(keys), clientStatsForMultiGet);
+  public CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
+      throws VeniceClientException {
+    return dualExecute(
+        this.useStreamingBatchGetAsDefault
+            ? () -> super.batchGet(requestContext, keys)
+            : () -> super.batchGetUsingSingleGet(keys),
+        () -> thinClient.batchGet(keys),
+        clientStatsForMultiGet);
   }
 }

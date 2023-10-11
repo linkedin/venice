@@ -16,6 +16,7 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
+import com.linkedin.venice.fastclient.meta.AbstractClientRoutingStrategy;
 import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -101,13 +102,24 @@ public class TestClientSimulator implements Client {
   private boolean longTailRetryEnabledForSingleGet = false;
   private int longTailRetryThresholdForSingleGetInMicroseconds = 0;
   private boolean longTailRetryEnabledForBatchGet = false;
-  private int longTailRetryThresholdForBatchGetInMicroseconds = 0;
+  private int longTailRetryThresholdForBatchGetInMicroSeconds = 0;
+
+  private static class UnitTestRoutingStrategy extends AbstractClientRoutingStrategy {
+    @Override
+    public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
+      List<String> retReplicas = new ArrayList<>();
+      for (int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
+        retReplicas.add(replicas.get(i));
+      }
+      return retReplicas;
+    }
+  }
 
   public TestClientSimulator() {
     // get()
-    this.keySerializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(KEY_VALUE_SCHEMA);
+    this.keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KEY_VALUE_SCHEMA);
     this.keyDeserializer =
-        FastSerializerDeserializerFactory.getAvroGenericDeserializer(KEY_VALUE_SCHEMA, KEY_VALUE_SCHEMA);
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(KEY_VALUE_SCHEMA, KEY_VALUE_SCHEMA);
     // multiGet()
     this.multiGetResponseSerializer =
         FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
@@ -497,9 +509,9 @@ public class TestClientSimulator implements Client {
     return this;
   }
 
-  public TestClientSimulator setLongTailRetryThresholdForBatchGetInMicroseconds(
-      int longTailRetryThresholdForBatchGetInMicroseconds) {
-    this.longTailRetryThresholdForBatchGetInMicroseconds = longTailRetryThresholdForBatchGetInMicroseconds;
+  public TestClientSimulator setLongTailRetryThresholdForBatchGetInMicroSeconds(
+      int longTailRetryThresholdForBatchGetInMicroSeconds) {
+    this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
     return this;
   }
 
@@ -511,10 +523,11 @@ public class TestClientSimulator implements Client {
     clientConfigBuilder.setR2Client(this);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(speculativeQueryEnabled);
+    clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(1000);
     if (longTailRetryEnabledForBatchGet) {
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true);
       clientConfigBuilder
-          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroseconds);
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroSeconds);
     }
     if (longTailRetryEnabledForSingleGet) {
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true);
@@ -601,13 +614,7 @@ public class TestClientSimulator implements Client {
       }
     };
 
-    metadata.setRoutingStrategy((requestId, replicas, requiredReplicaCount) -> {
-      List<String> retReplicas = new ArrayList<>();
-      for (int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
-        retReplicas.add(replicas.get(i));
-      }
-      return retReplicas;
-    });
+    metadata.setRoutingStrategy(new UnitTestRoutingStrategy());
 
     return ClientFactory.getAndStartGenericStoreClient(metadata, clientConfig);
   }

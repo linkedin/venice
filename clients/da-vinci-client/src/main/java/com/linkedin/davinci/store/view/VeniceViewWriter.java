@@ -4,9 +4,11 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.views.VeniceView;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -43,7 +45,7 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param oldValueSchemaId the schemaId of the old record
    * @param replicationMetadataRecord the associated RMD for the incoming record.
    */
-  public void processRecord(
+  public CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
@@ -51,6 +53,7 @@ public abstract class VeniceViewWriter extends VeniceView {
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord) {
+    return CompletableFuture.completedFuture(null);
   }
 
   /**

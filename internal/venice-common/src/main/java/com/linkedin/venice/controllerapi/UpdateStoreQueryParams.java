@@ -25,6 +25,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
@@ -44,6 +45,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
@@ -122,6 +124,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
+            .setStorageNodeReadQuotaEnabled(srcStore.isStorageNodeReadQuotaEnabled())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -597,6 +600,22 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Integer> getLatestSupersetSchemaId() {
     return getInteger(LATEST_SUPERSET_SCHEMA_ID);
+  }
+
+  public UpdateStoreQueryParams setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
+    return putBoolean(STORAGE_NODE_READ_QUOTA_ENABLED, storageNodeReadQuotaEnabled);
+  }
+
+  public Optional<Boolean> getStorageNodeReadQuotaEnabled() {
+    return getBoolean(STORAGE_NODE_READ_QUOTA_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setMinCompactionLagSeconds(long minCompactionLagSeconds) {
+    return putLong(MIN_COMPACTION_LAG_SECONDS, minCompactionLagSeconds);
+  }
+
+  public Optional<Long> getMinCompactionLagSeconds() {
+    return getLong(MIN_COMPACTION_LAG_SECONDS);
   }
 
   // ***************** above this line are getters and setters *****************

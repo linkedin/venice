@@ -102,6 +102,5 @@ public class StatsAvroGenericDaVinciClientTest {
     assertEquals(metrics.get(".test_store--multiget_success_request_key_count.Max").value(), 2.0);
     assertTrue(metrics.get(".test_store--multiget_success_request_ratio.SimpleRatioStat").value() < 1.0);
     assertTrue(metrics.get(".test_store--multiget_success_request_key_ratio.SimpleRatioStat").value() < 1.0);
-    System.out.println(metricsRepository.metrics());
   }
 }

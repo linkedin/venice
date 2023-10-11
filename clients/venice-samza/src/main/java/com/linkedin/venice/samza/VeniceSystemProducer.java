@@ -15,6 +15,7 @@ import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -25,6 +26,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
@@ -155,6 +157,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
+
+  private Map<String, String> additionalWriterConfigs = new HashMap<>();
 
   @Deprecated
   public VeniceSystemProducer(
@@ -315,6 +319,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.time = time;
   }
 
+  public void applyAdditionalWriterConfigs(Map<String, String> additionalWriterConfigs) {
+    this.additionalWriterConfigs.putAll(additionalWriterConfigs);
+  }
+
   public void setRouterUrl(String routerUrl) {
     this.routerUrl = Optional.of(routerUrl);
   }
@@ -399,7 +407,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   // trickery for unit testing
   VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(Properties properties, VeniceWriterOptions writerOptions) {
-    return new VeniceWriterFactory(properties).createVeniceWriter(writerOptions);
+    Properties finalWriterConfigs = new Properties();
+    finalWriterConfigs.putAll(properties);
+    finalWriterConfigs.putAll(additionalWriterConfigs);
+    return new VeniceWriterFactory(finalWriterConfigs, new ApacheKafkaProducerAdapterFactory(), null)
+        .createVeniceWriter(writerOptions);
   }
 
   @Override
@@ -412,7 +424,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     final TransportClient transportClient;
     if (discoveryUrl.isPresent()) {
       this.controllerClient =
-          ControllerClient.discoverAndConstructControllerClient(storeName, discoveryUrl.get(), sslFactory, 1);
+          ControllerClientFactory.discoverAndConstructControllerClient(storeName, discoveryUrl.get(), sslFactory, 1);
 
       /**
        * Verify that the latest {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE}
@@ -436,9 +448,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
 
       if (sslFactory.isPresent()) {
-        transportClient = new HttpsTransportClient(discoveryUrl.get(), sslFactory.get());
+        transportClient = new HttpsTransportClient(discoveryUrl.get(), 0, 0, false, sslFactory.get());
       } else {
-        transportClient = new HttpTransportClient(discoveryUrl.get());
+        transportClient = new HttpTransportClient(discoveryUrl.get(), 0, 0);
       }
     } else {
       this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);

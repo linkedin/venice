@@ -8,8 +8,6 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_REPLICATION_F
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
-import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -17,6 +15,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -46,7 +45,8 @@ public class RealTimeTopicSwitcher {
   private final String destKafkaBootstrapServers;
   private final VeniceWriterFactory veniceWriterFactory;
   private final Time timer;
-  private final Integer kafkaReplicationFactorForRTTopics;
+  private final int kafkaReplicationFactorForRTTopics;
+  private final int kafkaReplicationFactor;
   private final Optional<Integer> minSyncReplicasForRTTopics;
 
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -60,10 +60,11 @@ public class RealTimeTopicSwitcher {
     this.veniceWriterFactory = veniceWriterFactory;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.timer = new SystemTime();
-    this.destKafkaBootstrapServers = veniceProperties.getBoolean(ConfigKeys.SSL_TO_KAFKA, false)
-        ? veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)
-        : veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
-    int kafkaReplicationFactor = veniceProperties.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
+    this.destKafkaBootstrapServers =
+        veniceProperties.getBooleanWithAlternative(ConfigKeys.KAFKA_OVER_SSL, ConfigKeys.SSL_TO_KAFKA_LEGACY, false)
+            ? veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)
+            : veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    this.kafkaReplicationFactor = veniceProperties.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
     this.kafkaReplicationFactorForRTTopics =
         veniceProperties.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     this.minSyncReplicasForRTTopics = veniceProperties.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
@@ -76,23 +77,22 @@ public class RealTimeTopicSwitcher {
    *                             records from this timestamp.
    * @param remoteKafkaUrls URLs of Kafka clusters which are sources of remote replication (either native replication
    *                        is enabled or A/A is enabled)
-   * @throws TopicException
    */
   void sendTopicSwitch(
       PubSubTopic realTimeTopic,
       PubSubTopic topicWhereToSendTheTopicSwitch,
       long rewindStartTimestamp,
-      List<String> remoteKafkaUrls) throws TopicException {
+      List<String> remoteKafkaUrls) {
     String errorPrefix = "Cannot send TopicSwitch into '" + topicWhereToSendTheTopicSwitch
         + "' instructing to switch to '" + realTimeTopic + "' because";
     if (realTimeTopic.equals(topicWhereToSendTheTopicSwitch)) {
       throw new DuplicateTopicException(errorPrefix + " they are the same topic.");
     }
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(realTimeTopic)) {
-      throw new TopicDoesNotExistException(errorPrefix + " topic " + realTimeTopic + " does not exist.");
+      throw new PubSubTopicDoesNotExistException(errorPrefix + " topic " + realTimeTopic + " does not exist.");
     }
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(topicWhereToSendTheTopicSwitch)) {
-      throw new TopicDoesNotExistException(
+      throw new PubSubTopicDoesNotExistException(
           errorPrefix + " topic " + topicWhereToSendTheTopicSwitch + " does not exist.");
     }
     int destinationPartitionCount = getTopicManager().partitionsFor(topicWhereToSendTheTopicSwitch).size();
@@ -153,9 +153,7 @@ public class RealTimeTopicSwitcher {
       } else {
         partitionCount = store.getPartitionCount();
       }
-      int replicationFactor = srcTopicName.isRealTime()
-          ? kafkaReplicationFactorForRTTopics
-          : getTopicManager().getReplicationFactor(topicWhereToSendTheTopicSwitch);
+      int replicationFactor = srcTopicName.isRealTime() ? kafkaReplicationFactorForRTTopics : kafkaReplicationFactor;
       Optional<Integer> minISR = srcTopicName.isRealTime() ? minSyncReplicasForRTTopics : Optional.empty();
       getTopicManager().createTopic(
           srcTopicName,

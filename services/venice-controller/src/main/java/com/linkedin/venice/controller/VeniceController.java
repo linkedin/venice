@@ -3,28 +3,31 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
@@ -44,6 +47,7 @@ public class VeniceController {
   private TopicCleanupService topicCleanupService;
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
   private Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
+  private Optional<SystemStoreRepairService> systemStoreRepairService;
 
   private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -55,48 +59,9 @@ public class VeniceController {
   private final Optional<ClientConfig> routerClientConfig;
   private final Optional<ICProvider> icProvider;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
-  private static final String CONTROLLER_SERVICE_NAME = "venice-controller";
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-
-  /**
-   * This constructor is being used in integration test.
-   *
-   * @see #VeniceController(List, MetricsRepository, List, Optional, Optional, D2Client, Optional, Optional, Optional)
-   */
-  public VeniceController(
-      List<VeniceProperties> propertiesList,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
-      Optional<AuthorizerService> authorizerService,
-      D2Client d2Client) {
-    this(
-        propertiesList,
-        TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME),
-        serviceDiscoveryAnnouncers,
-        Optional.empty(),
-        authorizerService,
-        d2Client,
-        Optional.empty());
-  }
-
-  public VeniceController(
-      List<VeniceProperties> propertiesList,
-      MetricsRepository metricsRepository,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
-      Optional<DynamicAccessController> accessController,
-      Optional<AuthorizerService> authorizerService,
-      D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig) {
-    this(
-        propertiesList,
-        metricsRepository,
-        serviceDiscoveryAnnouncers,
-        accessController,
-        authorizerService,
-        d2Client,
-        routerClientConfig,
-        Optional.empty(),
-        Optional.empty());
-  }
+  private final PubSubClientsFactory pubSubClientsFactory;
+  static final String CONTROLLER_SERVICE_NAME = "venice-controller";
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -116,8 +81,11 @@ public class VeniceController {
    * @param routerClientConfig
    *        an optional {@link ClientConfig} used for reading schema from routers.
    * @param icProvider
-   *        an {@link ICProvider} used for injecting custom tracing functionality.
+   *        an optional invocation-context provider class for calls between various deployable services.
+   * @param externalSupersetSchemaGenerator
+   *        an optional {@link SupersetSchemaGenerator} used for generating superset schema.
    */
+  @Deprecated
   public VeniceController(
       List<VeniceProperties> propertiesList,
       MetricsRepository metricsRepository,
@@ -128,17 +96,32 @@ public class VeniceController {
       Optional<ClientConfig> routerClientConfig,
       Optional<ICProvider> icProvider,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
-    this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
-    this.metricsRepository = metricsRepository;
-    this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
+    this(
+        new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
+            .setMetricsRepository(metricsRepository)
+            .setServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers)
+            .setAccessController(accessController.orElse(null))
+            .setAuthorizerService(authorizerService.orElse(null))
+            .setD2Client(d2Client)
+            .setRouterClientConfig(routerClientConfig.orElse(null))
+            .setIcProvider(icProvider.orElse(null))
+            .setExternalSupersetSchemaGenerator(externalSupersetSchemaGenerator.orElse(null))
+            .build());
+  }
+
+  public VeniceController(VeniceControllerContext ctx) {
+    this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(ctx.getPropertiesList());
+    this.metricsRepository = ctx.getMetricsRepository();
+    this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
     Optional<SSLConfig> sslConfig = multiClusterConfigs.getSslConfig();
     this.sslEnabled = sslConfig.isPresent() && sslConfig.get().isControllerSSLEnabled();
-    this.accessController = accessController;
-    this.authorizerService = authorizerService;
-    this.d2Client = d2Client;
-    this.routerClientConfig = routerClientConfig;
-    this.icProvider = icProvider;
-    this.externalSupersetSchemaGenerator = externalSupersetSchemaGenerator;
+    this.accessController = Optional.ofNullable(ctx.getAccessController());
+    this.authorizerService = Optional.ofNullable(ctx.getAuthorizerService());
+    this.d2Client = ctx.getD2Client();
+    this.routerClientConfig = Optional.ofNullable(ctx.getRouterClientConfig());
+    this.icProvider = Optional.ofNullable(ctx.getIcProvider());
+    this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
+    this.pubSubClientsFactory = multiClusterConfigs.getPubSubClientsFactory();
     createServices();
   }
 
@@ -154,7 +137,8 @@ public class VeniceController {
         routerClientConfig,
         icProvider,
         externalSupersetSchemaGenerator,
-        pubSubTopicRepository);
+        pubSubTopicRepository,
+        pubSubClientsFactory);
 
     adminServer = new AdminSparkServer(
         // no need to pass the hostname, we are binding to all the addresses
@@ -191,6 +175,7 @@ public class VeniceController {
     }
     storeBackupVersionCleanupService = Optional.empty();
     storeGraveyardCleanupService = Optional.empty();
+    systemStoreRepairService = Optional.empty();
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
       topicCleanupService =
@@ -202,6 +187,11 @@ public class VeniceController {
       storeGraveyardCleanupService =
           Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreGraveyardCleanupService is enabled");
+      if (multiClusterConfigs.getCommonConfig().isParentSystemStoreRepairServiceEnabled()) {
+        systemStoreRepairService = Optional
+            .of(new SystemStoreRepairService((VeniceParentHelixAdmin) admin, multiClusterConfigs, metricsRepository));
+        LOGGER.info("SystemStoreRepairServiceEnabled is enabled");
+      }
     } else {
       topicCleanupService = new TopicCleanupService(admin, multiClusterConfigs, pubSubTopicRepository);
       if (!(admin instanceof VeniceHelixAdmin)) {
@@ -212,6 +202,8 @@ public class VeniceController {
           Optional.of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreBackupVersionCleanupService is enabled");
     }
+    // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
+    initializeSystemSchema(controllerService.getVeniceHelixAdmin());
   }
 
   /**
@@ -231,12 +223,53 @@ public class VeniceController {
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
+    systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
       serviceDiscoveryAnnouncer.register();
       LOGGER.info("Registered to service discovery: {}", serviceDiscoveryAnnouncer);
     });
     LOGGER.info("Controller is started.");
+  }
+
+  private void initializeSystemSchema(Admin admin) {
+    String systemStoreCluster = multiClusterConfigs.getSystemSchemaClusterName();
+    VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemStoreCluster);
+    if (!multiClusterConfigs.isParent() && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+      String regionName = systemStoreClusterConfig.getRegionName();
+      String childControllerUrl = systemStoreClusterConfig.getChildControllerUrl(regionName);
+      String d2ServiceName = systemStoreClusterConfig.getD2ServiceName();
+      String d2ZkHost = systemStoreClusterConfig.getChildControllerD2ZkHost(regionName);
+      boolean sslOnly = systemStoreClusterConfig.isControllerEnforceSSLOnly();
+      if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
+        ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
+            new ControllerClientBackedSystemSchemaInitializer(
+                AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+                systemStoreCluster,
+                AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
+                VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
+                true,
+                ((VeniceHelixAdmin) admin).getSslFactory(),
+                childControllerUrl,
+                d2ServiceName,
+                d2ZkHost,
+                sslOnly);
+        metaSystemStoreSchemaInitializer.execute();
+      }
+      ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+              systemStoreCluster,
+              null,
+              null,
+              false,
+              ((VeniceHelixAdmin) admin).getSslFactory(),
+              childControllerUrl,
+              d2ServiceName,
+              d2ZkHost,
+              sslOnly);
+      kmeSchemaInitializer.execute();
+    }
   }
 
   /**
@@ -249,11 +282,12 @@ public class VeniceController {
       LOGGER.info("Unregistered from service discovery: {}", serviceDiscoveryAnnouncer);
     });
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
-    Utils.closeQuietlyWithErrorLogged(topicCleanupService);
-    storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    Utils.closeQuietlyWithErrorLogged(adminServer);
+    storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    Utils.closeQuietlyWithErrorLogged(topicCleanupService);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
+    Utils.closeQuietlyWithErrorLogged(adminServer);
     Utils.closeQuietlyWithErrorLogged(controllerService);
   }
 
@@ -264,7 +298,7 @@ public class VeniceController {
     return controllerService;
   }
 
-  public static void main(String args[]) {
+  public static void main(String[] args) {
     if (args.length != 2) {
       Utils.exit("USAGE: java -jar venice-controller-all.jar <cluster_config_file_path> <controller_config_file_path>");
     }
@@ -274,28 +308,28 @@ public class VeniceController {
   public static void run(String clusterConfigFilePath, String controllerConfigFilePath, boolean joinThread) {
 
     VeniceProperties controllerProps = null;
+    String zkAddress = null;
     try {
       VeniceProperties clusterProps = Utils.parseProperties(clusterConfigFilePath);
       VeniceProperties controllerBaseProps = Utils.parseProperties(controllerConfigFilePath);
 
       controllerProps =
           new PropertyBuilder().put(clusterProps.toProperties()).put(controllerBaseProps.toProperties()).build();
+      zkAddress = controllerProps.getString(ZOOKEEPER_ADDRESS);
     } catch (Exception e) {
       String errorMessage = "Can not load configuration from file.";
       LOGGER.error(errorMessage, e);
       Utils.exit(errorMessage + e.getMessage());
     }
 
-    D2Client d2Client =
-        new D2ClientBuilder().setZkHosts(controllerProps.getString(ZOOKEEPER_ADDRESS)).setIsSSLEnabled(false).build();
-    D2ClientUtils.startClient(d2Client);
+    D2Client d2Client = D2ClientFactory.getD2Client(zkAddress, Optional.empty());
     VeniceController controller = new VeniceController(
-        Arrays.asList(new VeniceProperties[] { controllerProps }),
-        new ArrayList<>(),
-        Optional.empty(),
-        d2Client);
+        new VeniceControllerContext.Builder().setPropertiesList(Collections.singletonList(controllerProps))
+            .setServiceDiscoveryAnnouncers(new ArrayList<>())
+            .setD2Client(d2Client)
+            .build());
     controller.start();
-    addShutdownHook(controller, d2Client);
+    addShutdownHook(controller, zkAddress);
     if (joinThread) {
       try {
         Thread.currentThread().join();
@@ -305,13 +339,10 @@ public class VeniceController {
     }
   }
 
-  private static void addShutdownHook(VeniceController controller, D2Client d2Client) {
-    Runtime.getRuntime().addShutdownHook(new Thread() {
-      @Override
-      public void run() {
-        controller.stop();
-        D2ClientUtils.shutdownClient(d2Client);
-      }
-    });
+  private static void addShutdownHook(VeniceController controller, String zkAddress) {
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      controller.stop();
+      D2ClientFactory.release(zkAddress);
+    }));
   }
 }

@@ -43,7 +43,7 @@ At the moment, there are two ways to perform empty pushes:
 2. Via the Venice Push Job, executed from a Hadoop grid, but with an input directory that contains a file with no
    records in it.
 
-## [Experimental] Repush with TTL
+## Repush with TTL
 Similarly to empty push, the repush with TTL can also be configured and scheduled periodically to enforce TTL.
 The major differences between this and empty push are original data source and how real-time buffer is replayed.
 

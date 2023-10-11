@@ -24,6 +24,8 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -35,17 +37,13 @@ import java.util.stream.Collectors;
  * The downstream handler is not expected to use this object any more.
  */
 public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+  private static final Logger LOGGER = LogManager.getLogger(RouterRequestHttpHandler.class);
   private final StatsHandler statsHandler;
-  private final boolean useFastAvro;
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
 
-  public RouterRequestHttpHandler(
-      StatsHandler handler,
-      boolean useFastAvro,
-      Map<String, Integer> storeToEarlyTerminationThresholdMSMap) {
+  public RouterRequestHttpHandler(StatsHandler handler, Map<String, Integer> storeToEarlyTerminationThresholdMSMap) {
     super();
     this.statsHandler = handler;
-    this.useFastAvro = useFastAvro;
     this.storeToEarlyTerminationThresholdMSMap = storeToEarlyTerminationThresholdMSMap;
   }
 
@@ -95,8 +93,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case COMPUTE: // compute request
           if (req.method().equals(HttpMethod.POST)) {
-            ComputeRouterRequestWrapper computeRouterReq =
-                ComputeRouterRequestWrapper.parseComputeRequest(req, useFastAvro);
+            ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req);
             setupRequestTimeout(computeRouterReq);
             statsHandler.setRequestInfo(computeRouterReq);
             ctx.fireChannelRead(computeRouterReq);

@@ -21,6 +21,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -38,7 +39,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.RocksDBException;
@@ -73,8 +76,9 @@ public class StorageService extends AbstractVeniceService {
    * @param storeRepository supports readonly operations to access stores
    * @param restoreDataPartitions indicates if store data needs to be restored.
    * @param restoreMetadataPartitions indicates if meta data needs to be restored.
+   * @param checkWhetherStorageEngineShouldBeKeptOrNot check whether the local storage engine should be kept or not.
    */
-  public StorageService(
+  StorageService(
       VeniceConfigLoader configLoader,
       AggVersionedStorageEngineStats storageEngineStats,
       RocksDBMemoryStats rocksDBMemoryStats,
@@ -82,8 +86,9 @@ public class StorageService extends AbstractVeniceService {
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       ReadOnlyStoreRepository storeRepository,
       boolean restoreDataPartitions,
-      boolean restoreMetadataPartitions) {
-
+      boolean restoreMetadataPartitions,
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot,
+      Optional<Map<PersistenceType, StorageEngineFactory>> persistenceTypeToStorageEngineFactoryMapOptional) {
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     if (!Utils.directoryExists(dataPath)) {
       if (!configLoader.getVeniceServerConfig().isAutoCreateDataPath()) {
@@ -101,16 +106,68 @@ public class StorageService extends AbstractVeniceService {
     this.serverConfig = configLoader.getVeniceServerConfig();
     this.storageEngineRepository = new StorageEngineRepository();
 
-    this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
     this.aggVersionedStorageEngineStats = storageEngineStats;
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.storeVersionStateSerializer = storeVersionStateSerializer;
     this.partitionStateSerializer = partitionStateSerializer;
     this.storeRepository = storeRepository;
-    initInternalStorageEngineFactories();
-    if (restoreDataPartitions || restoreMetadataPartitions) {
-      restoreAllStores(configLoader, restoreDataPartitions, restoreMetadataPartitions);
+    if (persistenceTypeToStorageEngineFactoryMapOptional.isPresent()) {
+      this.persistenceTypeToStorageEngineFactoryMap = persistenceTypeToStorageEngineFactoryMapOptional.get();
+    } else {
+      this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
+      initInternalStorageEngineFactories();
     }
+    if (restoreDataPartitions || restoreMetadataPartitions) {
+      restoreAllStores(
+          configLoader,
+          restoreDataPartitions,
+          restoreMetadataPartitions,
+          checkWhetherStorageEngineShouldBeKeptOrNot);
+    }
+  }
+
+  public StorageService(
+      VeniceConfigLoader configLoader,
+      AggVersionedStorageEngineStats storageEngineStats,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      ReadOnlyStoreRepository storeRepository,
+      boolean restoreDataPartitions,
+      boolean restoreMetadataPartitions,
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot) {
+    this(
+        configLoader,
+        storageEngineStats,
+        rocksDBMemoryStats,
+        storeVersionStateSerializer,
+        partitionStateSerializer,
+        storeRepository,
+        restoreDataPartitions,
+        restoreMetadataPartitions,
+        checkWhetherStorageEngineShouldBeKeptOrNot,
+        Optional.empty());
+  }
+
+  public StorageService(
+      VeniceConfigLoader configLoader,
+      AggVersionedStorageEngineStats storageEngineStats,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      ReadOnlyStoreRepository storeRepository,
+      boolean restoreDataPartitions,
+      boolean restoreMetadataPartitions) {
+    this(
+        configLoader,
+        storageEngineStats,
+        rocksDBMemoryStats,
+        storeVersionStateSerializer,
+        partitionStateSerializer,
+        storeRepository,
+        restoreDataPartitions,
+        restoreMetadataPartitions,
+        s -> true);
   }
 
   /**
@@ -150,10 +207,33 @@ public class StorageService extends AbstractVeniceService {
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
   }
 
+  static void deleteStorageEngineOnRocksDBError(
+      String storageEngineName,
+      ReadOnlyStoreRepository storeRepository,
+      StorageEngineFactory factory) {
+    String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+    Store store;
+    boolean doDeleteStorageEngine;
+    try {
+      int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
+      store = storeRepository.getStoreOrThrow(storeName);
+      doDeleteStorageEngine = !store.getVersion(versionNumber).isPresent() || versionNumber < store.getCurrentVersion();
+    } catch (VeniceNoStoreException e) {
+      // The store does not exist in Venice anymore, so it will be deleted.
+      doDeleteStorageEngine = true;
+    }
+
+    if (doDeleteStorageEngine) {
+      LOGGER.info("Storage for {} does not exist, will delete it.", storageEngineName);
+      factory.removeStorageEngine(storageEngineName);
+    }
+  }
+
   private void restoreAllStores(
       VeniceConfigLoader configLoader,
       boolean restoreDataPartitions,
-      boolean restoreMetadataPartitions) {
+      boolean restoreMetadataPartitions,
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot) {
     LOGGER.info("Start restoring all the stores persisted previously");
     for (Map.Entry<PersistenceType, StorageEngineFactory> entry: persistenceTypeToStorageEngineFactoryMap.entrySet()) {
       PersistenceType pType = entry.getKey();
@@ -171,23 +251,32 @@ public class StorageService extends AbstractVeniceService {
         storeConfig.setRestoreMetadataPartition(restoreMetadataPartitions);
         AbstractStorageEngine storageEngine;
 
-        try {
-          storageEngine = openStore(storeConfig, () -> null);
-        } catch (Exception e) {
-          if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
+        if (checkWhetherStorageEngineShouldBeKeptOrNot.apply(storeName)) {
+          try {
+            storageEngine = openStore(storeConfig, () -> null);
+          } catch (Exception e) {
+            if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
+              LOGGER.warn("Encountered RocksDB error while opening store: {}", storeName, e);
+              // if store version does not exist, clean up the resources.
+              deleteStorageEngineOnRocksDBError(storeName, storeRepository, factory);
+              continue;
+            }
             LOGGER.error("Could not load the following store : " + storeName, e);
             aggVersionedStorageEngineStats.recordRocksDBOpenFailure(storeName);
-            continue;
+            throw new VeniceException("Error caught during opening store " + storeName, e);
           }
-          throw new VeniceException("Error caught during opening store " + storeName, e);
-        }
 
-        Set<Integer> partitionIds = storageEngine.getPartitionIds();
-        LOGGER.info(
-            "Loaded the following partitions: {}, for store: {}",
-            Arrays.toString(partitionIds.toArray()),
-            storeName);
-        LOGGER.info("Done restoring store: {} with type: {}", storeName, pType);
+          Set<Integer> partitionIds = storageEngine.getPartitionIds();
+          LOGGER.info(
+              "Loaded the following partitions: {}, for store: {}",
+              Arrays.toString(partitionIds.toArray()),
+              storeName);
+          LOGGER.info("Done restoring store: {} with type: {}", storeName, pType);
+        } else {
+          LOGGER.info("Starting deleting local storage engine: {} with type: {}", storeName, pType);
+          factory.removeStorageEngine(storeName);
+          LOGGER.info("Done deleting local storage engine: {} with type: {}", storeName, pType);
+        }
       }
       LOGGER.info("Done restoring all the stores with type: {}", pType);
     }
@@ -296,8 +385,9 @@ public class StorageService extends AbstractVeniceService {
 
   /**
    * Drops the partition of the specified store version in the storage service.
-   * @param storeConfig config of the store version.
-   * @param partition partition ID to be dropped.
+   *
+   * @param storeConfig              config of the store version.
+   * @param partition                partition ID to be dropped.
    * @param removeEmptyStorageEngine Whether to delete the storage engine when there is no remaining data partition.
    */
   public synchronized void dropStorePartition(
@@ -307,7 +397,8 @@ public class StorageService extends AbstractVeniceService {
     String kafkaTopic = storeConfig.getStoreVersionName();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      LOGGER.warn("Storage engine {} does not exist, ignoring drop partition request.", kafkaTopic);
+      LOGGER.warn("Storage engine {} does not exist, directly deleting DB files.", kafkaTopic);
+      removeStoragePartition(kafkaTopic, partition);
       return;
     }
     for (int subPartition: getSubPartition(kafkaTopic, partition)) {
@@ -318,6 +409,12 @@ public class StorageService extends AbstractVeniceService {
 
     if (remainingPartitions.isEmpty() && removeEmptyStorageEngine) {
       removeStorageEngine(kafkaTopic);
+    }
+  }
+
+  void removeStoragePartition(String kafkaTopic, int partition) {
+    for (StorageEngineFactory factory: persistenceTypeToStorageEngineFactoryMap.values()) {
+      factory.removeStorageEnginePartition(kafkaTopic, partition);
     }
   }
 
@@ -348,6 +445,16 @@ public class StorageService extends AbstractVeniceService {
     factory.removeStorageEngine(storageEngine);
   }
 
+  /**
+   * This function is used to forcely clean up all the databases belonging to {@param kafkaTopic}.
+   * This function will only be used when the {@link #removeStorageEngine(String)} function can't
+   * handle some edge case, such as some partitions are lingering, which are not visible to the corresponding
+   * {@link AbstractStorageEngine}
+   */
+  public synchronized void forceStorageEngineCleanup(String kafkaTopic) {
+    persistenceTypeToStorageEngineFactoryMap.values().forEach(factory -> factory.removeStorageEngine(kafkaTopic));
+  }
+
   public synchronized void closeStorageEngine(String kafkaTopic) {
     AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
@@ -366,7 +473,7 @@ public class StorageService extends AbstractVeniceService {
   public void cleanupAllStores(VeniceConfigLoader configLoader) {
     // Load local storage and delete them safely.
     // TODO Just clean the data dir in case loading and deleting is too slow.
-    restoreAllStores(configLoader, true, true);
+    restoreAllStores(configLoader, true, true, s -> true);
     LOGGER.info("Start cleaning up all the stores persisted previously");
     storageEngineRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
       String storeName = storageEngine.getStoreName();
@@ -408,6 +515,19 @@ public class StorageService extends AbstractVeniceService {
 
   public AbstractStorageEngine getStorageEngine(String kafkaTopic) {
     return getStorageEngineRepository().getLocalStorageEngine(kafkaTopic);
+  }
+
+  public Map<String, Set<Integer>> getStoreAndUserPartitionsMapping() {
+    Map<String, Set<Integer>> storePartitionMapping = new HashMap<>();
+    for (AbstractStorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
+      String storeName = engine.getStoreName();
+      int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, storeName);
+      Set<Integer> partitionIdSet = ((Set<Integer>) engine.getPartitionIds()).stream()
+          .map(id -> PartitionUtils.getUserPartition(id, amplificationFactor))
+          .collect(Collectors.toSet());
+      storePartitionMapping.put(storeName, partitionIdSet);
+    }
+    return storePartitionMapping;
   }
 
   @Override

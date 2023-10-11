@@ -51,7 +51,7 @@ public class TestVeniceMultiGetPath {
     RouterExceptionAndTrackingUtils.setRouterStats(null);
   }
 
-  private byte[] serializeKeys(Iterable<ByteBuffer> keys) {
+  private static byte[] serializeKeys(Iterable<ByteBuffer> keys) {
     RecordSerializer<ByteBuffer> serializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(VeniceMultiGetPath.EXPECTED_PROTOCOL.getSchema());
     return serializer.serializeObjects(keys);
@@ -65,7 +65,7 @@ public class TestVeniceMultiGetPath {
     return mockedPartitionFinder;
   }
 
-  private BasicFullHttpRequest getMultiGetHttpRequest(
+  static BasicFullHttpRequest getMultiGetHttpRequest(
       String resourceName,
       List<ByteBuffer> keys,
       Optional<Integer> apiVersion) {

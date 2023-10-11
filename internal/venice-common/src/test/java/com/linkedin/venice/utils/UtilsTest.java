@@ -1,6 +1,8 @@
 package com.linkedin.venice.utils;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -64,15 +66,14 @@ public class UtilsTest {
     Map<CharSequence, CharSequence> debugInfo = Utils.getDebugInfo();
     debugInfo.forEach((k, v) -> System.out.println(k + ": " + v));
     Assert.assertFalse(debugInfo.isEmpty(), "debugInfo should not be empty.");
-    String[] expectedKeys = { "path", "host", "pid", "version", "user", "JDK major version" };
-    Assert.assertEquals(
-        debugInfo.size(),
-        expectedKeys.length,
-        "debugInfo does not contain the expected number of elements.");
+    // N.B.: The "version" entry is not available in unit tests because of the way the classpath is built...
+    String[] expectedKeys = { "path", "host", "pid", "user", "JDK major version" };
+    assertTrue(
+        debugInfo.size() >= expectedKeys.length,
+        "debugInfo does not contain the minimum expected number of elements. Expected: " + expectedKeys.length
+            + ". Actual: " + debugInfo.size() + ".");
     Arrays.stream(expectedKeys)
-        .forEach(key -> Assert.assertTrue(debugInfo.containsKey(key), "debugInfo should contain: " + key));
-
-    // N.B.: Not testing the actual debugInfo values because them being environment-specific makes things a bit tricky
+        .forEach(key -> assertTrue(debugInfo.containsKey(key), "debugInfo should contain: " + key));
   }
 
   @Test
@@ -100,7 +101,7 @@ public class UtilsTest {
     inputOutput.entrySet()
         .stream()
         .forEach(
-            entry -> Assert.assertEquals(
+            entry -> assertEquals(
                 Utils.makeLargeNumberPretty(entry.getKey()),
                 entry.getValue(),
                 entry.getKey() + " does not get converted properly!"));
@@ -129,7 +130,7 @@ public class UtilsTest {
     inputOutput.entrySet()
         .stream()
         .forEach(
-            entry -> Assert.assertEquals(
+            entry -> assertEquals(
                 Utils.makeTimePretty(entry.getKey()),
                 entry.getValue(),
                 entry.getKey() + " does not get converted properly!"));
@@ -140,7 +141,7 @@ public class UtilsTest {
     Path directoryPath = Files.createTempDirectory(null);
     Path filePath = Files.createTempFile(null, null);
     Path nonExistingPath = Paths.get(Utils.getUniqueTempPath());
-    Assert.assertTrue(Utils.directoryExists(directoryPath.toString()));
+    assertTrue(Utils.directoryExists(directoryPath.toString()));
     Assert.assertFalse(Utils.directoryExists(filePath.toString()));
     Assert.assertFalse(Utils.directoryExists(nonExistingPath.toString()));
     Files.delete(directoryPath);
@@ -162,5 +163,24 @@ public class UtilsTest {
     }
     actualValues.sort(Integer::compareTo);
     assertEquals(expectedValues, actualValues);
+  }
+
+  @Test
+  public void testParseMap() {
+    assertEquals(Utils.parseCommaSeparatedStringMapFromString("", "test_field").size(), 0);
+    Map nonEmptyMap = Utils.parseCommaSeparatedStringMapFromString("a=b", "test_field");
+    Map expectedMap = new HashMap<>();
+    expectedMap.put("a", "b");
+    assertEquals(nonEmptyMap, expectedMap);
+
+    VeniceException e = expectThrows(
+        VeniceException.class,
+        () -> Utils.parseCommaSeparatedStringMapFromString("invalid_value", "test_field"));
+    assertTrue(e.getMessage().contains("must be key value pairs separated by comma"));
+  }
+
+  @Test
+  public void testSanitizingStringForLogger() {
+    Assert.assertEquals(Utils.getSanitizedStringForLogger(".abc.123."), "_abc_123_");
   }
 }

@@ -1,5 +1,6 @@
 package com.linkedin.alpini.router.api;
 
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Collection;
 import java.util.Iterator;
 import javax.annotation.Nonnull;
@@ -40,6 +41,9 @@ public interface ResourcePath<K> {
    * If the inherited class wants to know whether the current path belongs to a retry request or not,
    * it needs to implement this method properly to maintain the internal state.
    */
+  default void setRetryRequest(HttpResponseStatus status) {
+  }
+
   default void setRetryRequest() {
   }
 }

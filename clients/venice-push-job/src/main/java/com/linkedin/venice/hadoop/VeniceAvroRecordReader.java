@@ -3,9 +3,11 @@ package com.linkedin.venice.hadoop;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.hadoop.VenicePushJob.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.UPDATE_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -17,6 +19,8 @@ import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.update.UpdateBuilder;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
@@ -46,6 +50,8 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
 
   private Schema storeSchema;
   private Schema fileSchema;
+  private boolean generatePartialUpdateRecordFromInput;
+  private Schema updateSchema;
 
   private final ETLValueSchemaTransformation etlValueSchemaTransformation;
 
@@ -82,20 +88,8 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
     setupSchema(keyFieldStr, valueFieldStr);
   }
 
-  public VeniceAvroRecordReader(VeniceProperties props) {
-    this(
-        props.getString(TOPIC_PROP),
-        AvroSchemaParseUtils.parseSchemaFromJSON(
-            props.getString(SCHEMA_STRING_PROP),
-            props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED)),
-        props.getString(KEY_FIELD_PROP),
-        props.getString(VALUE_FIELD_PROP),
-        ETLValueSchemaTransformation
-            .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name())));
-  }
-
   /**
-   * This constructor is used in the Mapper.
+   * This constructor is used in the Dali, please consider evolving it gracefully otherwise it will break downstream dependency.
    * @param topicName Topic which is to be published to
    * @param fileSchema Schema of the source files
    * @param keyFieldStr Field name of the key field
@@ -112,6 +106,79 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
     this.fileSchema = fileSchema;
     this.etlValueSchemaTransformation = etlValueSchemaTransformation;
     setupSchema(keyFieldStr, valueFieldStr);
+  }
+
+  /**
+   * This constructor is used in the Mapper.
+   */
+  public VeniceAvroRecordReader(VeniceProperties props) {
+    super(props.getString(TOPIC_PROP));
+    this.fileSchema = AvroSchemaParseUtils.parseSchemaFromJSON(
+        props.getString(SCHEMA_STRING_PROP),
+        props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED));
+
+    this.etlValueSchemaTransformation = ETLValueSchemaTransformation
+        .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name()));
+    this.generatePartialUpdateRecordFromInput = props.getBoolean(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, false);
+    if (generatePartialUpdateRecordFromInput) {
+      this.updateSchema =
+          AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(props.getString(UPDATE_SCHEMA_STRING_PROP));
+    }
+    setupSchema(props.getString(KEY_FIELD_PROP), props.getString(VALUE_FIELD_PROP));
+  }
+
+  @Override
+  protected Object getAvroKey(AvroWrapper<IndexedRecord> record, NullWritable nullValue) {
+    Object keyDatum = record.datum().get(keyFieldPos);
+
+    if (keyDatum == null) {
+      // Invalid data
+      // Theoretically it should not happen since all the avro records are sharing the same schema in the same file
+      throw new VeniceException("Encountered record with null key");
+    }
+
+    return keyDatum;
+  }
+
+  @Override
+  protected Object getAvroValue(AvroWrapper<IndexedRecord> record, NullWritable nullValue) {
+    Object valueObject = record.datum().get(valueFieldPos);
+    if (!generatePartialUpdateRecordFromInput) {
+      return valueObject;
+    }
+    if (!(valueObject instanceof IndexedRecord)) {
+      throw new VeniceException("Retrieved record is not a Avro indexed record");
+    }
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
+    IndexedRecord indexedRecordValue = (IndexedRecord) valueObject;
+    for (Schema.Field field: indexedRecordValue.getSchema().getFields()) {
+      updateBuilder.setNewFieldValue(field.name(), indexedRecordValue.get(field.pos()));
+    }
+    return updateBuilder.build();
+  }
+
+  public Schema getFileSchema() {
+    return fileSchema;
+  }
+
+  public Schema getStoreSchema() {
+    return storeSchema;
+  }
+
+  @Override
+  public Iterator<Pair<byte[], byte[]>> iterator() {
+    if (avroDataFileStream == null) {
+      LOGGER.warn("Data not iterable due to incorrect file information.");
+      return Collections.emptyIterator();
+    }
+
+    return new AvroIterator(avroDataFileStream, topicName, this);
+  }
+
+  @Override
+  public void close() {
+    Utils.closeQuietlyWithErrorLogged(avroDataFileStream);
+    Utils.closeQuietlyWithErrorLogged(hdfsInputStream);
   }
 
   private void setupSchema(String keyFieldStr, String valueFieldStr) {
@@ -159,55 +226,17 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
     keyFieldPos = storeKeyField.pos();
     valueFieldPos = storeValueField.pos();
 
-    configure(storeKeyField.schema().toString(), storeValueField.schema().toString());
-  }
-
-  @Override
-  protected Object getAvroKey(AvroWrapper<IndexedRecord> record, NullWritable nullValue) {
-    Object keyDatum = record.datum().get(keyFieldPos);
-
-    if (keyDatum == null) {
-      // Invalid data
-      // Theoretically it should not happen since all the avro records are sharing the same schema in the same file
-      throw new VeniceException("Encountered record with null key");
+    if (generatePartialUpdateRecordFromInput) {
+      configure(storeKeyField.schema().toString(), updateSchema.toString());
+    } else {
+      configure(storeKeyField.schema().toString(), storeValueField.schema().toString());
     }
-
-    return keyDatum;
-  }
-
-  @Override
-  protected Object getAvroValue(AvroWrapper<IndexedRecord> record, NullWritable nullValue) {
-    return record.datum().get(valueFieldPos);
-  }
-
-  public Schema getFileSchema() {
-    return fileSchema;
-  }
-
-  public Schema getStoreSchema() {
-    return storeSchema;
-  }
-
-  @Override
-  public Iterator<Pair<byte[], byte[]>> iterator() {
-    if (avroDataFileStream == null) {
-      LOGGER.warn("Data not iterable due to incorrect file information.");
-      return Collections.emptyIterator();
-    }
-
-    return new AvroIterator(avroDataFileStream, topicName, this);
-  }
-
-  @Override
-  public void close() {
-    Utils.closeQuietlyWithErrorLogged(avroDataFileStream);
-    Utils.closeQuietlyWithErrorLogged(hdfsInputStream);
   }
 
   private static class AvroIterator implements Iterator<Pair<byte[], byte[]>> {
-    private DataFileStream avroDataFileStream;
-    private String topic;
-    private VeniceAvroRecordReader recordReader;
+    private final DataFileStream avroDataFileStream;
+    private final String topic;
+    private final VeniceAvroRecordReader recordReader;
 
     public AvroIterator(DataFileStream avroDataFileStream, String topic, VeniceAvroRecordReader recordReader) {
       this.avroDataFileStream = avroDataFileStream;

@@ -1,16 +1,16 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
-import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.List;
-import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -35,8 +35,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       String aggregateRealTimeSourceKafkaUrl,
       List<String> childDataCenterKafkaUrls,
       HelixAdminClient helixAdminClient,
-      boolean disableErrorLeaderReplica,
-      long offlineJobResourceAssignmentWaitTimeInMilliseconds) {
+      VeniceControllerConfig controllerConfig,
+      PushStatusStoreReader pushStatusStoreReader) {
     super(
         clusterName,
         offlinePushAccessor,
@@ -49,8 +49,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         aggregateRealTimeSourceKafkaUrl,
         childDataCenterKafkaUrls,
         helixAdminClient,
-        disableErrorLeaderReplica,
-        offlineJobResourceAssignmentWaitTimeInMilliseconds);
+        controllerConfig,
+        pushStatusStoreReader);
   }
 
   @Override
@@ -75,16 +75,16 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   private void updatePushStatusByPartitionStatus(
       OfflinePushStatus offlinePushStatus,
       PartitionAssignment partitionAssignment) {
-    Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(
+    ExecutionStatusWithDetails statusWithDetails = checkPushStatus(
         offlinePushStatus,
         partitionAssignment,
         getDisableReplicaCallback(partitionAssignment.getTopic()));
-    if (status.getFirst().isTerminal()) {
+    if (statusWithDetails.getStatus().isTerminal()) {
       LOGGER.info(
-          "Found a offline pushes could be terminated: {} status: {}",
+          "Found a offline pushes could be terminated: {}, status: {}",
           offlinePushStatus.getKafkaTopic(),
-          status.getFirst());
-      handleOfflinePushUpdate(offlinePushStatus, status.getFirst(), status.getSecond());
+          statusWithDetails.getStatus());
+      handleTerminalOfflinePushUpdate(offlinePushStatus, statusWithDetails);
     }
   }
 
@@ -92,11 +92,12 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
    * Checking push status based on Venice offlinePush status
    */
   @Override
-  protected Pair<ExecutionStatus, Optional<String>> checkPushStatus(
+  protected ExecutionStatusWithDetails checkPushStatus(
       OfflinePushStatus pushStatus,
       PartitionAssignment partitionAssignment,
       DisableReplicaCallback callback) {
-    return PushStatusDecider.getDecider(pushStatus.getStrategy())
+    return pushStatus.getStrategy()
+        .getPushStatusDecider()
         .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment, callback);
   }
 

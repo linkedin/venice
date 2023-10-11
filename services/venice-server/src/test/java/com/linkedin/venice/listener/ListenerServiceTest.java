@@ -1,6 +1,5 @@
 package com.linkedin.venice.listener;
 
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
@@ -16,9 +15,9 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -55,8 +54,7 @@ public class ListenerServiceTest {
     compressorFactory = mock(StorageEngineBackedCompressorFactory.class);
     resourceReadUsageTracker = Optional.of(mock(ResourceReadUsageTracker.class));
     doReturn(1234).when(serverConfig).getListenerPort();
-    BlockingQueue<Runnable> executionQueue = mock(BlockingQueue.class);
-    doReturn(executionQueue).when(serverConfig).getExecutionQueue(anyInt());
+    doReturn(BlockingQueueType.LINKED_BLOCKING_QUEUE).when(serverConfig).getBlockingQueueType();
     doReturn(10).when(serverConfig).getRestServiceStorageThreadNum();
     doReturn(10).when(serverConfig).getDatabaseLookupQueueCapacity();
     doReturn(10).when(serverConfig).getServerComputeThreadNum();

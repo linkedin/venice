@@ -45,8 +45,14 @@ configurations {
 
 sourceSets {
   integrationTest {
-    java.srcDirs = ['src/integrationtest/java']
-    resources.srcDirs = ['src/integrationtest/resources']
+    // 'src/integrationTest/java' is in srcDir by default. Just add the proto directory
+    java.srcDir 'src/integrationTest/proto'
+    resources
+  }
+  jmh {
+    // 'src/jmh/java' is in srcDir by default. Just add the proto directory
+    java.srcDir 'src/jmh/proto'
+    resources
   }
 }
 
@@ -56,7 +62,6 @@ dependencies {
     // this will introduce another different mockito-all version
     exclude group: 'org.mockito', module: 'mockito-all'
   }
-
   implementation project(':clients:da-vinci-client')
   implementation project(':clients:venice-client')
   implementation project(':clients:venice-push-job')
@@ -64,6 +69,7 @@ dependencies {
   implementation project(':services:venice-controller')
   implementation project(':services:venice-router')
   implementation project(':clients:venice-samza')
+  implementation project(':clients:venice-producer')
   implementation project(':internal:venice-client-common')
   implementation project(':services:venice-server')
   implementation project(':clients:venice-thin-client')
@@ -91,13 +97,15 @@ dependencies {
   implementation libraries.spark
   implementation libraries.testng
 
-  testImplementation (libraries.mapreduceClientJobClient) {
+  implementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'
     exclude group: 'javax.servlet'
   }
   testImplementation project(':clients:venice-admin-tool')
   testImplementation project(':internal:alpini:common:alpini-common-base')
   testImplementation project(':internal:venice-common').sourceSets.test.output
+  testImplementation libraries.log4j2core
+  testImplementation libraries.log4j2api
 
   jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:' + jmh.jmhVersion.get()
   jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
@@ -131,14 +139,16 @@ def integrationTestBuckets = [
       "com.linkedin.venice.storagenode.*",
       "com.linkedin.venice.restart.*"],
   "G": [
-      "com.linkedin.venice.router.*"],
+      "com.linkedin.venice.router.*",
+      "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
+      "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest"],
   "H": [
       "com.linkedin.venice.fastclient.BatchGet*",
       "com.linkedin.venice.fastclient.schema.*",
       "com.linkedin.venice.fastclient.meta.*",
       "com.linkedin.venice.endToEnd.TestEmptyPush"],
   "I": [
-      "com.linkedin.venice.fastclient.AvroStore*"],
+      "com.linkedin.venice.fastclient.AvroStoreClientEndToEndTest"],
   "J": [
       "com.linkedin.venice.hadoop.*",
       "com.linkedin.venice.endToEnd.TestVson*",
@@ -235,7 +245,7 @@ task generateGHCI() {
   appendToGHCI(validateGradleWrapperFileContent, targetFilePath, validateGradleWrapper, 5, "")
   jobs << validateGradleWrapper
 
-  def common = "--stacktrace --continue --no-daemon "
+  def common = "--continue --no-daemon "
   def staticAnalysisFlowGradleArgs = common + "clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification"
 
   def staticAnalysis = "StaticAnalysis"
@@ -316,8 +326,9 @@ flakyTest {
 idea {
   module {
     testSourceDirs += project.sourceSets.integrationTest.java.srcDirs
+    testSourceDirs += project.sourceSets.jmh.java.srcDirs
+
     testResourceDirs += project.sourceSets.integrationTest.resources.srcDirs
-    // testSourceDirs += project.sourceSets.jmh.java.srcDirs // broken, somehow, gotta debug...
   }
 }
 

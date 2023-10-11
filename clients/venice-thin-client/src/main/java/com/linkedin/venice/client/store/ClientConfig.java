@@ -25,7 +25,7 @@ public class ClientConfig<T extends SpecificRecord> {
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
   public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
-  public static final Duration DEFAULT_SCHEMA_REFRESH_PERIOD = Duration.ofSeconds(Long.MAX_VALUE);
+  public static final Duration DEFAULT_SCHEMA_REFRESH_PERIOD = Duration.ofMillis(0);
 
   // Basic settings
   private String storeName;
@@ -53,12 +53,20 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean useBlackHoleDeserializer = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
   private boolean projectionFieldValidation = true;
+  private boolean remoteComputationOnly = false;
   private Duration schemaRefreshPeriod = DEFAULT_SCHEMA_REFRESH_PERIOD;
   private Optional<Predicate<Schema>> preferredSchemaFilter = Optional.empty();
 
   // Security settings
   private boolean isHttps = false;
   private SSLFactory sslFactory = null;
+
+  // HttpTransport settings
+  private int maxConnectionsPerRoute; // only for HTTP1
+
+  private int maxConnectionsTotal; // only for HTTP1
+
+  private boolean httpClient5Http2Enabled;
 
   // Test settings
   private Time time = new SystemTime();
@@ -88,11 +96,12 @@ public class ClientConfig<T extends SpecificRecord> {
         .setVsonClient(config.isVsonClient())
 
         // D2 specific settings
-        .setD2Routing(config.isD2Routing())
         .setD2ServiceName(config.getD2ServiceName())
         .setD2BasePath(config.getD2BasePath())
         .setD2ZkTimeout(config.getD2ZkTimeout())
         .setD2Client(config.getD2Client())
+        .setD2Routing(config.isD2Routing()) // This should be the last of the D2 configs since it is an inferred config
+                                            // and we want the cloned config to match the source config
 
         // Performance-related settings
         .setMetricsRepository(config.getMetricsRepository())
@@ -106,11 +115,15 @@ public class ClientConfig<T extends SpecificRecord> {
         // Security settings
         .setHttps(config.isHttps())
         .setSslFactory(config.getSslFactory())
-
         .setForceClusterDiscoveryAtStartTime(config.isForceClusterDiscoveryAtStartTime())
         .setProjectionFieldValidationEnabled(config.isProjectionFieldValidationEnabled())
         .setPreferredSchemaFilter(config.getPreferredSchemaFilter().orElse(null))
         .setSchemaRefreshPeriod(config.getSchemaRefreshPeriod())
+
+        // HttpTransport settings
+        .setMaxConnectionsPerRoute(config.getMaxConnectionsPerRoute())
+        .setMaxConnectionsTotal(config.getMaxConnectionsTotal())
+        .setHttpClient5Http2Enabled(config.isHttpClient5Http2Enabled())
 
         // Test settings
         .setTime(config.getTime());
@@ -255,6 +268,33 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public int getMaxConnectionsPerRoute() {
+    return maxConnectionsPerRoute;
+  }
+
+  public ClientConfig<T> setMaxConnectionsPerRoute(int maxConnectionsPerRoute) {
+    this.maxConnectionsPerRoute = maxConnectionsPerRoute;
+    return this;
+  }
+
+  public int getMaxConnectionsTotal() {
+    return maxConnectionsTotal;
+  }
+
+  public ClientConfig<T> setMaxConnectionsTotal(int maxConnectionsTotal) {
+    this.maxConnectionsTotal = maxConnectionsTotal;
+    return this;
+  }
+
+  public boolean isHttpClient5Http2Enabled() {
+    return httpClient5Http2Enabled;
+  }
+
+  public ClientConfig<T> setHttpClient5Http2Enabled(boolean httpClient5Http2Enabled) {
+    this.httpClient5Http2Enabled = httpClient5Http2Enabled;
+    return this;
+  }
+
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
   }
@@ -395,6 +435,15 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public boolean isRemoteComputationOnly() {
+    return remoteComputationOnly;
+  }
+
+  public ClientConfig<T> setRemoteComputationOnly(boolean remoteComputationOnly) {
+    this.remoteComputationOnly = remoteComputationOnly;
+    return this;
+  }
+
   public Optional<Predicate<Schema>> getPreferredSchemaFilter() {
     return preferredSchemaFilter;
   }
@@ -447,6 +496,10 @@ public class ClientConfig<T extends SpecificRecord> {
     }
 
     if (this.isVsonClient() != anotherClientConfig.isVsonClient()) {
+      return false;
+    }
+
+    if (this.isD2Routing() != anotherClientConfig.isD2Routing()) {
       return false;
     }
 

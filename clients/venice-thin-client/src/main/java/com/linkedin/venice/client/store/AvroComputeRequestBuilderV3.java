@@ -4,6 +4,7 @@ import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V3;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.COUNT;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.client.schema.SchemaAndToString;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
@@ -40,7 +41,7 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
   }
 
   @Override
-  protected Pair<Schema, String> getResultSchema() {
+  protected SchemaAndToString getResultSchema() {
     Map<String, Object> computeSpec = getCommonComputeSpec();
 
     List<Pair<CharSequence, CharSequence>> countPairs = new LinkedList<>();
@@ -74,22 +75,12 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
 
       Schema generatedResultSchema = Schema.createRecord(resultSchemaName, "", "", false);
       generatedResultSchema.setFields(resultSchemaFields);
-      return Pair.create(generatedResultSchema, generatedResultSchema.toString());
+      return new SchemaAndToString(generatedResultSchema);
     });
   }
 
-  @Override
-  protected ComputeRequestWrapper generateComputeRequest(String resultSchemaStr) {
-    // Generate ComputeRequestWrapper object
-    ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(COMPUTE_REQUEST_VERSION);
-    computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
-    computeRequestWrapper.setOperations(getComputeRequestOperations());
-    computeRequestWrapper.setValueSchema(latestValueSchema);
-    return computeRequestWrapper;
-  }
-
   protected List<ComputeOperation> getComputeRequestOperations() {
-    List<ComputeOperation> operations = getCommonComputeOperations();
+    List<ComputeOperation> operations = super.getComputeRequestOperations();
 
     countOperations.forEach(count -> {
       ComputeOperation computeOperation = new ComputeOperation();

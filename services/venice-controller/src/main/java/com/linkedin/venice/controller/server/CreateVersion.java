@@ -16,6 +16,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.EMPTY_PUSH;
@@ -94,16 +95,15 @@ public class CreateVersion extends AbstractRoute {
           boolean missingWriteAccess = !hasWriteAccessToTopic(request);
           boolean missingReadAccess = this.checkReadMethodForKafka && !hasReadAccessToTopic(request);
           if (missingWriteAccess && missingReadAccess) {
-            errorMsg = "[Error] Push terminated due to ACL issues for user \"" + userId
-                + "\". Please visit go/veniceacl and setup [write] ACLs for your store.";
+            errorMsg = "[Error] Missing [read] and [write] ACLs for user \"" + userId
+                + "\". Please setup ACLs for your store.";
           } else if (missingWriteAccess) {
-            errorMsg = "[Error] Hadoop user \"" + userId + "\" does not have [write] permission for store: " + storeName
-                + ". Please refer to go/veniceacl and setup store ACLs";
+            errorMsg = "[Error] Missing [write] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
           } else {
-            errorMsg = "[Error] Missing [read] method in [write] ACLs for user \"" + userId
-                + "\". Please visit go/veniceacl and setup ACLs for your store";
+            errorMsg = "[Error] Missing [read] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
           }
           responseObject.setError(errorMsg);
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
 
@@ -171,6 +171,7 @@ public class CreateVersion extends AbstractRoute {
 
         boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
         responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers(isSSL));
+        responseObject.setKafkaSourceRegion(admin.getRegionName());
         responseObject.setEnableSSL(isSSL);
 
         String pushJobId = request.queryParams(PUSH_JOB_ID);
@@ -218,7 +219,7 @@ public class CreateVersion extends AbstractRoute {
               storeName);
           sourceGridFabric = Optional.empty();
         }
-        Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion();
+        Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion(clusterName);
         if (emergencySourceRegion.isPresent() && !isActiveActiveReplicationEnabledInAllRegion.get()) {
           LOGGER.info(
               "Ignoring config {} : {}, as store {} is not set up for Active/Active replication in all regions",
@@ -245,6 +246,8 @@ public class CreateVersion extends AbstractRoute {
          * Version level override to defer marking this new version to the serving version post push completion.
          */
         boolean deferVersionSwap = Boolean.parseBoolean(request.queryParams(DEFER_VERSION_SWAP));
+
+        String targetedRegions = request.queryParams(TARGETED_REGIONS);
 
         switch (pushType) {
           case BATCH:
@@ -281,7 +284,8 @@ public class CreateVersion extends AbstractRoute {
                 certInRequest,
                 rewindTimeInSecondsOverride,
                 emergencySourceRegion,
-                deferVersionSwap);
+                deferVersionSwap,
+                targetedRegions);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.
@@ -289,6 +293,9 @@ public class CreateVersion extends AbstractRoute {
               responseObject.setPartitions(version.getPartitionCount());
             }
             String responseTopic;
+            /**
+             * Override the source fabric to respect the native replication source fabric selection.
+             */
             boolean overrideSourceFabric = true;
             boolean isTopicRT = false;
             if (pushType.isStreamReprocessing()) {
@@ -323,6 +330,7 @@ public class CreateVersion extends AbstractRoute {
               if (childDataCenterKafkaBootstrapServer != null) {
                 responseObject.setKafkaBootstrapServers(childDataCenterKafkaBootstrapServer);
               }
+              responseObject.setKafkaSourceRegion(version.getNativeReplicationSourceFabric());
             }
 
             if (pushType.isIncremental() && admin.isParent()) {
@@ -492,6 +500,7 @@ public class CreateVersion extends AbstractRoute {
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_VERSION.getParams(), admin);
@@ -564,6 +573,7 @@ public class CreateVersion extends AbstractRoute {
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, OFFLINE_PUSH_INFO.getParams(), admin);
@@ -596,6 +606,7 @@ public class CreateVersion extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject
               .setError("You don't have permission to end this push job; please grant write ACL for yourself.");
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, END_OF_PUSH.getParams(), admin);
@@ -655,6 +666,7 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setPartitions(partitionNum);
         responseObject.setReplicas(replicationFactor);
         responseObject.setKafkaTopic(version.kafkaTopicName());
+        responseObject.setKafkaBootstrapServers(version.getPushStreamSourceAddress());
 
         admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
 

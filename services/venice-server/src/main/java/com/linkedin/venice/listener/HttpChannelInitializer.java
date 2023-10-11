@@ -8,6 +8,13 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.grpc.handlers.GrpcOutboundResponseHandler;
+import com.linkedin.venice.listener.grpc.handlers.GrpcOutboundStatsHandler;
+import com.linkedin.venice.listener.grpc.handlers.GrpcReadQuotaEnforcementHandler;
+import com.linkedin.venice.listener.grpc.handlers.GrpcRouterRequestHandler;
+import com.linkedin.venice.listener.grpc.handlers.GrpcStatsHandler;
+import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
+import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
@@ -15,8 +22,10 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.AggServerQuotaTokenBucketStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import com.linkedin.venice.stats.ServerConnectionStats;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
+import io.grpc.ServerInterceptor;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
@@ -25,6 +34,8 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -35,7 +46,7 @@ import org.apache.logging.log4j.Logger;
 public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private static final Logger LOGGER = LogManager.getLogger(HttpChannelInitializer.class);
 
-  private final StorageReadRequestsHandler requestHandler;
+  private final StorageReadRequestHandler requestHandler;
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
@@ -47,8 +58,10 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final VeniceServerConfig serverConfig;
   private final ReadQuotaEnforcementHandler quotaEnforcer;
   private final VeniceHttp2PipelineInitializerBuilder http2PipelineInitializerBuilder;
+  private final ServerConnectionStats serverConnectionStats;
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
+  List<ServerInterceptor> aclInterceptors;
 
   public HttpChannelInitializer(
       ReadOnlyStoreRepository storeMetadataRepository,
@@ -59,7 +72,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       VeniceServerConfig serverConfig,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
-      StorageReadRequestsHandler requestHandler) {
+      StorageReadRequestHandler requestHandler) {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
 
@@ -110,7 +123,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           storeMetadataRepository,
           customizedViewRepository,
           nodeId,
-          quotaUsageStats);
+          quotaUsageStats,
+          metricsRepository);
 
       // Token Bucket Stats for a store must be initialized when that store is created
       this.quotaTokenBucketStats = new AggServerQuotaTokenBucketStats(metricsRepository, quotaEnforcer);
@@ -131,6 +145,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       LOGGER.info("HTTP2 inbound request isn't supported");
     }
     this.http2PipelineInitializerBuilder = new VeniceHttp2PipelineInitializerBuilder(serverConfig);
+
+    serverConnectionStats = new ServerConnectionStats(metricsRepository, "server_connection_stats");
   }
 
   /*
@@ -154,6 +170,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       ch.pipeline().addLast(sslInitializer);
     }
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
+      ServerConnectionStatsHandler serverConnectionStatsHandler =
+          new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
+      pipeline.addLast(serverConnectionStatsHandler);
       StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
       pipeline.addLast(statsHandler);
       if (whetherNeedServerCodec) {
@@ -193,11 +212,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           pipeline.addLast(storeAclHandler.get());
         }
       }
-      pipeline.addLast(
-          new RouterRequestHttpHandler(
-              statsHandler,
-              serverConfig.isComputeFastAvroEnabled(),
-              serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
+      pipeline
+          .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
       if (quotaEnforcer != null) {
         pipeline.addLast(quotaEnforcer);
       }
@@ -211,5 +227,51 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     } else {
       httpPipelineInitializer.accept(ch.pipeline(), true);
     }
+  }
+
+  public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
+    VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor();
+
+    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+    GrpcStatsHandler grpcStatsHandler = new GrpcStatsHandler(statsHandler);
+    grpcServerRequestProcessor.addHandler(grpcStatsHandler);
+
+    GrpcRouterRequestHandler grpcRouterRequestHandler = new GrpcRouterRequestHandler();
+    grpcServerRequestProcessor.addHandler(grpcRouterRequestHandler);
+
+    if (quotaEnforcer != null) {
+      GrpcReadQuotaEnforcementHandler grpcReadQuotaEnforcementHandler =
+          new GrpcReadQuotaEnforcementHandler(quotaEnforcer);
+      grpcServerRequestProcessor.addHandler(grpcReadQuotaEnforcementHandler);
+    }
+
+    GrpcStorageReadRequestHandler storageReadRequestHandler = new GrpcStorageReadRequestHandler(requestHandler);
+    grpcServerRequestProcessor.addHandler(storageReadRequestHandler);
+
+    GrpcOutboundResponseHandler grpcOutboundResponseHandler = new GrpcOutboundResponseHandler();
+    grpcServerRequestProcessor.addHandler(grpcOutboundResponseHandler);
+
+    GrpcOutboundStatsHandler grpcOutboundStatsHandler = new GrpcOutboundStatsHandler();
+    grpcServerRequestProcessor.addHandler(grpcOutboundStatsHandler);
+
+    return grpcServerRequestProcessor;
+  }
+
+  /**
+   * SSL Certificates can only be accessed easily via Server Interceptors for gRPC, so we create our acls here
+   * We can create aclInterceptor list as these handlers are already present within
+   */
+  public List<ServerInterceptor> initGrpcInterceptors() {
+    aclInterceptors = new ArrayList<>();
+
+    if (sslFactory.isPresent()) {
+      LOGGER.info("SSL is enabled, adding ACL Interceptors");
+      aclInterceptors.add(verifySsl);
+      aclHandler.ifPresent(serverAclHandler -> aclInterceptors.add(serverAclHandler));
+
+      storeAclHandler.ifPresent(storeAclHandler -> aclInterceptors.add(storeAclHandler));
+    }
+
+    return aclInterceptors;
   }
 }

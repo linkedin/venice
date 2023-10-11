@@ -1,10 +1,12 @@
 package com.linkedin.venice.cleaner;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
@@ -15,12 +17,15 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
 
@@ -79,6 +84,22 @@ public class LeakedResourceCleanerTest {
 
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     StorageService storageService = mock(StorageService.class);
+
+    Set<String> toBeRemovedResources = new HashSet<>();
+    toBeRemovedResources.add(Version.composeKafkaTopic(storeNameWithLeakedResource, 2));
+    toBeRemovedResources.add(Version.composeKafkaTopic(storeNameWithLeakedResource, 5));
+    toBeRemovedResources.add(Version.composeKafkaTopic(nonExistingStoreName, 1));
+
+    CountDownLatch countDownLatch = new CountDownLatch(3);
+    doAnswer(invocation -> {
+      String resourceName = invocation.getArgument(0);
+      if (toBeRemovedResources.contains(resourceName)) {
+        countDownLatch.countDown();
+      }
+      toBeRemovedResources.remove(resourceName);
+      return null;
+    }).when(storageService).removeStorageEngine(anyString());
+
     StoreIngestionService ingestionService = mock(StoreIngestionService.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     List<AbstractStorageEngine> storageEngineList = new ArrayList<>();
@@ -137,12 +158,15 @@ public class LeakedResourceCleanerTest {
         ingestionService,
         storageService,
         new MetricsRepository());
-    cleaner.setNonExistentStoreCleanupInterval(1 * Time.MS_PER_SECOND);
+    cleaner.setNonExistentStoreCleanupInterval(10);
     cleaner.start();
-
-    verify(storageService, timeout(10 * 1000))
+    if (countDownLatch.await(1, TimeUnit.MINUTES)) {
+      cleaner.stop();
+    }
+    verify(storageService, atLeastOnce())
         .removeStorageEngine(Version.composeKafkaTopic(storeNameWithLeakedResource, 5));
-    verify(storageService).removeStorageEngine(Version.composeKafkaTopic(storeNameWithLeakedResource, 2));
+    verify(storageService, atLeastOnce())
+        .removeStorageEngine(Version.composeKafkaTopic(storeNameWithLeakedResource, 2));
     verify(storageService, never()).removeStorageEngine(Version.composeKafkaTopic(storeNameWithLeakedResource, 1));
     verify(storageService, never()).removeStorageEngine(Version.composeKafkaTopic(storeNameWithLeakedResource, 3));
     verify(storageService, never()).removeStorageEngine(Version.composeKafkaTopic(storeNameWithLeakedResource, 4));
@@ -151,8 +175,7 @@ public class LeakedResourceCleanerTest {
     verify(storageService, never()).removeStorageEngine(Version.composeKafkaTopic(storeNameWithoutLeakedResource, 2));
 
     verify(storageService, never()).removeStorageEngine(Version.composeKafkaTopic(storeNameWithNoVersionInZK, 1));
-    verify(storageService, timeout(10 * Time.MS_PER_SECOND))
-        .removeStorageEngine(Version.composeKafkaTopic(nonExistingStoreName, 1));
+    verify(storageService, atLeastOnce()).removeStorageEngine(Version.composeKafkaTopic(nonExistingStoreName, 1));
 
     cleaner.stop();
   }

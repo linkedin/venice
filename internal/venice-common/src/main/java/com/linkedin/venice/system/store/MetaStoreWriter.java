@@ -20,20 +20,20 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.systemstore.schemas.StoreMetaValueWriteOpRecord;
 import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
-import com.linkedin.venice.systemstore.schemas.storeReplicaStatusesMapOps;
-import com.linkedin.venice.systemstore.schemas.storeValueSchemaIdsWrittenPerStoreVersionListOps;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import com.linkedin.venice.writer.update.UpdateBuilder;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,7 +44,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificRecord;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -147,6 +147,15 @@ public class MetaStoreWriter implements Closeable {
     });
   }
 
+  public void writeHeartbeat(String storeName, long heartbeatTimestamp) {
+    write(
+        storeName,
+        MetaStoreDataType.HEARTBEAT,
+        () -> Collections.singletonMap(KEY_STRING_STORE_NAME, storeName),
+        StoreMetaValue::new,
+        heartbeatTimestamp);
+  }
+
   /**
    * Improved version of writeStoreValueSchemas. Instead of writing all value schemas into one K/V pair we write it to
    * a different key space where each K/V pair only represents one version of the value schema. This allows us to store
@@ -177,15 +186,11 @@ public class MetaStoreWriter implements Closeable {
       return map;
     }, () -> {
       // Construct an update
-      StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
-      writeOpRecord.timestamp = System.currentTimeMillis();
-      List<Integer> list = new ArrayList<>(1);
-      list.add(valueSchemaId);
-      storeValueSchemaIdsWrittenPerStoreVersionListOps listOps = new storeValueSchemaIdsWrittenPerStoreVersionListOps();
-      listOps.setUnion = list;
-      listOps.setDiff = Collections.emptyList();
-      writeOpRecord.storeValueSchemaIdsWrittenPerStoreVersion = listOps;
-      return writeOpRecord;
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(this.derivedComputeSchema);
+      updateBuilder.setNewFieldValue("timestamp", System.currentTimeMillis());
+      updateBuilder
+          .setElementsToAddToListField("storeValueSchemaIdsWrittenPerStoreVersion", Arrays.asList(valueSchemaId));
+      return updateBuilder.build();
     });
   }
 
@@ -237,18 +242,14 @@ public class MetaStoreWriter implements Closeable {
       }
     }, () -> {
       // Construct an update
-      StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
-      writeOpRecord.timestamp = System.currentTimeMillis();
-
-      Map<CharSequence, StoreReplicaStatus> instanceStatusMap = new HashMap<>();
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(this.derivedComputeSchema);
+      updateBuilder.setNewFieldValue("timestamp", System.currentTimeMillis());
+      Map<String, StoreReplicaStatus> instanceStatusMap = new HashMap<>();
       StoreReplicaStatus replicaStatus = new StoreReplicaStatus();
       replicaStatus.status = executionStatus.getValue();
       instanceStatusMap.put(instance.getUrl(true), replicaStatus);
-      storeReplicaStatusesMapOps replicaStatusesMapOps = new storeReplicaStatusesMapOps();
-      replicaStatusesMapOps.mapUnion = instanceStatusMap;
-      replicaStatusesMapOps.mapDiff = Collections.emptyList();
-      writeOpRecord.storeReplicaStatuses = replicaStatusesMapOps;
-      return writeOpRecord;
+      updateBuilder.setEntriesToAddToMapField("storeReplicaStatuses", instanceStatusMap);
+      return updateBuilder.build();
     });
   }
 
@@ -286,15 +287,12 @@ public class MetaStoreWriter implements Closeable {
       }
     }, () -> {
       // Construct an update WC record
-      StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
-      writeOpRecord.timestamp = System.currentTimeMillis();
-      storeReplicaStatusesMapOps replicaStatusesMapOps = new storeReplicaStatusesMapOps();
-      List<CharSequence> deletedReplicas = new ArrayList<>();
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(this.derivedComputeSchema);
+      updateBuilder.setNewFieldValue("timestamp", System.currentTimeMillis());
+      List<String> deletedReplicas = new ArrayList<>();
       deletedReplicas.add(instance.getUrl(true));
-      replicaStatusesMapOps.mapDiff = deletedReplicas;
-      replicaStatusesMapOps.mapUnion = Collections.emptyMap();
-      writeOpRecord.storeReplicaStatuses = replicaStatusesMapOps;
-      return writeOpRecord;
+      updateBuilder.setKeysToRemoveFromMapField("storeReplicaStatuses", deletedReplicas);
+      return updateBuilder.build();
     });
   }
 
@@ -342,20 +340,29 @@ public class MetaStoreWriter implements Closeable {
       MetaStoreDataType dataType,
       Supplier<Map<String, String>> keyStringSupplier,
       Supplier<StoreMetaValue> valueSupplier) {
+    write(storeName, dataType, keyStringSupplier, valueSupplier, System.currentTimeMillis());
+  }
+
+  private void write(
+      String storeName,
+      MetaStoreDataType dataType,
+      Supplier<Map<String, String>> keyStringSupplier,
+      Supplier<StoreMetaValue> valueSupplier,
+      long timestamp) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     StoreMetaValue value = valueSupplier.get();
-    value.timestamp = System.currentTimeMillis();
-    writeMessageWithRetry(metaStoreName, vw -> {
-      vw.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get());
-    });
+    value.timestamp = timestamp;
+    writeMessageWithRetry(
+        metaStoreName,
+        vw -> vw.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get()));
   }
 
   private void update(
       String storeName,
       MetaStoreDataType dataType,
       Supplier<Map<String, String>> keyStringSupplier,
-      Supplier<SpecificRecord> updateSupplier) {
+      Supplier<GenericRecord> updateSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     if (derivedComputeSchemaId == -1) {
       /**
@@ -371,7 +378,7 @@ public class MetaStoreWriter implements Closeable {
       this.derivedComputeSchemaId = derivedSchemaId.getGeneratedSchemaVersion();
     }
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
-    SpecificRecord update = updateSupplier.get();
+    GenericRecord update = updateSupplier.get();
     writeMessageWithRetry(metaStoreName, vw -> {
       vw.update(
           key,

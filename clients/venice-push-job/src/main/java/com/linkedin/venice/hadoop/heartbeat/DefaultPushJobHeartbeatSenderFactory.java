@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -56,7 +57,6 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     StoreInfo storeInfo = heartBeatStoreResponse.getStore();
     PartitionerConfig partitionerConfig = storeInfo.getPartitionerConfig();
     int partitionNum = storeInfo.getPartitionCount();
-    LOGGER.info("Got [heartbeat store: {}] Store Info: {}", heartbeatStoreName, storeInfo);
     String heartbeatKafkaTopicName = Version.composeRealTimeTopic(heartbeatStoreName);
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriter(
         heartbeatKafkaTopicName,
@@ -132,9 +132,10 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
         partitionerConfig.getPartitionerClass(),
         partitionerConfig.getAmplificationFactor(),
         new VeniceProperties(partitionerProperties));
-    return new VeniceWriterFactory(veniceWriterProperties).createVeniceWriter(
-        new VeniceWriterOptions.Builder(heartbeatKafkaTopicName).setPartitioner(venicePartitioner)
-            .setPartitionCount(partitionNum)
-            .build());
+    return new VeniceWriterFactory(veniceWriterProperties, new ApacheKafkaProducerAdapterFactory(), null)
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(heartbeatKafkaTopicName).setPartitioner(venicePartitioner)
+                .setPartitionCount(partitionNum)
+                .build());
   }
 }

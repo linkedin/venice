@@ -2,24 +2,21 @@ package com.linkedin.davinci;
 
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.venice.compute.ReadComputeOperator;
-import com.linkedin.venice.compute.protocol.request.ComputeOperation;
-import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -30,7 +27,6 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,7 +37,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.logging.log4j.LogManager;
@@ -61,8 +56,9 @@ public class VersionBackend {
   private final boolean suppressLiveUpdates;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
   private final Map<Integer, CompletableFuture<Void>> partitionFutures = new VeniceConcurrentHashMap<>();
-  private final int stopConsumptionWaitRetriesNum;
+  private final int stopConsumptionTimeoutInSeconds;
   private final StoreBackendStats storeBackendStats;
+  private final AvroStoreDeserializerCache storeDeserializerCache;
   private final Lazy<VeniceCompressor> compressor;
 
   /*
@@ -95,8 +91,9 @@ public class VersionBackend {
         && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.heartbeatInterval = this.config.getClusterProperties()
         .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
-    this.stopConsumptionWaitRetriesNum =
-        backend.getConfigLoader().getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 60);
+    this.stopConsumptionTimeoutInSeconds =
+        backend.getConfigLoader().getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 60);
+    this.storeDeserializerCache = backend.getStoreOrThrow(store.getName()).getStoreDeserializerCache();
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
@@ -125,7 +122,18 @@ public class VersionBackend {
     close();
     final String topicName = version.kafkaTopicName();
     try {
-      backend.getIngestionBackend().removeStorageEngine(topicName);
+      try {
+        backend.getIngestionBackend().removeStorageEngine(topicName);
+      } catch (Exception e) {
+        // defensive coding
+        LOGGER.error("Encountered exception while removing storage engine: {}", topicName, e);
+      }
+      /**
+       * The following function is used to forcibly clean up any leaking data partitions, which are not
+       * visibile to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
+       * to open because of DaVinci memory limiter.
+        */
+      backend.getStorageService().forceStorageEngineCleanup(topicName);
       backend.getCompressorFactory().removeVersionSpecificCompressor(topicName);
     } catch (VeniceException e) {
       LOGGER.error("Encounter exception when removing version storage of topic {}", topicName, e);
@@ -176,11 +184,12 @@ public class VersionBackend {
       int userPartition,
       byte[] keyBytes,
       AbstractAvroChunkingAdapter<V> chunkingAdaptor,
+      AvroStoreDeserializerCache<V> storeDeserializerCache,
+      int readerSchemaId,
       BinaryDecoder binaryDecoder,
       ByteBuffer reusableRawValue,
       V reusableValue) {
     return chunkingAdaptor.get(
-        version.getStoreName(),
         getStorageEngineOrThrow(),
         userPartition,
         partitioner,
@@ -190,10 +199,9 @@ public class VersionBackend {
         reusableValue,
         binaryDecoder,
         version.isChunkingEnabled(),
-        version.getCompressionStrategy(),
-        true,
-        backend.getSchemaRepository(),
         null,
+        readerSchemaId,
+        storeDeserializerCache,
         compressor.get());
   }
 
@@ -201,15 +209,16 @@ public class VersionBackend {
       int userPartition,
       byte[] keyBytes,
       AbstractAvroChunkingAdapter<GenericRecord> chunkingAdaptor,
+      AvroStoreDeserializerCache<GenericRecord> storeDeserializerCache,
+      int readerSchemaId,
       BinaryDecoder binaryDecoder,
       ByteBuffer reusableRawValue,
       GenericRecord reusableValueRecord,
-      Map<String, Object> globalContext,
+      Map<String, Object> sharedContext,
       ComputeRequestWrapper computeRequestWrapper,
       Schema computeResultSchema) {
 
     reusableValueRecord = chunkingAdaptor.get(
-        version.getStoreName(),
         getStorageEngineOrThrow(),
         userPartition,
         partitioner,
@@ -219,18 +228,16 @@ public class VersionBackend {
         reusableValueRecord,
         binaryDecoder,
         version.isChunkingEnabled(),
-        version.getCompressionStrategy(),
-        true,
-        backend.getSchemaRepository(),
         null,
+        readerSchemaId,
+        storeDeserializerCache,
         compressor.get());
 
-    return getResultOfComputeOperations(
+    return ComputeUtils.computeResult(
         computeRequestWrapper.getOperations(),
-        computeRequestWrapper.getValueSchema(),
+        computeRequestWrapper.getOperationResultFields(),
+        sharedContext,
         reusableValueRecord,
-        globalContext,
-        computeRequestWrapper.getComputeRequestVersion(),
         computeResultSchema);
   }
 
@@ -243,19 +250,18 @@ public class VersionBackend {
       RecordDeserializer<GenericRecord> keyRecordDeserializer,
       GenericRecord reusableValueRecord,
       BinaryDecoder reusableBinaryDecoder,
-      Map<String, Object> globalContext,
+      Map<String, Object> sharedContext,
       Schema computeResultSchema) {
 
     StreamingCallback<GenericRecord, GenericRecord> computingCallback =
         new StreamingCallback<GenericRecord, GenericRecord>() {
           @Override
           public void onRecordReceived(GenericRecord key, GenericRecord value) {
-            GenericRecord computeResult = getResultOfComputeOperations(
+            GenericRecord computeResult = ComputeUtils.computeResult(
                 computeRequestWrapper.getOperations(),
-                computeRequestWrapper.getValueSchema(),
+                computeRequestWrapper.getOperationResultFields(),
+                sharedContext,
                 value,
-                globalContext,
-                computeRequestWrapper.getComputeRequestVersion(),
                 computeResultSchema);
             callback.onRecordReceived(key, computeResult);
           }
@@ -269,72 +275,19 @@ public class VersionBackend {
         };
 
     chunkingAdaptor.getByPartialKey(
-        version.getStoreName(),
         getStorageEngineOrThrow(),
         partition,
-        version.getPartitionerConfig(),
+        this.version.getPartitionerConfig(),
         keyPrefix,
         reusableValueRecord,
         reusableBinaryDecoder,
         keyRecordDeserializer,
-        version.isChunkingEnabled(),
-        version.getCompressionStrategy(),
-        true,
-        backend.getSchemaRepository(),
+        this.version.isChunkingEnabled(),
         null,
-        compressor.get(),
+        getSupersetOrLatestValueSchemaId(),
+        this.storeDeserializerCache,
+        this.compressor.get(),
         computingCallback);
-  }
-
-  private GenericRecord getResultOfComputeOperations(
-      List<ComputeOperation> operations,
-      Schema valueSchema,
-      GenericRecord valueRecord,
-      Map<String, Object> globalContext,
-      int computeRequestVersion,
-      Schema computeResultSchema) {
-
-    if (valueRecord == null) {
-      return null;
-    }
-
-    Map<String, String> computationErrorMap = new HashMap<>();
-    GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
-
-    // execute each operation
-    for (ComputeOperation computeOperation: operations) {
-      ReadComputeOperator operator = ComputeOperationType.valueOf(computeOperation).getOperator();
-      String operatorFieldName = operator.getOperatorFieldName(computeOperation);
-      String errorMessage =
-          ComputeOperationUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, operatorFieldName)
-              .orElse(null);
-      if (errorMessage != null) {
-        operator.putDefaultResult(resultRecord, operator.getResultFieldName(computeOperation));
-        computationErrorMap.put(operator.getResultFieldName(computeOperation), errorMessage);
-        continue;
-      }
-      operator.compute(
-          computeRequestVersion,
-          computeOperation,
-          valueRecord,
-          resultRecord,
-          computationErrorMap,
-          globalContext);
-    }
-
-    Schema.Field computationErrorMapField =
-        computeResultSchema.getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
-    if (computationErrorMapField != null && resultRecord.get(computationErrorMapField.pos()) == null) {
-      resultRecord.put(computationErrorMapField.pos(), computationErrorMap);
-    }
-
-    // fill empty fields in result schema
-    for (Schema.Field field: computeResultSchema.getFields()) {
-      if (resultRecord.get(field.pos()) == null) {
-        resultRecord.put(field.pos(), valueRecord.get(field.name()));
-      }
-    }
-    return resultRecord;
   }
 
   public int getPartitionCount() {
@@ -352,6 +305,10 @@ public class VersionBackend {
   public boolean isPartitionReadyToServe(int partition) {
     CompletableFuture<Void> future = partitionFutures.get(partition);
     return future != null && future.isDone() && !future.isCompletedExceptionally();
+  }
+
+  public int getSupersetOrLatestValueSchemaId() {
+    return backend.getSchemaRepository().getSupersetOrLatestValueSchema(version.getStoreName()).getId();
   }
 
   synchronized boolean isReadyToServe(ComplementSet<Integer> partitions) {
@@ -395,7 +352,7 @@ public class VersionBackend {
         return;
       }
       completePartition(partition);
-      backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionWaitRetriesNum);
+      backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds);
       partitionFutures.remove(partition);
     }
     tryStopHeartbeat();

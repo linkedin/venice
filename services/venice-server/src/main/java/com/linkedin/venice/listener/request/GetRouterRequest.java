@@ -3,7 +3,9 @@ package com.linkedin.venice.listener.request;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.utils.EncodingUtils;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
@@ -20,6 +22,13 @@ public class GetRouterRequest extends RouterRequest {
 
   private GetRouterRequest(String resourceName, int partition, byte[] keyBytes, HttpRequest request) {
     super(resourceName, request);
+
+    this.partition = partition;
+    this.keyBytes = keyBytes;
+  }
+
+  private GetRouterRequest(String resourceName, int partition, byte[] keyBytes) {
+    super(resourceName, false, false);
 
     this.partition = partition;
     this.keyBytes = keyBytes;
@@ -55,6 +64,14 @@ public class GetRouterRequest extends RouterRequest {
     } else {
       throw new VeniceException("Not a valid request for a STORAGE action: " + uri);
     }
+  }
+
+  public static GetRouterRequest grpcGetRouterRequest(VeniceClientRequest request) {
+    String resourceName = request.getResourceName();
+    int partition = request.getPartition();
+    byte[] keyBytes = getKeyBytesFromUrlKeyString(request.getKeyString());
+
+    return new GetRouterRequest(resourceName, partition, keyBytes);
   }
 
   public static byte[] getKeyBytesFromUrlKeyString(String keyString) {

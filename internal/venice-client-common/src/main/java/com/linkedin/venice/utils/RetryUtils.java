@@ -1,10 +1,12 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.function.Supplier;
 import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.FailsafeException;
 import net.jodah.failsafe.RetryPolicy;
 import net.jodah.failsafe.event.ExecutionAttemptedEvent;
 import org.apache.logging.log4j.LogManager;
@@ -75,7 +77,7 @@ public class RetryUtils {
         new RetryPolicy<>().handle(retryFailureTypes).withDelay(delay).withMaxAttempts(maxAttempt);
 
     retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-    Failsafe.with(retryPolicy).run(runnable::run);
+    unwrapException(() -> Failsafe.with(retryPolicy).run(runnable::run));
   }
 
   /**
@@ -135,7 +137,7 @@ public class RetryUtils {
         .withMaxAttempts(maxAttempt);
 
     retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-    Failsafe.with(retryPolicy).run(runnable::run);
+    unwrapException(() -> Failsafe.with(retryPolicy).run(runnable::run));
   }
 
   /**
@@ -177,7 +179,7 @@ public class RetryUtils {
         new RetryPolicy<>().handle(retryFailureTypes).withDelay(delay).withMaxAttempts(maxAttempt);
 
     retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-    return Failsafe.with(retryPolicy).get(supplier::get);
+    return unwrapException(() -> Failsafe.with(retryPolicy).get(supplier::get));
   }
 
   /**
@@ -237,7 +239,32 @@ public class RetryUtils {
         .withMaxAttempts(maxAttempt);
 
     retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-    return Failsafe.with(retryPolicy).get(supplier::get);
+    return unwrapException(() -> Failsafe.with(retryPolicy).get(supplier::get));
+  }
+
+  /**
+   * Execute a {@link Supplier} with maximum retries and fix duration per retry attempt. If all attempts are made and
+   * still no success, the last thrown exception will be thrown.
+   *
+   * @param supplier Execution unit which returns something ({@link T})
+   * @param maxRetry Total maximum retries made before giving up.
+   * @param durationPerAttempt Total duration per attempt. The delay after attempt will be the (duration per attempt - time spent in the current attempt).
+   * @param retryFailureTypes Types of failures upon which retry attempt is made. If a failure with type not specified
+   *                          in this list is thrown, it is thrown to the caller.
+   */
+  public static <T> T executeWithMaxRetriesAndFixedAttemptDuration(
+      VeniceCheckedSupplier<T> supplier,
+      final int maxRetry,
+      Duration durationPerAttempt,
+      List<Class<? extends Throwable>> retryFailureTypes) {
+    RetryPolicy<Object> retryPolicy = new RetryPolicy<>().handle(retryFailureTypes)
+        .withDelay(
+            (result, failure, context) -> durationPerAttempt.compareTo(context.getElapsedAttemptTime()) > 0
+                ? durationPerAttempt.minus(context.getElapsedAttemptTime())
+                : Duration.ZERO)
+        .withMaxRetries(maxRetry);
+    retryPolicy.onFailedAttempt(RetryUtils::logAttemptWithFailure);
+    return unwrapException(() -> Failsafe.with(retryPolicy).get(supplier::get));
   }
 
   private static <T> void logAttemptWithFailure(ExecutionAttemptedEvent<T> executionAttemptedEvent) {
@@ -253,5 +280,43 @@ public class RetryUtils {
   @FunctionalInterface
   public interface IntermediateFailureHandler {
     void handle(ExecutionAttemptedEvent<?> executionAttemptedEvent);
+  }
+
+  /**
+   * Exceptions thrown inside {@link Failsafe} logic get wrapped as a {@link FailsafeException}. Since {@link Failsafe}
+   * is an implementation detail, users of this class do not know how to handle these exceptions. Hence, we wrap them in
+   * a {@link VeniceException}.
+   * @param supplier
+   * @return
+   * @param <T>
+   */
+  private static <T> T unwrapException(Supplier<T> supplier) {
+    try {
+      return supplier.get();
+    } catch (FailsafeException e) {
+      // Always throws exception
+      parseException(e);
+      // Will never be invoked. Added to make the compiler happy.
+      return null;
+    }
+  }
+
+  private static void unwrapException(Runnable runnable) {
+    try {
+      runnable.run();
+    } catch (FailsafeException e) {
+      parseException(e);
+    }
+  }
+
+  private static void parseException(FailsafeException e) {
+    Throwable cause = e.getCause();
+    if (cause instanceof RuntimeException) {
+      throw (RuntimeException) cause;
+    } else if (cause instanceof Error) {
+      throw (Error) cause;
+    } else {
+      throw new VeniceException(cause);
+    }
   }
 }

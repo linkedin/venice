@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
  * need to coordinate with ingestion progress.
  */
 public abstract class StateModelIngestionProgressNotifier implements VeniceNotifier {
-  private final Logger logger = LogManager.getLogger(this.getClass().getSimpleName());
+  private final Logger logger = LogManager.getLogger(this.getClass());
   private final Map<String, CountDownLatch> stateModelToIngestionCompleteFlagMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Boolean> stateModelToSuccessMap = new VeniceConcurrentHashMap<>();
 

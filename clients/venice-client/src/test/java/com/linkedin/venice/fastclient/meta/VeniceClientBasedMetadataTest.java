@@ -8,6 +8,7 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -34,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -54,16 +54,16 @@ public class VeniceClientBasedMetadataTest {
     VeniceClientBasedMetadata veniceClientBasedMetadata =
         new ThinClientBasedMetadata(clientConfig, metaStoreThinClient);
     veniceClientBasedMetadata.start();
-    Assert.assertEquals(veniceClientBasedMetadata.getStoreName(), storeName);
-    Assert.assertEquals(veniceClientBasedMetadata.getCurrentStoreVersion(), 1);
+    assertEquals(veniceClientBasedMetadata.getStoreName(), storeName);
+    assertEquals(veniceClientBasedMetadata.getCurrentStoreVersion(), 1);
     List<String> replicas = veniceClientBasedMetadata.getReplicas(1, 0);
-    Assert.assertEquals(replicas.size(), 1);
-    Assert.assertEquals(replicas.iterator().next(), REPLICA_NAME);
-    Assert.assertEquals(veniceClientBasedMetadata.getKeySchema().toString(), KEY_SCHEMA);
-    Assert.assertEquals(veniceClientBasedMetadata.getValueSchema(1).toString(), VALUE_SCHEMA1);
-    Assert.assertEquals(veniceClientBasedMetadata.getValueSchema(2).toString(), VALUE_SCHEMA2);
-    Assert.assertEquals(veniceClientBasedMetadata.getLatestValueSchemaId(), Integer.valueOf(2));
-    Assert.assertEquals(veniceClientBasedMetadata.getLatestValueSchema().toString(), VALUE_SCHEMA2);
+    assertEquals(replicas.size(), 1);
+    assertEquals(replicas.iterator().next(), REPLICA_NAME);
+    assertEquals(veniceClientBasedMetadata.getKeySchema().toString(), KEY_SCHEMA);
+    assertEquals(veniceClientBasedMetadata.getValueSchema(1).toString(), VALUE_SCHEMA1);
+    assertEquals(veniceClientBasedMetadata.getValueSchema(2).toString(), VALUE_SCHEMA2);
+    assertEquals(veniceClientBasedMetadata.getLatestValueSchemaId(), Integer.valueOf(2));
+    assertEquals(veniceClientBasedMetadata.getLatestValueSchema().toString(), VALUE_SCHEMA2);
   }
 
   private ClientConfig getBasicMockClientConfig(String storeName) {
