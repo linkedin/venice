@@ -931,7 +931,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     } finally {
       readCloseRWLock.readLock().unlock();
     }
-
   }
 
   protected Options getOptions() {

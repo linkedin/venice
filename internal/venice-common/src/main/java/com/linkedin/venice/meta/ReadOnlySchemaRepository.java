@@ -83,8 +83,8 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
       DerivedSchemaEntry latestDerivedSchemaEntry = null;
       for (DerivedSchemaEntry entry: derivedSchemaEntries) {
         if (latestDerivedSchemaEntry == null || entry.getValueSchemaID() > latestDerivedSchemaEntry.getValueSchemaID()
-            || entry.getValueSchemaID() == latestDerivedSchemaEntry.getValueSchemaID()
-                && entry.getId() > latestDerivedSchemaEntry.getId()) {
+            || (entry.getValueSchemaID() == latestDerivedSchemaEntry.getValueSchemaID()
+                && entry.getId() > latestDerivedSchemaEntry.getId())) {
           latestDerivedSchemaEntry = entry;
         }
       }
