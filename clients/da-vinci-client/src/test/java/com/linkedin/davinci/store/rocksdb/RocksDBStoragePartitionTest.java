@@ -252,6 +252,8 @@ public class RocksDBStoragePartitionTest {
     storagePartition.delete(toBeDeletedKey.getBytes());
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
+    Assert.assertTrue(storagePartition.getPartitionSizeInBytes() > 0);
+
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
     storagePartition.drop();

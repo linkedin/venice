@@ -50,6 +50,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -2808,8 +2809,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final int readerValueSchemaId;
     final int readerUpdateProtocolVersion;
     if (isIngestingSystemStore()) {
-      readerValueSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
-      readerUpdateProtocolVersion = schemaRepository.getLatestDerivedSchema(storeName, readerValueSchemaId).getId();
+      DerivedSchemaEntry latestDerivedSchemaEntry = schemaRepository.getLatestDerivedSchema(storeName);
+      readerValueSchemaId = latestDerivedSchemaEntry.getValueSchemaID();
+      readerUpdateProtocolVersion = latestDerivedSchemaEntry.getId();
     } else {
       SchemaEntry supersetSchemaEntry = schemaRepository.getSupersetSchema(storeName);
       if (supersetSchemaEntry == null) {
