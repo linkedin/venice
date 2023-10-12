@@ -107,18 +107,22 @@ public class AvroSupersetSchemaUtils {
     return Schema.createUnion(combinedSchema);
   }
 
+  private static void copyFieldProperties(FieldBuilder fieldBuilder, Schema.Field field) {
+    AvroCompatibilityHelper.getAllPropNames(field).forEach(k -> {
+      String propValue = AvroCompatibilityHelper.getFieldPropAsJsonString(field, k);
+      if (propValue != null) {
+        fieldBuilder.addProp(k, propValue);
+      }
+    });
+  }
+
   private static FieldBuilder deepCopySchemaField(Schema.Field field) {
     FieldBuilder fieldBuilder = AvroCompatibilityHelper.newField(null)
         .setName(field.name())
         .setSchema(field.schema())
         .setDoc(field.doc())
         .setOrder(field.order());
-    field.getObjectProps().forEach((k, ignored) -> {
-      String propValue = field.getProp(k);
-      if (propValue != null) {
-        fieldBuilder.addProp(k, propValue);
-      }
-    });
+    copyFieldProperties(fieldBuilder, field);
 
     // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
     if (field.hasDefaultValue()) {
@@ -139,12 +143,7 @@ public class AvroSupersetSchemaUtils {
         fieldBuilder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
             .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
         // merge props from f2
-        f2.getObjectProps().forEach((k, ignored) -> {
-          String propValue = f2.getProp(k);
-          if (propValue != null) {
-            fieldBuilder.addProp(k, propValue);
-          }
-        });
+        copyFieldProperties(fieldBuilder, f2);
       }
       fields.add(fieldBuilder.build());
     }

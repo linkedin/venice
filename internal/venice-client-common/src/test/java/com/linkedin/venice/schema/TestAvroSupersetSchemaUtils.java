@@ -429,10 +429,10 @@ public class TestAvroSupersetSchemaUtils {
     Schema.Field intField = supersetSchema.getField("int_field");
     Schema.Field stringField = supersetSchema.getField("string_field");
 
-    Assert.assertEquals(intField.getProp("prop1"), "prop1_v2");
-    Assert.assertEquals(intField.getProp("prop2"), "prop2_v1");
-    Assert.assertEquals(stringField.getProp("prop3"), "prop3_v1");
-    Assert.assertEquals(stringField.getProp("prop2"), "prop2_v2");
+    Assert.assertEquals(intField.getProp("prop1"), "\"prop1_v2\"");
+    Assert.assertEquals(intField.getProp("prop2"), "\"prop2_v1\"");
+    Assert.assertEquals(stringField.getProp("prop3"), "\"prop3_v1\"");
+    Assert.assertEquals(stringField.getProp("prop2"), "\"prop2_v2\"");
   }
 
   @Test
