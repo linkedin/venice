@@ -12,6 +12,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -336,16 +337,12 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean useStreamingBatchGetAsDefault) {
     if (batchGet) {
       if (useStreamingBatchGetAsDefault) {
-        assertFalse(batchGetRequestContext.longTailRetryTriggered);
-        assertFalse(batchGetRequestContext.numberOfKeysSentInRetryRequest > 0);
-        assertFalse(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0);
+        assertNull(batchGetRequestContext.retryContext);
       } // else: locally created single get context will be used internally and not batchGetRequestContext
     } else if (computeRequest) {
       // Do nothing since we don't have the ComputeRequestContext to test
     } else {
-      assertFalse(getRequestContext.errorRetryRequestTriggered);
-      assertFalse(getRequestContext.longTailRetryRequestTriggered);
-      assertFalse(getRequestContext.retryWin);
+      assertNull(getRequestContext.retryContext);
     }
 
     assertFalse(metrics.get(metricPrefix + "error_retry_request.OccurrenceRate").value() > 0);
@@ -646,10 +643,9 @@ public class DispatchingAvroGenericStoreClientTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testBatchGet(boolean useStreamingBatchGetAsDefault)
       throws ExecutionException, InterruptedException, IOException {
-
     try {
       setUpClient(useStreamingBatchGetAsDefault);
-      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(false);
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
       Map<String, GenericRecord> value =
           (Map<String, GenericRecord>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS)
               .get();
@@ -685,12 +681,12 @@ public class DispatchingAvroGenericStoreClientTest {
       BatchGetRequestContext batchGetRequestContext;
       Map<String, GenericRecord> value;
       if (streamingBatchGet) {
-        batchGetRequestContext = new BatchGetRequestContext<>(true);
+        batchGetRequestContext = new BatchGetRequestContext<>(0, true);
         value = (Map<String, GenericRecord>) statsAvroGenericStoreClient
             .streamingBatchGet(batchGetRequestContext, Collections.emptySet())
             .get();
       } else {
-        batchGetRequestContext = new BatchGetRequestContext<>(false);
+        batchGetRequestContext = new BatchGetRequestContext<>(0, false);
         value = (Map<String, GenericRecord>) statsAvroGenericStoreClient
             .batchGet(batchGetRequestContext, Collections.emptySet())
             .get();
@@ -713,11 +709,12 @@ public class DispatchingAvroGenericStoreClientTest {
       throws ExecutionException, InterruptedException, IOException {
     try {
       setUpClient(useStreamingBatchGetAsDefault);
-      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(false);
-      Set<String> keys = new HashSet<>();
-      for (int i = 0; i < ClientConfig.MAX_ALLOWED_KEY_COUNT_IN_BATCHGET + 1; ++i) {
+      int numKeysInRequest = ClientConfig.MAX_ALLOWED_KEY_COUNT_IN_BATCHGET + 1;
+      Set<String> keys = new HashSet<>(numKeysInRequest);
+      for (int i = 0; i < numKeysInRequest; ++i) {
         keys.add("testKey" + i);
       }
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(numKeysInRequest, false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, keys).get();
     } finally {
       tearDown();
@@ -729,7 +726,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(useStreamingBatchGetAsDefault, true, false, false);
-      batchGetRequestContext = new BatchGetRequestContext<>(false);
+      batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {
@@ -757,7 +754,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(useStreamingBatchGetAsDefault, false, true, false);
-      batchGetRequestContext = new BatchGetRequestContext<>(false);
+      batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
       Map<String, GenericRecord> value =
           (Map<String, GenericRecord>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS)
               .get();
@@ -810,7 +807,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>(false);
+      batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } finally {
@@ -840,7 +837,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>(false);
+      batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get(2, TimeUnit.SECONDS);
       fail();
     } finally {
@@ -870,7 +867,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>(false);
+      batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get(1, TimeUnit.SECONDS);
       fail();
     } finally {
@@ -895,18 +892,19 @@ public class DispatchingAvroGenericStoreClientTest {
     long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(false);
+      BatchGetRequestContext batchGetRequestContext =
+          new BatchGetRequestContext<>(BATCH_GET_PARTIAL_KEYS_2.size(), false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_2).get();
       fail();
     } catch (Exception e) {
       assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       BatchGetRequestContext batchGetRequestContext = null;
       try {
-        batchGetRequestContext = new BatchGetRequestContext<>(false);
+        batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
         statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
         fail();
       } catch (Exception e1) {
-        assertTrue(e1.getMessage().endsWith("Response was not complete"), e1.getMessage());
+        assertTrue(e1.getMessage().endsWith("At least one route did not complete"), e1.getMessage());
         assertTrue(
             e1.getCause().getCause().getMessage().contains("No available route for"),
             e1.getCause().getCause().getMessage());
@@ -930,18 +928,18 @@ public class DispatchingAvroGenericStoreClientTest {
    * Behavior: this test calls streamingBatchGet().get() without timeout, so waits till routingLeakedRequestCleanupThresholdMS
    *           times out and returns exception with "At least one route did not complete".
    */
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetWithTimeoutV1() throws IOException, ExecutionException, InterruptedException {
     long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
-    BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>(true);
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
       CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
-      future.get();
-      fail();
-    } finally {
+      VeniceResponseMap<String, GenericRecord> response = future.get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 1);
+      assertEquals(response.get("test_key_1"), BATCH_GET_VALUE_RESPONSE.get("test_key_1"));
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
       TestUtils.waitForNonDeterministicAssertion(
           routingLeakedRequestCleanupThresholdMS + 1000,
@@ -950,6 +948,7 @@ public class DispatchingAvroGenericStoreClientTest {
             assertTrue(metrics.get("." + STORE_NAME + "--multiget_streaming_request.OccurrenceRate").value() > 0);
           });
       validateMultiGetMetrics(batchGetRequestContext, false, true, RequestType.MULTI_GET_STREAMING, true, false, 2);
+    } finally {
       tearDown();
     }
   }
@@ -960,19 +959,19 @@ public class DispatchingAvroGenericStoreClientTest {
    * Behavior: routingLeakedRequestCleanupThresholdMS times out before streamingBatchGet().get(timeout),
    *            so returns exception with "At least one route did not complete".
    */
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetWithTimeoutV2()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
     long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
-    BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>(true);
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
       CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
-      future.get(2, TimeUnit.SECONDS);
-      fail();
-    } finally {
+      VeniceResponseMap<String, GenericRecord> response = future.get(2, TimeUnit.SECONDS);
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 1);
+      assertEquals(response.get("test_key_1"), BATCH_GET_VALUE_RESPONSE.get("test_key_1"));
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
       TestUtils.waitForNonDeterministicAssertion(
           routingLeakedRequestCleanupThresholdMS + 1000,
@@ -981,6 +980,7 @@ public class DispatchingAvroGenericStoreClientTest {
             assertTrue(metrics.get("." + STORE_NAME + "--multiget_streaming_request.OccurrenceRate").value() > 0);
           });
       validateMultiGetMetrics(batchGetRequestContext, false, true, RequestType.MULTI_GET_STREAMING, true, false, 2);
+    } finally {
       tearDown();
     }
   }
@@ -997,7 +997,7 @@ public class DispatchingAvroGenericStoreClientTest {
     try {
       long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(2);
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(true);
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
       CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
       VeniceResponseMap<String, GenericRecord> value = future.get(1, TimeUnit.SECONDS);
@@ -1022,7 +1022,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(useStreamingBatchGetAsDefault, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>(false);
+      batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {
@@ -1046,7 +1046,7 @@ public class DispatchingAvroGenericStoreClientTest {
       try {
         // the second batchGet is not going to find any routes (as the instances
         // are blocked) and fail instantly
-        batchGetRequestContext2 = new BatchGetRequestContext<>(false);
+        batchGetRequestContext2 = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
         statsAvroGenericStoreClient.batchGet(batchGetRequestContext2, BATCH_GET_KEYS).get();
         fail();
       } catch (Exception e1) {
@@ -1079,30 +1079,30 @@ public class DispatchingAvroGenericStoreClientTest {
    *    found leading to exception.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testStreamingBatchGetToUnreachableClient() throws IOException {
-    BatchGetRequestContext batchGetRequestContext = null;
+  public void testStreamingBatchGetToUnreachableClient() throws IOException, ExecutionException, InterruptedException {
     try {
       setUpClient(true, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>(true);
-      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
-      fail();
-    } catch (Exception e) {
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
+      VeniceResponseMap<String, GenericRecord> response =
+          (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
+              .streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateMultiGetMetrics(batchGetRequestContext, false, false, RequestType.MULTI_GET_STREAMING, true, false, 2);
 
-      BatchGetRequestContext batchGetRequestContext2 = null;
-      try {
-        // the second batchGet is not going to find any routes (as the instances
-        // are blocked) and fail instantly
-        batchGetRequestContext2 = new BatchGetRequestContext<>(true);
-        statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext2, BATCH_GET_KEYS).get();
-        fail();
-      } catch (Exception e1) {
-        assertTrue(e1.getMessage().endsWith("At least one route did not complete"), e1.getMessage());
-        validateMultiGetMetrics(batchGetRequestContext2, false, false, RequestType.MULTI_GET_STREAMING, true, true, 2);
-      }
+      // the second batchGet is not going to find any routes (as the instances
+      // are blocked) and fail instantly
+      BatchGetRequestContext batchGetRequestContext2 = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
+      VeniceResponseMap<String, GenericRecord> response2 =
+          (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
+              .streamingBatchGet(batchGetRequestContext2, BATCH_GET_KEYS)
+              .get();
+      assertFalse(response2.isFullResponse());
+      assertEquals(response2.getTotalEntryCount(), 0);
+      validateMultiGetMetrics(batchGetRequestContext2, false, false, RequestType.MULTI_GET_STREAMING, true, true, 2);
     } finally {
       tearDown();
     }
@@ -1115,28 +1115,30 @@ public class DispatchingAvroGenericStoreClientTest {
    *    replica and one key getting timed out) => exception
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testStreamingBatchGetToUnreachableClientV1() throws IOException {
-    BatchGetRequestContext batchGetRequestContext = null;
+  public void testStreamingBatchGetToUnreachableClientV1()
+      throws IOException, ExecutionException, InterruptedException {
     try {
       setUpClient(true, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>(true);
-      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_1).get();
-      fail();
-    } catch (Exception e) {
+      BatchGetRequestContext batchGetRequestContext =
+          new BatchGetRequestContext<>(BATCH_GET_PARTIAL_KEYS_1.size(), true);
+      VeniceResponseMap<String, GenericRecord> response =
+          (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
+              .streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_1)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateMultiGetMetrics(batchGetRequestContext, false, false, RequestType.MULTI_GET_STREAMING, true, false, 1);
 
-      BatchGetRequestContext batchGetRequestContext2 = null;
-      try {
-        batchGetRequestContext2 = new BatchGetRequestContext<>(true);
-        statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext2, BATCH_GET_KEYS).get();
-        fail();
-      } catch (Exception e1) {
-        assertTrue(e1.getMessage().endsWith("At least one route did not complete"), e1.getMessage());
-        validateMultiGetMetrics(batchGetRequestContext2, false, false, RequestType.MULTI_GET_STREAMING, true, true, 2);
-      }
+      BatchGetRequestContext batchGetRequestContext2 = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
+      VeniceResponseMap<String, GenericRecord> response2 =
+          (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
+              .streamingBatchGet(batchGetRequestContext2, BATCH_GET_KEYS)
+              .get();
+      assertFalse(response2.isFullResponse());
+      assertEquals(response2.getTotalEntryCount(), 0);
+      validateMultiGetMetrics(batchGetRequestContext2, false, false, RequestType.MULTI_GET_STREAMING, true, true, 2);
     } finally {
       tearDown();
     }
@@ -1151,18 +1153,20 @@ public class DispatchingAvroGenericStoreClientTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetToUnreachableClientV2()
       throws IOException, ExecutionException, InterruptedException {
-    BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>(true);
-      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_2).get();
-      fail();
-    } catch (Exception e) {
+      BatchGetRequestContext batchGetRequestContext =
+          new BatchGetRequestContext<>(BATCH_GET_PARTIAL_KEYS_2.size(), true);
+      VeniceResponseMap<String, GenericRecord> response =
+          (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
+              .streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_2)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateMultiGetMetrics(batchGetRequestContext, false, false, RequestType.MULTI_GET_STREAMING, true, false, 1);
-      BatchGetRequestContext batchGetRequestContext2 = new BatchGetRequestContext<>(true);
+      BatchGetRequestContext batchGetRequestContext2 = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
       CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext2, BATCH_GET_KEYS);
       VeniceResponseMap<String, GenericRecord> value = future.get();
@@ -1180,17 +1184,20 @@ public class DispatchingAvroGenericStoreClientTest {
    * transportClientPartialIncomplete.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testStreamingBatchGetToUnreachableClientV3() throws IOException {
-    BatchGetRequestContext batchGetRequestContext = null;
+  public void testStreamingBatchGetToUnreachableClientV3()
+      throws IOException, ExecutionException, InterruptedException {
     try {
       setUpClient(true, false, true, false, true, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>(true);
-      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
-      fail();
-    } catch (Exception e) {
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
+      VeniceResponseMap<String, GenericRecord> response =
+          (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
+              .streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 1);
+      assertEquals(response.get("test_key_1"), BATCH_GET_VALUE_RESPONSE.get("test_key_1"));
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateMultiGetMetrics(batchGetRequestContext, false, true, RequestType.MULTI_GET_STREAMING, true, false, 2);
     } finally {
       tearDown();
@@ -1202,17 +1209,20 @@ public class DispatchingAvroGenericStoreClientTest {
    * for both the routes.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testStreamingBatchGetToUnreachableClientV4() throws IOException {
+  public void testStreamingBatchGetToUnreachableClientV4()
+      throws IOException, ExecutionException, InterruptedException {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, true, false, false, true, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>(true);
-      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
-      fail();
-    } catch (Exception e) {
+      batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
+      VeniceResponseMap<String, GenericRecord> response =
+          (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
+              .streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateMultiGetMetrics(batchGetRequestContext, false, false, RequestType.MULTI_GET_STREAMING, true, false, 2);
     } finally {
       tearDown();
@@ -1297,84 +1307,49 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testComputeWithExceptionFromTransportLayer(boolean streamingCompute) throws IOException {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testComputeWithExceptionFromTransportLayer() throws IOException {
     try {
       setUpClient(false, true, false, false);
-      ComputeRequestBuilder requestBuilder = statsAvroGenericStoreClient.compute().project("name");
-      if (streamingCompute) {
-        requestBuilder.streamingExecute(COMPUTE_REQUEST_KEYS).get();
-      } else {
-        requestBuilder.execute(COMPUTE_REQUEST_KEYS).get();
-        fail();
-      }
+      statsAvroGenericStoreClient.compute().project("name").execute(COMPUTE_REQUEST_KEYS).get();
+      fail();
     } catch (Exception e) {
       assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
-      validateComputeRequestMetrics(
-          false,
-          false,
-          streamingCompute ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE,
-          false,
-          2,
-          2);
+      validateComputeRequestMetrics(false, false, RequestType.COMPUTE, false, 2, 2);
     } finally {
       tearDown();
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testComputeWithExceptionFromTransportLayerForOneRoute(boolean streamingCompute) throws IOException {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testComputeWithExceptionFromTransportLayerForOneRoute() throws IOException {
     try {
       setUpClient(false, false, true, false);
-      ComputeRequestBuilder requestBuilder = statsAvroGenericStoreClient.compute().project("name");
-      Map<String, ComputeGenericRecord> computeResponse;
-      if (streamingCompute) {
-        requestBuilder.streamingExecute(COMPUTE_REQUEST_KEYS).get();
-      } else {
-        requestBuilder.execute(COMPUTE_REQUEST_KEYS).get();
-      }
+      statsAvroGenericStoreClient.compute().project("name").execute(COMPUTE_REQUEST_KEYS).get();
       fail();
     } catch (Exception e) {
       assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
-      validateComputeRequestMetrics(
-          false,
-          false,
-          streamingCompute ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE,
-          false,
-          2,
-          1);
+      validateComputeRequestMetrics(false, false, RequestType.COMPUTE, false, 2, 1);
     } finally {
       tearDown();
     }
   }
 
   /**
-   * Conditions to test:
-   * 1. blocking compute API either returns full results or exception, but no partial results.
-   * 2. streaming compute API either returns partial results in case of future.get(timeout)
+   * Conditions to test: blocking compute API either returns full results or exception, but no partial results.
    * In this test:
    * setup: 1 key returns valid value and the other key doesn't return anything.
-   * Behavior:
-   * 1. Blocking compute: this test calls compute().execute().get() without timeout, so waits till routingLeakedRequestCleanupThresholdMS
-   *    times out and returns exception with "At least one route did not complete".
-   * 2. Streaming compute: this test calls compute().streamingExecute().get() without timeout, so waits till routingLeakedRequestCleanupThresholdMS
+   * Behavior: this test calls compute().execute().get() without timeout, so waits till routingLeakedRequestCleanupThresholdMS
    *    times out and returns exception with "At least one route did not complete".
    */
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
-  public void testComputeWithTimeoutV1(boolean streamingCompute)
-      throws IOException, ExecutionException, InterruptedException {
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
+  public void testComputeWithTimeoutV1() throws IOException, ExecutionException, InterruptedException {
     long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
     try {
       setUpClient(false, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      ComputeRequestBuilder requestBuilder = statsAvroGenericStoreClient.compute().project("name");
-      if (streamingCompute) {
-        requestBuilder.streamingExecute(COMPUTE_REQUEST_KEYS).get();
-      } else {
-        requestBuilder.execute(COMPUTE_REQUEST_KEYS).get();
-      }
+      statsAvroGenericStoreClient.compute().project("name").execute(COMPUTE_REQUEST_KEYS).get();
       fail();
     } finally {
-      // TODO(nithakka): Should this throw an exception for streaming?
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
       TestUtils.waitForNonDeterministicAssertion(
           routingLeakedRequestCleanupThresholdMS + 1000,
@@ -1382,41 +1357,25 @@ public class DispatchingAvroGenericStoreClientTest {
           () -> {
             assertTrue(metrics.get("." + STORE_NAME + "--compute_streaming_request.OccurrenceRate").value() > 0);
           });
-      validateComputeRequestMetrics(
-          false,
-          true,
-          streamingCompute ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE,
-          false,
-          2,
-          2);
+      validateComputeRequestMetrics(false, true, RequestType.COMPUTE, false, 2, 2);
       tearDown();
     }
   }
 
   /**
-   * Condition to test:
-   * 1. blocking compute API either returns full results or exception, but no partial results.
-   * 2. streaming compute API returns partial results in case of future.get(timeout)
+   * Condition to test: blocking compute API either returns full results or exception, but no partial results.
    * In this test:
    * setup: 1 key returns valid value and the other key doesn't return anything.
-   * Behavior:
-   * 1. Blocking compute: routingLeakedRequestCleanupThresholdMS times out before compute().execute().get(timeout)
-   *    so returns exception with "At least one route did not complete".
-   * 2. Streaming compute: routingLeakedRequestCleanupThresholdMS times out before compute().streamingExecute().get(timeout),
+   * Behavior: routingLeakedRequestCleanupThresholdMS times out before compute().execute().get(timeout)
    *    so returns exception with "At least one route did not complete".
    */
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
-  public void testComputeWithTimeoutV2(boolean streamingCompute)
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
+  public void testComputeWithTimeoutV2()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
     long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      ComputeRequestBuilder requestBuilder = statsAvroGenericStoreClient.compute().project("name");
-      if (streamingCompute) {
-        requestBuilder.streamingExecute(COMPUTE_REQUEST_KEYS).get(2, TimeUnit.SECONDS);
-      } else {
-        requestBuilder.execute(COMPUTE_REQUEST_KEYS).get(2, TimeUnit.SECONDS);
-      }
+      statsAvroGenericStoreClient.compute().project("name").execute(COMPUTE_REQUEST_KEYS).get(2, TimeUnit.SECONDS);
       fail();
     } finally {
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
@@ -1426,13 +1385,7 @@ public class DispatchingAvroGenericStoreClientTest {
           () -> {
             assertTrue(metrics.get("." + STORE_NAME + "--compute_streaming_request.OccurrenceRate").value() > 0);
           });
-      validateComputeRequestMetrics(
-          false,
-          true,
-          streamingCompute ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE,
-          false,
-          2,
-          2);
+      validateComputeRequestMetrics(false, true, RequestType.COMPUTE, false, 2, 2);
       tearDown();
     }
   }
@@ -1483,7 +1436,7 @@ public class DispatchingAvroGenericStoreClientTest {
         statsAvroGenericStoreClient.compute().project("name").execute(COMPUTE_REQUEST_KEYS).get();
         fail();
       } catch (Exception e1) {
-        assertTrue(e1.getMessage().endsWith("Response was not complete"), e1.getMessage());
+        assertTrue(e1.getMessage().endsWith("At least one route did not complete"), e1.getMessage());
         assertTrue(
             e1.getCause().getCause().getMessage().contains("No available route for"),
             e1.getCause().getCause().getMessage());
@@ -1507,38 +1460,23 @@ public class DispatchingAvroGenericStoreClientTest {
    * 2. 2nd compute request (2 keys) will result in both route getting no replica
    *    found leading to exception.
    */
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testComputeToUnreachableClient(boolean streamingCompute) throws IOException {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testComputeToUnreachableClient() throws IOException {
     try {
       setUpClient(false, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
-      ComputeRequestBuilder requestBuilder = statsAvroGenericStoreClient.compute().project("name");
-      if (streamingCompute) {
-        requestBuilder.streamingExecute(COMPUTE_REQUEST_KEYS).get();
-      } else {
-        requestBuilder.execute(COMPUTE_REQUEST_KEYS).get();
-      }
+      statsAvroGenericStoreClient.compute().project("name").execute(COMPUTE_REQUEST_KEYS).get();
       fail();
     } catch (Exception e) {
       // First compute request fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
       assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
-      validateComputeRequestMetrics(
-          false,
-          false,
-          streamingCompute ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE,
-          false,
-          2,
-          2);
+      validateComputeRequestMetrics(false, false, RequestType.COMPUTE, false, 2, 2);
 
       try {
         // the second compute request is not going to find any routes (as the instances
         // are blocked) and fail instantly
         ComputeRequestBuilder requestBuilder = statsAvroGenericStoreClient.compute().project("name");
-        if (streamingCompute) {
-          requestBuilder.streamingExecute(COMPUTE_REQUEST_KEYS).get();
-        } else {
-          requestBuilder.execute(COMPUTE_REQUEST_KEYS).get();
-        }
+        requestBuilder.execute(COMPUTE_REQUEST_KEYS).get();
         fail();
       } catch (Exception e1) {
         assertTrue(e1.getMessage().endsWith("At least one route did not complete"), e1.getMessage());
@@ -1546,15 +1484,154 @@ public class DispatchingAvroGenericStoreClientTest {
             e1.getCause().getCause().getMessage().contains("No available route for store"),
             e1.getCause().getCause().getMessage());
 
-        validateComputeRequestMetrics(
-            false,
-            false,
-            streamingCompute ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE,
-            true,
-            2,
-            2);
+        validateComputeRequestMetrics(false, false, RequestType.COMPUTE, true, 2, 2);
       }
     } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * 1. 1st compute request (2 keys) will result in both the routes marked as
+   *    blocked(routingPendingRequestCounterInstanceBlockThreshold is 1).
+   * 2. 2nd compute request (2 keys) will result in both route getting no replica
+   *    found leading to partial response.
+   */
+  @Test
+  public void testStreamingComputeToUnreachableClient() throws IOException, ExecutionException, InterruptedException {
+    try {
+      setUpClient(false, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
+      VeniceResponseMap<String, ComputeGenericRecord> response =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_KEYS)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
+      // First compute request fails with unreachable host after timeout and this adds the hosts
+      // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
+      validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, false, 2, 2);
+
+      // the second compute request is not going to find any routes (as the instances
+      // are blocked) and fail instantly
+      VeniceResponseMap<String, ComputeGenericRecord> response2 =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_KEYS)
+              .get();
+      assertFalse(response2.isFullResponse());
+      assertEquals(response2.getTotalEntryCount(), 0);
+      validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, true, 2, 2);
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingComputeWithExceptionFromTransportLayer()
+      throws IOException, ExecutionException, InterruptedException {
+    try {
+      setUpClient(false, true, false, false);
+      VeniceResponseMap<String, ComputeGenericRecord> response =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_KEYS)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
+      validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, false, 2, 2);
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingComputeWithExceptionFromTransportLayerForOneRoute()
+      throws IOException, ExecutionException, InterruptedException {
+    try {
+      setUpClient(false, false, true, false);
+      VeniceResponseMap<String, ComputeGenericRecord> response =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_KEYS)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 1);
+      assertEquals(
+          response.get("test_key_1").get("name").toString(),
+          COMPUTE_REQUEST_VALUE_RESPONSE.get("test_key_1").get("name"));
+      validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, false, 2, 1);
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * Conditions to test: streaming compute API returns partial results in case of future.get(timeout)
+   * In this test:
+   * setup: 1 key returns valid value and the other key doesn't return anything.
+   * Behavior: this test calls compute().streamingExecute().get() without timeout, so waits till routingLeakedRequestCleanupThresholdMS
+   *    times out and returns a partial response.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingComputeWithTimeoutV1() throws IOException, ExecutionException, InterruptedException {
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
+    try {
+      setUpClient(false, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
+      VeniceResponseMap<String, ComputeGenericRecord> response =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_KEYS)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 1);
+      assertEquals(
+          response.get("test_key_1").get("name").toString(),
+          COMPUTE_REQUEST_VALUE_RESPONSE.get("test_key_1").get("name"));
+      TestUtils.waitForNonDeterministicAssertion(
+          routingLeakedRequestCleanupThresholdMS + 1000,
+          TimeUnit.MILLISECONDS,
+          () -> {
+            assertTrue(metrics.get("." + STORE_NAME + "--compute_streaming_request.OccurrenceRate").value() > 0);
+          });
+      validateComputeRequestMetrics(false, true, RequestType.COMPUTE_STREAMING, false, 2, 2);
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * Condition to test: streaming compute API returns partial results in case of future.get(timeout)
+   * In this test:
+   * setup: 1 key returns valid value and the other key doesn't return anything.
+   * Behavior: routingLeakedRequestCleanupThresholdMS times out before compute().streamingExecute().get(timeout),
+   *    so returns a partial response.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingComputeWithTimeoutV2()
+      throws IOException, ExecutionException, InterruptedException, TimeoutException {
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
+    try {
+      setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
+      VeniceResponseMap<String, ComputeGenericRecord> response =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_KEYS)
+              .get(2, TimeUnit.SECONDS);
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 1);
+      assertEquals(
+          response.get("test_key_1").get("name").toString(),
+          COMPUTE_REQUEST_VALUE_RESPONSE.get("test_key_1").get("name"));
+    } finally {
+      // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
+      TestUtils.waitForNonDeterministicAssertion(
+          routingLeakedRequestCleanupThresholdMS + 1000,
+          TimeUnit.MILLISECONDS,
+          () -> {
+            assertTrue(metrics.get("." + STORE_NAME + "--compute_streaming_request.OccurrenceRate").value() > 0);
+          });
+      validateComputeRequestMetrics(false, true, RequestType.COMPUTE_STREAMING, false, 2, 2);
       tearDown();
     }
   }
@@ -1597,27 +1674,31 @@ public class DispatchingAvroGenericStoreClientTest {
    * 1. first compute().streamingExecute() with 1 key getting timed out leading to the route getting
    *    blocked (routingPendingRequestCounterInstanceBlockThreshold = 1)
    * 2. second compute().streamingExecute() with 2 keys (one key (same as above) failing with no available
-   *    replica and one key getting timed out) => exception
+   *    replica and one key getting timed out) => partial response.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testStreamingComputeToUnreachableClientV1() throws IOException {
+  public void testStreamingComputeToUnreachableClientV1() throws IOException, ExecutionException, InterruptedException {
     try {
       setUpClient(true, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
-      statsAvroGenericStoreClient.compute().project("name").streamingExecute(COMPUTE_REQUEST_PARTIAL_KEYS_1).get();
-      fail();
-    } catch (Exception e) {
+      VeniceResponseMap<String, ComputeGenericRecord> response =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_PARTIAL_KEYS_1)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, false, 1, 2);
 
-      try {
-        statsAvroGenericStoreClient.compute().project("name").streamingExecute(COMPUTE_REQUEST_KEYS).get();
-        fail();
-      } catch (Exception e1) {
-        assertTrue(e1.getMessage().endsWith("At least one route did not complete"), e1.getMessage());
-        validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, true, 2, 2);
-      }
+      VeniceResponseMap<String, ComputeGenericRecord> response2 =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_KEYS)
+              .get();
+      assertFalse(response2.isFullResponse());
+      assertEquals(response2.getTotalEntryCount(), 0);
+      validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, true, 2, 2);
     } finally {
       tearDown();
     }
@@ -1633,17 +1714,22 @@ public class DispatchingAvroGenericStoreClientTest {
   public void testStreamingComputeToUnreachableClientV2() throws IOException, ExecutionException, InterruptedException {
     try {
       setUpClient(true, false, false, true, true, TimeUnit.SECONDS.toMillis(1));
-      statsAvroGenericStoreClient.compute().project("name").streamingExecute(COMPUTE_REQUEST_PARTIAL_KEYS_2).get();
-      fail();
-    } catch (Exception e) {
-      // First batchGet fails with unreachable host after timeout and this adds the hosts
+      VeniceResponseMap<String, ComputeGenericRecord> response =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_PARTIAL_KEYS_2)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
+      validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, false, 1, 2);
+      // First compute fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, false, 1, 2);
       CompletableFuture<VeniceResponseMap<String, ComputeGenericRecord>> future =
           statsAvroGenericStoreClient.compute().project("name").streamingExecute(COMPUTE_REQUEST_KEYS);
       VeniceResponseMap<String, ComputeGenericRecord> value = future.get();
       assertFalse(value.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
       // TODO metric validation: 1st get increments unhealthy metrics and the second get increments healthy
       // metrics
       // validateMultiGetMetrics(true, true, true, true, 2);
@@ -1657,15 +1743,21 @@ public class DispatchingAvroGenericStoreClientTest {
    * transportClientPartialIncomplete.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testStreamingComputeToUnreachableClientV3() throws IOException {
+  public void testStreamingComputeToUnreachableClientV3() throws IOException, ExecutionException, InterruptedException {
     try {
       setUpClient(true, false, true, false, true, TimeUnit.SECONDS.toMillis(1));
-      statsAvroGenericStoreClient.compute().project("name").streamingExecute(COMPUTE_REQUEST_KEYS).get();
-      fail();
-    } catch (Exception e) {
+      VeniceResponseMap<String, ComputeGenericRecord> response =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_KEYS)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 1);
+      assertEquals(
+          response.get("test_key_1").get("name").toString(),
+          COMPUTE_REQUEST_VALUE_RESPONSE.get("test_key_1").get("name"));
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateComputeRequestMetrics(false, true, RequestType.COMPUTE_STREAMING, false, 2, 2);
     } finally {
       tearDown();
@@ -1677,15 +1769,18 @@ public class DispatchingAvroGenericStoreClientTest {
    * for both the routes.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testStreamingComputeToUnreachableClientV4() throws IOException {
+  public void testStreamingComputeToUnreachableClientV4() throws IOException, ExecutionException, InterruptedException {
     try {
       setUpClient(true, true, false, false, true, TimeUnit.SECONDS.toMillis(1));
-      statsAvroGenericStoreClient.compute().project("name").streamingExecute(COMPUTE_REQUEST_KEYS).get();
-      fail();
-    } catch (Exception e) {
+      VeniceResponseMap<String, ComputeGenericRecord> response =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
+              .project("name")
+              .streamingExecute(COMPUTE_REQUEST_KEYS)
+              .get();
+      assertFalse(response.isFullResponse());
+      assertEquals(response.getTotalEntryCount(), 0);
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-      assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, false, 2, 2);
     } finally {
       tearDown();

@@ -7,7 +7,7 @@ package com.linkedin.venice.fastclient;
  * @param <V> Value type
  */
 public class ComputeRequestContext<K, V> extends MultiKeyRequestContext<K, V> {
-  public ComputeRequestContext(boolean isPartialSuccessAllowed) {
-    super(isPartialSuccessAllowed);
+  public ComputeRequestContext(int numKeysInRequest, boolean isPartialSuccessAllowed) {
+    super(numKeysInRequest, isPartialSuccessAllowed);
   }
 }

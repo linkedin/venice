@@ -18,6 +18,12 @@ import java.util.function.Supplier;
  * 1. If both of them succeed, return the faster one.
  * 2. If one of them fails, return the succeeded one.
  * 3. If both of them fail, throw exception.
+ *
+ * Currently, this implementation only supports dual-read for single-get and batch-get requests. Compute requests have
+ * not been implemented for two reasons:
+ * 1. We prefer to do a gradual ramp of the feature as dual reads can lead to extra load on the storage nodes
+ * 2. The complexity of implementing dual reads for compute is higher and needs extra work to convert a
+ * {@link com.linkedin.venice.client.store.streaming.StreamingCallback} into a {@link CompletableFuture Future}.
  */
 public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
   private final AvroGenericStoreClient<K, V> thinClient;
@@ -132,6 +138,11 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
    *  Needs to be investigated */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+    /**
+     * If a user calls {@link batchGet}, the {@link batchGet} would trigger a dual read on the thin-client and
+     * fast-client. If internally, batch get gets executed through a series of single gets, we shouldn't trigger dual
+     * reads on the internal {@link get} calls.
+     */
     if (requestContext.isTriggeredByBatchGet) {
       return super.get(requestContext, key);
     }

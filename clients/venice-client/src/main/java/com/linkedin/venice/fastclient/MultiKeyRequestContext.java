@@ -11,11 +11,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.Validate;
 
 
@@ -40,26 +38,23 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
 
   private Map<Integer, Set<String>> routesForPartition;
 
-  // True if long tail retry was triggered
-  boolean longTailRetryTriggered;
-  // Number of keys triggered in the retry request
-  int numberOfKeysSentInRetryRequest;
-  // Number of keys that were successfully resolved in retry request
-  AtomicInteger numberOfKeysCompletedInOriginalRequest;
-  AtomicInteger numberOfKeysCompletedInRetryRequest;
+  final int numKeysInRequest;
+  AtomicInteger numKeysCompleted;
+  RetryContext retryContext;
   final boolean isPartialSuccessAllowed;
+  private boolean completed;
 
-  MultiKeyRequestContext(boolean isPartialSuccessAllowed) {
-    routeRequests = new VeniceConcurrentHashMap<>();
-    firstRequestSentTS = new AtomicLong(-1);
-    firstResponseReceivedTS = new AtomicLong(-1);
-    partialResponseException = new AtomicReference<>();
-    routesForPartition = new HashMap<>();
-    longTailRetryTriggered = false;
-    numberOfKeysSentInRetryRequest = 0;
-    numberOfKeysCompletedInOriginalRequest = new AtomicInteger();
-    numberOfKeysCompletedInRetryRequest = new AtomicInteger();
+  MultiKeyRequestContext(int numKeysInRequest, boolean isPartialSuccessAllowed) {
+    this.routeRequests = new VeniceConcurrentHashMap<>();
+    this.firstRequestSentTS = new AtomicLong(-1);
+    this.firstResponseReceivedTS = new AtomicLong(-1);
+    this.partialResponseException = new AtomicReference<>();
+    this.routesForPartition = new HashMap<>();
+    this.numKeysInRequest = numKeysInRequest;
+    this.numKeysCompleted = new AtomicInteger();
+    this.retryContext = null;
     this.isPartialSuccessAllowed = isPartialSuccessAllowed;
+    this.completed = false;
   }
 
   void addKey(String route, K key, byte[] serializedKey, int partitionId) {
@@ -79,18 +74,16 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
 
   void markComplete(TransportClientResponseForRoute response) {
     validateResponseRoute(response);
-    routeRequests.get(response.getRouteId()).setComplete(response);
   }
 
   void markCompleteExceptionally(TransportClientResponseForRoute response, Throwable exception) {
     validateResponseRoute(response);
     Validate.notNull(exception);
-    routeRequests.get(response.getRouteId()).setCompleteExceptionally(exception);
     partialResponseException.compareAndSet(null, exception);
   }
 
   void complete() {
-
+    completed = true;
     // Roll up route stats into overall stats
     long decompressionTimeNS = 0;
     long responseDeserializationTimeNS = 0;
@@ -145,10 +138,6 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     firstResponseReceivedTS.compareAndSet(-1, System.nanoTime());
   }
 
-  List<CompletableFuture<TransportClientResponseForRoute>> getAllRouteFutures() {
-    return routeRequests.values().stream().map(rrc -> rrc.routeRequestCompletionFuture).collect(Collectors.toList());
-  }
-
   Optional<Throwable> getPartialResponseException() {
     return Optional.ofNullable(partialResponseException.get());
   }
@@ -186,7 +175,6 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
    */
   private static class RouteRequestContext<K> {
     List<KeyInfo<K>> keysRequested = new ArrayList<>();
-    CompletableFuture<TransportClientResponseForRoute> routeRequestCompletionFuture = new CompletableFuture<>();
 
     AtomicLong decompressionTime = new AtomicLong();
     AtomicLong responseDeserializationTime = new AtomicLong();
@@ -195,14 +183,6 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
 
     void addKeyInfo(K key, byte[] serializedKey, int partitionId) {
       keysRequested.add(new KeyInfo<>(key, serializedKey, partitionId));
-    }
-
-    void setComplete(TransportClientResponseForRoute response) {
-      routeRequestCompletionFuture.complete(response);
-    }
-
-    void setCompleteExceptionally(Throwable exception) {
-      routeRequestCompletionFuture.completeExceptionally(exception);
     }
   }
 
@@ -232,5 +212,39 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     public int getPartitionId() {
       return partitionId;
     }
+  }
+
+  static class RetryContext<K, V> {
+    MultiKeyRequestContext<K, V> originalRequestContext;
+    MultiKeyRequestContext<K, V> retryRequestContext;
+
+    RetryContext() {
+      originalRequestContext = null;
+      retryRequestContext = null;
+    }
+  }
+
+  private boolean isCompletedWithoutErrors() {
+    return completed && partialResponseException.get() == null;
+  }
+
+  boolean isCompletedSuccessfullyWithPartialResponse() {
+    return completed && (isPartialSuccessAllowed && partialResponseException.get() != null);
+  }
+
+  boolean isCompletedAcceptably() {
+    if (!completed) {
+      return false;
+    }
+
+    if (isCompletedWithoutErrors()) {
+      return true;
+    }
+
+    if (isPartialSuccessAllowed) {
+      return isCompletedSuccessfullyWithPartialResponse();
+    }
+
+    return false;
   }
 }

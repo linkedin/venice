@@ -113,16 +113,11 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
       clientStats.recordRequestKeyCount(numberOfKeys);
-
-      boolean exceptionReceived = false;
-      if (throwable != null) {
-        /**
-         * If the request (both original and retry) failed due to an exception, its
-         * considered an unhealthy request: so only incrementing a subset of metrics.
-         */
-        exceptionReceived = true;
-      }
-
+      // If partial success is allowed, the previous layers will not complete the future exceptionally. In such cases,
+      // we check if the request is completed successfully with partial exceptions - and these are considered unhealthy
+      // requests from metrics point of view.
+      boolean exceptionReceived = throwable != null || (requestContext instanceof MultiKeyRequestContext
+          && ((MultiKeyRequestContext) requestContext).isCompletedSuccessfullyWithPartialResponse());
       if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
@@ -156,30 +151,34 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       if (requestContext instanceof GetRequestContext) {
         GetRequestContext getRequestContext = (GetRequestContext) requestContext;
 
-        if (getRequestContext.longTailRetryRequestTriggered) {
-          clientStats.recordLongTailRetryRequest();
-          clientStats.recordRetryRequestKeyCount(1);
-        }
-        if (getRequestContext.errorRetryRequestTriggered) {
-          clientStats.recordErrorRetryRequest();
-          clientStats.recordRetryRequestKeyCount(1);
-        }
-        if (!exceptionReceived) {
-          if (getRequestContext.retryWin) {
-            clientStats.recordRetryRequestWin();
-            clientStats.recordRetryRequestSuccessKeyCount(1);
+        if (getRequestContext.retryContext != null) {
+          if (getRequestContext.retryContext.longTailRetryRequestTriggered) {
+            clientStats.recordLongTailRetryRequest();
+            clientStats.recordRetryRequestKeyCount(1);
+          }
+          if (getRequestContext.retryContext.errorRetryRequestTriggered) {
+            clientStats.recordErrorRetryRequest();
+            clientStats.recordRetryRequestKeyCount(1);
+          }
+          if (!exceptionReceived) {
+            if (getRequestContext.retryContext.retryWin) {
+              clientStats.recordRetryRequestWin();
+              clientStats.recordRetryRequestSuccessKeyCount(1);
+            }
           }
         }
       } else if (requestContext instanceof MultiKeyRequestContext) {
         // MultiKeyRequestContext is the superclass for ComputeRequestContext and BatchGetRequestContext
         MultiKeyRequestContext<K, V> multiKeyRequestContext = (MultiKeyRequestContext<K, V>) requestContext;
-        if (multiKeyRequestContext.longTailRetryTriggered) {
+        if (multiKeyRequestContext.retryContext != null
+            && multiKeyRequestContext.retryContext.retryRequestContext != null) {
           clientStats.recordLongTailRetryRequest();
-          clientStats.recordRetryRequestKeyCount(multiKeyRequestContext.numberOfKeysSentInRetryRequest);
+          clientStats
+              .recordRetryRequestKeyCount(multiKeyRequestContext.retryContext.retryRequestContext.numKeysInRequest);
           if (!exceptionReceived) {
-            clientStats
-                .recordRetryRequestSuccessKeyCount(multiKeyRequestContext.numberOfKeysCompletedInRetryRequest.get());
-            if (multiKeyRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0) {
+            clientStats.recordRetryRequestSuccessKeyCount(
+                multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get());
+            if (multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get() > 0) {
               clientStats.recordRetryRequestWin();
             }
           }
