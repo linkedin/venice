@@ -3321,10 +3321,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * To check whether the given partition is still consuming message from Kafka
    */
-  public boolean isPartitionConsuming(int userPartition) {
-    Boolean subPartitionConsumptionStateExist =
+  public boolean isPartitionConsumingOrHasPendingIngestionAction(int userPartition) {
+    boolean subPartitionConsumptionStateExist =
         amplificationFactorAdapter.meetsAny(userPartition, partitionConsumptionStateMap::containsKey);
-    Boolean pendingPartitionIngestionAction = hasPendingPartitionIngestionAction(userPartition);
+    boolean pendingPartitionIngestionAction = hasPendingPartitionIngestionAction(userPartition);
     return pendingPartitionIngestionAction || subPartitionConsumptionStateExist;
   }
 
