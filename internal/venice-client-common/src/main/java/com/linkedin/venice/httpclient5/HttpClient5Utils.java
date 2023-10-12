@@ -128,6 +128,7 @@ public class HttpClient5Utils {
                 RequestConfig.custom()
                     .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
                     .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                    .setDefaultKeepAlive(1, TimeUnit.HOURS)
                     .build())
             .setUserTokenHandler((route, context) -> null)
             .build();
