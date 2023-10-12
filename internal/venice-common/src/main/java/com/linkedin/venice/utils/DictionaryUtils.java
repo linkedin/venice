@@ -54,7 +54,7 @@ public class DictionaryUtils {
    * @return The compression dictionary wrapped in a ByteBuffer, or null if no dictionary was present in the
    * Start Of Push message.
    */
-  public static ByteBuffer readDictionaryFromKafka(
+  static ByteBuffer readDictionaryFromKafka(
       String topicName,
       PubSubConsumerAdapter pubSubConsumer,
       PubSubTopicRepository pubSubTopicRepository) {
@@ -70,6 +70,11 @@ public class DictionaryUtils {
     while (!startOfPushReceived) {
       Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
           pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
+
+      if (!messages.containsKey(pubSubTopicPartition)) {
+        continue;
+      }
+
       for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages.get(pubSubTopicPartition)) {
         kafkaKey = message.getKey();
         kafkaValue = message.getValue();

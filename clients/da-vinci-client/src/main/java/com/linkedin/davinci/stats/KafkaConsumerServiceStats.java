@@ -16,6 +16,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor pollRequestSensor;
   private final Sensor pollRequestLatencySensor;
   private final Sensor pollResultNumSensor;
+  private final Sensor pollNonZeroResultNumSensor;
+
   private final Sensor pollRequestError;
   private final Sensor consumerRecordsProducingToWriterBufferLatencySensor;
   private final Sensor detectedDeletedTopicNumSensor;
@@ -50,6 +52,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         new Gauge(getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong()));
     // consumer record number per second returned by Kafka consumer poll.
     pollResultNumSensor = registerSensor("consumer_poll_result_num", new Avg(), new Total());
+    pollNonZeroResultNumSensor = registerSensor("consumer_poll_non_zero_result_num", new Avg(), new Total());
     pollRequestError = registerSensor("consumer_poll_error", new OccurrenceRate());
     // To measure 'put' latency of consumer records blocking queue
     consumerRecordsProducingToWriterBufferLatencySensor =
@@ -90,6 +93,10 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordPollResultNum(int count) {
     pollResultNumSensor.record(count);
+  }
+
+  public void recordNonZeroPollResultNum(int count) {
+    pollNonZeroResultNumSensor.record(count);
   }
 
   public void recordConsumerRecordsProducingToWriterBufferLatency(double latency) {
