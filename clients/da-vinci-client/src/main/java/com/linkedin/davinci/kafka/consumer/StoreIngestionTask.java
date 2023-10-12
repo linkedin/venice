@@ -1776,7 +1776,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           LOGGER.info("{} Unsubscribed to: {}", consumerTaskId, topicPartition);
         }
-
         break;
       case RESET_OFFSET:
         resetOffset(partition, topicPartition, false);
@@ -3322,8 +3321,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * To check whether the given partition is still consuming message from Kafka
    */
-  public boolean isPartitionConsuming(int userPartition) {
-    return amplificationFactorAdapter.meetsAny(userPartition, partitionConsumptionStateMap::containsKey);
+  public boolean isPartitionConsumingOrHasPendingIngestionAction(int userPartition) {
+    boolean subPartitionConsumptionStateExist =
+        amplificationFactorAdapter.meetsAny(userPartition, partitionConsumptionStateMap::containsKey);
+    boolean pendingPartitionIngestionAction = hasPendingPartitionIngestionAction(userPartition);
+    return pendingPartitionIngestionAction || subPartitionConsumptionStateExist;
   }
 
   /**
