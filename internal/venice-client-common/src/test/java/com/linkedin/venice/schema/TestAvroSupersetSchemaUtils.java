@@ -412,6 +412,30 @@ public class TestAvroSupersetSchemaUtils {
   }
 
   @Test
+  public void testSupersetSchemaContainsMergeFieldProps() {
+    String valueSchemaStr1 = "{\n" + "  \"name\": \"TestRecord\",\n" + "  \"type\": \"record\",\n" + "  \"fields\": [\n"
+        + "   {\"name\": \"int_field\", \"type\": \"int\", \"doc\": \"int field\", \"prop1\": \"\\\"prop1_v1\\\"\"}\n"
+        + "  ],\n" + "  \"schema_prop\": \"\\\"schema_prop_v1\\\"\"\n" + "}";
+    String valueSchemaStr2 = "{\n" + "  \"name\": \"TestRecord\",\n" + "  \"type\": \"record\",\n" + "  \"fields\": [\n"
+        + "   {\"name\": \"int_field\", \"type\": \"int\", \"doc\": \"int field\", \"prop1\": \"\\\"prop1_v2\\\"\", \"prop2\": \"\\\"prop2_v1\\\"\"},\n"
+        + "   {\"name\": \"string_field\", \"type\": \"string\", \"doc\": \"string field\", \"prop3\": \"\\\"prop3_v1\\\"\", \"prop2\": \"\\\"prop2_v2\\\"\"}\n"
+        + "  ],\n" + "  \"schema_prop\": \"\\\"schema_prop_v2\\\"\"\n" + "}";
+
+    Schema schema1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr1);
+    Schema schema2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr2);
+
+    Schema supersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(schema1, schema2);
+
+    Schema.Field intField = supersetSchema.getField("int_field");
+    Schema.Field stringField = supersetSchema.getField("string_field");
+
+    Assert.assertEquals(intField.getProp("prop1"), "prop1_v2");
+    Assert.assertEquals(intField.getProp("prop2"), "prop2_v1");
+    Assert.assertEquals(stringField.getProp("prop3"), "prop3_v1");
+    Assert.assertEquals(stringField.getProp("prop2"), "prop2_v2");
+  }
+
+  @Test
   public void testGetSupersetSchemaFromSchemaResponse() {
     MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[3];
     schemas[0] = new MultiSchemaResponse.Schema();

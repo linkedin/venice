@@ -107,32 +107,51 @@ public class AvroSupersetSchemaUtils {
     return Schema.createUnion(combinedSchema);
   }
 
+  private static FieldBuilder deepCopySchemaField(Schema.Field field) {
+    FieldBuilder fieldBuilder = AvroCompatibilityHelper.newField(null)
+        .setName(field.name())
+        .setSchema(field.schema())
+        .setDoc(field.doc())
+        .setOrder(field.order());
+    field.getObjectProps().forEach((k, ignored) -> {
+      String propValue = field.getProp(k);
+      if (propValue != null) {
+        fieldBuilder.addProp(k, propValue);
+      }
+    });
+
+    // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
+    if (field.hasDefaultValue()) {
+      fieldBuilder.setDefault(getFieldDefault(field));
+    }
+
+    return fieldBuilder;
+  }
+
   private static List<Schema.Field> mergeFieldSchemas(Schema s1, Schema s2) {
     List<Schema.Field> fields = new ArrayList<>();
 
     for (Schema.Field f1: s1.getFields()) {
       Schema.Field f2 = s2.getField(f1.name());
-      FieldBuilder fieldBuilder = AvroCompatibilityHelper.newField(f1);
 
-      // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
-      if (f1.hasDefaultValue()) {
-        fieldBuilder.setDefault(getFieldDefault(f1));
-      }
+      FieldBuilder fieldBuilder = deepCopySchemaField(f1);
       if (f2 != null) {
         fieldBuilder.setSchema(generateSuperSetSchema(f1.schema(), f2.schema()))
             .setDoc(f1.doc() != null ? f1.doc() : f2.doc());
+        // merge props from f2
+        f2.getObjectProps().forEach((k, ignored) -> {
+          String propValue = f2.getProp(k);
+          if (propValue != null) {
+            fieldBuilder.addProp(k, propValue);
+          }
+        });
       }
       fields.add(fieldBuilder.build());
     }
 
     for (Schema.Field f2: s2.getFields()) {
       if (s1.getField(f2.name()) == null) {
-        FieldBuilder fieldBuilder = AvroCompatibilityHelper.newField(f2);
-        if (f2.hasDefaultValue()) {
-          // set default as AvroCompatibilityHelper builder might drop defaults if there is type mismatch
-          fieldBuilder.setDefault(getFieldDefault(f2));
-        }
-        fields.add(fieldBuilder.build());
+        fields.add(deepCopySchemaField(f2).build());
       }
     }
     return fields;
