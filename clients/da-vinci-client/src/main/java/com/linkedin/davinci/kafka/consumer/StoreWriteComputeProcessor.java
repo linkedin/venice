@@ -3,7 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.davinci.schema.writecompute.WriteComputeSchemaValidator;
-import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -132,7 +132,7 @@ public class StoreWriteComputeProcessor {
     // Map in write compute needs to have consistent ordering. On the sender side, users may not care about ordering
     // in their maps. However, on the receiver side, we still want to make sure that the same serialized map bytes
     // always get deserialized into maps with the same entry ordering.
-    return MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
+    return MapOrderPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
   }
 
   private RecordSerializer<GenericRecord> getValueSerializer(int valueSchemaId) {

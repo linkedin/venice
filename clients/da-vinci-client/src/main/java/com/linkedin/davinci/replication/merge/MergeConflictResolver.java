@@ -11,7 +11,8 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverte
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
-import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.fast.MapOrderPreservingFastSerDeFactory;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -20,7 +21,13 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.collections.BiIntKeyCache;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -52,6 +59,11 @@ public class MergeConflictResolver {
   private final MergeResultValueSchemaResolver mergeResultValueSchemaResolver;
   private final RmdSerDe rmdSerde;
   private final boolean useFieldLevelTimestamp;
+  private final boolean fastAvroEnabled;
+
+  private final SparseConcurrentList<RecordSerializer<GenericRecord>> serializerIndexedByValueSchemaId;
+  private final BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCacheForFullValue;
+  private final Map<String, RecordDeserializer<GenericRecord>> deserializerCacheForUpdateValue;
 
   MergeConflictResolver(
       StringAnnotatedStoreSchemaCache storeSchemaCache,
@@ -61,7 +73,8 @@ public class MergeConflictResolver {
       MergeByteBuffer mergeByteBuffer,
       MergeResultValueSchemaResolver mergeResultValueSchemaResolver,
       RmdSerDe rmdSerde,
-      boolean useFieldLevelTimestamp) {
+      boolean useFieldLevelTimestamp,
+      boolean fastAvroEnabled) {
     this.storeSchemaCache = Validate.notNull(storeSchemaCache);
     this.storeName = Validate.notNull(storeName);
     this.newRmdCreator = Validate.notNull(newRmdCreator);
@@ -70,6 +83,17 @@ public class MergeConflictResolver {
     this.mergeByteBuffer = Validate.notNull(mergeByteBuffer);
     this.rmdSerde = Validate.notNull(rmdSerde);
     this.useFieldLevelTimestamp = useFieldLevelTimestamp;
+    this.fastAvroEnabled = fastAvroEnabled;
+
+    this.serializerIndexedByValueSchemaId = new SparseConcurrentList<>();
+    this.deserializerCacheForFullValue = new BiIntKeyCache<>((writerSchemaId, readerSchemaId) -> {
+      Schema writerSchema = getValueSchema(writerSchemaId);
+      Schema readerSchema = getValueSchema(readerSchemaId);
+      return this.fastAvroEnabled
+          ? MapOrderPreservingFastSerDeFactory.getDeserializer(writerSchema, readerSchema)
+          : MapOrderPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
+    });
+    this.deserializerCacheForUpdateValue = new VeniceConcurrentHashMap<>();
   }
 
   /**
@@ -247,7 +271,7 @@ public class MergeConflictResolver {
     }
     final ByteBuffer updatedValueBytes = updatedValueAndRmd.getValue() == null
         ? null
-        : serializeMergedValueRecord(oldValueSchema, updatedValueAndRmd.getValue());
+        : serializeMergedValueRecord(oldValueSchemaID, updatedValueAndRmd.getValue());
     return new MergeConflictResult(updatedValueBytes, oldValueSchemaID, false, updatedValueAndRmd.getRmd());
   }
 
@@ -300,14 +324,13 @@ public class MergeConflictResolver {
     }
     final SchemaEntry mergeResultValueSchemaEntry =
         mergeResultValueSchemaResolver.getMergeResultValueSchema(oldValueSchemaID, newValueSchemaID);
-    final Schema mergeResultValueSchema = mergeResultValueSchemaEntry.getSchema();
-    final Schema newValueWriterSchema = getValueSchema(newValueSchemaID);
     /**
      * Note that it is important that the new value record should NOT use {@link mergeResultValueSchema}.
      * {@link newValueWriterSchema} is either the same as {@link mergeResultValueSchema} or it is a subset of
      * {@link mergeResultValueSchema}.
      */
-    GenericRecord newValueRecord = deserializeValue(newValueBytes, newValueWriterSchema, newValueWriterSchema);
+    GenericRecord newValueRecord =
+        deserializerCacheForFullValue.get(newValueSchemaID, newValueSchemaID).deserialize(newValueBytes);
     ValueAndRmd<GenericRecord> oldValueAndRmd = createOldValueAndRmd(
         mergeResultValueSchemaEntry.getSchema(),
         mergeResultValueSchemaEntry.getId(),
@@ -325,7 +348,8 @@ public class MergeConflictResolver {
     if (mergedValueAndRmd.isUpdateIgnored()) {
       return MergeConflictResult.getIgnoredResult();
     }
-    ByteBuffer mergedValueBytes = serializeMergedValueRecord(mergeResultValueSchema, mergedValueAndRmd.getValue());
+    ByteBuffer mergedValueBytes =
+        serializeMergedValueRecord(mergeResultValueSchemaEntry.getId(), mergedValueAndRmd.getValue());
     return new MergeConflictResult(mergedValueBytes, newValueSchemaID, false, mergedValueAndRmd.getRmd());
   }
 
@@ -380,7 +404,7 @@ public class MergeConflictResolver {
     }
     final ByteBuffer mergedValueBytes = mergedValueAndRmd.getValue() == null
         ? null
-        : serializeMergedValueRecord(oldValueSchema, mergedValueAndRmd.getValue());
+        : serializeMergedValueRecord(oldValueSchemaID, mergedValueAndRmd.getValue());
     return new MergeConflictResult(mergedValueBytes, oldValueSchemaID, false, mergedValueAndRmd.getRmd());
   }
 
@@ -402,8 +426,11 @@ public class MergeConflictResolver {
       int oldValueWriterSchemaID,
       Lazy<ByteBuffer> oldValueBytesProvider,
       GenericRecord oldRmdRecord) {
-    final GenericRecord oldValueRecord =
-        createValueRecordFromByteBuffer(readerValueSchema, oldValueWriterSchemaID, oldValueBytesProvider.get());
+    final GenericRecord oldValueRecord = createValueRecordFromByteBuffer(
+        readerValueSchema,
+        readerValueSchemaID,
+        oldValueWriterSchemaID,
+        oldValueBytesProvider.get());
 
     // RMD record should contain a per-field timestamp and it should use the RMD schema generated from
     // mergeResultValueSchema.
@@ -418,13 +445,13 @@ public class MergeConflictResolver {
 
   private GenericRecord createValueRecordFromByteBuffer(
       Schema readerValueSchema,
+      int readerValueSchemaID,
       int oldValueWriterSchemaID,
       ByteBuffer oldValueBytes) {
     if (oldValueBytes == null) {
       return AvroSchemaUtils.createGenericRecord(readerValueSchema);
     }
-    final Schema oldValueWriterSchema = getValueSchema(oldValueWriterSchemaID);
-    return deserializeValue(oldValueBytes, oldValueWriterSchema, readerValueSchema);
+    return deserializerCacheForFullValue.get(oldValueWriterSchemaID, readerValueSchemaID).deserialize(oldValueBytes);
   }
 
   private GenericRecord convertRmdToUseReaderValueSchema(
@@ -443,7 +470,11 @@ public class MergeConflictResolver {
     /**
      * TODO: Refactor this to use {@link com.linkedin.venice.serialization.StoreDeserializerCache}
      */
-    return MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema).deserialize(bytes);
+    AvroGenericDeserializer<GenericRecord> deserializer = fastAvroEnabled
+        ? MapOrderPreservingFastSerDeFactory.getDeserializer(writerSchema, readerSchema)
+        : MapOrderPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
+
+    return deserializer.deserialize(bytes);
   }
 
   private boolean ignoreNewPut(
@@ -582,9 +613,21 @@ public class MergeConflictResolver {
       int readerValueSchemaId,
       int updateProtocolVersion,
       ByteBuffer updateBytes) {
-    Schema writerSchema = getWriteComputeSchema(writerValueSchemaId, updateProtocolVersion);
-    Schema readerSchema = getWriteComputeSchema(readerValueSchemaId, updateProtocolVersion);
-    return deserializeValue(updateBytes, writerSchema, readerSchema);
+    String combinedKey = new StringBuilder().append(writerValueSchemaId)
+        .append("-")
+        .append(readerValueSchemaId)
+        .append("-")
+        .append(updateProtocolVersion)
+        .toString();
+    RecordDeserializer<GenericRecord> deserializer =
+        deserializerCacheForUpdateValue.computeIfAbsent(combinedKey, ignored -> {
+          Schema writerSchema = getWriteComputeSchema(writerValueSchemaId, updateProtocolVersion);
+          Schema readerSchema = getWriteComputeSchema(readerValueSchemaId, updateProtocolVersion);
+          return this.fastAvroEnabled
+              ? MapOrderPreservingFastSerDeFactory.getDeserializer(writerSchema, readerSchema)
+              : MapOrderPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
+        });
+    return deserializer.deserialize(updateBytes);
   }
 
   private ValueAndRmd<GenericRecord> prepareValueAndRmdForUpdate(
@@ -603,8 +646,8 @@ public class MergeConflictResolver {
          * case, the value must be retrieved from storage engine, and is prepended with schema ID.
          */
         int schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
-        Schema writerSchema = getValueSchema(schemaId);
-        newValue = deserializeValue(oldValueBytes, writerSchema, readerValueSchemaEntry.getSchema());
+        newValue =
+            deserializerCacheForFullValue.get(schemaId, readerValueSchemaEntry.getId()).deserialize(oldValueBytes);
       }
       GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_POS, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
@@ -741,10 +784,16 @@ public class MergeConflictResolver {
     }
   }
 
-  private ByteBuffer serializeMergedValueRecord(Schema mergedValueSchema, GenericRecord mergedValue) {
+  private ByteBuffer serializeMergedValueRecord(int mergedValueSchemaId, GenericRecord mergedValue) {
     // TODO: avoid serializing the merged value result here and instead serializing it before persisting it. The goal
     // is to avoid back-and-forth ser/de. Because when the merged result is read before it is persisted, we may need
     // to deserialize it.
-    return ByteBuffer.wrap(MapOrderingPreservingSerDeFactory.getSerializer(mergedValueSchema).serialize(mergedValue));
+    RecordSerializer serializer = serializerIndexedByValueSchemaId.computeIfAbsent(mergedValueSchemaId, ignored -> {
+      Schema mergedValueSchema = getValueSchema(mergedValueSchemaId);
+      return fastAvroEnabled
+          ? MapOrderPreservingFastSerDeFactory.getSerializer(mergedValueSchema)
+          : MapOrderPreservingSerDeFactory.getSerializer(mergedValueSchema);
+    });
+    return ByteBuffer.wrap(serializer.serialize(mergedValue));
   }
 }

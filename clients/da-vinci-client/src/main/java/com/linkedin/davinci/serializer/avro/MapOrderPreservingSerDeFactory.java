@@ -10,7 +10,7 @@ import org.apache.avro.Schema;
  * This class is a factory that creates {@link MapOrderPreservingSerializer} and {@link MapOrderPreservingDeserializer}
  * with given schemas and cache them.
  */
-public class MapOrderingPreservingSerDeFactory extends SerializerDeserializerFactory {
+public class MapOrderPreservingSerDeFactory extends SerializerDeserializerFactory {
   private static final Map<Schema, MapOrderPreservingSerializer<?>> SERIALIZER_MAP = new VeniceConcurrentHashMap<>();
   private static final Map<SchemaPairAndClassContainer, MapOrderPreservingDeserializer> DESERIALIZER_MAP =
       new VeniceConcurrentHashMap<>();

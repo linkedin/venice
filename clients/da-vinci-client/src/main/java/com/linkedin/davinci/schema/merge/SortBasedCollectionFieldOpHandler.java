@@ -51,6 +51,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       toPutList = Collections.emptyList();
     } else {
       toPutList = newFieldValue;
+      /**
+       * LinkedList is more efficient for the following add/remove operations.
+       */
+      if (!(toPutList instanceof LinkedList)) {
+        toPutList = new LinkedList<>((toPutList));
+      }
     }
 
     if (collectionFieldRmd.isInPutOnlyState()) {

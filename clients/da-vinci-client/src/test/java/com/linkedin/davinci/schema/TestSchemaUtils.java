@@ -14,7 +14,7 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.MAP_
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_DIFF;
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_UNION;
 
-import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -153,11 +153,11 @@ public class TestSchemaUtils {
   }
 
   protected RecordSerializer<GenericRecord> getSerializer(Schema writerSchema) {
-    return MapOrderingPreservingSerDeFactory.getAvroGenericSerializer(writerSchema);
+    return MapOrderPreservingSerDeFactory.getAvroGenericSerializer(writerSchema);
   }
 
   protected RecordDeserializer<GenericRecord> getDeserializer(Schema writerSchema, Schema readerSchema) {
-    return MapOrderingPreservingSerDeFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
+    return MapOrderPreservingSerDeFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
   }
 
 }
