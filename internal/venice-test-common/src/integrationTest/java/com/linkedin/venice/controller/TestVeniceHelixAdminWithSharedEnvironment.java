@@ -343,7 +343,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Store-level write lock is shared between VeniceHelixAdmin and AbstractPushMonitor. It's not guaranteed that the
     // new version is online and old version will be deleted during VeniceHelixAdmin#addVersion early backup deletion.
     // Explicitly run early backup deletion again to make the test deterministic.
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET, false);
     TestUtils.waitForNonDeterministicCompletion(
         30,
         TimeUnit.SECONDS,
@@ -640,7 +640,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         30,
         TimeUnit.SECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET, false);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
 
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
@@ -782,7 +782,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         30,
         TimeUnit.SECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET, false);
 
     store = veniceAdmin.getStore(clusterName, storeName);
     // Version 1 and version 2 are added to this store. Version 1 is deleted by early backup deletion
@@ -1079,9 +1079,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         TOTAL_TIMEOUT_FOR_LONG_TEST_MS,
         TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 3);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET, false);
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
-    veniceAdmin.retireOldStoreVersions(clusterName, storeName, false, VERSION_ID_UNSET);
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, false, VERSION_ID_UNSET, false);
     Assert.assertEquals(
         veniceAdmin.getStore(clusterName, storeName).getVersions().size(),
         1,

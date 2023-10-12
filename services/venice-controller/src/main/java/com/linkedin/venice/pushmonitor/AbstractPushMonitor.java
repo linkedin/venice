@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.meta.Version.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
@@ -927,6 +928,8 @@ public abstract class AbstractPushMonitor
     pushStatus.setSuccessfulPushDurationInSecs(durationSecs);
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
+    Store store = metadataRepository.getStore(storeName);
+    int previousCurrentVersion = store.getCurrentVersion();
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ONLINE);
     // Updating the version's overall push status must be the last step due to the current way we load and check for
     // pushes that might have completed during controller restart or leadership handover. If the overall push status is
@@ -946,7 +949,9 @@ public abstract class AbstractPushMonitor
           e);
     }
     try {
-      storeCleaner.retireOldStoreVersions(clusterName, storeName, false, -1);
+      Version version = store.getVersion(versionNumber).get();
+      boolean isRepush = version.getPushJobId().startsWith(VENICE_RE_PUSH_PUSH_ID_PREFIX);
+      storeCleaner.retireOldStoreVersions(clusterName, storeName, true, previousCurrentVersion, isRepush);
     } catch (Exception e) {
       LOGGER.warn("Could not retire the old versions for store: {} in cluster: {}", storeName, clusterName, e);
     }
@@ -988,8 +993,9 @@ public abstract class AbstractPushMonitor
 
   private void updateStoreVersionStatus(String storeName, int versionNumber, VersionStatus status) {
     VersionStatus newStatus = status;
+    Store store;
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
-      Store store = metadataRepository.getStore(storeName);
+      store = metadataRepository.getStore(storeName);
       if (store == null) {
         throw new VeniceNoStoreException(storeName);
       }

@@ -7,7 +7,8 @@ public interface StoreCleaner {
       String clusterName,
       String storeName,
       boolean deleteBackupOnStartPush,
-      int currentVersionBeforePush);
+      int currentVersionBeforePush,
+      boolean isRepush);
 
   /**
    * This purpose of this function is to execute some topic related cleanup when push job is completed.

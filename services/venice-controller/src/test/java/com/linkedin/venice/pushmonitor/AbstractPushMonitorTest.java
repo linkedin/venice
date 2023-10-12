@@ -792,7 +792,8 @@ public abstract class AbstractPushMonitorTest {
         String clusterName,
         String storeName,
         boolean deleteBackupOnStartPush,
-        int currentVersionBeforePush) {
+        int currentVersionBeforePush,
+        boolean isRepush) {
       try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
         try {
           Thread.sleep(1000);

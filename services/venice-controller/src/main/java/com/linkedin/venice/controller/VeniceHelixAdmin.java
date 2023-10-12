@@ -2648,7 +2648,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               && multiClusterConfigs.getControllerConfig(clusterName).isEarlyDeleteBackUpEnabled()
               && !pushJobId.startsWith(VENICE_RE_PUSH_PUSH_ID_PREFIX)) {
             try {
-              retireOldStoreVersions(clusterName, storeName, true, currentVersionBeforePush);
+              retireOldStoreVersions(clusterName, storeName, true, currentVersionBeforePush, false);
             } catch (Throwable t) {
               LOGGER.error(
                   "Failed to delete previous backup version while pushing {} to store {} in cluster {}",
@@ -3210,17 +3210,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * For a given store, determine its versions to delete based on the {@linkplain BackupStrategy} settings and execute
    * the deletion in the cluster (including all its resources). It also truncates Kafka topics and Helix resources.
-   * @param clusterName name of a cluster.
-   * @param storeName name of the store to retire.
-   * @param deleteBackupOnStartPush indicate if it is called in a start-of-push workflow.
+   *
+   * @param clusterName              name of a cluster.
+   * @param storeName                name of the store to retire.
+   * @param deleteBackupOnStartPush  indicate if it is called in a start-of-push workflow.
    * @param currentVersionBeforePush current version before a new push.
+   * @param isRepush
    */
   @Override
   public void retireOldStoreVersions(
       String clusterName,
       String storeName,
       boolean deleteBackupOnStartPush,
-      int currentVersionBeforePush) {
+      int currentVersionBeforePush,
+      boolean isRepush) {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       Store store = resources.getStoreMetadataRepository().getStore(storeName);
@@ -3243,7 +3246,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       for (Version version: versionsToDelete) {
-        if (version.getNumber() == currentVersionBeforePush) {
+        // for repush currentVersionBeforePush is same current version, so delete that one and keep the earlier version
+        if (isRepush) {
+          if (version.getNumber() != currentVersionBeforePush) {
+            continue;
+          }
+        } else if (version.getNumber() == currentVersionBeforePush) {
           continue;
         }
         try {
