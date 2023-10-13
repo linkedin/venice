@@ -42,6 +42,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -63,6 +64,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private static final String VERSION_PARTITION_SEPARATOR = "_";
   private static final long ZSTD_DICT_FETCH_TIMEOUT = 10;
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
+  private static final long WARMUP_REFRESH_INTERVAL_IN_SECONDS = 5;
   private final long refreshIntervalInSeconds;
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
@@ -83,6 +85,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
+  private CountDownLatch isReadyLatch = new CountDownLatch(1);
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
     super(clientConfig);
@@ -150,6 +153,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
     // build a base for future metadata updates then start periodic refresh
     refresh();
+    try {
+      // wait till metadata is warmed up
+      isReadyLatch.await();
+    } catch (InterruptedException e) {
+      // if there is an InterruptedException, let the periodic refresh continue with updating the metadata
+      LOGGER.error(
+          "Metadata warmup failed and will be retried every {} seconds. Read requests will throw exception until then",
+          WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          e);
+    }
   }
 
   private void discoverD2Service() {
@@ -173,7 +186,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @param onDemandRefresh
    * @return if the fetched metadata was an updated version
    */
-  private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
+  synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
@@ -284,12 +297,22 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     try {
       updateCache(false);
       routingStrategy.updateHelixGroupInfo(helixGroupInfo);
-      isReady = true;
+      if (!isReady) {
+        isReadyLatch.countDown();
+        isReady = true;
+        LOGGER.info("Metadata warmup completed successfully");
+      }
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
-      LOGGER.error("Encountered unexpected error during periodic refresh", e);
+      LOGGER.error(
+          "Metadata periodic refresh encountered unexpected error, will be retried in {} seconds",
+          isReady ? refreshIntervalInSeconds : WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          e);
     } finally {
-      scheduler.schedule(this::refresh, refreshIntervalInSeconds, TimeUnit.SECONDS);
+      scheduler.schedule(
+          this::refresh,
+          isReady ? refreshIntervalInSeconds : WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          TimeUnit.SECONDS);
     }
   }
 
@@ -408,4 +431,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   public synchronized void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
     this.d2ServiceDiscovery = d2ServiceDiscovery;
   }
+
+  public synchronized void setTransportClient(D2TransportClient transportClient) {
+    this.transportClient = transportClient;
+  }
+
 }
