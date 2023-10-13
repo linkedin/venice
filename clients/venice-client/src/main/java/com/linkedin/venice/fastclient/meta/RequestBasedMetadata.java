@@ -63,10 +63,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(RequestBasedMetadata.class);
   private static final String VERSION_PARTITION_SEPARATOR = "_";
   private static final long ZSTD_DICT_FETCH_TIMEOUT = 10;
-  private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
-  private static final long WARMUP_REFRESH_INTERVAL_IN_SECONDS = 5;
-  private final long refreshIntervalInSeconds;
-  private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+  static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
+  static final long WARMUP_REFRESH_INTERVAL_IN_SECONDS = 5;
+  private long refreshIntervalInSeconds;
+  private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
   private final AtomicInteger currentVersion = new AtomicInteger();
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
@@ -165,7 +165,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     }
   }
 
-  private void discoverD2Service() {
+  void discoverD2Service() {
     if (isServiceDiscovered) {
       return;
     }
@@ -253,6 +253,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       for (Map.Entry<CharSequence, Integer> entry: metadataResponse.getHelixGroupInfo().entrySet()) {
         helixGroupInfo.put(entry.getKey().toString(), entry.getValue());
       }
+      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
+
       latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
       // Wait for dictionary fetch to finish if there is one
       try {
@@ -296,7 +298,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private void refresh() {
     try {
       updateCache(false);
-      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
       if (!isReady) {
         isReadyLatch.countDown();
         isReady = true;
@@ -432,8 +433,27 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     this.d2ServiceDiscovery = d2ServiceDiscovery;
   }
 
-  public synchronized void setTransportClient(D2TransportClient transportClient) {
-    this.transportClient = transportClient;
+  public void setScheduler(ScheduledExecutorService scheduler) {
+    this.scheduler = scheduler;
   }
 
+  public ScheduledExecutorService getScheduler() {
+    return scheduler;
+  }
+
+  public void setIsReadyLatch(CountDownLatch isReadyLatch) {
+    this.isReadyLatch = isReadyLatch;
+  }
+
+  public CountDownLatch getIsReadyLatch() {
+    return this.isReadyLatch;
+  }
+
+  public void setRefreshIntervalInSeconds(long refreshIntervalInSeconds) {
+    this.refreshIntervalInSeconds = refreshIntervalInSeconds;
+  }
+
+  public long getRefreshIntervalInSeconds() {
+    return refreshIntervalInSeconds;
+  }
 }
