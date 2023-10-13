@@ -15,6 +15,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_META_STORE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
@@ -49,6 +50,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_CLASS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -616,6 +620,38 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Long> getMinCompactionLagSeconds() {
     return getLong(MIN_COMPACTION_LAG_SECONDS);
+  }
+
+  public Optional<String> getViewName() {
+    return getString(STORE_VIEW_NAME);
+  }
+
+  public UpdateStoreQueryParams setViewName(String viewName) {
+    return (UpdateStoreQueryParams) add(STORE_VIEW_NAME, viewName);
+  }
+
+  public Optional<String> getViewClassName() {
+    return getString(STORE_VIEW_CLASS);
+  }
+
+  public UpdateStoreQueryParams setViewClassName(String viewClassName) {
+    return (UpdateStoreQueryParams) add(STORE_VIEW_CLASS, viewClassName);
+  }
+
+  public Optional<Map<String, String>> getViewClassParams() {
+    return getStringMap(STORE_VIEW_PARAMS);
+  }
+
+  public UpdateStoreQueryParams setViewClassParams(Map<String, String> partitionerParams) {
+    return (UpdateStoreQueryParams) putStringMap(STORE_VIEW_PARAMS, partitionerParams);
+  }
+
+  public Optional<Boolean> getDisableStoreView() {
+    return getBoolean(DISABLE_STORE_VIEW);
+  }
+
+  public UpdateStoreQueryParams setDisableStoreView(boolean disableView) {
+    return (UpdateStoreQueryParams) add(DISABLE_STORE_VIEW, disableView);
   }
 
   // ***************** above this line are getters and setters *****************

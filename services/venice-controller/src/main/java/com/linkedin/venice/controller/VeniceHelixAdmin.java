@@ -4014,7 +4014,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private void addStoreViews(String clusterName, String storeName, Map<String, String> viewConfigMap) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setViewConfigs(StoreViewUtils.convertStringMapViewToViewConfig(viewConfigMap));
+      store.setViewConfigs(StoreViewUtils.convertStringMapViewToViewConfigMap(viewConfigMap));
       return store;
     });
   }
@@ -4670,8 +4670,39 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       oldViewConfigMap = new HashMap<>();
     }
     Map<String, StoreViewConfigRecord> mergedConfigs =
-        StoreViewUtils.convertViewConfigToStoreViewConfig(oldViewConfigMap);
-    mergedConfigs.putAll(StoreViewUtils.convertStringMapViewToStoreViewConfigRecord(viewParameters));
+        StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(oldViewConfigMap);
+    mergedConfigs.putAll(StoreViewUtils.convertStringMapViewToStoreViewConfigRecordMap(viewParameters));
+    return mergedConfigs;
+  }
+
+  static Map<String, StoreViewConfigRecord> addNewViewConfigsIntoOldConfigs(
+      Store oldStore,
+      String viewClass,
+      ViewConfig viewConfig) throws VeniceException {
+    // Add new view config into the existing config map. The new configs will override existing ones which share the
+    // same key.
+    Map<String, ViewConfig> oldViewConfigMap = oldStore.getViewConfigs();
+    if (oldViewConfigMap == null) {
+      oldViewConfigMap = new HashMap<>();
+    }
+    Map<String, StoreViewConfigRecord> mergedConfigs =
+        StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(oldViewConfigMap);
+
+    StoreViewConfigRecord newStoreViewConfigRecord =
+        StoreViewUtils.convertViewConfigToStoreViewConfigRecord(viewConfig);
+    mergedConfigs.put(viewClass, newStoreViewConfigRecord);
+    return mergedConfigs;
+  }
+
+  static Map<String, StoreViewConfigRecord> removeViewConfigFromStoreViewConfigMap(Store oldStore, String viewClass)
+      throws VeniceException {
+    Map<String, ViewConfig> oldViewConfigMap = oldStore.getViewConfigs();
+    if (oldViewConfigMap == null) {
+      oldViewConfigMap = new HashMap<>();
+    }
+    Map<String, StoreViewConfigRecord> mergedConfigs =
+        StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(oldViewConfigMap);
+    mergedConfigs.remove(viewClass);
     return mergedConfigs;
   }
 

@@ -179,6 +179,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -2150,6 +2151,10 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> regionsFilter = params.getRegionsFilter();
       Optional<String> personaName = params.getStoragePersona();
       Optional<Map<String, String>> storeViewConfig = params.getStoreViews();
+      Optional<String> viewName = params.getViewName();
+      Optional<String> viewClassName = params.getViewClassName();
+      Optional<Map<String, String>> viewParams = params.getViewClassParams();
+      Optional<Boolean> removeView = params.getDisableStoreView();
       Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
 
       /**
@@ -2203,12 +2208,31 @@ public class VeniceParentHelixAdmin implements Admin {
           pushStreamSourceAddress.map(addToUpdatedConfigList(updatedConfigsList, PUSH_STREAM_SOURCE_ADDRESS))
               .orElseGet(currStore::getPushStreamSourceAddress);
 
+      if (storeViewConfig.isPresent() && viewName.isPresent()) {
+        throw new VeniceException("Cannot update a store view and overwrite store view setup together!");
+      }
+      if (viewName.isPresent()) {
+        if (!viewClassName.isPresent()) {
+          throw new VeniceException("View class name is required when configuring a view.");
+        }
+        Map<String, StoreViewConfigRecord> updatedViewSettings;
+        if (!removeView.isPresent()) {
+          ViewConfig viewConfig = new ViewConfigImpl(viewClassName.get(), viewParams.orElse(Collections.emptyMap()));
+          validateStoreViewConfig(currStore, viewConfig);
+          updatedViewSettings = VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), viewConfig);
+        } else {
+          updatedViewSettings = VeniceHelixAdmin.removeViewConfigFromStoreViewConfigMap(currStore, viewName.get());
+        }
+        setStore.views = updatedViewSettings;
+        updatedConfigsList.add(STORE_VIEW);
+      }
+
       if (storeViewConfig.isPresent()) {
-        // Validate and merge store views if they're getting set
-        validateStoreViewConfig(storeViewConfig.get(), currStore);
-        Map<String, StoreViewConfigRecord> mergedViewSettings =
-            VeniceHelixAdmin.mergeNewViewConfigsIntoOldConfigs(currStore, storeViewConfig.get());
-        setStore.views = mergedViewSettings;
+        // Validate and overwrite store views if they're getting set
+        validateStoreViewConfigs(storeViewConfig.get(), currStore);
+        Map<String, StoreViewConfigRecord> updatedViewSettings =
+            StoreViewUtils.convertStringMapViewToStoreViewConfigRecordMap(storeViewConfig.get());
+        setStore.views = updatedViewSettings;
         updatedConfigsList.add(STORE_VIEW);
       }
 
@@ -2585,17 +2609,18 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private void validateStoreViewConfig(Map<String, String> stringMap, Store store) {
-    Map<String, ViewConfig> configs = StoreViewUtils.convertStringMapViewToViewConfig(stringMap);
-    for (Map.Entry<String, ViewConfig> viewConfig: configs.entrySet()) {
-      // TODO: Pass a proper properties object here. Today this isn't used in this context
-      VeniceView view = ViewUtils.getVeniceView(
-          viewConfig.getValue().getViewClassName(),
-          new Properties(),
-          store,
-          viewConfig.getValue().getViewParameters());
-      view.validateConfigs();
+  private void validateStoreViewConfigs(Map<String, String> stringMap, Store store) {
+    Map<String, ViewConfig> configs = StoreViewUtils.convertStringMapViewToViewConfigMap(stringMap);
+    for (Map.Entry<String, ViewConfig> viewConfigEntry: configs.entrySet()) {
+      validateStoreViewConfig(store, viewConfigEntry.getValue());
     }
+  }
+
+  private void validateStoreViewConfig(Store store, ViewConfig viewConfig) {
+    // TODO: Pass a proper properties object here. Today this isn't used in this context
+    VeniceView view =
+        ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
+    view.validateConfigs();
   }
 
   private SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {
