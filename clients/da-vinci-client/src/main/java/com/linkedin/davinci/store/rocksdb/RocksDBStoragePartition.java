@@ -281,6 +281,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       return;
     }
 
+    if (isCompactionCancelled()) {
+      throw new MemoryLimitExhaustedException("Compaction cancelled for not enough disk space for " + storeName);
+    }
     /**
      * Check whether current {@link sstFileManager} is already tracking the sst files in the db path.
      * Here are the reasons:
@@ -749,6 +752,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to avoid data loss
           // during
           // crash recovery
+          if (isCompactionCancelled()) {
+            throw new MemoryLimitExhaustedException("Compaction cancelled for not enough disk space for " + storeName);
+          }
           rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList);
         } catch (RocksDBException e) {
           checkAndThrowMemoryLimitException(e);
@@ -928,6 +934,17 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       makeSureRocksDBIsStillOpen();
       return getRocksDBStatValue("rocksdb.live-sst-files-size");
+    } finally {
+      readCloseRWLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public boolean isCompactionCancelled() {
+    readCloseRWLock.readLock().lock();
+    try {
+      makeSureRocksDBIsStillOpen();
+      return getRocksDBStatValue("rocksdb.compaction.cancelled") > 0;
     } finally {
       readCloseRWLock.readLock().unlock();
     }

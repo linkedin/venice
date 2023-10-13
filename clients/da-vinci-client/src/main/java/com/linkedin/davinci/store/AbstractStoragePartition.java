@@ -170,4 +170,8 @@ public abstract class AbstractStoragePartition {
   public long getRmdByteUsage() {
     throw new VeniceUnsupportedOperationException("getRmdByteUsage");
   }
+
+  public boolean isCompactionCancelled() {
+    return false;
+  }
 }
