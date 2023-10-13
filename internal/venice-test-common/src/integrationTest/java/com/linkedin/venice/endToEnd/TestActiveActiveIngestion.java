@@ -1209,6 +1209,8 @@ public class TestActiveActiveIngestion {
       });
     }
 
+    // Wait for 10 seconds so bootstrap can load results from kafka
+    Utils.sleep(10000);
     bootstrappingVeniceChangelogConsumer.start().get();
     Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
 

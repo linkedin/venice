@@ -14,7 +14,7 @@ import java.util.concurrent.CompletableFuture;
  *
  * Implementations of this interface rely on access to a compacted view to the data and scanning the entirety of that
  * compacted view initial calls to poll(). This is the only supported pattern with this interface today. {@link VeniceChangelogConsumer}
- * enables more fine control.  This interface is intentionally limited as implementors rely on local checkpointing and
+ * enables finer control.  This interface is intentionally limited as implementors rely on local checkpointing and
  * maintenance of state which might be easily corrupted with byzantine seek() calls.
  * @param <K>
  * @param <V>
