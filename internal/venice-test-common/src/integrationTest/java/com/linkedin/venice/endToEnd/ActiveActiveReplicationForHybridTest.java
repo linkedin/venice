@@ -2,15 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
-import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
@@ -31,7 +23,8 @@ import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
-import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static org.apache.kafka.clients.consumer.ConsumerConfig.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -43,15 +36,20 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.consumer.ReplicationMetadataSchemaRepository;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
+import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.KafkaTopicDumper;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.consistency.ValidatorUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse.Schema;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -68,9 +66,12 @@ import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -78,6 +79,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -85,6 +87,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -561,6 +564,176 @@ public class ActiveActiveReplicationForHybridTest {
       assertEquals(schemaResponse.getSchemas()[0].getSchemaStr(), expectedSchema);
       assertEquals(schemaResponse.getSchemas()[0].getRmdValueSchemaId(), 1);
       assertEquals(schemaResponse.getSchemas()[0].getId(), 1);
+    } finally {
+      deleteStores(storeName);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAReplicationDataConsistency() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("test-store");
+    try {
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+      updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
+
+      // Empty push to create a version
+      assertCommand(
+          parentControllerClient
+              .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
+
+      // Verify that version 1 is already created in dc-0 region
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = assertCommand(dc0Client.getStore(storeName));
+        assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+      });
+
+      /**
+       * First test:
+       * Servers can resolve conflicts within the same regions; there could be multiple Samza processors sending messages
+       * with the same key in the same region, so there could be conflicts within the same region.
+       */
+      // Build a list of mock time
+      List<Long> mockTimestampInMs = new LinkedList<>();
+      long baselineTimestampInMs = System.currentTimeMillis();
+      boolean useLogicalTimestamp = true;
+      if (!useLogicalTimestamp) {
+        // Timestamp for segment start time bookkeeping
+        mockTimestampInMs.add(baselineTimestampInMs);
+        // Timestamp for START_OF_SEGMENT message
+        mockTimestampInMs.add(baselineTimestampInMs);
+      }
+      // Timestamp for Key1
+      mockTimestampInMs.add(baselineTimestampInMs);
+      // Timestamp for Key1 with a different value and a bigger offset; since it has an older timestamp, its value will
+      // not override the previous value even though it will arrive at the Kafka topic later
+      mockTimestampInMs.add(baselineTimestampInMs - 10);
+      // Timestamp for Key2 with the highest offset, which will be used to verify that all messages in RT have been
+      // processed
+      mockTimestampInMs.add(baselineTimestampInMs);
+      Time mockTime = new MockCircularTime(mockTimestampInMs);
+
+      // Build the SystemProducer with the mock time
+      Random rand = new Random();
+      rand.setSeed(1000L);
+      int dc_index = 0;
+      int keySetSize = 10;
+      int totalRecordsToSent = 1000;
+
+      List<VeniceSystemProducer> veniceSystemProducers = new ArrayList<>();
+      for (VeniceMultiClusterWrapper childDataCenter: childDatacenters) {
+        VeniceSystemProducer producer = new VeniceSystemProducer(
+            childDataCenter.getZkServerWrapper().getAddress(),
+            childDataCenter.getZkServerWrapper().getAddress(),
+            D2_SERVICE_NAME,
+            storeName,
+            Version.PushType.STREAM,
+            Utils.getUniqueString("venice-push-id"),
+            "dc-" + dc_index,
+            true,
+            null,
+            Optional.empty(),
+            Optional.empty(),
+            mockTime);
+        producer.start();
+        veniceSystemProducers.add(producer);
+      }
+      for (int i = 0; i < totalRecordsToSent; i++) {
+        dc_index = rand.nextInt(NUMBER_OF_CHILD_DATACENTERS);
+        int valuePrefix = rand.nextInt(keySetSize);
+        String valueString = valuePrefix + "_value_dc" + dc_index;
+        OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
+            new SystemStream("venice", storeName),
+            "key_id_" + i,
+            useLogicalTimestamp ? new VeniceObjectWithTimestamp(valueString, mockTime.getMilliseconds()) : valueString);
+        veniceSystemProducers.get(dc_index).send(storeName, envelope);
+      }
+
+      for (dc_index = 0; dc_index < NUMBER_OF_CHILD_DATACENTERS; dc_index++) {
+        VeniceSystemProducer producer = veniceSystemProducers.get(dc_index);
+        OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
+            new SystemStream("venice", storeName),
+            "key_last_dc" + dc_index,
+            useLogicalTimestamp
+                ? new VeniceObjectWithTimestamp("record_last_dc" + dc_index, mockTime.getMilliseconds())
+                : "record_last_dc" + dc_index);
+        producer.send(storeName, envelope);
+        producer.stop();
+      }
+
+      // Verify data in dc-0
+      String routerUrl = childDatacenters.get(0).getClusters().get(clusterName).getRandomRouterURL();
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory
+          .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+            Object valueObject = client.get("key_last_dc" + i).get();
+            assertNotNull(valueObject);
+            assertEquals(valueObject.toString(), "record_last_dc" + i);
+          }
+        });
+      }
+
+      String versionTopic = Version.composeKafkaTopic(storeName, 1);
+      String parentDir = "./";
+      ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository =
+          new ReplicationMetadataSchemaRepository(parentControllerClient);
+      Schema replicationSchema = replicationMetadataSchemaRepository.getReplicationMetadataSchemaById(storeName, 1);
+      int partitionCount = dc0Client.getStore(storeName).getStore().getPartitionCount();
+      Map<String, Map<String, List<ValidatorUtils.RecordInfo>>> keyToRegionToRecordInfos = new HashMap<>();
+      Map<String, Map<Integer, List<Long>>> regionToPartitionHighWatermarks = new HashMap<>();
+      for (dc_index = 0; dc_index < NUMBER_OF_CHILD_DATACENTERS; dc_index++) {
+        String kafkaUrl = childDatacenters.get(dc_index).getKafkaBrokerWrapper().getAddress();
+        Properties consumerProps = new Properties();
+        consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+        consumerProps.put(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+        consumerProps.put(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
+
+        Map<String, List<ValidatorUtils.RecordInfo>> keyToRecordInfosForOneRegion = new HashMap<>();
+        String regionName = "dc-" + dc_index;
+        for (int partition = 0; partition < partitionCount; partition++) {
+          PubSubConsumerAdapter pubSubConsumerAdapter = AdminTool.getConsumer(consumerProps);
+          KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
+              parentControllerClient,
+              pubSubConsumerAdapter,
+              versionTopic,
+              partition,
+              0,
+              100,
+              parentDir,
+              3,
+              true);
+          kafkaTopicDumper.setReplicationSchema(replicationSchema);
+          Map<String, List<ValidatorUtils.RecordInfo>> recordInfos =
+              kafkaTopicDumper.fetchAllTopicData(regionName, NUMBER_OF_CHILD_DATACENTERS);
+          List<Long> partitionHighWatermarks = kafkaTopicDumper.getPartitionHighWatermarks();
+          keyToRecordInfosForOneRegion.putAll(recordInfos);
+          for (Map.Entry<String, List<ValidatorUtils.RecordInfo>> keyRecordInfos: recordInfos.entrySet()) {
+            keyToRegionToRecordInfos.computeIfAbsent(keyRecordInfos.getKey(), k -> new HashMap<>())
+                .computeIfAbsent(regionName, r -> new ArrayList<>())
+                .addAll(keyRecordInfos.getValue());
+          }
+          regionToPartitionHighWatermarks.computeIfAbsent(regionName, k -> new HashMap<>())
+              .computeIfAbsent(partition, p -> partitionHighWatermarks);
+          LOGGER.info("Get {} unique keys for partition: {} for region: {}", recordInfos.size(), partition, regionName);
+          pubSubConsumerAdapter.close();
+          kafkaTopicDumper.close();
+        }
+      }
+
+      // TODO: Add DCR validation with logging.
+      for (Map.Entry<String, Map<String, List<ValidatorUtils.RecordInfo>>> entry: keyToRegionToRecordInfos.entrySet()) {
+        ValidatorUtils.ValidationResult validationResult = ValidatorUtils.completeValidateValues(
+            entry.getKey(),
+            entry.getValue(),
+            ValidatorUtils.getColoPairsToCompare(new ArrayList<>(regionToPartitionHighWatermarks.keySet())),
+            regionToPartitionHighWatermarks);
+        LOGGER.info("Validation result for key: {} is: {}", entry.getKey(), validationResult);
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     } finally {
       deleteStores(storeName);
     }

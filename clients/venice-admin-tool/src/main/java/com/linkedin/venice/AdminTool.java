@@ -3054,7 +3054,7 @@ public class AdminTool {
     }
   }
 
-  private static PubSubConsumerAdapter getConsumer(Properties consumerProps) {
+  public static PubSubConsumerAdapter getConsumer(Properties consumerProps) {
     PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
