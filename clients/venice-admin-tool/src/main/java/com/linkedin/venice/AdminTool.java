@@ -1032,6 +1032,7 @@ public class AdminTool {
     Set<Arg> argSet = new HashSet<>(Arrays.asList(Command.CONFIGURE_STORE_VIEW.getOptionalArgs()));
     argSet.addAll(new HashSet<>(Arrays.asList(Command.CONFIGURE_STORE_VIEW.getRequiredArgs())));
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setViewName(getRequiredArgument(cmd, Arg.VIEW_NAME));
     if (cmd.hasOption(Arg.REMOVE_VIEW.toString())) {
       params.setDisableStoreView();
     } else {

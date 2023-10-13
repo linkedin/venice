@@ -28,6 +28,7 @@ import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -283,5 +284,45 @@ public class TestAdminTool {
     doReturn(response).when(completableFuture).get();
     doReturn(completableFuture).when(transportClient).get(anyString());
     AdminTool.dumpIngestionState(transportClient, storeName, version, null);
+  }
+
+  @Test
+  public void testAdminConfigureView() throws ParseException, IOException {
+    final String K1 = "kafka.linger.ms", V1 = "0", K2 = "dummy.key", V2 = "dummy.val";
+
+    // Case 1: Happy path to setup a view.
+    String[] args = { "--configure-store-view", "--url", "http://localhost:7036", "--cluster", "test-cluster",
+        "--store", "testStore", "--view-name", "testView", "--view-class", ChangeCaptureView.class.getCanonicalName(),
+        "--view-params", K1 + "=" + V1 + "," + K2 + "=" + V2 };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateStoreQueryParams params = AdminTool.getConfigureStoreViewQueryParams(commandLine);
+    Assert.assertTrue(params.getViewName().isPresent());
+    Assert.assertEquals(params.getViewName().get(), "testView");
+    Assert.assertTrue(params.getViewClassName().isPresent());
+    Assert.assertEquals(params.getViewClassName().get(), ChangeCaptureView.class.getCanonicalName());
+
+    Optional<Map<String, String>> viewParams = params.getViewClassParams();
+    Assert.assertTrue(viewParams.isPresent());
+    Map<String, String> viewParamsMap = viewParams.get();
+    Assert.assertEquals(viewParamsMap.get(K1), V1);
+    Assert.assertEquals(viewParamsMap.get(K2), V2);
+
+    // Case 2: Happy path to disable a view.
+    String[] args1 = { "--configure-store-view", "--url", "http://localhost:7036", "--cluster", "test-cluster",
+        "--store", "testStore", "--view-name", "testView", "--remove-view" };
+    commandLine = AdminTool.getCommandLine(args1);
+    params = AdminTool.getConfigureStoreViewQueryParams(commandLine);
+    Assert.assertTrue(params.getViewName().isPresent());
+    Assert.assertTrue(params.getDisableStoreView().isPresent());
+    Assert.assertEquals(params.getViewName().get(), "testView");
+    Assert.assertFalse(params.getViewClassName().isPresent());
+
+    // Case 3: Configure view with missing viewName;
+    String[] args2 = { "--configure-store-view", "--url", "http://localhost:7036", "--cluster", "test-cluster",
+        "--store", "testStore", "--view-name", "testView" };
+    commandLine = AdminTool.getCommandLine(args2);
+    CommandLine finalCommandLine = commandLine;
+    Assert.assertThrows(() -> AdminTool.getConfigureStoreViewQueryParams(finalCommandLine));
   }
 }
