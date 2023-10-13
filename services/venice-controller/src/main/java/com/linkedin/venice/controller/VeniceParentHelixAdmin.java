@@ -2212,11 +2212,12 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException("Cannot update a store view and overwrite store view setup together!");
       }
       if (viewName.isPresent()) {
-        if (!viewClassName.isPresent()) {
-          throw new VeniceException("View class name is required when configuring a view.");
-        }
         Map<String, StoreViewConfigRecord> updatedViewSettings;
         if (!removeView.isPresent()) {
+          if (!viewClassName.isPresent()) {
+            throw new VeniceException("View class name is required when configuring a view.");
+          }
+          // If View parameter is not provided, use emtpy map instead. It does not inherit from existing config.
           ViewConfig viewConfig = new ViewConfigImpl(viewClassName.get(), viewParams.orElse(Collections.emptyMap()));
           validateStoreViewConfig(currStore, viewConfig);
           updatedViewSettings = VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), viewConfig);
@@ -2230,9 +2231,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (storeViewConfig.isPresent()) {
         // Validate and overwrite store views if they're getting set
         validateStoreViewConfigs(storeViewConfig.get(), currStore);
-        Map<String, StoreViewConfigRecord> updatedViewSettings =
-            StoreViewUtils.convertStringMapViewToStoreViewConfigRecordMap(storeViewConfig.get());
-        setStore.views = updatedViewSettings;
+        setStore.views = StoreViewUtils.convertStringMapViewToStoreViewConfigRecordMap(storeViewConfig.get());
         updatedConfigsList.add(STORE_VIEW);
       }
 

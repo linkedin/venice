@@ -1033,7 +1033,7 @@ public class AdminTool {
     argSet.addAll(new HashSet<>(Arrays.asList(Command.CONFIGURE_STORE_VIEW.getRequiredArgs())));
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     if (cmd.hasOption(Arg.REMOVE_VIEW.toString())) {
-      params.setDisableStoreView(true);
+      params.setDisableStoreView();
     } else {
       // If configuring a view, view class name is required.
       params.setViewClassName(getRequiredArgument(cmd, Arg.VIEW_CLASS));

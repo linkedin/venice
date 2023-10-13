@@ -650,8 +650,8 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(DISABLE_STORE_VIEW);
   }
 
-  public UpdateStoreQueryParams setDisableStoreView(boolean disableView) {
-    return (UpdateStoreQueryParams) add(DISABLE_STORE_VIEW, disableView);
+  public UpdateStoreQueryParams setDisableStoreView() {
+    return (UpdateStoreQueryParams) add(DISABLE_STORE_VIEW, true);
   }
 
   // ***************** above this line are getters and setters *****************

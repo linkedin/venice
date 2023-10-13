@@ -1944,7 +1944,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.updateStore(
         clusterName,
         storeName,
-        new UpdateStoreQueryParams().setViewName("changeCapture").setDisableStoreView(true));
+        new UpdateStoreQueryParams().setViewName("changeCapture").setDisableStoreView());
 
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
