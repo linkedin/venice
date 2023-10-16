@@ -12,7 +12,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -225,10 +224,6 @@ public class ProducerTool {
   }
 
   private static Object adaptDataToSchema(String dataString, Schema dataSchema) {
-    while (dataSchema.getType().equals(Schema.Type.UNION)) {
-      dataSchema = VsonAvroSchemaAdapter.stripFromUnion(dataSchema);
-    }
-
     Object data;
     switch (dataSchema.getType()) {
       case INT:

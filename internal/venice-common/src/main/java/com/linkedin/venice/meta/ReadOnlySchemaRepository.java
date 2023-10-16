@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -68,4 +69,29 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
   RmdSchemaEntry getReplicationMetadataSchema(String storeName, int valueSchemaId, int replicationMetadataVersionId);
 
   Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName);
+
+  default DerivedSchemaEntry getLatestDerivedSchema(String storeName) {
+    SchemaEntry valueSchemaEntry = getSupersetOrLatestValueSchema(storeName);
+    try {
+      return getLatestDerivedSchema(storeName, valueSchemaEntry.getId());
+    } catch (Exception e) {
+      /**
+       * Can't find the derived schema for the latest value schema, so it will fall back to find out the latest
+       * value schema, which has a valid derived schema.
+       */
+      Collection<DerivedSchemaEntry> derivedSchemaEntries = getDerivedSchemas(storeName);
+      DerivedSchemaEntry latestDerivedSchemaEntry = null;
+      for (DerivedSchemaEntry entry: derivedSchemaEntries) {
+        if (latestDerivedSchemaEntry == null || entry.getValueSchemaID() > latestDerivedSchemaEntry.getValueSchemaID()
+            || (entry.getValueSchemaID() == latestDerivedSchemaEntry.getValueSchemaID()
+                && entry.getId() > latestDerivedSchemaEntry.getId())) {
+          latestDerivedSchemaEntry = entry;
+        }
+      }
+      if (latestDerivedSchemaEntry == null) {
+        throw new VeniceException("Failed to find a valid derived schema for store: " + storeName);
+      }
+      return latestDerivedSchemaEntry;
+    }
+  }
 }
