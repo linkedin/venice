@@ -42,6 +42,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -62,9 +63,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(RequestBasedMetadata.class);
   private static final String VERSION_PARTITION_SEPARATOR = "_";
   private static final long ZSTD_DICT_FETCH_TIMEOUT = 10;
-  private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
-  private final long refreshIntervalInSeconds;
-  private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+  static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
+  static final long WARMUP_REFRESH_INTERVAL_IN_SECONDS = 5;
+  private long refreshIntervalInSeconds;
+  private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
   private final AtomicInteger currentVersion = new AtomicInteger();
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
@@ -83,6 +85,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
+  private CountDownLatch isReadyLatch = new CountDownLatch(1);
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
     super(clientConfig);
@@ -150,9 +153,19 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
     // build a base for future metadata updates then start periodic refresh
     refresh();
+    try {
+      // wait till metadata is warmed up
+      isReadyLatch.await();
+    } catch (InterruptedException e) {
+      // if there is an InterruptedException, let the periodic refresh continue with updating the metadata
+      LOGGER.error(
+          "Metadata warmup failed and will be retried every {} seconds. Read requests will throw exception until then",
+          WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          e);
+    }
   }
 
-  private void discoverD2Service() {
+  void discoverD2Service() {
     if (isServiceDiscovered) {
       return;
     }
@@ -173,7 +186,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @param onDemandRefresh
    * @return if the fetched metadata was an updated version
    */
-  private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
+  synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
@@ -240,6 +253,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       for (Map.Entry<CharSequence, Integer> entry: metadataResponse.getHelixGroupInfo().entrySet()) {
         helixGroupInfo.put(entry.getKey().toString(), entry.getValue());
       }
+      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
+
       latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
       // Wait for dictionary fetch to finish if there is one
       try {
@@ -283,13 +298,22 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private void refresh() {
     try {
       updateCache(false);
-      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
-      isReady = true;
+      if (!isReady) {
+        isReadyLatch.countDown();
+        isReady = true;
+        LOGGER.info("Metadata warmup completed successfully");
+      }
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
-      LOGGER.error("Encountered unexpected error during periodic refresh", e);
+      LOGGER.error(
+          "Metadata periodic refresh encountered unexpected error, will be retried in {} seconds",
+          isReady ? refreshIntervalInSeconds : WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          e);
     } finally {
-      scheduler.schedule(this::refresh, refreshIntervalInSeconds, TimeUnit.SECONDS);
+      scheduler.schedule(
+          this::refresh,
+          isReady ? refreshIntervalInSeconds : WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          TimeUnit.SECONDS);
     }
   }
 
@@ -407,5 +431,29 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    */
   public synchronized void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
     this.d2ServiceDiscovery = d2ServiceDiscovery;
+  }
+
+  public void setScheduler(ScheduledExecutorService scheduler) {
+    this.scheduler = scheduler;
+  }
+
+  public ScheduledExecutorService getScheduler() {
+    return scheduler;
+  }
+
+  public void setIsReadyLatch(CountDownLatch isReadyLatch) {
+    this.isReadyLatch = isReadyLatch;
+  }
+
+  public CountDownLatch getIsReadyLatch() {
+    return this.isReadyLatch;
+  }
+
+  public void setRefreshIntervalInSeconds(long refreshIntervalInSeconds) {
+    this.refreshIntervalInSeconds = refreshIntervalInSeconds;
+  }
+
+  public long getRefreshIntervalInSeconds() {
+    return refreshIntervalInSeconds;
   }
 }

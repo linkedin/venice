@@ -81,11 +81,11 @@ public class DispatchingAvroGenericStoreClientTest {
     BATCH_GET_VALUE_RESPONSE.put("test_key_2", "test_value_2");
   }
 
-  private void setUpClient() {
+  private void setUpClient() throws InterruptedException {
     setUpClient(false);
   }
 
-  private void setUpClient(boolean useStreamingBatchGetAsDefault) {
+  private void setUpClient(boolean useStreamingBatchGetAsDefault) throws InterruptedException {
     setUpClient(useStreamingBatchGetAsDefault, false, false, false);
   }
 
@@ -93,7 +93,7 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean useStreamingBatchGetAsDefault,
       boolean transportClientThrowsException,
       boolean transportClientThrowsPartialException,
-      boolean transportClientPartialIncomplete) {
+      boolean transportClientPartialIncomplete) throws InterruptedException {
     setUpClient(
         useStreamingBatchGetAsDefault,
         transportClientThrowsException,
@@ -118,7 +118,7 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean transportClientThrowsPartialException, // only applicable for useStreamingBatchGetAsDefault
       boolean transportClientPartialIncomplete, // only applicable for useStreamingBatchGetAsDefault
       boolean mockTransportClient,
-      long routingLeakedRequestCleanupThresholdMS) {
+      long routingLeakedRequestCleanupThresholdMS) throws InterruptedException {
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setR2Client(mock(Client.class))
         .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
