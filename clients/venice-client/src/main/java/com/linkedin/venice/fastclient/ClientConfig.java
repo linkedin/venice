@@ -60,8 +60,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long metadataRefreshIntervalInSeconds;
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
+  private final boolean longTailRetryEnabledForCompute;
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
+  private final int longTailRetryThresholdForComputeInMicroSeconds;
   private final ClusterStats clusterStats;
   private final boolean isVsonStore;
   private final StoreMetadataFetchMode storeMetadataFetchMode;
@@ -111,6 +113,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       int longTailRetryThresholdForSingleGetInMicroSeconds,
       boolean longTailRetryEnabledForBatchGet,
       int longTailRetryThresholdForBatchGetInMicroSeconds,
+      boolean longTailRetryEnabledForCompute,
+      int longTailRetryThresholdForComputeInMicroSeconds,
       boolean isVsonStore,
       StoreMetadataFetchMode storeMetadataFetchMode,
       D2Client d2Client,
@@ -197,6 +201,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.longTailRetryEnabledForBatchGet = longTailRetryEnabledForBatchGet;
     this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
 
+    this.longTailRetryEnabledForCompute = longTailRetryEnabledForCompute;
+    this.longTailRetryThresholdForComputeInMicroSeconds = longTailRetryThresholdForComputeInMicroSeconds;
+
     if (this.longTailRetryEnabledForSingleGet) {
       if (this.longTailRetryThresholdForSingleGetInMicroSeconds <= 0) {
         throw new VeniceClientException(
@@ -210,6 +217,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         throw new VeniceClientException(
             "longTailRetryThresholdForBatchGetInMicroSeconds must be positive, but got: "
                 + this.longTailRetryThresholdForBatchGetInMicroSeconds);
+      }
+    }
+
+    if (this.longTailRetryEnabledForCompute) {
+      if (this.longTailRetryThresholdForComputeInMicroSeconds <= 0) {
+        throw new VeniceClientException(
+            "longTailRetryThresholdForComputeInMicroSeconds must be positive, but got: "
+                + this.longTailRetryThresholdForComputeInMicroSeconds);
       }
     }
 
@@ -336,6 +351,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRetryThresholdForBatchGetInMicroSeconds;
   }
 
+  public boolean isLongTailRetryEnabledForCompute() {
+    return longTailRetryEnabledForCompute;
+  }
+
+  public int getLongTailRetryThresholdForComputeInMicroSeconds() {
+    return longTailRetryThresholdForComputeInMicroSeconds;
+  }
+
   @Deprecated
   public boolean isVsonStore() {
     return isVsonStore;
@@ -426,6 +449,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private boolean longTailRetryEnabledForBatchGet = false;
     private int longTailRetryThresholdForBatchGetInMicroSeconds = 10000; // 10ms.
+
+    private boolean longTailRetryEnabledForCompute = false;
+    private int longTailRetryThresholdForComputeInMicroSeconds = 10000; // 10ms.
 
     private boolean isVsonStore = false;
     private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA;
@@ -568,6 +594,17 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setLongTailRetryEnabledForCompute(boolean longTailRetryEnabledForCompute) {
+      this.longTailRetryEnabledForCompute = longTailRetryEnabledForCompute;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setLongTailRetryThresholdForComputeInMicroSeconds(
+        int longTailRetryThresholdForComputeInMicroSeconds) {
+      this.longTailRetryThresholdForComputeInMicroSeconds = longTailRetryThresholdForComputeInMicroSeconds;
+      return this;
+    }
+
     @Deprecated
     public ClientConfigBuilder<K, V, T> setVsonStore(boolean vsonStore) {
       isVsonStore = vsonStore;
@@ -639,6 +676,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroSeconds)
           .setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroSeconds)
+          .setLongTailRetryEnabledForCompute(longTailRetryEnabledForCompute)
+          .setLongTailRetryThresholdForComputeInMicroSeconds(longTailRetryThresholdForComputeInMicroSeconds)
           .setVsonStore(isVsonStore)
           .setStoreMetadataFetchMode(storeMetadataFetchMode)
           .setD2Client(d2Client)
@@ -676,6 +715,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           longTailRetryThresholdForSingleGetInMicroSeconds,
           longTailRetryEnabledForBatchGet,
           longTailRetryThresholdForBatchGetInMicroSeconds,
+          longTailRetryEnabledForCompute,
+          longTailRetryThresholdForComputeInMicroSeconds,
           isVsonStore,
           storeMetadataFetchMode,
           d2Client,

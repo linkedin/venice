@@ -2,7 +2,9 @@ package com.linkedin.venice.fastclient;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
@@ -10,8 +12,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -28,8 +30,10 @@ import org.apache.logging.log4j.Logger;
 public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
+  private final boolean longTailRetryEnabledForCompute;
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
+  private final int longTailRetryThresholdForComputeInMicroSeconds;
   private TimeoutProcessor timeoutProcessor;
   private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
 
@@ -40,10 +44,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     }
     this.longTailRetryEnabledForSingleGet = clientConfig.isLongTailRetryEnabledForSingleGet();
     this.longTailRetryEnabledForBatchGet = clientConfig.isLongTailRetryEnabledForBatchGet();
+    this.longTailRetryEnabledForCompute = clientConfig.isLongTailRetryEnabledForCompute();
     this.longTailRetryThresholdForSingleGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.longTailRetryThresholdForBatchGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForBatchGetInMicroSeconds();
+    this.longTailRetryThresholdForComputeInMicroSeconds =
+        clientConfig.getLongTailRetryThresholdForComputeInMicroSeconds();
   }
 
   enum RetryType {
@@ -174,8 +181,51 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       return;
     }
 
-    BatchGetRequestContext<K, V> originalRequestContext =
-        new BatchGetRequestContext<>(keys.size(), requestContext.isPartialSuccessAllowed);
+    retryStreamingMultiKeyRequest(
+        requestContext,
+        keys,
+        callback,
+        BatchGetRequestContext::new,
+        super::streamingBatchGet);
+  }
+
+  @Override
+  public void compute(
+      ComputeRequestContext<K, V> requestContext,
+      ComputeRequestWrapper computeRequestWrapper,
+      Set<K> keys,
+      Schema resultSchema,
+      StreamingCallback<K, ComputeGenericRecord> callback,
+      long preRequestTimeInNS) throws VeniceClientException {
+    if (!longTailRetryEnabledForBatchGet) {
+      // if longTailRetry is not enabled for compute, simply return
+      super.compute(requestContext, computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
+      return;
+    }
+
+    retryStreamingMultiKeyRequest(
+        requestContext,
+        keys,
+        callback,
+        ComputeRequestContext::new,
+        (requestContextInternal, internalKeys, internalCallback) -> {
+          super.compute(
+              requestContextInternal,
+              computeRequestWrapper,
+              internalKeys,
+              resultSchema,
+              internalCallback,
+              preRequestTimeInNS);
+        });
+  }
+
+  private <R extends MultiKeyRequestContext<K, V>, RESPONSE> void retryStreamingMultiKeyRequest(
+      R requestContext,
+      Set<K> keys,
+      StreamingCallback<K, RESPONSE> callback,
+      RequestContextConstructor<K, V, R> requestContextConstructor,
+      StreamingRequestExecutor<K, V, R, RESPONSE> streamingRequestExecutor) throws VeniceClientException {
+    R originalRequestContext = requestContextConstructor.construct(keys.size(), requestContext.isPartialSuccessAllowed);
 
     requestContext.retryContext = new MultiKeyRequestContext.RetryContext<K, V>();
     requestContext.retryContext.originalRequestContext = originalRequestContext;
@@ -186,13 +236,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
      3. all the keys have already been completed */
     CompletableFuture<Void> finalRequestCompletionFuture = new CompletableFuture<>();
     /** Save the exception from onCompletion of original or retry request. The final request would return exception only
-       if both the original and retry request return an exception. */
+     if both the original and retry request return an exception. */
     AtomicReference<Throwable> savedException = new AtomicReference<>();
     /** Track all keys with a future. We remove the key when we receive value from either the original or the retry
      callback. Removal is thread safe, so we will do it only once. We can then complete the future for that key */
-    VeniceConcurrentHashMap<K, CompletableFuture<V>> pendingKeysFuture = new VeniceConcurrentHashMap<>();
+    VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture = new VeniceConcurrentHashMap<>();
     for (K key: keys) {
-      CompletableFuture<V> originalCompletion = new CompletableFuture<V>();
+      CompletableFuture<RESPONSE> originalCompletion = new CompletableFuture<>();
       originalCompletion.whenComplete((value, throwable) -> {
         requestContext.numKeysCompleted.incrementAndGet();
         callback.onRecordReceived(key, value);
@@ -200,40 +250,32 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       pendingKeysFuture.put(key, originalCompletion);
     }
 
-    super.streamingBatchGet(
+    streamingRequestExecutor.trigger(
         originalRequestContext,
         keys,
-        getStreamingCallback(
-            originalRequestContext,
-            finalRequestCompletionFuture,
-            savedException,
-            pendingKeysFuture,
-            originalRequestContext.numKeysCompleted));
+        getStreamingCallback(originalRequestContext, finalRequestCompletionFuture, savedException, pendingKeysFuture));
 
     if (timeoutProcessor == null) {
       /** Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} of the original request to
-      reduce  thread usage */
+       reduce  thread usage */
       timeoutProcessor = requestContext.retryContext.originalRequestContext.instanceHealthMonitor.getTimeoutProcessor();
     }
 
     Runnable retryTask = () -> { // Look at the remaining keys and setup completion
       if (!pendingKeysFuture.isEmpty()) {
         Set<K> pendingKeys = Collections.unmodifiableSet(pendingKeysFuture.keySet());
-        BatchGetRequestContext<K, V> retryRequestContext =
-            new BatchGetRequestContext<>(pendingKeys.size(), requestContext.isPartialSuccessAllowed);
+        R retryRequestContext =
+            requestContextConstructor.construct(pendingKeys.size(), requestContext.isPartialSuccessAllowed);
+
         requestContext.retryContext.retryRequestContext = retryRequestContext;
         LOGGER.debug("Retrying {} incomplete keys", retryRequestContext.numKeysInRequest);
         // Prepare the retry context and track excluded routes on a per-partition basis
         retryRequestContext.setRoutesForPartitionMapping(originalRequestContext.getRoutesForPartitionMapping());
-        super.streamingBatchGet(
+
+        streamingRequestExecutor.trigger(
             retryRequestContext,
             pendingKeys,
-            getStreamingCallback(
-                retryRequestContext,
-                finalRequestCompletionFuture,
-                savedException,
-                pendingKeysFuture,
-                retryRequestContext.numKeysCompleted));
+            getStreamingCallback(retryRequestContext, finalRequestCompletionFuture, savedException, pendingKeysFuture));
       } else {
         /** If there are no keys pending at this point , the onCompletion callback of the original
          request will be triggered. So no need to do anything.*/
@@ -263,20 +305,19 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     });
   }
 
-  private StreamingCallback<K, V> getStreamingCallback(
+  private <RESPONSE> StreamingCallback<K, RESPONSE> getStreamingCallback(
       MultiKeyRequestContext<K, V> requestContext,
       CompletableFuture<Void> finalRequestCompletionFuture,
       AtomicReference<Throwable> savedException,
-      VeniceConcurrentHashMap<K, CompletableFuture<V>> pendingKeysFuture,
-      AtomicInteger successfulKeysCounter) {
-    return new StreamingCallback<K, V>() {
+      VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture) {
+    return new StreamingCallback<K, RESPONSE>() {
       @Override
-      public void onRecordReceived(K key, V value) {
+      public void onRecordReceived(K key, RESPONSE value) {
         // Remove the key and if successful , mark it as complete
-        CompletableFuture<V> removed = pendingKeysFuture.remove(key);
+        CompletableFuture<RESPONSE> removed = pendingKeysFuture.remove(key);
         if (removed != null) {
           removed.complete(value);
-          successfulKeysCounter.incrementAndGet();
+          requestContext.numKeysCompleted.incrementAndGet();
         }
         if (pendingKeysFuture.isEmpty() && !finalRequestCompletionFuture.isDone()) {
           // No more pending keys, so complete the finalRequest
@@ -309,5 +350,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         }
       }
     };
+  }
+
+  interface RequestContextConstructor<K, V, R extends MultiKeyRequestContext<K, V>> {
+    R construct(int numKeysInRequest, boolean isPartialSuccessAllowed);
+  }
+
+  interface StreamingRequestExecutor<K, V, R extends MultiKeyRequestContext<K, V>, RESPONSE> {
+    void trigger(R retryRequestContext, Set<K> pendingKeys, StreamingCallback<K, RESPONSE> streamingCallback);
   }
 }
