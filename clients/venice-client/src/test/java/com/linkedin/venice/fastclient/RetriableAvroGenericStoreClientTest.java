@@ -81,7 +81,7 @@ public class RetriableAvroGenericStoreClientTest {
   private BatchGetRequestContext batchGetRequestContext;
   private ClientConfig clientConfig;
   private RetriableAvroGenericStoreClient<String, GenericRecord> retriableClient;
-  private StatsAvroGenericStoreClient statsAvroGenericStoreClient;
+  private StatsAvroGenericStoreClient<String, GenericRecord> statsAvroGenericStoreClient;
   private Map<String, ? extends Metric> metrics;
 
   @DataProvider(name = "FastClient-RequestTypes")
@@ -318,7 +318,7 @@ public class RetriableAvroGenericStoreClientTest {
         fail("An ExecutionException should be thrown here");
       }
       if (keyNotFound) {
-        assertEquals(value, null);
+        assertNull(value);
       } else {
         assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
       }
@@ -338,8 +338,9 @@ public class RetriableAvroGenericStoreClientTest {
       boolean keyNotFound) throws ExecutionException, InterruptedException {
     batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
     try {
-      Map<String, String> value =
-          (Map<String, String>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
+      Map<String, GenericRecord> value =
+          (Map<String, GenericRecord>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS)
+              .get();
 
       if (bothOriginalAndRetryFails) {
         fail("An ExecutionException should be thrown here");
@@ -366,9 +367,10 @@ public class RetriableAvroGenericStoreClientTest {
       boolean keyNotFound) throws ExecutionException, InterruptedException {
     batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), true);
     try {
-      VeniceResponseMap<String, String> value = (VeniceResponseMap<String, String>) statsAvroGenericStoreClient
-          .streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS)
-          .get();
+      VeniceResponseMap<String, GenericRecord> value =
+          (VeniceResponseMap<String, GenericRecord>) statsAvroGenericStoreClient
+              .streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS)
+              .get();
 
       if (bothOriginalAndRetryFails) {
         assertFalse(value.isFullResponse());
@@ -393,8 +395,8 @@ public class RetriableAvroGenericStoreClientTest {
       boolean retryWin,
       boolean keyNotFound) throws ExecutionException, InterruptedException {
     try {
-      VeniceResponseMap<String, String> value =
-          (VeniceResponseMap<String, String>) statsAvroGenericStoreClient.compute()
+      VeniceResponseMap<String, ComputeGenericRecord> value =
+          (VeniceResponseMap<String, ComputeGenericRecord>) statsAvroGenericStoreClient.compute()
               .project("name")
               .execute(COMPUTE_REQUEST_KEYS)
               .get();
@@ -423,11 +425,8 @@ public class RetriableAvroGenericStoreClientTest {
       boolean retryWin,
       boolean keyNotFound) throws ExecutionException, InterruptedException {
     try {
-      VeniceResponseMap<String, String> value =
-          (VeniceResponseMap<String, String>) statsAvroGenericStoreClient.compute()
-              .project("name")
-              .streamingExecute(COMPUTE_REQUEST_KEYS)
-              .get();
+      VeniceResponseMap<String, ComputeGenericRecord> value =
+          statsAvroGenericStoreClient.compute().project("name").streamingExecute(COMPUTE_REQUEST_KEYS).get();
 
       if (bothOriginalAndRetryFails) {
         assertFalse(value.isFullResponse());

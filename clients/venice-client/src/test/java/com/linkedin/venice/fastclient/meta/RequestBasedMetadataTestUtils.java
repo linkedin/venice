@@ -219,9 +219,9 @@ public class RequestBasedMetadataTestUtils {
       String storeName,
       RouterBackedSchemaReader routerBackedSchemaReader,
       boolean metadataChange,
-    boolean mockMetadataUpdateFailure,
-    boolean firstUpdateFails,
-    ScheduledExecutorService scheduler,
+      boolean mockMetadataUpdateFailure,
+      boolean firstUpdateFails,
+      ScheduledExecutorService scheduler,
       Schema storeKeySchema,
       Schema storeValueSchema) throws InterruptedException {
     D2TransportClient d2TransportClient =

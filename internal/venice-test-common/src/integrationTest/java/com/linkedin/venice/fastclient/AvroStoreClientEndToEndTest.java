@@ -36,23 +36,6 @@ import org.testng.annotations.Test;
  */
 
 public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
-  private void runTest(
-      ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      boolean batchGet,
-      int batchGetKeySize,
-      Optional<AvroGenericStoreClient> vsonThinClient,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
-    runTest(
-        clientConfigBuilder,
-        batchGet,
-        batchGetKeySize,
-        (metricsRepository) -> {},
-        (metricsRepository) -> {},
-        null,
-        vsonThinClient,
-        storeMetadataFetchMode);
-  }
-
   /**
    * Run fast client tests based on the input parameters.
    * Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is called.
