@@ -185,6 +185,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         requestContext,
         keys,
         callback,
+        longTailRetryThresholdForBatchGetInMicroSeconds,
         BatchGetRequestContext::new,
         super::streamingBatchGet);
   }
@@ -197,7 +198,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
-    if (!longTailRetryEnabledForBatchGet) {
+    if (!longTailRetryEnabledForCompute) {
       // if longTailRetry is not enabled for compute, simply return
       super.compute(requestContext, computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
       return;
@@ -207,6 +208,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         requestContext,
         keys,
         callback,
+        longTailRetryThresholdForComputeInMicroSeconds,
         ComputeRequestContext::new,
         (requestContextInternal, internalKeys, internalCallback) -> {
           super.compute(
@@ -223,6 +225,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       R requestContext,
       Set<K> keys,
       StreamingCallback<K, RESPONSE> callback,
+      int longTailRetryThresholdInMicroSeconds,
       RequestContextConstructor<K, V, R> requestContextConstructor,
       StreamingRequestExecutor<K, V, R, RESPONSE> streamingRequestExecutor) throws VeniceClientException {
     R originalRequestContext = requestContextConstructor.construct(keys.size(), requestContext.isPartialSuccessAllowed);
@@ -244,7 +247,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     for (K key: keys) {
       CompletableFuture<RESPONSE> originalCompletion = new CompletableFuture<>();
       originalCompletion.whenComplete((value, throwable) -> {
-        requestContext.numKeysCompleted.incrementAndGet();
         callback.onRecordReceived(key, value);
       });
       pendingKeysFuture.put(key, originalCompletion);
@@ -253,7 +255,12 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     streamingRequestExecutor.trigger(
         originalRequestContext,
         keys,
-        getStreamingCallback(originalRequestContext, finalRequestCompletionFuture, savedException, pendingKeysFuture));
+        getStreamingCallback(
+            originalRequestContext,
+            callback,
+            finalRequestCompletionFuture,
+            savedException,
+            pendingKeysFuture));
 
     if (timeoutProcessor == null) {
       /** Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} of the original request to
@@ -275,7 +282,12 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         streamingRequestExecutor.trigger(
             retryRequestContext,
             pendingKeys,
-            getStreamingCallback(retryRequestContext, finalRequestCompletionFuture, savedException, pendingKeysFuture));
+            getStreamingCallback(
+                retryRequestContext,
+                callback,
+                finalRequestCompletionFuture,
+                savedException,
+                pendingKeysFuture));
       } else {
         /** If there are no keys pending at this point , the onCompletion callback of the original
          request will be triggered. So no need to do anything.*/
@@ -284,7 +296,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     };
 
     TimeoutProcessor.TimeoutFuture scheduledRetryTask =
-        timeoutProcessor.schedule(retryTask, longTailRetryThresholdForBatchGetInMicroSeconds, TimeUnit.MICROSECONDS);
+        timeoutProcessor.schedule(retryTask, longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
 
     finalRequestCompletionFuture.whenComplete((ignore, finalException) -> {
       if (!scheduledRetryTask.isDone()) {
@@ -307,6 +319,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   private <RESPONSE> StreamingCallback<K, RESPONSE> getStreamingCallback(
       MultiKeyRequestContext<K, V> requestContext,
+      StreamingCallback<K, RESPONSE> upstreamCallback,
       CompletableFuture<Void> finalRequestCompletionFuture,
       AtomicReference<Throwable> savedException,
       VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture) {

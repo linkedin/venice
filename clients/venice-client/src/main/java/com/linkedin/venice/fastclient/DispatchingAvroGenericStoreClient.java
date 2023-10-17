@@ -573,7 +573,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   @Override
-  public void compute(
+  protected void compute(
       ComputeRequestContext<K, V> requestContext,
       ComputeRequestWrapper computeRequest,
       Set<K> keys,

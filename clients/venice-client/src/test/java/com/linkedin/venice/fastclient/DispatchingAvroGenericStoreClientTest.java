@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.KEY_SCHEMA;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA1_NAME;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA2_NAME;
@@ -114,12 +115,12 @@ public class DispatchingAvroGenericStoreClientTest {
 
     GenericRecord projectionResultForKey1 = new GenericData.Record(COMPUTE_PROJECTION_VALUE_SCHEMA);
     projectionResultForKey1.put("name", "TEST_NAME_1");
-    projectionResultForKey1.put("veniceComputationError", Collections.emptyMap());
+    projectionResultForKey1.put(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, Collections.emptyMap());
     COMPUTE_REQUEST_VALUE_RESPONSE.put("test_key_1", projectionResultForKey1);
 
     GenericRecord projectionResultForKey2 = new GenericData.Record(COMPUTE_PROJECTION_VALUE_SCHEMA);
     projectionResultForKey2.put("name", "TEST_NAME_2");
-    projectionResultForKey2.put("veniceComputationError", Collections.emptyMap());
+    projectionResultForKey2.put(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, Collections.emptyMap());
     COMPUTE_REQUEST_VALUE_RESPONSE.put("test_key_2", projectionResultForKey2);
   }
 

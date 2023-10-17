@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static com.linkedin.venice.client.schema.RouterBackedSchemaReader.TYPE_KEY_SCHEMA;
 import static com.linkedin.venice.client.store.AbstractAvroStoreClient.TYPE_STORAGE;
 import static org.mockito.Mockito.doReturn;
@@ -202,7 +203,7 @@ public class AbstractAvroStoreClientTest {
         + "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           "
         + "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           "
         + "         { \"name\": \"hadamard_product_for_float_array_field1\", \"type\":[\"null\",{\"type\":\"array\",\"items\":\"float\"}],\"doc\":\"\",\"default\":null },           "
-        + "         { \"name\": \"veniceComputationError\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        "
+        + "         { \"name\": \"__veniceComputationError__\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        "
         + "  ]       " + " }       ";
     Schema resultSchema = Schema.parse(resultSchemaStr);
     RecordSerializer<GenericRecord> resultSerializer =
@@ -215,7 +216,7 @@ public class AbstractAvroStoreClientTest {
     result1.put("dot_product_for_float_array_field1", 1.1f);
     result1.put("cosine_similarity_for_float_array_field2", 2.1f);
     result1.put("hadamard_product_for_float_array_field1", hadamardProductResult);
-    result1.put("veniceComputationError", Collections.emptyMap());
+    result1.put(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, Collections.emptyMap());
     ComputeResponseRecordV1 record1 = new ComputeResponseRecordV1();
     record1.keyIndex = 0;
     record1.value = ByteBuffer.wrap(resultSerializer.serialize(result1));
@@ -226,7 +227,7 @@ public class AbstractAvroStoreClientTest {
     result2.put("dot_product_for_float_array_field1", 1.2f);
     result2.put("cosine_similarity_for_float_array_field2", 2.2f);
     result2.put("hadamard_product_for_float_array_field1", hadamardProductResult2);
-    result2.put("veniceComputationError", Collections.emptyMap());
+    result2.put(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, Collections.emptyMap());
     ComputeResponseRecordV1 record2 = new ComputeResponseRecordV1();
     record2.keyIndex = 1;
     record2.value = ByteBuffer.wrap(resultSerializer.serialize(result2));
@@ -284,7 +285,7 @@ public class AbstractAvroStoreClientTest {
         + "         { \"name\": \"int_field\", \"type\": \"int\", \"doc\": \"\", \"default\": 0 },             "
         + "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           "
         + "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           "
-        + "         { \"name\": \"veniceComputationError\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        "
+        + "         { \"name\": \"__veniceComputationError__\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        "
         + "  ]       " + " }       ";
     Schema resultSchema = Schema.parse(resultSchemaStr);
     RecordSerializer<GenericRecord> resultSerializer =
@@ -297,7 +298,7 @@ public class AbstractAvroStoreClientTest {
     Map<String, String> computationErrorMap = new HashMap<>();
     computationErrorMap.put("dot_product_for_float_array_field1", "array length are different");
     computationErrorMap.put("cosine_similarity_for_float_array_field2", "NullPointerException");
-    result1.put("veniceComputationError", computationErrorMap);
+    result1.put(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, computationErrorMap);
     ComputeResponseRecordV1 record1 = new ComputeResponseRecordV1();
     record1.keyIndex = 0;
     record1.value = ByteBuffer.wrap(resultSerializer.serialize(result1));

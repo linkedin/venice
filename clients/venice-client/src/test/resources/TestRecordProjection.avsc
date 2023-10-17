@@ -8,7 +8,7 @@
       "default": "default_name"
     },
     {
-      "name": "veniceComputationError",
+      "name": "__veniceComputationError__",
       "type": { "type": "map", "values": "string" },
       "doc": "",
       "default": {}
