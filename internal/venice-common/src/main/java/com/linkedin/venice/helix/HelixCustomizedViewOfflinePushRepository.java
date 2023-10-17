@@ -220,6 +220,13 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
       for (String kafkaTopic: updates.getDeletedResource()) {
         listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataDeleted(kafkaTopic));
       }
+      for (String kafkaTopic: updates.getNewResources()) {
+        PartitionAssignment partitionAssignment;
+        try (AutoCloseableLock ignored = AutoCloseableLock.of(resourceAssignmentRWLock.readLock())) {
+          partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
+        }
+        listenerManager.trigger(kafkaTopic, listener -> listener.onCustomizedViewAdded(partitionAssignment));
+      }
     }
   }
 

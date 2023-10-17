@@ -67,6 +67,11 @@ public class TestListenerManager {
     }
 
     @Override
+    public void onCustomizedViewAdded(PartitionAssignment partitionAssignment) {
+      isExecuted = true;
+    }
+
+    @Override
     public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
       isExecuted = true;
     }

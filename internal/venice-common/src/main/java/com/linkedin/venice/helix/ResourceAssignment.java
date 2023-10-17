@@ -58,9 +58,17 @@ public class ResourceAssignment {
   public ResourceAssignmentChanges updateResourceAssignment(ResourceAssignment newAssignment) {
     Set<String> deletedResources = compareAndGetDeletedResources(newAssignment);
     Set<String> updatedResources = compareAndGetUpdatedResources(newAssignment);
+    Set<String> newResources = compareAndGetNewResources(newAssignment);
 
     this.resourceToAssignmentsMap = newAssignment.resourceToAssignmentsMap;
-    return new ResourceAssignmentChanges(deletedResources, updatedResources);
+    return new ResourceAssignmentChanges(deletedResources, updatedResources, newResources);
+  }
+
+  Set<String> compareAndGetNewResources(ResourceAssignment newAssignment) {
+    return newAssignment.getAssignedResources()
+        .stream()
+        .filter(newResource -> !containsResource(newResource))
+        .collect(Collectors.toSet());
   }
 
   Set<String> compareAndGetDeletedResources(ResourceAssignment newAssignment) {
@@ -82,10 +90,12 @@ public class ResourceAssignment {
   public static class ResourceAssignmentChanges {
     Set<String> deletedResources;
     Set<String> updatedResources;
+    Set<String> newResources;
 
-    ResourceAssignmentChanges(Set<String> deletedResources, Set<String> updatedResources) {
+    ResourceAssignmentChanges(Set<String> deletedResources, Set<String> updatedResources, Set<String> newResources) {
       this.deletedResources = deletedResources;
       this.updatedResources = updatedResources;
+      this.newResources = newResources;
     }
 
     public Set<String> getDeletedResource() {
@@ -94,6 +104,10 @@ public class ResourceAssignment {
 
     public Set<String> getUpdatedResources() {
       return updatedResources;
+    }
+
+    public Set<String> getNewResources() {
+      return newResources;
     }
   }
 }

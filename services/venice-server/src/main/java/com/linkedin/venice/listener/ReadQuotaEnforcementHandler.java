@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -38,8 +37,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -51,7 +48,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(ReadQuotaEnforcementHandler.class);
   private static final String SERVER_BUCKET_STATS_NAME = "venice-storage-node-token-bucket";
-  private static final long RESOURCE_INIT_INTERVAL_SECONDS = 120;
   private final ConcurrentMap<String, TokenBucket> storeVersionBuckets = new VeniceConcurrentHashMap<>();
   private final TokenBucket storageNodeBucket;
   private final ServerQuotaTokenBucketStats storageNodeTokenBucketStats;
@@ -66,7 +62,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private volatile boolean initializedVolatile = false;
   private boolean initialized = false;
-  private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
   public ReadQuotaEnforcementHandler(
       long storageNodeRcuCapacity,
@@ -163,32 +158,17 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    * Initialize token buckets for all resources in the customized view repository.
    */
   public final void init() {
-    try {
-      storeRepository.registerStoreDataChangedListener(this);
-      ResourceAssignment resourceAssignment = customizedViewRepository.getResourceAssignment();
-      if (resourceAssignment == null) {
-        LOGGER.error(
-            "Null resource assignment from HelixCustomizedViewOfflinePushRepository in ReadQuotaEnforcementHandler");
-      } else {
-        int initResourceCount = 0;
-        for (String resource: resourceAssignment.getAssignedResources()) {
-          if (!storeVersionBuckets.containsKey(resource)) {
-            customizedViewRepository.subscribeRoutingDataChange(resource, this);
-            this.onCustomizedViewChange(resourceAssignment.getPartitionAssignment(resource));
-            initResourceCount++;
-          }
-        }
-        LOGGER.info(
-            "Current total resource count: {}, initialized {} resources during this init call",
-            resourceAssignment.getAssignedResources().size(),
-            initResourceCount);
+    storeRepository.registerStoreDataChangedListener(this);
+    // The customizedViewRepository right after server start might not have all the resources. Use the store
+    // repository's versions to subscribe for routing data change and initialize the corresponding read quota token
+    // bucket once the CVs are available.
+    for (Store store: storeRepository.getAllStores()) {
+      List<Version> versions = store.getVersions();
+      for (Version version: versions) {
+        customizedViewRepository.subscribeRoutingDataChange(version.kafkaTopicName(), this);
       }
-      this.initializedVolatile = true;
-    } finally {
-      // TODO We can consider removing the periodic check and init once the customizedViewRepository can reliably return
-      // the complete resource list right after server starts
-      scheduler.schedule(this::init, RESOURCE_INIT_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
+    this.initializedVolatile = true;
   }
 
   /**
@@ -403,6 +383,11 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
   @Override
   public void onCustomizedViewChange(PartitionAssignment partitionAssignment) {
+    updateQuota(partitionAssignment);
+  }
+
+  @Override
+  public void onCustomizedViewAdded(PartitionAssignment partitionAssignment) {
     updateQuota(partitionAssignment);
   }
 

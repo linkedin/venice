@@ -20,7 +20,6 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcReadQuotaEnforcementHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
@@ -44,9 +43,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.ArgumentCaptor;
@@ -127,19 +124,10 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(topic).when(version).kafkaTopicName();
     Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 100, true);
     doReturn(store).when(storeRepository).getStore(storeName);
-    ResourceAssignment resourceAssignment = mock(ResourceAssignment.class);
-    doReturn(resourceAssignment).when(customizedViewRepository).getResourceAssignment();
-    Set<String> resources = new HashSet<>(Collections.singletonList(topic));
-    doReturn(resources).when(resourceAssignment).getAssignedResources();
-    Instance instance = mock(Instance.class);
-    doReturn(thisNodeId).when(instance).getNodeId();
-    Partition partition = setUpPartitionMock(topic, instance, true, 0);
-    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
-    doReturn(pa).when(resourceAssignment).getPartitionAssignment(topic);
+    doReturn(Collections.singletonList(store)).when(storeRepository).getAllStores();
 
     quotaEnforcer.init();
 
-    assertTrue(quotaEnforcer.listTopics().contains(topic), "resource: " + topic + " should be initialized");
     verify(storeRepository, atLeastOnce()).registerStoreDataChangedListener(any());
     verify(customizedViewRepository, atLeastOnce()).subscribeRoutingDataChange(eq(topic), any());
   }
