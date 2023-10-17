@@ -349,7 +349,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
   }
 
-  CompletableFuture<Map<K, V>> batchGetInternal(Set<K> keys) {
+  @Override
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    throwIfNotReady();
+    return batchGetImplementation(keys);
+  }
+
+  CompletableFuture<Map<K, V>> batchGetImplementation(Set<K> keys) {
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
@@ -369,8 +375,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   @Override
   public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    throwIfNotReady();
     // DaVinci client doesn't do streaming batch get, so implement streaming batch get using the batch get functionality
-    CompletableFuture<Map<K, V>> batchGetResponseFuture = batchGetInternal(keys);
+    CompletableFuture<Map<K, V>> batchGetResponseFuture = batchGetImplementation(keys);
     batchGetResponseFuture.whenComplete((batchGetResponse, throwable) -> {
       if (throwable != null) {
         callback.onCompletion(Optional.of(new VeniceClientException("Request failed with exception ", throwable)));

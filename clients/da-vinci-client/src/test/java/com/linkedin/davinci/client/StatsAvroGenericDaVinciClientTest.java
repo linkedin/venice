@@ -79,9 +79,10 @@ public class StatsAvroGenericDaVinciClientTest {
     resultMap.put("key1", "value1");
     resultMap.put("key2", "value2");
     okFuture.complete(resultMap);
-    when(mockClient.batchGetInternal(any())).thenReturn(okFuture)
+    when(mockClient.batchGetImplementation(any())).thenReturn(okFuture)
         .thenReturn(errorFuture)
         .thenThrow(new RuntimeException("mock_exception_by_function_directly"));
+    doCallRealMethod().when(mockClient).batchGet(any());
     doCallRealMethod().when(mockClient).streamingBatchGet(any(), any());
 
     MetricsRepository metricsRepository = new MetricsRepository();

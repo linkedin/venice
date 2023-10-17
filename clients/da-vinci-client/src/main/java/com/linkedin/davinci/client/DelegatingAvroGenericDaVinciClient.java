@@ -7,6 +7,7 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -58,6 +59,11 @@ public class DelegatingAvroGenericDaVinciClient<K, V>
   @Override
   public CompletableFuture<V> get(K key, V reusedValue) throws VeniceClientException {
     return delegate.get(key, reusedValue);
+  }
+
+  @Override
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    return delegate.batchGet(keys);
   }
 
   @Override
