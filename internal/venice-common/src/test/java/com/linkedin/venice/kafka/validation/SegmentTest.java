@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.validation;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -15,7 +16,10 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
+import java.util.Collections;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 
@@ -125,5 +129,28 @@ public class SegmentTest {
     assertThrows(VeniceMessageException.class, () -> segmentWithMD5Checksum1.addToCheckSum(null, messageEnvelope6));
 
     assertEquals(segmentWithMD5Checksum1.getFinalCheckSum(), segmentWithMD5Checksum2.getFinalCheckSum());
+  }
+
+  @Test
+  public void testDebugInfoDeduping() {
+    Map<CharSequence, CharSequence> debugInfo1 = Utils.getDebugInfo();
+    Map<CharSequence, CharSequence> debugInfo2 = Utils.getDebugInfo();
+    assertEquals(
+        debugInfo1,
+        debugInfo2,
+        "We should get equal debug info when calling Utils.getDebugInfo() multiple times.");
+    assertFalse(
+        debugInfo1.get("path") == debugInfo2.get("path"),
+        "The identity of the elements inside the debug info map are not expected to be the same.");
+
+    Segment segment1 = new Segment(0, 0, 0, CheckSumType.MD5, debugInfo1, Collections.emptyMap());
+    Segment segment2 = new Segment(1, 0, 0, CheckSumType.MD5, debugInfo2, Collections.emptyMap());
+    assertEquals(
+        segment1.getDebugInfo(),
+        segment2.getDebugInfo(),
+        "The debug info of the two segments should still be equal.");
+    assertTrue(
+        segment1.getDebugInfo().get("path") == segment2.getDebugInfo().get("path"),
+        "The identity of the elements inside the debug info maps should be deduped.");
   }
 }

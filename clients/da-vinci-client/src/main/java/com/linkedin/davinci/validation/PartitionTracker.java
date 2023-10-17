@@ -163,10 +163,10 @@ public class PartitionTracker {
        * that). It is redundant that we store the same debug values once per partition. In the future,
        * if we want to eliminate this redundancy, we could move the per-producer debug info to another
        * data structure, though that would increase bookkeeping complexity. This is expected to be a
-       * minor overhead, and therefore it appears to be a premature to optimize this now.
+       * minor overhead, and therefore it appears to be premature to optimize this now.
        */
-      state.aggregates = segment.getAggregates();
-      state.debugInfo = segment.getDebugInfo();
+      state.aggregates = CollectionUtils.substituteEmptyMap(segment.getAggregates());
+      state.debugInfo = CollectionUtils.substituteEmptyMap(segment.getDebugInfo());
     }
     state.checksumType = segment.getCheckSumType().getValue();
     /**
