@@ -56,7 +56,7 @@ import org.testng.annotations.Test;
  */
 
 public class RetriableAvroGenericStoreClientTest {
-  private static final int TEST_TIMEOUT = 500 * Time.MS_PER_SECOND;
+  private static final int TEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
   private final ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
   private static final int LONG_TAIL_RETRY_THRESHOLD_IN_MS = 100; // 100ms
   private static final Schema STORE_VALUE_SCHEMA =
