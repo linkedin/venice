@@ -19,13 +19,28 @@ public class VeniceKafkaInputTTLFilter extends VeniceRmdTTLFilter<KafkaInputMapp
     return kafkaInputMapperValue.schemaId;
   }
 
-  protected int getRmdId(final KafkaInputMapperValue kafkaInputMapperValue) {
+  protected int getRmdProtocolId(final KafkaInputMapperValue kafkaInputMapperValue) {
     return kafkaInputMapperValue.replicationMetadataVersionId;
   }
 
   @Override
   protected ByteBuffer getRmdPayload(final KafkaInputMapperValue kafkaInputMapperValue) {
     return kafkaInputMapperValue.replicationMetadataPayload;
+  }
+
+  @Override
+  protected ByteBuffer getValuePayload(final KafkaInputMapperValue kafkaInputMapperValue) {
+    return kafkaInputMapperValue.value;
+  }
+
+  @Override
+  protected void updateRmdPayload(KafkaInputMapperValue kafkaInputMapperValue, ByteBuffer payload) {
+    kafkaInputMapperValue.replicationMetadataPayload = payload;
+  }
+
+  @Override
+  protected void updateValuePayload(KafkaInputMapperValue kafkaInputMapperValue, byte[] payload) {
+    kafkaInputMapperValue.value = ByteBuffer.wrap(payload);
   }
 
   /**

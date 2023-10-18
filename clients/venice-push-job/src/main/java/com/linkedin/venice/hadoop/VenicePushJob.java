@@ -52,7 +52,7 @@ import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
-import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
+import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
@@ -398,6 +398,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String REPUSH_TTL_IN_SECONDS = "repush.ttl.seconds";
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
   public static final String RMD_SCHEMA_DIR = "rmd.schema.dir";
+  public static final String VALUE_SCHEMA_DIR = "value.schema.dir";
   private static final String TEMP_DIR_PREFIX = "/tmp/veniceRmdSchemas/";
   public static final int NOT_SET = -1;
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
@@ -525,6 +526,7 @@ public class VenicePushJob implements AutoCloseable {
     long repushTTLInSeconds;
     // HDFS directory to cache RMD schemas
     String rmdSchemaDir;
+    String valueSchemaDir;
     String controllerD2ServiceName;
     String parentControllerRegionD2ZkHosts;
     String childControllerRegionD2ZkHosts;
@@ -1062,14 +1064,11 @@ public class VenicePushJob implements AutoCloseable {
 
             // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
             // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
-            StringBuilder schemaDirBuilder = new StringBuilder();
-            schemaDirBuilder.append(TEMP_DIR_PREFIX)
-                .append(pushJobSetting.storeName)
-                .append("/")
-                .append(System.currentTimeMillis());
-            try (HDFSRmdSchemaSource rmdSchemaSource =
-                new HDFSRmdSchemaSource(schemaDirBuilder.toString(), pushJobSetting.storeName)) {
-              rmdSchemaSource.loadRmdSchemasOnDisk(controllerClient);
+            String rmdSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/rmd_" + System.currentTimeMillis();
+            String valueSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/value_" + System.currentTimeMillis();
+            try (HDFSSchemaSource rmdSchemaSource =
+                new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
+              rmdSchemaSource.saveSchemasOnDisk(controllerClient);
               pushJobSetting.rmdSchemaDir = rmdSchemaSource.getPath();
             }
           }
@@ -3005,6 +3004,7 @@ public class VenicePushJob implements AutoCloseable {
         // thus not allow any value passed
         // in.
         conf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
+        conf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       }
       // Pass the compression strategy of source version to repush MR job
       conf.set(

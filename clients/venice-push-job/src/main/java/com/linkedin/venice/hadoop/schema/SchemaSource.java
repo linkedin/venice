@@ -9,6 +9,8 @@ import org.apache.avro.Schema;
 /**
  * A high-level interface as a source specifically for RmdSchema. Each RMD Schema is uniquely identified by {@link RmdVersionId}.
  */
-public interface RmdSchemaSource {
-  Map<RmdVersionId, Schema> fetchSchemas() throws IOException;
+public interface SchemaSource {
+  Map<RmdVersionId, Schema> fetchRmdSchemas() throws IOException;
+
+  Map<Integer, Schema> fetchValueSchemas() throws IOException;
 }

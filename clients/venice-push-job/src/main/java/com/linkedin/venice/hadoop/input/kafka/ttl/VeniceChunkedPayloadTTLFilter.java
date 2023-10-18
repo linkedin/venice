@@ -20,12 +20,27 @@ public class VeniceChunkedPayloadTTLFilter extends VeniceRmdTTLFilter<ChunkAssem
   }
 
   @Override
-  protected int getRmdId(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId) {
+  protected int getRmdProtocolId(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId) {
     return valueBytesAndSchemaId.getReplicationMetadataVersionId();
   }
 
   @Override
   protected ByteBuffer getRmdPayload(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId) {
     return valueBytesAndSchemaId.getReplicationMetadataPayload();
+  }
+
+  @Override
+  protected ByteBuffer getValuePayload(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId) {
+    return ByteBuffer.wrap(valueBytesAndSchemaId.getBytes());
+  }
+
+  @Override
+  protected void updateRmdPayload(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId, ByteBuffer payload) {
+    valueBytesAndSchemaId.setReplicationMetadataPayload(payload);
+  }
+
+  @Override
+  protected void updateValuePayload(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId, byte[] payload) {
+    valueBytesAndSchemaId.setBytes(payload);
   }
 }

@@ -13,7 +13,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
-import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
+import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -44,7 +44,7 @@ public class TestVeniceKafkaInputTTLFilter {
           + "{\"name\":\"name\",\"type\":\"string\",\"default\":\"venice\"}]}";
   private Schema valueSchema;
   private Schema rmdSchema;
-  private HDFSRmdSchemaSource source;
+  private HDFSSchemaSource source;
   private VeniceKafkaInputTTLFilter filterWithSupportedPolicy;
 
   private FilterChain<KafkaInputMapperValue> filterChain;
@@ -79,15 +79,15 @@ public class TestVeniceKafkaInputTTLFilter {
     response.setSchemas(schemas);
     doReturn(response).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
 
-    source = new HDFSRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR), TEST_STORE);
-    source.loadRmdSchemasOnDisk(client);
+    source = new HDFSSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR), TEST_STORE);
+    source.saveSchemasOnDisk(client);
   }
 
   private MultiSchemaResponse.Schema[] generateMultiSchema(int n) {
     MultiSchemaResponse.Schema[] response = new MultiSchemaResponse.Schema[n];
     for (int i = 1; i <= n; i++) {
       MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
-      schema.setRmdValueSchemaId(i);
+      schema.setRmdSchemaId(i);
       schema.setDerivedSchemaId(i);
       schema.setId(i);
       schema.setSchemaStr(rmdSchema.toString());
