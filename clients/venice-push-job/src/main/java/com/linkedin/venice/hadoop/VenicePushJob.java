@@ -965,10 +965,6 @@ public class VenicePushJob implements AutoCloseable {
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
 
-      if (pushJobSetting.repushTTLEnabled && storeSetting.isWriteComputeEnabled) {
-        throw new VeniceException("Repush TTL is not supported when the store has write compute enabled.");
-      }
-
       if (pushJobSetting.isSourceETL) {
         MultiSchemaResponse allValueSchemaResponses = controllerClient.getAllValueSchema(pushJobSetting.storeName);
         MultiSchemaResponse.Schema[] allValueSchemas = allValueSchemaResponses.getSchemas();
