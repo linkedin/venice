@@ -46,6 +46,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
@@ -61,6 +62,8 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
@@ -81,6 +84,9 @@ import org.apache.logging.log4j.Logger;
 public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private static final ChunkedPayloadAndManifest EMPTY_CHUNKED_PAYLOAD_AND_MANIFEST =
       new ChunkedPayloadAndManifest(null, null);
+
+  // use for running async close and to fetch number of partitions with timeout from producer
+  private final ThreadPoolExecutor threadPoolExecutor;
 
   // log4j logger
   private final Logger logger;
@@ -238,6 +244,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final Object[] partitionLocks;
 
   private String writerId;
+  private boolean isClosed = false;
+  private final Object closeLock = new Object();
+
   /**
    * N.B.: chunking enabled flag is mutable only if this VeniceWriter is currently used in pass-through mode and hasn't
    * been used in non pass-through mode yet; once VW starts referring to the chunking setting in non pass-through mode,
@@ -315,6 +324,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
     this.producerGUID = GuidUtils.getGUID(props);
     this.logger = LogManager.getLogger("VeniceWriter [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
+    // Create a thread pool which can have max 2 threads.
+    // Except during VW start and close we expect it to have zero threads to avoid unnecessary resource usage.
+    this.threadPoolExecutor = new ThreadPoolExecutor(
+        2,
+        2,
+        30,
+        TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(),
+        new DaemonThreadFactory("VW-" + topicName));
+    this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
 
     this.protocolSchemaHeaders = overrideProtocolSchema == null
         ? EMPTY_MSG_HEADERS
@@ -329,7 +348,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       if (params.getPartitionCount() != null) {
         this.numberOfPartitions = params.getPartitionCount();
       } else {
-        this.numberOfPartitions = this.producerAdapter.getNumberOfPartitions(topicName, 30, TimeUnit.SECONDS);
+        this.numberOfPartitions =
+            CompletableFuture.supplyAsync(() -> producerAdapter.getNumberOfPartitions(topicName), threadPoolExecutor)
+                .get(30, TimeUnit.SECONDS);
       }
       if (this.numberOfPartitions <= 0) {
         throw new VeniceException("Invalid number of partitions: " + this.numberOfPartitions);
@@ -357,21 +378,66 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   @Override
   public void close(boolean gracefulClose) {
-    try {
-      // If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
-      // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
-      if (gracefulClose) {
-        endAllSegments(true);
+    synchronized (closeLock) {
+      if (isClosed) {
+        return;
       }
-      // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
-      // For non-shared producer mode gracefulClose will flush the producer
+      long startTime = System.currentTimeMillis();
+      logger.info("Closing VeniceWriter for topic: {}", topicName);
+      try {
+        // If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
+        // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
+        if (gracefulClose) {
+          endAllSegments(true);
+        }
+        // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
+        // For non-shared producer mode gracefulClose will flush the producer
 
-      producerAdapter.close(topicName, closeTimeOut, gracefulClose);
-      OPEN_VENICE_WRITER_COUNT.decrementAndGet();
-    } catch (Exception e) {
-      logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
-      VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
+        producerAdapter.close(topicName, closeTimeOut, gracefulClose);
+        OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+      } catch (Exception e) {
+        logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
+        VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
+      }
+      isClosed = true;
+      logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
     }
+  }
+
+  public CompletableFuture<VeniceResourceCloseResult> closeAsync(boolean gracefulClose) {
+    return CompletableFuture.supplyAsync(() -> {
+      synchronized (closeLock) {
+        if (isClosed) {
+          return VeniceResourceCloseResult.ALREADY_CLOSED;
+        }
+        long startTime = System.currentTimeMillis();
+        logger.info("Closing VeniceWriter for topic: {}", topicName);
+        try {
+          // try to end all segments before closing the producer
+          if (gracefulClose) {
+            CompletableFuture<Void> endSegmentsFuture =
+                CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
+            try {
+              endSegmentsFuture.get(Math.min(10, closeTimeOut / 2), TimeUnit.SECONDS);
+            } catch (Exception e) {
+              // cancel the endSegmentsFuture if it's not done in time
+              if (!endSegmentsFuture.isDone()) {
+                endSegmentsFuture.cancel(true);
+              }
+              logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
+            }
+          }
+          producerAdapter.close(topicName, closeTimeOut, gracefulClose);
+          OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+        } catch (Exception e) {
+          logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
+          VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
+        }
+        isClosed = true;
+        logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
+        return VeniceResourceCloseResult.SUCCESS;
+      }
+    }, threadPoolExecutor);
   }
 
   @Override

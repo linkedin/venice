@@ -60,10 +60,10 @@ import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.CollectionUtils;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -635,8 +635,11 @@ public class VeniceServer {
         exceptions.add(e);
         LOGGER.error("Exception while closing: {}", zkClient.getClass().getSimpleName(), e);
       }
-
-      LOGGER.info("Shutdown completed in {} ms", LatencyUtils.getLatencyInMS(startTimeMS));
+      long elapsedTimeInMs = System.currentTimeMillis() - startTimeMS;
+      LOGGER.info(
+          "Shutdown completed in {} ms ({} minutes) ",
+          elapsedTimeInMs,
+          Duration.ofMillis(elapsedTimeInMs).toMinutes());
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }
