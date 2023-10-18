@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.validation;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -15,7 +16,14 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 
@@ -125,5 +133,47 @@ public class SegmentTest {
     assertThrows(VeniceMessageException.class, () -> segmentWithMD5Checksum1.addToCheckSum(null, messageEnvelope6));
 
     assertEquals(segmentWithMD5Checksum1.getFinalCheckSum(), segmentWithMD5Checksum2.getFinalCheckSum());
+  }
+
+  @Test
+  public void testDebugInfoDeduping() {
+    Map<CharSequence, CharSequence> debugInfo1 = Utils.getDebugInfo();
+    Map<CharSequence, CharSequence> debugInfo2 = Utils.getDebugInfo();
+    assertEquals(
+        debugInfo1,
+        debugInfo2,
+        "We should get equal debug info when calling Utils.getDebugInfo() multiple times.");
+
+    Segment segment1 = new Segment(0, 0, 0, CheckSumType.MD5, debugInfo1, Collections.emptyMap());
+    Segment segment2 = new Segment(1, 0, 0, CheckSumType.MD5, debugInfo2, Collections.emptyMap());
+    assertEquals(
+        segment1.getDebugInfo(),
+        segment2.getDebugInfo(),
+        "The debug info of the two segments should still be equal.");
+
+    List<String> allProperties = Arrays.asList("host", "JDK major version", "path", "pid", "user", "version");
+    Set<String> nonSingletonProperties = new HashSet<>(Arrays.asList("JDK major version", "path", "pid"));
+    for (String property: allProperties) {
+      CharSequence rawValue1 = debugInfo1.get(property);
+      CharSequence rawValue2 = debugInfo2.get(property);
+      if (nonSingletonProperties.contains(property)) {
+        assertFalse(
+            rawValue1 == rawValue2,
+            "The identity of the elements inside the debug info map are not expected to be the same; property: "
+                + property + ", rawValue1: " + rawValue1 + ", rawValue2: " + rawValue2);
+      }
+      assertEquals(
+          rawValue1,
+          rawValue2,
+          "The content of the elements inside the debug info map are expected to be equal; property: " + property
+              + ", rawValue1: " + rawValue1 + ", rawValue2: " + rawValue2);
+
+      CharSequence dedupedValue1 = segment1.getDebugInfo().get(property);
+      CharSequence dedupedValue2 = segment2.getDebugInfo().get(property);
+      assertTrue(
+          dedupedValue1 == dedupedValue2,
+          "The identity of the elements inside the debug info maps should be deduped; property: " + property
+              + ", dedupedValue1: " + dedupedValue1 + ", dedupedValue2: " + dedupedValue2);
+    }
   }
 }

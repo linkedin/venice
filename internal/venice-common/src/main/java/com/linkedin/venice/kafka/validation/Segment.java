@@ -3,6 +3,8 @@ package com.linkedin.venice.kafka.validation;
 import static com.linkedin.venice.kafka.validation.SegmentStatus.END_OF_FINAL_SEGMENT;
 import static com.linkedin.venice.kafka.validation.SegmentStatus.NOT_STARTED;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -16,6 +18,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.CollectionUtils;
+import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
@@ -39,6 +42,16 @@ import java.util.Map;
  */
 @NotThreadsafe
 public class Segment {
+  /**
+   * This cache is to reduce the size on heap of debug info, which is very repetitive in nature. Using this cache, each
+   * unique CharSequence should exist only once on the heap, with many segments referring to it.
+   *
+   * We use weak values so that if there are no more segments referencing a given entry, it will also be cleared from
+   * the cache, and thus avoid a mem leak.
+   */
+  private static final Cache<CharSequence, CharSequence> DEDUPED_DEBUG_INFO =
+      Caffeine.newBuilder().weakValues().build();
+
   // Immutable state
   private final int partition;
   private final int segmentNumber;
@@ -78,7 +91,7 @@ public class Segment {
     this.ended = false;
     this.finalSegment = false;
     this.newSegment = true;
-    this.debugInfo = debugInfo;
+    this.debugInfo = getDedupedDebugInfo(debugInfo);
     this.aggregates = aggregates;
   }
 
@@ -101,7 +114,7 @@ public class Segment {
     this.ended = segmentStatus.isTerminal();
     this.finalSegment = segmentStatus == END_OF_FINAL_SEGMENT;
     this.newSegment = false;
-    this.debugInfo = CollectionUtils.substituteEmptyMap(state.getDebugInfo());
+    this.debugInfo = getDedupedDebugInfo(state.getDebugInfo());
     this.aggregates = CollectionUtils.substituteEmptyMap(state.getAggregates());
     this.registered = state.isRegistered;
     this.lastRecordProducerTimestamp = state.messageTimestamp;
@@ -117,6 +130,10 @@ public class Segment {
     this.ended = segment.ended;
     this.finalSegment = segment.finalSegment;
     this.newSegment = false;
+    /**
+     * N.B. No need to call {@link #getDedupedDebugInfo(Map)} here since we assume the other {@link Segment} instance we
+     * are copying from was already deduped, having come from one of the other constructors.
+     */
     this.debugInfo = segment.debugInfo;
     this.aggregates = segment.aggregates;
     this.registered = segment.registered;
@@ -372,5 +389,22 @@ public class Segment {
     } else {
       return SegmentStatus.IN_PROGRESS;
     }
+  }
+
+  private Map<CharSequence, CharSequence> getDedupedDebugInfo(Map<CharSequence, CharSequence> original) {
+    if (original == null || original.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    /**
+     * The {@link Object2ObjectArrayMap} has an O(N) performance on lookups, but we don't care about the performance
+     * of the debug info map, so it is fine. The main concern is to make it as compact as possible, which this
+     * implementation achieves by minimizing per-element overhead (e.g. there is no {@link HashMap.Node} wrapping each
+     * entry).
+     */
+    Map<CharSequence, CharSequence> deduped = new Object2ObjectArrayMap<>(original.size());
+    for (Map.Entry<CharSequence, CharSequence> entry: original.entrySet()) {
+      deduped.put(DEDUPED_DEBUG_INFO.get(entry.getKey(), k -> k), DEDUPED_DEBUG_INFO.get(entry.getValue(), k -> k));
+    }
+    return deduped;
   }
 }

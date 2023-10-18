@@ -149,14 +149,6 @@ def parser = new XmlSlurper()
 parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
 parser.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
 
-// We remove square brackets from test names, which occur when using a DataProvider,
-// because occasionally the number in the brackets is non-deterministic (unknown why)
-// and when that occurs, the test-retry plugin gets confused and cannot match the
-// attempts together.
-def removeSquareBrackets(String testName) {
-  return testName.replaceFirst('\\[[0-9]+\\]', '')
-}
-
 configurations {
   alpnAgent {
   }
@@ -431,16 +423,14 @@ subprojects {
     }
 
     beforeTest { descriptor ->
-      def testName = removeSquareBrackets(descriptor.displayName)
       def out = services.get(StyledTextOutputFactory).create("an-ouput")
 
-      out.style(Style.Normal).println("$descriptor.className > $testName STARTED")
+      out.style(Style.Normal).println("$descriptor.className > $descriptor.displayName STARTED")
     }
 
     afterTest { descriptor, result ->
       def totalTime = result.endTime - result.startTime
       def prettyTime = totalTime < 1000 ? "$totalTime ms" : "${totalTime / 1000} s"
-      def testName = removeSquareBrackets(descriptor.displayName)
       def out = services.get(StyledTextOutputFactory).create("an-ouput")
 
       def style = result.resultType == TestResult.ResultType.SUCCESS
@@ -455,7 +445,7 @@ subprojects {
           ? 'FAILED '
           : 'SKIPPED '
 
-      out.style(Style.Normal).text("$descriptor.className > $testName ")
+      out.style(Style.Normal).text("$descriptor.className > $descriptor.displayName ")
           .style(style).text(status)
           .style(Style.Normal).println("($prettyTime)")
 
