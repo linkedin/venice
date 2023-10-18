@@ -27,6 +27,7 @@ dependencies {
 
   implementation libraries.avroUtilCompatHelper
   implementation libraries.bouncyCastle
+  implementation libraries.caffeine
   implementation libraries.classgraph
   implementation libraries.commonsCodec
   implementation libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
