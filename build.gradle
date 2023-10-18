@@ -49,6 +49,7 @@ def jacksonVersion = '2.13.3'
 def pulsarGroup = 'org.apache.pulsar'
 def pulsarVersion = '2.10.3'
 def alpnAgentVersion = '2.0.10'
+def hadoopVersion = '2.6.0'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
@@ -71,7 +72,7 @@ ext.libraries = [
     d2: "com.linkedin.pegasus:d2:${pegasusVersion}",
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
-    hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
+    hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     helix: 'org.apache.helix:helix-core:1.1.0',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.2.1',
@@ -94,8 +95,8 @@ ext.libraries = [
     log4j2api: "org.apache.logging.log4j:log4j-api:${log4j2Version}",
     log4j2core: "org.apache.logging.log4j:log4j-core:${log4j2Version}",
     mail: 'javax.mail:mail:1.4.4',
-    mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
-    mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
+    mapreduceClientCore: "org.apache.hadoop:hadoop-mapreduce-client-core:${hadoopVersion}",
+    mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
     mockito: 'org.mockito:mockito-core:4.11.0',
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
