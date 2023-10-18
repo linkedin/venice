@@ -1075,7 +1075,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public boolean isPartitionConsuming(String topic, int partitionId) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
-      return ingestionTask != null && ingestionTask.isRunning() && ingestionTask.isPartitionConsuming(partitionId);
+      return ingestionTask != null && ingestionTask.isRunning()
+          && ingestionTask.isPartitionConsumingOrHasPendingIngestionAction(partitionId);
     }
   }
 

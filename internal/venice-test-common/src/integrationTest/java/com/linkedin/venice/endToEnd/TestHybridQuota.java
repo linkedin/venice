@@ -222,7 +222,7 @@ public class TestHybridQuota {
       // Do a VPJ push
       runVPJ(vpjProperties, 3, controllerClient);
       String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
-      long storageQuotaInByte = 60000; // A small quota, easily violated.
+      long storageQuotaInByte = 20000; // A small quota, easily violated.
 
       // Need to update store with quota here.
       controllerClient.updateStore(
