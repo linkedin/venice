@@ -18,6 +18,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -150,8 +151,8 @@ public class SegmentTest {
         segment2.getDebugInfo(),
         "The debug info of the two segments should still be equal.");
 
-    Set<String> allProperties = new HashSet<>(List.of("host", "JDK major version", "path", "pid", "user", "version"));
-    Set<String> nonSingletonProperties = new HashSet<>(List.of("JDK major version", "path", "pid"));
+    List<String> allProperties = Arrays.asList("host", "JDK major version", "path", "pid", "user", "version");
+    Set<String> nonSingletonProperties = new HashSet<>(Arrays.asList("JDK major version", "path", "pid"));
     for (String property: allProperties) {
       CharSequence rawValue1 = debugInfo1.get(property);
       CharSequence rawValue2 = debugInfo2.get(property);
