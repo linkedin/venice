@@ -115,9 +115,12 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    * @param consumerProperties consumer properties that are used to create {@link KafkaConsumerService}
    */
   public synchronized KafkaConsumerService createKafkaConsumerService(final Properties consumerProperties) {
-    final String kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
+    String kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     Properties properties = sslPropertiesSupplier.get(kafkaUrl).toProperties();
     consumerProperties.putAll(properties);
+    // sslPropertiesSupplier also does bootstrap address resolution, so we need to update the kafkaUrl to ensure
+    // that we are using the correct kafkaUrl
+    kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     if (kafkaUrl == null || kafkaUrl.isEmpty()) {
       throw new IllegalArgumentException("Kafka URL must be set in the consumer properties config. Got: " + kafkaUrl);
     }
