@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -115,6 +116,22 @@ public class ReadQuotaEnforcementHandlerTest {
     }
   }
 
+  @Test
+  public void testInitWithPreExistingResource() {
+    String storeName = "testStore";
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    Version version = mock(Version.class);
+    doReturn(topic).when(version).kafkaTopicName();
+    Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 100, true);
+    doReturn(store).when(storeRepository).getStore(storeName);
+    doReturn(Collections.singletonList(store)).when(storeRepository).getAllStores();
+
+    quotaEnforcer.init();
+
+    verify(storeRepository, atLeastOnce()).registerStoreDataChangedListener(any());
+    verify(customizedViewRepository, atLeastOnce()).subscribeRoutingDataChange(eq(topic), any());
+  }
+
   /**
    * Test enforcement of the node-level capacity when there is no store-level quota
    */
@@ -175,16 +192,10 @@ public class ReadQuotaEnforcementHandlerTest {
     Partition partition = mock(Partition.class);
     doReturn(0).when(partition).getId();
 
-    List<ReplicaState> replicaStates = new ArrayList<>();
-    ReplicaState thisReplicaState = mock(ReplicaState.class);
-    doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
-    doReturn(true).when(thisReplicaState).isReadyToServe();
-    replicaStates.add(thisReplicaState);
-    ReplicaState otherReplicaState = mock(ReplicaState.class);
-    doReturn(otherInstance.getNodeId()).when(otherReplicaState).getParticipantId();
-    doReturn(true).when(otherReplicaState).isReadyToServe();
-    replicaStates.add(otherReplicaState);
-    when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
+    List<Instance> readyToServeReplicas = new ArrayList<>();
+    readyToServeReplicas.add(thisInstance);
+    readyToServeReplicas.add(otherInstance);
+    doReturn(readyToServeReplicas).when(partition).getReadyToServeInstances();
 
     PartitionAssignment pa = mock(PartitionAssignment.class);
     doReturn(topic).when(pa).getTopic();
@@ -548,6 +559,9 @@ public class ReadQuotaEnforcementHandlerTest {
     ReplicaState thisReplicaState = mock(ReplicaState.class);
     doReturn(instance.getNodeId()).when(thisReplicaState).getParticipantId();
     doReturn(isReadyToServe).when(thisReplicaState).isReadyToServe();
+    if (isReadyToServe) {
+      doReturn(Collections.singletonList(instance)).when(partition).getReadyToServeInstances();
+    }
     replicaStates.add(thisReplicaState);
     when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
     return partition;

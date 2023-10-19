@@ -816,6 +816,11 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
+  public void onCustomizedViewAdded(PartitionAssignment partitionAssignment) {
+    // Ignore this event
+  }
+
+  @Override
   public void onRoutingDataDeleted(String kafkaTopic) {
     // Beside the external view, we also care about the ideal state here. If the resource was deleted from the
     // externalview by mistake,

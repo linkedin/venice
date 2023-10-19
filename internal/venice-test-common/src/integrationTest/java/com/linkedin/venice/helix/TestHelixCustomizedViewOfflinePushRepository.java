@@ -354,7 +354,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
 
   @Test
   public void testListeners() throws Exception {
-    final boolean[] isNoticed = { false, false, false, false };
+    final boolean[] isNoticed = { false, false, false, false, false };
     RoutingDataRepository.RoutingDataChangedListener listener = new RoutingDataRepository.RoutingDataChangedListener() {
       @Override
       public void onExternalViewChange(PartitionAssignment partitionAssignment) {
@@ -364,6 +364,11 @@ public class TestHelixCustomizedViewOfflinePushRepository {
       @Override
       public void onCustomizedViewChange(PartitionAssignment partitionAssignment) {
         isNoticed[1] = true;
+      }
+
+      @Override
+      public void onCustomizedViewAdded(PartitionAssignment partitionAssignment) {
+        isNoticed[4] = true;
       }
 
       @Override
@@ -384,6 +389,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     Assert.assertFalse(isNoticed[1], "Should not get notification after un-registering.");
     Assert.assertFalse(isNoticed[2], "Should not get notification after un-registering.");
     Assert.assertFalse(isNoticed[3], "Should not get notification after un-registering.");
+    Assert.assertFalse(isNoticed[4], "Should not get notification after un-registering.");
 
     offlinePushOnlyRepository.subscribeRoutingDataChange(resourceName, listener);
 

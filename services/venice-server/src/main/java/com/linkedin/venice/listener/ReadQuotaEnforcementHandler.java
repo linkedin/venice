@@ -6,10 +6,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -19,7 +19,6 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
-import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerQuotaTokenBucketStats;
@@ -33,7 +32,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -136,20 +134,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    * @param nodeId
    * @return
    */
-  protected static double getNodeResponsibilityForQuota(
-      HelixCustomizedViewOfflinePushRepository customizedViewRepository,
-      PartitionAssignment partitionAssignment,
-      String nodeId) {
+  protected static double getNodeResponsibilityForQuota(PartitionAssignment partitionAssignment, String nodeId) {
     double thisNodePartitionPortion = 0; // 1 means full responsibility for serving a partition. 0.33 means serving 1 of
     // 3 replicas for a partition
     for (Partition p: partitionAssignment.getAllPartitions()) {
-      List<String> readyToServeInstances = new ArrayList<>();
-      for (ReplicaState replicaState: customizedViewRepository
-          .getReplicaStates(partitionAssignment.getTopic(), p.getId())) {
-        if (replicaState.isReadyToServe()) {
-          readyToServeInstances.add(replicaState.getParticipantId());
-        }
-      }
+      List<String> readyToServeInstances =
+          p.getReadyToServeInstances().stream().map(Instance::getNodeId).collect(Collectors.toList());
       long thisPartitionReplicaCount = readyToServeInstances.size();
       long thisNodeReplicaCount = 0;
       for (String instanceId: readyToServeInstances) {
@@ -169,13 +159,13 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    */
   public final void init() {
     storeRepository.registerStoreDataChangedListener(this);
-    ResourceAssignment resourceAssignment = customizedViewRepository.getResourceAssignment();
-    if (resourceAssignment == null) {
-      LOGGER.error(
-          "Null resource assignment from HelixCustomizedViewOfflinePushRepository in ReadQuotaEnforcementHandler");
-    } else {
-      for (String resource: resourceAssignment.getAssignedResources()) {
-        this.onCustomizedViewChange(resourceAssignment.getPartitionAssignment(resource));
+    // The customizedViewRepository right after server start might not have all the resources. Use the store
+    // repository's versions to subscribe for routing data change and initialize the corresponding read quota token
+    // bucket once the CVs are available.
+    for (Store store: storeRepository.getAllStores()) {
+      List<Version> versions = store.getVersions();
+      for (Version version: versions) {
+        customizedViewRepository.subscribeRoutingDataChange(version.kafkaTopicName(), this);
       }
     }
     this.initializedVolatile = true;
@@ -396,6 +386,11 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     updateQuota(partitionAssignment);
   }
 
+  @Override
+  public void onCustomizedViewAdded(PartitionAssignment partitionAssignment) {
+    updateQuota(partitionAssignment);
+  }
+
   /**
    * Recalculates the amount of quota that this node should serve given the partition assignment.  Assumes each
    * partition gets an even portion of quota, and for each partition divides the quota by the readyToServe instances.
@@ -411,8 +406,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           topic);
       return;
     }
-    double thisNodeQuotaResponsibility =
-        getNodeResponsibilityForQuota(customizedViewRepository, partitionAssignment, thisNodeId);
+    double thisNodeQuotaResponsibility = getNodeResponsibilityForQuota(partitionAssignment, thisNodeId);
     if (thisNodeQuotaResponsibility <= 0) {
       LOGGER.warn(
           "Routing data changed on quota enforcement handler with 0 replicas assigned to this node, removing quota for resource: {}",
