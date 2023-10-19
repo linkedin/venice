@@ -1,7 +1,14 @@
 package com.linkedin.venice.fastclient;
 
-import com.linkedin.restli.common.HttpStatus;
+import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
+import static org.apache.hc.core5.http.HttpStatus.SC_INTERNAL_SERVER_ERROR;
+import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
+import static org.apache.hc.core5.http.HttpStatus.SC_OK;
+import static org.apache.hc.core5.http.HttpStatus.SC_SERVICE_UNAVAILABLE;
+import static org.apache.hc.core5.http.HttpStatus.SC_TOO_MANY_REQUESTS;
+
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AppTimeOutTrackingCompletableFuture;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -17,15 +24,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
  * This class is in charge of all the metric emissions per request.
  */
 public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
-  private static final Logger LOGGER = LogManager.getLogger(StatsAvroGenericStoreClient.class);
   private static final int TIMEOUT_IN_SECOND = 5;
 
   private final FastClientStats clientStatsForSingleGet;
@@ -91,7 +95,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     CompletableFuture<R> statFuture =
         recordRequestMetrics(requestContext, numberOfKeys, innerFuture, startTimeInNS, clientStats);
     // Record per replica metric
-    recordPerRouteMetrics(requestContext, clientStats);
+    statFuture.whenComplete((result, throwable) -> {
+      recordPerRouteMetrics(requestContext, clientStats);
+    });
 
     return AppTimeOutTrackingCompletableFuture.track(statFuture, clientStats);
   }
@@ -201,7 +207,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private void recordPerRouteMetrics(RequestContext requestContext, FastClientStats clientStats) {
     final long requestSentTimestampNS = requestContext.requestSentTimestampNS;
     if (requestSentTimestampNS > 0) {
-      Map<String, CompletableFuture<HttpStatus>> replicaRequestFuture = requestContext.routeRequestMap;
+      Map<String, CompletableFuture<Integer>> replicaRequestFuture = requestContext.routeRequestMap;
       final InstanceHealthMonitor monitor = requestContext.instanceHealthMonitor;
       if (monitor != null) {
         clusterStats.recordBlockedInstanceCount(monitor.getBlockedInstanceCount());
@@ -214,27 +220,29 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           }
 
           if (throwable != null) {
-            LOGGER.error("Received unexpected exception from replica request future: ", throwable);
-            return;
+            status = (throwable instanceof VeniceClientHttpException)
+                ? ((VeniceClientHttpException) throwable).getHttpStatus()
+                : SC_SERVICE_UNAVAILABLE;
           }
+
           clientStats.recordRequest(instance);
           clientStats.recordResponseWaitingTime(instance, LatencyUtils.getLatencyInMS(requestSentTimestampNS));
           switch (status) {
-            case S_200_OK:
-            case S_404_NOT_FOUND:
+            case SC_OK:
+            case SC_NOT_FOUND:
               clientStats.recordHealthyRequest(instance);
               break;
-            case S_429_TOO_MANY_REQUESTS:
+            case SC_TOO_MANY_REQUESTS:
               clientStats.recordQuotaExceededRequest(instance);
               break;
-            case S_500_INTERNAL_SERVER_ERROR:
+            case SC_INTERNAL_SERVER_ERROR:
               clientStats.recordInternalServerErrorRequest(instance);
               break;
-            case S_410_GONE:
+            case SC_GONE:
               /* Check {@link InstanceHealthMonitor#trackHealthBasedOnRequestToInstance} to understand this special http status. */
               clientStats.recordLeakedRequest(instance);
               break;
-            case S_503_SERVICE_UNAVAILABLE:
+            case SC_SERVICE_UNAVAILABLE:
               clientStats.recordServiceUnavailableRequest(instance);
               break;
             default:
