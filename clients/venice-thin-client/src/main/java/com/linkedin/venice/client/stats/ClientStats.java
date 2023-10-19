@@ -54,7 +54,6 @@ public class ClientStats extends BasicClientStats {
      * {@link io.tehuti.metrics.stats.SampledStat}.
      */
     Rate requestRetryCountRate = new OccurrenceRate();
-
     requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
     unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
