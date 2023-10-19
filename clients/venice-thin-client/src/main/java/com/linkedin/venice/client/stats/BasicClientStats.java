@@ -118,7 +118,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   @Override
   protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
     if (!isMetaSystemStore() || sensorName.equals("request")) {
-      return super.registerSensor(getFullMetricName(sensorName), stats);
+      return super.registerSensor(sensorName, stats);
     }
     return null;
   }
