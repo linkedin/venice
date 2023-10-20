@@ -18,8 +18,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
-import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -85,8 +83,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    */
   private final GrpcClientConfig grpcClientConfig;
 
-  private boolean projectionFieldValidation = true;
-  private Predicate<Schema> preferredSchemaFilter = null;
+  private boolean projectionFieldValidation;
 
   private ClientConfig(
       String storeName,
@@ -122,8 +119,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean useStreamingBatchGetAsDefault,
       boolean useGrpc,
       GrpcClientConfig grpcClientConfig,
-      boolean projectionFieldValidation,
-      Predicate<Schema> preferredSchemaFilter) {
+      boolean projectionFieldValidation) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -260,7 +256,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.grpcClientConfig = grpcClientConfig;
 
     this.projectionFieldValidation = projectionFieldValidation;
-    this.preferredSchemaFilter = preferredSchemaFilter;
   }
 
   public String getStoreName() {
@@ -405,15 +400,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this;
   }
 
-  public Predicate<Schema> getPreferredSchemaFilter() {
-    return preferredSchemaFilter;
-  }
-
-  public ClientConfig setPreferredSchemaFilter(Predicate<Schema> preferredSchemaFilter) {
-    this.preferredSchemaFilter = preferredSchemaFilter;
-    return this;
-  }
-
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -462,7 +448,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private GrpcClientConfig grpcClientConfig = null;
 
     private boolean projectionFieldValidation = true;
-    private Predicate<Schema> preferredSchemaFilter = null;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -646,11 +631,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setPreferredSchemaFilter(Predicate<Schema> preferredSchemaFilter) {
-      this.preferredSchemaFilter = preferredSchemaFilter;
-      return this;
-    }
-
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -685,8 +665,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
           .setUseGrpc(useGrpc)
           .setGrpcClientConfig(grpcClientConfig)
-          .setProjectionFieldValidationEnabled(projectionFieldValidation)
-          .setPreferredSchemaFilter(preferredSchemaFilter);
+          .setProjectionFieldValidationEnabled(projectionFieldValidation);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -724,8 +703,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           useStreamingBatchGetAsDefault,
           useGrpc,
           grpcClientConfig,
-          projectionFieldValidation,
-          preferredSchemaFilter);
+          projectionFieldValidation);
     }
   }
 }
