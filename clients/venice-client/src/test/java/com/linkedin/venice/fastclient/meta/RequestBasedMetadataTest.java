@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static com.linkedin.venice.fastclient.meta.RequestBasedMetadata.WARMUP_REFRESH_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadata.INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.KEY_SCHEMA;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.VALUE_SCHEMA;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockMetaData;
@@ -50,8 +50,10 @@ public class RequestBasedMetadataTest {
       RequestBasedMetadata finalRequestBasedMetadata = requestBasedMetadata;
       if (firstUpdateFails) {
         // schedule retry after WARMUP_REFRESH_INTERVAL_IN_SECONDS
-        verify(requestBasedMetadata.getScheduler())
-            .schedule(any(Runnable.class), eq(WARMUP_REFRESH_INTERVAL_IN_SECONDS), eq(TimeUnit.SECONDS));
+        verify(requestBasedMetadata.getScheduler()).schedule(
+            any(Runnable.class),
+            eq(INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS),
+            eq(TimeUnit.SECONDS));
       }
       // after success, both cases should schedule retry after configured refresh interval:
       // testing that start() is only finished after warmup is done
