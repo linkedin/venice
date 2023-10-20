@@ -101,6 +101,12 @@ public class PubSubMessageDeserializer {
     }
   }
 
+  public void close() {
+    if (valueSerializer != null) {
+      valueSerializer.close();
+    }
+  }
+
   // For testing only.
   public KafkaValueSerializer getValueSerializer() {
     return valueSerializer;

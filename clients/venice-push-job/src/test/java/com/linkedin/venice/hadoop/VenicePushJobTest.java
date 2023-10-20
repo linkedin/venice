@@ -11,6 +11,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.POST_VALIDATION_CONSUMPTI
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_ETL;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJob.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
@@ -46,6 +47,8 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -680,6 +683,20 @@ public class VenicePushJobTest {
 
     assertThrows(VeniceValidationException.class, pushJob::run);
     verify(pushJob, never()).postValidationConsumption(any());
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "D2 service name and zk host must be provided when system schema reader is enabled")
+  public void testEnableSchemaReaderConfigValidation() {
+    Properties props = getVpjRequiredProperties();
+    props.put(SYSTEM_SCHEMA_READER_ENABLED, true);
+    VenicePushJob pushJob = spy(new VenicePushJob(PUSH_JOB_ID, props));
+    doReturn("test_store_v1").when(pushJob).getSourceTopicNameForKafkaInput(anyString(), any());
+    RepushInfoResponse repushInfoResponse = new RepushInfoResponse();
+    RepushInfo repushInfo = new RepushInfo();
+    repushInfo.setSystemSchemaClusterD2ServiceName("cluster0");
+    repushInfoResponse.setRepushInfo(repushInfo);
+    pushJob.getPushJobSetting().repushInfoResponse = repushInfoResponse;
+    pushJob.initKIFRepushDetails();
   }
 
   private JobStatusQueryResponse mockJobStatusQuery() {

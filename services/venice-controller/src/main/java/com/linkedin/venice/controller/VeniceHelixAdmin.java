@@ -3029,14 +3029,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return a new {@linkplain  RepushInfo} object with specified store info.
+   * @return a new {@linkplain RepushInfo} object with specified store info.
    */
   @Override
   public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
     Store store = getStore(clusterName, storeName);
     boolean isSSL = isSSLEnabledForPush(clusterName, storeName);
-    return RepushInfo
-        .createRepushInfo(store.getVersion(store.getCurrentVersion()).get(), getKafkaBootstrapServers(isSSL));
+    String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
+    VeniceControllerConfig systemSchemaClusterConfig = multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
+    String systemSchemaClusterD2Service = systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName);
+    String systemSchemaClusterD2ZkHost = systemSchemaClusterConfig.getChildControllerD2ZkHost(getRegionName());
+    return RepushInfo.createRepushInfo(
+        store.getVersion(store.getCurrentVersion()).get(),
+        getKafkaBootstrapServers(isSSL),
+        systemSchemaClusterD2Service,
+        systemSchemaClusterD2ZkHost);
   }
 
   /**

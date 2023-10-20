@@ -28,6 +28,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -168,6 +169,9 @@ public class VenicePushJob implements AutoCloseable {
   public static final String SEND_CONTROL_MESSAGES_DIRECTLY = "send.control.messages.directly";
   public static final String SOURCE_ETL = "source.etl";
   public static final String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
+  public static final String SYSTEM_SCHEMA_READER_ENABLED = "system.schema.reader.enabled";
+  public static final String SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME = "system.schema.cluster.d2.service.name";
+  public static final String SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST = "system.schema.cluster.d2.zk.host";
 
   /**
    *  Config to enable/disable the feature to collect extra metrics wrt compression.
@@ -535,6 +539,9 @@ public class VenicePushJob implements AutoCloseable {
     String targetedRegions;
     boolean isTargetedRegionPushEnabled;
     boolean postValidationConsumption;
+    boolean isSystemSchemaReaderEnabled;
+    String systemSchemaClusterD2ServiceName;
+    String systemSchemaClusterD2ZKHost;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -710,6 +717,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.postValidationConsumption = props.getBoolean(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+    pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
     if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
     }
@@ -829,9 +837,7 @@ public class VenicePushJob implements AutoCloseable {
    * @param properties properties
    * @return Topic name
    */
-  private String getSourceTopicNameForKafkaInput(
-      final String userProvidedStoreName,
-      final VeniceProperties properties) {
+  String getSourceTopicNameForKafkaInput(final String userProvidedStoreName, final VeniceProperties properties) {
     final Optional<String> userProvidedTopicNameOptional =
         Optional.ofNullable(properties.getString(KAFKA_INPUT_TOPIC, () -> null));
 
@@ -1814,9 +1820,19 @@ public class VenicePushJob implements AutoCloseable {
 
   protected void initKIFRepushDetails() {
     pushJobSetting.kafkaInputTopic = getSourceTopicNameForKafkaInput(pushJobSetting.storeName, props);
-    pushJobSetting.kafkaInputBrokerUrl = pushJobSetting.repushInfoResponse == null
-        ? props.getString(KAFKA_INPUT_BROKER_URL)
-        : pushJobSetting.repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
+    if (pushJobSetting.repushInfoResponse == null) {
+      pushJobSetting.kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
+    } else {
+      RepushInfo repushInfo = pushJobSetting.repushInfoResponse.getRepushInfo();
+      pushJobSetting.kafkaInputBrokerUrl = repushInfo.getKafkaBrokerUrl();
+      pushJobSetting.systemSchemaClusterD2ServiceName = repushInfo.getSystemSchemaClusterD2ServiceName();
+      pushJobSetting.systemSchemaClusterD2ZKHost = repushInfo.getSystemSchemaClusterD2ZkHost();
+    }
+    if (pushJobSetting.isSystemSchemaReaderEnabled
+        && (StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ServiceName)
+            || StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ZKHost))) {
+      throw new VeniceException("D2 service name and zk host must be provided when system schema reader is enabled");
+    }
   }
 
   private ControllerClient getControllerClient(
@@ -3013,6 +3029,12 @@ public class VenicePushJob implements AutoCloseable {
           KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED,
           Boolean.toString(storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()));
 
+      conf.setBoolean(SYSTEM_SCHEMA_READER_ENABLED, pushJobSetting.isSystemSchemaReaderEnabled);
+      if (pushJobSetting.isSystemSchemaReaderEnabled) {
+        conf.set(SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME, pushJobSetting.systemSchemaClusterD2ServiceName);
+        conf.set(SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST, pushJobSetting.systemSchemaClusterD2ZKHost);
+        conf.set(SSL_FACTORY_CLASS_NAME, props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
+      }
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, pushJobSchemaInfo.getValueSchemaId());
       conf.setInt(DERIVED_SCHEMA_ID_PROP, pushJobSchemaInfo.getDerivedSchemaId());

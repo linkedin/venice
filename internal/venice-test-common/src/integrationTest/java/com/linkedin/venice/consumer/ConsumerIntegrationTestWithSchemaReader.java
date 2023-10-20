@@ -1,17 +1,26 @@
 package com.linkedin.venice.consumer;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_FABRIC;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJob.SYSTEM_SCHEMA_READER_ENABLED;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriterOptions;
+import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.writer.VeniceWriter;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.testng.Assert;
+import org.testng.annotations.Test;
 
 
 public class ConsumerIntegrationTestWithSchemaReader extends ConsumerIntegrationTest {
@@ -42,11 +51,35 @@ public class ConsumerIntegrationTestWithSchemaReader extends ConsumerIntegration
   }
 
   @Override
-  VeniceWriterWithNewerProtocol getVeniceWriter(
-      VeniceWriterOptions veniceWriterOptions,
-      VeniceProperties props,
-      PubSubProducerAdapter producerAdapter,
-      Schema overrideProtocolSchema) {
-    return new VeniceWriterWithNewerProtocol(veniceWriterOptions, props, producerAdapter, null);
+  Schema getOverrideProtocolSchema() {
+    return null;
+  }
+
+  @Test
+  public void testKIFRepushForwardCompatibility() throws Exception {
+    // Write a new record to VT with new KME protocol
+    String versionTopic = Version.composeKafkaTopic(store, version);
+    try (VeniceWriter<String, String, byte[]> veniceWriterWithNewerProtocol =
+        getVeniceWriterWithNewerProtocol(getOverrideProtocolSchema(), versionTopic)) {
+      veniceWriterWithNewerProtocol.put("test_key", "test_value", 1).get();
+    }
+
+    // Run the repush job, which will fetch the new KME schema via schema reader to deserialize the new record
+    Properties vpjProps = defaultVPJProps(cluster, "Ignored", store);
+    vpjProps.setProperty(SOURCE_KAFKA, "true");
+    vpjProps.setProperty(KAFKA_INPUT_FABRIC, "dc-0");
+    vpjProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    vpjProps.setProperty(SYSTEM_SCHEMA_READER_ENABLED, "true");
+    TestWriteUtils.runPushJob("Test push job", vpjProps);
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      try {
+        Object value = client.get("test_key").get();
+        Assert.assertNotNull(value, "The key written with the new protocol is not in the store yet.");
+        Assert.assertEquals(value.toString(), "test_value", "The key written with new protocol is not valid.");
+      } catch (ExecutionException e) {
+        Assert.fail("Caught exception: " + e.getMessage());
+      }
+    });
   }
 }
