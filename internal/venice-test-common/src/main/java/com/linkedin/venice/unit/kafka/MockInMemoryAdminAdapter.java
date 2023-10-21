@@ -85,7 +85,7 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
       if (retentionMs.isPresent()) {
         retentions.put(entry.getKey(), retentionMs.get());
       } else {
-        retentions.put(entry.getKey(), PubSubConstants.UNKNOWN_TOPIC_RETENTION);
+        retentions.put(entry.getKey(), PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION);
       }
     }
     return retentions;

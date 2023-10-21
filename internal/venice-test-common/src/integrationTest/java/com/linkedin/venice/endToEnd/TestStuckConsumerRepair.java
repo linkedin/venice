@@ -15,7 +15,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_ENABLE
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
-import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
@@ -39,9 +39,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -164,12 +164,12 @@ public class TestStuckConsumerRepair {
           TopicManager topicManager =
               IntegrationTestPushUtils
                   .getTopicManagerRepo(
-                      DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                      PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
                       100,
                       0l,
                       venice.getPubSubBrokerWrapper(),
                       sharedVenice.getPubSubTopicRepository())
-                  .getTopicManager()) {
+                  .getLocalTopicManager()) {
 
         Cache cacheNothingCache = Mockito.mock(Cache.class);
         Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);

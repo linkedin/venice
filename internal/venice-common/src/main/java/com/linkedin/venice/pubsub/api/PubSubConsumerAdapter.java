@@ -120,9 +120,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * Retrieves the consuming offset lag for a PubSub topic partition. The offset lag represents the difference
    * between the last consumed message offset and the latest available message offset for the partition.
    *
-   * This is a best-effort approach that typically uses metrics-based lag computation to reduce the number
-   * of calls to the PubSub system.
-   *
    * @param pubSubTopicPartition The PubSub topic partition for which to fetch the offset lag.
    * @return The offset lag, which is zero or a positive value if a valid lag was collected by the consumer,
    *         or -1 if the lag cannot be determined or is not applicable.
@@ -132,8 +129,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   }
 
   /**
-   * Retrieves the latest available offset for a PubSub topic partition. This is a best-effort approach
-   * that typically uses metrics-based end offset to reduce the number of calls to the PubSub system.
+   * Retrieves the latest available offset for a PubSub topic partition.
    *
    * @param pubSubTopicPartition The PubSub topic partition for which to fetch the latest offset.
    * @return The latest offset, which is zero or a positive value if an offset was collected by the consumer,

@@ -67,7 +67,7 @@ public class AdminConsumerService extends AbstractVeniceService {
       remoteKafkaServerUrl = Optional.empty();
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
-    this.consumerFactory = admin.getVeniceConsumerFactory();
+    this.consumerFactory = admin.getPubSubConsumerAdapterFactory();
   }
 
   @Override

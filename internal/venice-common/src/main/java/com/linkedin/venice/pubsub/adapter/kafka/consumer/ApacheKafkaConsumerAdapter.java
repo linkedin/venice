@@ -116,16 +116,25 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     topicPartitionList.add(topicPartition);
     kafkaConsumer.assign(topicPartitionList); // add the topic-partition to the subscription
     // Use the last read offset to seek to the next offset to read.
-    long consumptionStartOffset = lastReadOffset == OffsetRecord.LOWEST_OFFSET ? 0 : lastReadOffset + 1;
-    if (lastReadOffset == OffsetRecord.LOWEST_OFFSET) {
+    long consumptionStartOffset = lastReadOffset <= OffsetRecord.LOWEST_OFFSET ? 0 : lastReadOffset + 1;
+    if (lastReadOffset <= OffsetRecord.LOWEST_OFFSET) {
+      if (lastReadOffset < OffsetRecord.LOWEST_OFFSET) {
+        LOGGER.warn(
+            "Last read offset: {} for topic-partition: {} is less than the lowest offset: {}, seeking to beginning."
+                + " This may indicate an off-by-one error.",
+            lastReadOffset,
+            pubSubTopicPartition,
+            OffsetRecord.LOWEST_OFFSET);
+      }
       kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
     } else {
       kafkaConsumer.seek(topicPartition, consumptionStartOffset);
     }
     assignments.put(topicPartition, pubSubTopicPartition);
     LOGGER.info(
-        "Subscribed to topic-partition: {} with consumptionStartOffset: {}",
+        "Subscribed to topic-partition: {} at offset: {} and last read offset was: {}",
         pubSubTopicPartition,
+        consumptionStartOffset,
         lastReadOffset);
   }
 
@@ -230,19 +239,18 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     int attemptCount = 1;
     ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages =
-        new HashMap<>();
+        Collections.emptyMap();
     while (attemptCount <= config.getConsumerPollRetryTimes() && !Thread.currentThread().isInterrupted()) {
       try {
         records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
+        polledPubSubMessages = new HashMap<>(records.partitions().size());
         for (TopicPartition topicPartition: records.partitions()) {
           PubSubTopicPartition pubSubTopicPartition = assignments.get(topicPartition);
           List<ConsumerRecord<byte[], byte[]>> topicPartitionConsumerRecords = records.records(topicPartition);
           List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionPubSubMessages =
               new ArrayList<>(topicPartitionConsumerRecords.size());
           for (ConsumerRecord<byte[], byte[]> consumerRecord: topicPartitionConsumerRecords) {
-            PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
-                deserialize(consumerRecord, pubSubTopicPartition);
-            topicPartitionPubSubMessages.add(pubSubMessage);
+            topicPartitionPubSubMessages.add(deserialize(consumerRecord, pubSubTopicPartition));
           }
           polledPubSubMessages.put(pubSubTopicPartition, topicPartitionPubSubMessages);
         }

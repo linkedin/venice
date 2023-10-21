@@ -298,7 +298,7 @@ public class TestPushJobWithNativeReplication {
             long latestOffsetInVersionTopic = childDataCenter.getRandomController()
                 .getVeniceAdmin()
                 .getTopicManager()
-                .getPartitionLatestOffsetAndRetry(versionTopicPartition, 5);
+                .getLatestOffsetWithRetries(versionTopicPartition, 5);
             // Get the offset metadata of the selected partition from storage node
             StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
             OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);
@@ -358,8 +358,9 @@ public class TestPushJobWithNativeReplication {
                   ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
                 for (int i = 1; i <= recordCount; ++i) {
                   String expected = "test_name_" + i;
-                  String actual = client.get(Integer.toString(i)).get().toString();
-                  Assert.assertEquals(actual, expected);
+                  Object val = client.get(Integer.toString(i)).get();
+                  Assert.assertNotNull(val, "Value should not be null for key " + i);
+                  Assert.assertEquals(val.toString(), expected);
                 }
               }
             });

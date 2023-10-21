@@ -1,37 +1,40 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 
 
 public class PubSubTopicPartitionInfo {
-  private final PubSubTopic pubSubTopic;
-  private final int partition;
+  private final PubSubTopicPartition topicPartition;
   private final Boolean hasInSyncReplica;
 
   public PubSubTopicPartitionInfo(PubSubTopic pubSubTopic, int partition, Boolean hasInSyncReplica) {
-    this.pubSubTopic = pubSubTopic;
-    this.partition = partition;
+    this.topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
     this.hasInSyncReplica = hasInSyncReplica;
   }
 
   public PubSubTopic topic() {
-    return pubSubTopic;
+    return topicPartition.getPubSubTopic();
   }
 
   /**
    * The partition id
    */
   public int partition() {
-    return partition;
+    return topicPartition.getPartitionNumber();
   }
 
   public Boolean hasInSyncReplicas() {
     return hasInSyncReplica;
   }
 
+  public PubSubTopicPartition getTopicPartition() {
+    return topicPartition;
+  }
+
   @Override
   public String toString() {
     return String
-        .format("Partition(topic = %s, partition=%s, hasInSyncReplica = %s)", pubSubTopic, partition, hasInSyncReplica);
+        .format("Partition(topic = %s, partition=%s, hasInSyncReplica = %s)", topic(), partition(), hasInSyncReplica);
   }
 }

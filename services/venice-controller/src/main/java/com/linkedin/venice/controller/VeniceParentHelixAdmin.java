@@ -160,7 +160,6 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -186,6 +185,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
@@ -4052,11 +4052,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getVeniceConsumerFactory()
+   * @see VeniceHelixAdmin#getPubSubConsumerAdapterFactory()
    */
   @Override
-  public PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
-    return getVeniceHelixAdmin().getVeniceConsumerFactory();
+  public PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory() {
+    return getVeniceHelixAdmin().getPubSubConsumerAdapterFactory();
   }
 
   @Override

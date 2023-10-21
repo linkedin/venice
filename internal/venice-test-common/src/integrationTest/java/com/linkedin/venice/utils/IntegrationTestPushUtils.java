@@ -37,11 +37,12 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.manager.TopicManagerContext;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -374,16 +375,18 @@ public class IntegrationTestPushUtils {
     String pubSubBootstrapServers = pubSubBrokerWrapper.getAddress();
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
-    return TopicManagerRepository.builder()
-        .setPubSubProperties(k -> new VeniceProperties(properties))
-        .setPubSubTopicRepository(pubSubTopicRepository)
-        .setLocalKafkaBootstrapServers(pubSubBootstrapServers)
-        .setPubSubConsumerAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory())
-        .setPubSubAdminAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory())
-        .setKafkaOperationTimeoutMs(kafkaOperationTimeoutMs)
-        .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
-        .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
-        .build();
+
+    TopicManagerContext topicManagerContext =
+        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> new VeniceProperties(properties))
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubConsumerAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory())
+            .setPubSubAdminAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory())
+            .setPubSubOperationTimeoutMs(kafkaOperationTimeoutMs)
+            .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
+            .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
+            .build();
+
+    return new TopicManagerRepository(topicManagerContext, pubSubBootstrapServers);
   }
 
   public static VeniceWriterFactory getVeniceWriterFactory(

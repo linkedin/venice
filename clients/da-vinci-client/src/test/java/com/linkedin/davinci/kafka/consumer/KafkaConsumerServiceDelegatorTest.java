@@ -35,7 +35,7 @@ public class KafkaConsumerServiceDelegatorTest {
   @DataProvider(name = "Method-List")
   public static Object[][] methodList() {
     return new Object[][] { { "getConsumerAssignedToVersionTopicPartition" }, { "assignConsumerFor" },
-        { "unSubscribe" }, { "getOffsetLagFor" }, { "getLatestOffsetFor" } };
+        { "unSubscribe" }, { "getOffsetLagBasedOnMetrics" }, { "getLatestOffsetBasedOnMetrics" } };
   }
 
   @Test(dataProvider = "Method-List")

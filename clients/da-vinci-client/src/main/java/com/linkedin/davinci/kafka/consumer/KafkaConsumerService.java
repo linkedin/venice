@@ -435,7 +435,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     aggStats.recordTotalMinPartitionsPerConsumer(minPartitionsPerConsumer);
   }
 
-  public long getOffsetLagFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     return getSomeOffsetFor(
         versionTopic,
         pubSubTopicPartition,
@@ -444,7 +444,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         aggStats::recordTotalOffsetLagIsPresent);
   }
 
-  public long getLatestOffsetFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public long getLatestOffsetBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     return getSomeOffsetFor(
         versionTopic,
         pubSubTopicPartition,

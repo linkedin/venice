@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
@@ -11,8 +10,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MIN_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_GROUP_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_POLL_RECORDS_CONFIG;
-import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
-import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
@@ -45,7 +42,6 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
-import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -70,6 +66,8 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.manager.TopicManagerContext;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
@@ -313,17 +311,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
-    this.topicManagerRepository = TopicManagerRepository.builder()
-        .setPubSubTopicRepository(pubSubTopicRepository)
-        .setMetricsRepository(metricsRepository)
-        .setLocalKafkaBootstrapServers(serverConfig.getKafkaBootstrapServers())
-        .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
-        .setTopicDeletionStatusPollIntervalMs(DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS)
-        .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
-        .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
-        .setPubSubProperties(this::getPubSubSSLPropertiesFromServerConfig)
-        .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
-        .build();
+    TopicManagerContext topicManagerContext =
+        new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
+            .setMetricsRepository(metricsRepository)
+            .setTopicOffsetCheckIntervalMs(serverConfig.getTopicOffsetCheckIntervalMs())
+            .setPubSubPropertiesSupplier(this::getPubSubSSLPropertiesFromServerConfig)
+            .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
+            .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
+            .setTopicMetadataFetcherThreadPoolSize(serverConfig.getTopicManagerMetadataFetcherThreadPoolSize())
+            .setTopicMetadataFetcherConsumerPoolSize(serverConfig.getTopicManagerMetadataFetcherConsumerPoolSize())
+            .build();
+    this.topicManagerRepository =
+        new TopicManagerRepository(topicManagerContext, serverConfig.getKafkaBootstrapServers());
 
     VeniceNotifier notifier = new LogNotifier();
     this.leaderFollowerNotifiers.add(notifier);
@@ -334,7 +333,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     if (zkSharedSchemaRepository.isPresent()) {
       this.metaStoreWriter = new MetaStoreWriter(
-          topicManagerRepository.getTopicManager(),
+          topicManagerRepository.getLocalTopicManager(),
           veniceWriterFactoryForMetaStoreWriter,
           zkSharedSchemaRepository.get(),
           pubSubTopicRepository,

@@ -32,7 +32,7 @@ public class TestDelayedRebalance {
   long delayRebalanceMS = testTimeOutMS * 2;
   int minActiveReplica = replicaFactor - 1;
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setUp() {
     // Start a cluster with enabling delayed rebalance.
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
@@ -46,13 +46,13 @@ public class TestDelayedRebalance {
     cluster = ServiceFactory.getVeniceCluster(options);
   }
 
-  @AfterMethod
+  @AfterMethod(alwaysRun = true)
   public void cleanUp() {
     cluster.close();
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testFailOneServerWithDelayedRebalance() throws InterruptedException {
+  public void testFailOneServerWithDelayedRebalance() {
     // Test the case that fail one server with enable delayed rebalance. Helix will not move the partition to other
     // server.
     // After restart the failed server, replica would be recovered correctly.
@@ -112,7 +112,7 @@ public class TestDelayedRebalance {
             .getHelixStateByInstanceId(Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort)));
   }
 
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testModifyDelayedRebalanceTime() {
     // Test the case that set the shorter delayed time for a cluster, to check whether helix will do the rebalance
     // earlier.
@@ -140,7 +140,7 @@ public class TestDelayedRebalance {
     });
   }
 
-  @Test()
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testDisableRebalanceTemporarily() throws InterruptedException {
     // Test the cases that fail one server after disabling delayed rebalance of the cluster. Helix will move the
     // partition immediately.
@@ -167,7 +167,7 @@ public class TestDelayedRebalance {
     });
   }
 
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testEnableDelayedRebalance() throws InterruptedException {
     String topicName = createVersionAndPushData();
     // disable delayed rebalance

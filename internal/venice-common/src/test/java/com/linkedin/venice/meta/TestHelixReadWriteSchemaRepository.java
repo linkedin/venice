@@ -6,9 +6,6 @@ import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.mockito.Mockito;
@@ -37,10 +34,8 @@ public class TestHelixReadWriteSchemaRepository {
     String schemaStr1 =
         "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company1\",\"type\":\"string\"}]}";
     Schema schema = Schema.parse(schemaStr);
-    Map<Integer, List<DerivedSchemaEntry>> derivedSchemaEntryMap = new HashMap<>();
     DerivedSchemaEntry entry = new DerivedSchemaEntry(1, 1, schema);
     Mockito.doReturn(true).when(storeRepository).hasStore(Mockito.anyString());
-    derivedSchemaEntryMap.put(1, Arrays.asList(entry));
     Mockito.doReturn(Arrays.asList(entry)).when(accessor).getAllDerivedSchemas(Mockito.eq(storeName));
     GeneratedSchemaID derivedSchemaId = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
     Assert.assertEquals(derivedSchemaId.getGeneratedSchemaVersion(), 1);

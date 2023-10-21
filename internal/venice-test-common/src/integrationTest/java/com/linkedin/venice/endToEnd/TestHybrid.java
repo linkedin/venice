@@ -14,9 +14,9 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
-import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -59,7 +59,6 @@ import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
@@ -83,6 +82,7 @@ import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.producer.online.OnlineProducerFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
@@ -98,6 +98,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -199,12 +200,12 @@ public class TestHybrid {
         TopicManager topicManager =
             IntegrationTestPushUtils
                 .getTopicManagerRepo(
-                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
                     100,
                     0l,
                     venice.getPubSubBrokerWrapper(),
                     venice.getPubSubTopicRepository())
-                .getTopicManager()) {
+                .getLocalTopicManager()) {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
       final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
@@ -256,7 +257,7 @@ public class TestHybrid {
       assertEquals(
           topicManager.getTopicRetention(
               sharedVenice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))),
-          TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
+          StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
           "RT retention not configured properly");
       // Make sure RT retention is updated when the rewind time is updated
       long newStreamingRewindSeconds = 600;
@@ -266,7 +267,7 @@ public class TestHybrid {
       assertEquals(
           topicManager.getTopicRetention(
               sharedVenice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))),
-          TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
+          StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
           "RT retention not updated properly");
     }
   }
@@ -332,12 +333,12 @@ public class TestHybrid {
           TopicManager topicManager =
               IntegrationTestPushUtils
                   .getTopicManagerRepo(
-                      DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                      PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
                       100,
                       0l,
                       venice.getPubSubBrokerWrapper(),
                       sharedVenice.getPubSubTopicRepository())
-                  .getTopicManager()) {
+                  .getLocalTopicManager()) {
 
         Cache cacheNothingCache = Mockito.mock(Cache.class);
         Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
