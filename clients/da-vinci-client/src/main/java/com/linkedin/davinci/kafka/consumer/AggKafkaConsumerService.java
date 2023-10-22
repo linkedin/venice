@@ -108,7 +108,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    */
   private KafkaConsumerService getKafkaConsumerService(final String kafkaURL) {
     KafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.get(kafkaURL);
-    if (consumerService == null) {
+    if (consumerService == null && kafkaClusterUrlResolver != null) {
       consumerService = kafkaServerToConsumerServiceMap.get(kafkaClusterUrlResolver.apply(kafkaURL));
     }
     return consumerService;
@@ -128,10 +128,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     if (kafkaUrl == null || kafkaUrl.isEmpty()) {
       throw new IllegalArgumentException("Kafka URL must be set in the consumer properties config. Got: " + kafkaUrl);
     }
-    String resolvedKafkaUrl = kafkaClusterUrlResolver.apply(kafkaUrl);
-    if (resolvedKafkaUrl == null || resolvedKafkaUrl.isEmpty()) {
-      resolvedKafkaUrl = kafkaUrl;
-    }
+    String resolvedKafkaUrl = kafkaClusterUrlResolver == null ? kafkaUrl : kafkaClusterUrlResolver.apply(kafkaUrl);
     final KafkaConsumerService alreadyCreatedConsumerService = getKafkaConsumerService(resolvedKafkaUrl);
     if (alreadyCreatedConsumerService != null) {
       LOGGER.warn("KafkaConsumerService has already been created for Kafka cluster with URL: {}", resolvedKafkaUrl);
