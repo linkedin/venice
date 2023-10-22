@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -53,6 +54,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
   private final PubSubMessageDeserializer pubSubDeserializer;
   private final TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier;
+  private final Function<String, String> kafkaClusterUrlResolver;
 
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
@@ -80,6 +82,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.isKafkaConsumerOffsetCollectionEnabled = serverConfig.isKafkaConsumerOffsetCollectionEnabled();
     this.pubSubDeserializer = pubSubDeserializer;
     this.sslPropertiesSupplier = sslPropertiesSupplier;
+    this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -104,7 +107,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    *         or null if there isn't any.
    */
   private KafkaConsumerService getKafkaConsumerService(final String kafkaURL) {
-    return kafkaServerToConsumerServiceMap.get(kafkaURL);
+    KafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.get(kafkaURL);
+    if (consumerService == null) {
+      consumerService = kafkaServerToConsumerServiceMap.get(kafkaClusterUrlResolver.apply(kafkaURL));
+    }
+    return consumerService;
   }
 
   /**
@@ -118,20 +125,21 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     String kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     Properties properties = sslPropertiesSupplier.get(kafkaUrl).toProperties();
     consumerProperties.putAll(properties);
-    // sslPropertiesSupplier also does bootstrap address resolution, so we need to update the kafkaUrl to ensure
-    // that we are using the correct kafkaUrl
-    kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     if (kafkaUrl == null || kafkaUrl.isEmpty()) {
       throw new IllegalArgumentException("Kafka URL must be set in the consumer properties config. Got: " + kafkaUrl);
     }
-    final KafkaConsumerService alreadyCreatedConsumerService = kafkaServerToConsumerServiceMap.get(kafkaUrl);
+    String resolvedKafkaUrl = kafkaClusterUrlResolver.apply(kafkaUrl);
+    if (resolvedKafkaUrl == null || resolvedKafkaUrl.isEmpty()) {
+      resolvedKafkaUrl = kafkaUrl;
+    }
+    final KafkaConsumerService alreadyCreatedConsumerService = getKafkaConsumerService(resolvedKafkaUrl);
     if (alreadyCreatedConsumerService != null) {
-      LOGGER.warn("KafkaConsumerService has already been created for Kafka cluster with URL: {}", kafkaUrl);
+      LOGGER.warn("KafkaConsumerService has already been created for Kafka cluster with URL: {}", resolvedKafkaUrl);
       return alreadyCreatedConsumerService;
     }
 
     KafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.computeIfAbsent(
-        kafkaUrl,
+        resolvedKafkaUrl,
         url -> sharedConsumerAssignmentStrategy.constructor.construct(
             consumerFactory,
             consumerProperties,
