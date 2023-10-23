@@ -1062,10 +1062,11 @@ public class VenicePushJob implements AutoCloseable {
             // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
             String rmdSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/rmd_" + System.currentTimeMillis();
             String valueSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/value_" + System.currentTimeMillis();
-            try (HDFSSchemaSource rmdSchemaSource =
+            try (HDFSSchemaSource schemaSource =
                 new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
-              rmdSchemaSource.saveSchemasOnDisk(controllerClient);
-              pushJobSetting.rmdSchemaDir = rmdSchemaSource.getPath();
+              schemaSource.saveSchemasOnDisk(controllerClient);
+              pushJobSetting.rmdSchemaDir = schemaSource.getRmdSchemaPath();
+              pushJobSetting.valueSchemaDir = schemaSource.getValueSchemaPath();
             }
           }
         }

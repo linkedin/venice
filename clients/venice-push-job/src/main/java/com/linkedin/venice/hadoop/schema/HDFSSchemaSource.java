@@ -61,8 +61,12 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
     this(valueSchemaDir, rmdSchemaDir, null);
   }
 
-  public String getPath() {
+  public String getRmdSchemaPath() {
     return rmdSchemaDir.toString();
+  }
+
+  public String getValueSchemaPath() {
+    return valueSchemaDir.toString();
   }
 
   /**
