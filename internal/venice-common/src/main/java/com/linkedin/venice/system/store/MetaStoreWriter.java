@@ -41,6 +41,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -77,6 +78,7 @@ public class MetaStoreWriter implements Closeable {
 
   private final PubSubTopicRepository pubSubTopicRepository;
   private final long closeTimeoutMs;
+  private final int numOfConcurrentVwCloseOps;
 
   public MetaStoreWriter(
       TopicManager topicManager,
@@ -96,6 +98,7 @@ public class MetaStoreWriter implements Closeable {
 
     // TODO: make this configurable
     this.closeTimeoutMs = 300000; // 5 minutes
+    this.numOfConcurrentVwCloseOps = -1; // no limit
   }
 
   /**
@@ -507,8 +510,21 @@ public class MetaStoreWriter implements Closeable {
     List<CompletableFuture<VeniceResourceCloseResult>> closeFutures = new ArrayList<>(metaStoreWriterMap.size());
     List<VeniceWriter> writersToClose = new ArrayList<>(metaStoreWriterMap.values());
     metaStoreWriterMap.clear();
+
+    // permit for the VeniceWriters to be closed asynchronously
+    int permits = numOfConcurrentVwCloseOps == -1 ? writersToClose.size() : numOfConcurrentVwCloseOps;
+    Semaphore semaphore = new Semaphore(permits);
+
     for (VeniceWriter veniceWriter: writersToClose) {
-      closeFutures.add(veniceWriter.closeAsync(true));
+      try {
+        semaphore.acquire();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        LOGGER.warn("Interrupted while acquiring semaphore", e);
+      }
+      CompletableFuture<VeniceResourceCloseResult> closeFuture = veniceWriter.closeAsync(true);
+      closeFuture.whenComplete((result, throwable) -> semaphore.release());
+      closeFutures.add(closeFuture);
     }
 
     // wait for all the VeniceWriters to be closed with a timeout
