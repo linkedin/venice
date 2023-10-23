@@ -63,12 +63,12 @@ import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
@@ -637,9 +637,9 @@ public class VeniceServer {
       }
       long elapsedTimeInMs = System.currentTimeMillis() - startTimeMS;
       LOGGER.info(
-          "Shutdown completed in {} ms ({} minutes) ",
+          "Shutdown completed in {} ms (or {} minutes) ",
           elapsedTimeInMs,
-          Duration.ofMillis(elapsedTimeInMs).toMinutes());
+          TimeUnit.MILLISECONDS.toMinutes(elapsedTimeInMs));
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }

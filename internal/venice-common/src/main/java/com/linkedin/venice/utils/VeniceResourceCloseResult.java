@@ -1,7 +1,7 @@
-package com.linkedin.venice.writer;
+package com.linkedin.venice.utils;
 
 public enum VeniceResourceCloseResult {
-  SUCCESS(0), FAILURE(1), TIMEOUT(2), ALREADY_CLOSED(3);
+  SUCCESS(0), ALREADY_CLOSED(1), FAILED(2);
 
   private final int statusCode;
 

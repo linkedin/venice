@@ -23,8 +23,8 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
+import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.writer.VeniceResourceCloseResult;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -499,32 +500,45 @@ public class MetaStoreWriter implements Closeable {
   }
 
   @Override
-  public void close() throws IOException {
+  public synchronized void close() throws IOException {
     long startTime = System.currentTimeMillis();
     LOGGER.info("Closing MetaStoreWriter - numOfVeniceWriters: {}", metaStoreWriterMap.size());
     // iterate through the map and close all the VeniceWriters
     List<CompletableFuture<VeniceResourceCloseResult>> closeFutures = new ArrayList<>(metaStoreWriterMap.size());
-
-    for (Map.Entry<String, VeniceWriter> entry: metaStoreWriterMap.entrySet()) {
-      closeFutures.add(entry.getValue().closeAsync(true));
+    List<VeniceWriter> writersToClose = new ArrayList<>(metaStoreWriterMap.values());
+    metaStoreWriterMap.clear();
+    for (VeniceWriter veniceWriter: writersToClose) {
+      closeFutures.add(veniceWriter.closeAsync(true));
     }
+
+    // wait for all the VeniceWriters to be closed with a timeout
     CompletableFuture<Void> combinedFuture = CompletableFuture.allOf(closeFutures.toArray(new CompletableFuture[0]));
     try {
       combinedFuture.get(closeTimeoutMs, TimeUnit.MILLISECONDS);
     } catch (Exception e) {
       LOGGER.warn("Caught exception while closing VeniceWriters", e);
     }
-    // count unclosed VeniceWriters
-    int unclosedVeniceWriterCount = 0;
+
+    // collect the close results
+    EnumMap<VeniceResourceCloseResult, Integer> closeResultMap = new EnumMap<>(VeniceResourceCloseResult.class);
     for (CompletableFuture<VeniceResourceCloseResult> future: closeFutures) {
-      if (!future.isDone()) {
-        unclosedVeniceWriterCount++;
+      if (future.isDone()) {
+        try {
+          VeniceResourceCloseResult closeResult = future.get(5, TimeUnit.MILLISECONDS);
+          closeResultMap.compute(closeResult, (key, value) -> value == null ? 1 : value + 1);
+        } catch (Exception e) {
+          LOGGER.warn("Caught exception while getting VeniceResourceCloseResult", e);
+          closeResultMap.compute(VeniceResourceCloseResult.FAILED, (key, value) -> value == null ? 1 : value + 1);
+        }
+      } else {
+        closeResultMap.compute(VeniceResourceCloseResult.FAILED, (key, value) -> value == null ? 1 : value + 1);
       }
     }
 
     LOGGER.info(
-        "Closed MetaStoreWriter in {} ms - numOfUnclosedVeniceWriters: {}",
+        "Closed MetaStoreWriter in {} ms - numbOfVeniceWriters: {} - closeResults: {}",
         System.currentTimeMillis() - startTime,
-        unclosedVeniceWriterCount);
+        writersToClose.size(),
+        closeResultMap);
   }
 }

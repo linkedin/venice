@@ -52,6 +52,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -327,9 +328,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     // Create a thread pool which can have max 2 threads.
     // Except during VW start and close we expect it to have zero threads to avoid unnecessary resource usage.
     this.threadPoolExecutor = new ThreadPoolExecutor(
-        2,
-        2,
-        30,
+        1,
+        1,
+        10,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("VW-" + topicName));
@@ -399,6 +400,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
         VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
       }
+      threadPoolExecutor.shutdown();
       isClosed = true;
       logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
     }
@@ -433,6 +435,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
           VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
         }
+        threadPoolExecutor.shutdown();
         isClosed = true;
         logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
         return VeniceResourceCloseResult.SUCCESS;
