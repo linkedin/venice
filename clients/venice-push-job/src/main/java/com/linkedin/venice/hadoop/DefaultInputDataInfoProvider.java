@@ -2,7 +2,6 @@ package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.HADOOP_PREFIX;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdDictTrainer;
@@ -10,6 +9,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
+import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
@@ -327,16 +327,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
   private Configuration getConfiguration() {
     Configuration conf = new Configuration();
-    for (String key: props.keySet()) {
-      if (key.startsWith(HADOOP_PREFIX)) {
-        String hadoopKey = key.substring(HADOOP_PREFIX.length());
-        if (conf.get(hadoopKey) != null) {
-          LOGGER.warn("Hadoop configuration {} is overwritten by {}", hadoopKey, key);
-        }
-        conf.set(hadoopKey, props.getString(key));
-      }
-    }
-    LOGGER.info("Hadoop configuration: {} {}", conf.get("fs.s3.awsAccessKeyId"), conf.get("fs.s3.awsSecretAccessKey"));
+    HadoopUtils.setHadoopConfigurationFromProperties(conf, props);
     return conf;
   }
 

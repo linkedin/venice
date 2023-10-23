@@ -347,7 +347,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String DERIVED_SCHEMA_ID_PROP = "derived.schema.id";
   public static final String TOPIC_PROP = "venice.kafka.topic";
-  protected static final String HADOOP_PREFIX = "hadoop-conf.";
+  public static final String HADOOP_PREFIX = "hadoop-conf.";
   protected static final String HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX = "hadoop-dict-build-conf.";
   public static final String SSL_PREFIX = "ssl";
 
@@ -948,6 +948,7 @@ public class VenicePushJob implements AutoCloseable {
           "The store {} is discovered in Venice cluster {}",
           pushJobSetting.storeName,
           pushJobSetting.clusterName);
+      HadoopUtils.setHadoopConfigurationFromProperties(jobConf, props);
 
       if (pushJobSetting.isSourceKafka) {
         initKIFRepushDetails();
@@ -3079,10 +3080,6 @@ public class VenicePushJob implements AutoCloseable {
 
     for (String key: props.keySet()) {
       String lowerCase = key.toLowerCase();
-      if (lowerCase.startsWith(HADOOP_PREFIX)) {
-        String overrideKey = key.substring(HADOOP_PREFIX.length());
-        conf.set(overrideKey, props.getString(key));
-      }
       for (String prefix: passThroughPrefixList) {
         if (lowerCase.startsWith(prefix)) {
           conf.set(key, props.getString(key));

@@ -1,6 +1,8 @@
 package com.linkedin.venice.hadoop.utils;
 
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.util.Properties;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -39,5 +41,17 @@ public class TestHadoopUtils {
 
     // validate the path
     Assert.assertFalse(fs.exists(p));
+  }
+
+  @Test
+  public void testSetHadoopConfigurationFromProperties() {
+    Configuration conf = new Configuration();
+    Properties innerProps = new Properties();
+    innerProps.setProperty("non.valid.key", "shouldn't exist");
+    innerProps.setProperty("hadoop-conf.fs.s3a.access.key", "s3-key");
+    VeniceProperties props = new VeniceProperties(innerProps);
+    HadoopUtils.setHadoopConfigurationFromProperties(conf, props);
+    Assert.assertEquals(conf.get("fs.s3a.access.key"), "s3-key");
+    Assert.assertNull(conf.get("non.valid.key"));
   }
 }
