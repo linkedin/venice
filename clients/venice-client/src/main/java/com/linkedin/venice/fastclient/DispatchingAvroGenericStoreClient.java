@@ -467,8 +467,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       ChainedCompletableFuture<Integer, Integer> routeRequestFuture =
           metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, 0, transportClientFutureForRoute);
       requestContext.routeRequestMap.put(route, routeRequestFuture.getOriginalFuture());
-      int finalRouteIndex = routeIndex;
-      requestCompletionFutures[finalRouteIndex] = routeRequestFuture.getResultFuture();
+      requestCompletionFutures[routeIndex] = routeRequestFuture.getResultFuture();
 
       transportClientFutureForRoute.whenComplete((transportClientResponse, throwable) -> {
         requestContext.recordRequestSubmissionToResponseHandlingTime(route);

@@ -80,7 +80,8 @@ public class ClientFactory {
         ? new DispatchingVsonStoreClient<>(storeMetadata, clientConfig)
         : new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
     StatsAvroGenericStoreClient<K, V> statsStoreClient;
-    if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()) {
+    if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
+        || clientConfig.isLongTailRetryEnabledForCompute()) {
       statsStoreClient = new StatsAvroGenericStoreClient<>(
           new RetriableAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig),
           clientConfig);
@@ -103,7 +104,8 @@ public class ClientFactory {
         new DispatchingAvroSpecificStoreClient<>(storeMetadata, clientConfig);
     StatsAvroSpecificStoreClient<K, V> statsStoreClient;
 
-    if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()) {
+    if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
+        || clientConfig.isLongTailRetryEnabledForCompute()) {
       statsStoreClient = new StatsAvroSpecificStoreClient<>(
           new RetriableAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig),
           clientConfig);

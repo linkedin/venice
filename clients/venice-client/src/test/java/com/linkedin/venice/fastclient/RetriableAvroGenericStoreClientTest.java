@@ -20,10 +20,10 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
+import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -453,22 +453,7 @@ public class RetriableAvroGenericStoreClientTest {
    * @param retryWin retry request wins
    */
   private void validateMetrics(RequestType requestType, boolean errorRetry, boolean longTailRetry, boolean retryWin) {
-    String metricsPrefix = "." + STORE_NAME;
-    switch (requestType) {
-      case MULTI_GET:
-        metricsPrefix += "--" + RequestType.MULTI_GET_STREAMING.getMetricPrefix();
-        break;
-      case COMPUTE:
-        metricsPrefix += "--" + RequestType.COMPUTE_STREAMING.getMetricPrefix();
-        break;
-      case MULTI_GET_STREAMING:
-      case COMPUTE_STREAMING:
-      case SINGLE_GET:
-        metricsPrefix += "--" + requestType.getMetricPrefix();
-        break;
-      default:
-        throw new VeniceUnsupportedOperationException("Request type: " + requestType);
-    }
+    String metricsPrefix = ClientTestUtils.getMetricPrefix(STORE_NAME, requestType, true);
 
     boolean singleGet = requestType == RequestType.SINGLE_GET;
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;

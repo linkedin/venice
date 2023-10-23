@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES_SMALL;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
@@ -8,6 +9,7 @@ import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import java.nio.ByteBuffer;
@@ -21,29 +23,33 @@ import org.testng.annotations.DataProvider;
 
 
 public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest {
+  /**
+   * We override this data provider since we don't need to test the full suite of permutations.
+   */
   @Override
-  @DataProvider(name = "FastClient-Six-Boolean-A-Number-Store-Metadata-Fetch-Mode")
-  public Object[][] sixBooleanANumberStoreMetadataFetchMode() {
+  @DataProvider(name = "FastClient-Test-Permutations")
+  public Object[][] fastClientTestPermutations() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean speculativeQueryEnabled = (boolean) permutation[1];
       if (speculativeQueryEnabled) {
         return false;
       }
-      boolean batchGet = (boolean) permutation[2];
-      boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
-      boolean retryEnabled = (boolean) permutation[5];
+      boolean useStreamingBatchGetAsDefault = (boolean) permutation[2];
+      boolean retryEnabled = (boolean) permutation[4];
       if (retryEnabled) {
         return false;
       }
-      int batchGetKeySize = (int) permutation[6];
+      int batchGetKeySize = (int) permutation[5];
+      RequestType requestType = (RequestType) permutation[6];
       StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[7];
-      if (!batchGet) {
+      if (requestType != RequestType.MULTI_GET && requestType != RequestType.MULTI_GET_STREAMING) {
         if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
           // to avoid duplicate tests
           return false;
         }
       }
+
       if (storeMetadataFetchMode != StoreMetadataFetchMode.SERVER_BASED_METADATA) {
         return false;
       }
@@ -51,41 +57,12 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
     },
         DataProviderUtils.BOOLEAN_FALSE, // dualRead
         DataProviderUtils.BOOLEAN_FALSE, // speculativeQueryEnabled
-        DataProviderUtils.BOOLEAN, // batchGet
         DataProviderUtils.BOOLEAN_TRUE, // useStreamingBatchGetAsDefault
         DataProviderUtils.BOOLEAN, // enableGrpc
         DataProviderUtils.BOOLEAN, // retryEnabled
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
+        REQUEST_TYPES_SMALL, // requestType
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
-  }
-
-  @Override
-  @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
-  public Object[][] threeBooleanAndANumber() {
-    return DataProviderUtils.allPermutationGenerator((permutation) -> {
-      boolean batchGet = (boolean) permutation[0];
-      int batchGetKeySize = (int) permutation[3];
-      if (!batchGet) {
-        if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
-          // these parameters are related only to batchGet, so just allowing 1 set
-          // to avoid duplicate tests
-          return false;
-        }
-      }
-      return true;
-    },
-        DataProviderUtils.BOOLEAN, // batchGet
-        DataProviderUtils.BOOLEAN_FALSE, // dualRead
-        DataProviderUtils.BOOLEAN_FALSE, // speculativeQueryEnabled
-        BATCH_GET_KEY_SIZE.toArray());
-  }
-
-  /** the below tests are used for long tail retry cases which are flaky,
-   * so disabling them for this class */
-  @Override
-  @DataProvider(name = "FastClient-One-Boolean")
-  public Object[][] oneBoolean() {
-    return DataProviderUtils.allPermutationGenerator((permutation) -> false, DataProviderUtils.BOOLEAN);
   }
 
   @Override

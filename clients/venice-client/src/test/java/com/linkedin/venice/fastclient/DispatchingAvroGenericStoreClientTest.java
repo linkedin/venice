@@ -28,10 +28,10 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
-import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
+import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
@@ -437,28 +437,7 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean noAvailableReplicas,
       int numKeys,
       double numBlockedReplicas) {
-
-    String metricPrefix = "." + STORE_NAME;
-    switch (requestType) {
-      case MULTI_GET:
-        if (useStreamingBatchGetAsDefault) {
-          metricPrefix += "--" + RequestType.MULTI_GET_STREAMING.getMetricPrefix();
-        } else {
-          metricPrefix += "--";
-        }
-        break;
-      case COMPUTE:
-        metricPrefix += "--" + RequestType.COMPUTE_STREAMING.getMetricPrefix();
-        break;
-      case MULTI_GET_STREAMING:
-      case COMPUTE_STREAMING:
-      case SINGLE_GET:
-        metricPrefix += "--" + requestType.getMetricPrefix();
-        break;
-      default:
-        throw new VeniceUnsupportedOperationException("Request type: " + requestType);
-    }
-
+    String metricPrefix = ClientTestUtils.getMetricPrefix(STORE_NAME, requestType, useStreamingBatchGetAsDefault);
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     boolean computeRequest = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
 
