@@ -90,7 +90,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     Object rmdTimestampObject = rmdRecord.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(rmdTimestampObject);
     if (rmdTimestampType.equals(RmdTimestampType.VALUE_LEVEL_TIMESTAMP)) {
-      return (long) rmdTimestampObject > filterTimestamp;
+      return (long) rmdTimestampObject < filterTimestamp;
     }
     RecordDeserializer<GenericRecord> valueDeserializer =
         valueDeserializerCache.computeIfAbsent(valueSchemaId, this::generateValueDeserializer);
@@ -98,11 +98,11 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     UpdateResultStatus updateResultStatus = mergeRecordHelper.deleteRecord(valueRecord, rmdRecord, filterTimestamp, 0);
     if (updateResultStatus.equals(UpdateResultStatus.COMPLETELY_UPDATED)) {
       // This means the record is fully stale, we should drop it.
-      return false;
+      return true;
     }
     if (updateResultStatus.equals(UpdateResultStatus.NOT_UPDATED_AT_ALL)) {
-      // This means the whole record is newer than TTL filter threshold timestamp and we should keep it.
-      return true;
+      // This means the whole record is newer than TTL filter threshold timestamp, and we should keep it.
+      return false;
     }
     // Part of the data has been wiped out by DELETE operation, and we should update the input's value and RMD payload.
     RecordSerializer<GenericRecord> valueSerializer =
@@ -111,7 +111,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
         rmdSerializerCache.computeIfAbsent(rmdVersionId, this::generateRmdSerializer);
     updateValuePayload(value, valueSerializer.serialize(valueRecord));
     updateRmdPayload(value, ByteBuffer.wrap(rmdSerializer.serialize(rmdRecord)));
-    return true;
+    return false;
   }
 
   RecordDeserializer<GenericRecord> generateRmdDeserializer(RmdVersionId rmdVersionId) {
