@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -108,5 +109,23 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
       }
     }
     assertTrue(readQuotaRejected);
+    // Restart the servers and quota should still be working
+    for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
+      veniceCluster.stopAndRestartVeniceServer(veniceServerWrapper.getPort());
+    }
+    for (int j = 0; j < 5; j++) {
+      for (int i = 0; i < recordCnt; i++) {
+        String key = keyPrefix + i;
+        GenericRecord value = genericFastClient.get(key).get();
+        assertEquals((int) value.get(VALUE_FIELD_NAME), i);
+      }
+    }
+    quotaRequestedSum = 0;
+    for (MetricsRepository serverMetric: serverMetrics) {
+      quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
+      assertEquals(serverMetric.getMetric(readQuotaAllowedUnintentionally).value(), 0d);
+      assertTrue(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining).value() > 0d);
+    }
+    assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
   }
 }

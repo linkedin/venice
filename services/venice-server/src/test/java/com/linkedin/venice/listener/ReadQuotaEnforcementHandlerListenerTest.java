@@ -5,7 +5,6 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
@@ -23,7 +22,6 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -204,13 +202,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     Partition partition = mock(Partition.class);
     doReturn(0).when(partition).getId();
     doReturn(Collections.singletonList(partition)).when(partitionAssignment).getAllPartitions();
-
-    List<ReplicaState> replicaStates = new ArrayList<>();
-    ReplicaState thisReplicaState = mock(ReplicaState.class);
-    doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
-    doReturn(true).when(thisReplicaState).isReadyToServe();
-    replicaStates.add(thisReplicaState);
-    when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
+    doReturn(Collections.singletonList(thisInstance)).when(partition).getReadyToServeInstances();
 
     return partitionAssignment;
   }

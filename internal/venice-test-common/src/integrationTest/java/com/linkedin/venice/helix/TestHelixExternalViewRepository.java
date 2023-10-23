@@ -207,6 +207,11 @@ public class TestHelixExternalViewRepository {
       }
 
       @Override
+      public void onCustomizedViewAdded(PartitionAssignment partitionAssignment) {
+        isNoticed[0] = true;
+      }
+
+      @Override
       public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
         isNoticed[0] = true;
       }

@@ -251,7 +251,6 @@
       <Class name="com.linkedin.venice.client.store.schemas.TestValueRecordWithMoreFields"/>
       <Class name="com.linkedin.venice.fastclient.schema.TestValueSchema"/>
       <Class name="com.linkedin.venice.utils.TestMockTime"/>
-      <Class name="com.linkedin.venice.serializer.ArrayBasedPrimitiveIntegerSet"/>
       <Class name="com.linkedin.davinci.ingestion.IsolatedIngestionBackend"/>
     </Or>
   </Match>
