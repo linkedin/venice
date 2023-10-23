@@ -73,7 +73,6 @@ ext.libraries = [
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
-    hadoopAws: "org.apache.hadoop:hadoop-aws:${hadoopVersion}",
     helix: 'org.apache.helix:helix-core:1.1.0',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.2.1',

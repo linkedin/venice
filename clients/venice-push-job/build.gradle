@@ -46,7 +46,6 @@ dependencies {
   runtimeOnly libraries.commonsLang
   runtimeOnly libraries.httpCore
   runtimeOnly libraries.httpClient
-  runtimeOnly libraries.hadoopAws
 }
 
 apply from: "$rootDir/gradle/helper/publishing.gradle"
