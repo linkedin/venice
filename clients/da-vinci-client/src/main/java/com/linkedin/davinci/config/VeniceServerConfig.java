@@ -31,6 +31,8 @@ import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_URL;
 import static com.linkedin.venice.ConfigKeys.LOCAL_D2_ZK_HOST;
 import static com.linkedin.venice.ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
+import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
+import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
@@ -437,6 +439,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int ingestionTaskMaxIdleCount;
 
+  private final long metaStoreWriterCloseTimeoutInMS;
+  private final int metaStoreWriterCloseConcurrency;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -719,6 +724,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
     routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "CN=venice-router");
     ingestionTaskMaxIdleCount = serverProperties.getInt(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 10000);
+    metaStoreWriterCloseTimeoutInMS = serverProperties.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
+    metaStoreWriterCloseConcurrency = serverProperties.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
   }
 
   long extractIngestionMemoryLimit(
@@ -1259,5 +1266,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isKMERegistrationFromMessageHeaderEnabled() {
     return isKMERegistrationFromMessageHeaderEnabled;
+  }
+
+  public long getMetaStoreWriterCloseTimeoutInMS() {
+    return metaStoreWriterCloseTimeoutInMS;
+  }
+
+  public int getMetaStoreWriterCloseConcurrency() {
+    return metaStoreWriterCloseConcurrency;
   }
 }

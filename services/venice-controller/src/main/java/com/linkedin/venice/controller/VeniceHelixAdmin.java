@@ -562,7 +562,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         topicManagerRepository.getTopicManager(),
         veniceWriterFactory,
         zkSharedSchemaRepository,
-        pubSubTopicRepository);
+        pubSubTopicRepository,
+        commonConfig.getMetaStoreWriterCloseTimeoutInMS(),
+        commonConfig.getMetaStoreWriterCloseConcurrency());
     metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();

@@ -23,7 +23,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
-import com.linkedin.venice.utils.Timer;
+import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -36,9 +36,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -73,22 +77,46 @@ public class MetaStoreWriter implements Closeable {
   private int derivedComputeSchemaId = -1;
 
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final long closeTimeoutMs;
+  private final int numOfConcurrentVwCloseOps;
 
   public MetaStoreWriter(
       TopicManager topicManager,
       VeniceWriterFactory writerFactory,
       HelixReadOnlyZKSharedSchemaRepository schemaRepo,
-      PubSubTopicRepository pubSubTopicRepository) {
-    this.topicManager = topicManager;
-    this.writerFactory = writerFactory;
+      PubSubTopicRepository pubSubTopicRepository,
+      long closeTimeoutMs,
+      int numOfConcurrentVwCloseOps) {
     /**
      * TODO: get the write compute schema from the constructor so that this class does not use {@link WriteComputeSchemaConverter}
      */
-    this.derivedComputeSchema = WriteComputeSchemaConverter.getInstance()
-        .convertFromValueRecordSchema(
-            AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
+    this(
+        topicManager,
+        writerFactory,
+        schemaRepo,
+        WriteComputeSchemaConverter.getInstance()
+            .convertFromValueRecordSchema(
+                AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()),
+        pubSubTopicRepository,
+        closeTimeoutMs,
+        numOfConcurrentVwCloseOps);
+  }
+
+  MetaStoreWriter(
+      TopicManager topicManager,
+      VeniceWriterFactory writerFactory,
+      HelixReadOnlyZKSharedSchemaRepository schemaRepo,
+      Schema derivedComputeSchema,
+      PubSubTopicRepository pubSubTopicRepository,
+      long closeTimeoutMs,
+      int numOfConcurrentVwCloseOps) {
+    this.topicManager = topicManager;
+    this.writerFactory = writerFactory;
+    this.derivedComputeSchema = derivedComputeSchema;
     this.zkSharedSchemaRepository = schemaRepo;
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.closeTimeoutMs = closeTimeoutMs;
+    this.numOfConcurrentVwCloseOps = numOfConcurrentVwCloseOps;
   }
 
   /**
@@ -492,17 +520,71 @@ public class MetaStoreWriter implements Closeable {
     }
   }
 
+  /**
+   * If numOfConcurrentVwCloseOps is set to -1, then all the VeniceWriters will be closed asynchronously and concurrently.
+   * If numOfConcurrentVwCloseOps is set to a positive number, then the VeniceWriters will be closed with a bounded concurrency until timeout.
+   * Once timeout is reached, the remaining VeniceWriters will be closed asynchronously and concurrently.
+   */
   @Override
-  public void close() throws IOException {
-    // Close VeniceWrites in parallel to reduce the time to shut down the server.
-    try (Timer ignore = Timer.run(
-        elapsedTimeInMs -> LOGGER.info(
-            "MetaStoreWriter takes {}ms to close {} VeniceWriters in parallel",
-            elapsedTimeInMs,
-            metaStoreWriterMap.size()))) {
-      metaStoreWriterMap.entrySet()
-          .parallelStream()
-          .forEach(entry -> closeVeniceWriter(entry.getKey(), entry.getValue(), false));
+  public synchronized void close() throws IOException {
+    long startTime = System.currentTimeMillis();
+    LOGGER.info(
+        "Closing MetaStoreWriter - numOfVeniceWriters: {} permits: {} timeoutInMs: {}",
+        metaStoreWriterMap.size(),
+        numOfConcurrentVwCloseOps,
+        closeTimeoutMs);
+    // iterate through the map and close all the VeniceWriters
+    List<CompletableFuture<VeniceResourceCloseResult>> closeFutures = new ArrayList<>(metaStoreWriterMap.size());
+    List<VeniceWriter> writersToClose = new ArrayList<>(metaStoreWriterMap.values());
+    metaStoreWriterMap.clear();
+    // permit for the VeniceWriters to be closed asynchronously
+    int permits = numOfConcurrentVwCloseOps == -1 ? writersToClose.size() : numOfConcurrentVwCloseOps;
+    Semaphore semaphore = new Semaphore(permits);
+    long deadline = startTime + closeTimeoutMs;
+    for (VeniceWriter veniceWriter: writersToClose) {
+      boolean acquired = false;
+      try {
+        acquired = semaphore.tryAcquire(Math.max(0, deadline - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        LOGGER.warn("Interrupted while acquiring semaphore", e);
+      }
+      CompletableFuture<VeniceResourceCloseResult> closeFuture = veniceWriter.closeAsync(true);
+      closeFutures.add(closeFuture);
+      if (acquired) {
+        // release the semaphore when the future is completed
+        closeFuture.whenComplete((result, throwable) -> semaphore.release());
+      }
     }
+
+    // wait for all the VeniceWriters to be closed with a bounded timeout
+    try {
+      CompletableFuture.allOf(closeFutures.toArray(new CompletableFuture[0]))
+          .get(Math.max(1000, deadline - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
+    } catch (Exception e) {
+      LOGGER.warn("Caught exception while closing VeniceWriters", e);
+    }
+
+    // collect the close results
+    EnumMap<VeniceResourceCloseResult, Integer> closeResultMap = new EnumMap<>(VeniceResourceCloseResult.class);
+    for (CompletableFuture<VeniceResourceCloseResult> future: closeFutures) {
+      if (!future.isDone()) {
+        closeResultMap.compute(VeniceResourceCloseResult.UNKNOWN, (key, value) -> value == null ? 1 : value + 1);
+        continue;
+      }
+      // for the completed future, get the close result and increment the counter
+      try {
+        closeResultMap.compute(future.get(), (key, value) -> value == null ? 1 : value + 1);
+      } catch (Exception e) {
+        LOGGER.warn("Caught exception while getting VeniceResourceCloseResult", e);
+        closeResultMap.compute(VeniceResourceCloseResult.FAILED, (key, value) -> value == null ? 1 : value + 1);
+      }
+    }
+
+    LOGGER.info(
+        "Closed MetaStoreWriter in {} ms - numbOfVeniceWriters: {} veniceWriterCloseResult: {}",
+        System.currentTimeMillis() - startTime,
+        writersToClose.size(),
+        closeResultMap);
   }
 }
