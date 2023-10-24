@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA1_NAME;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA2_NAME;
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockR2Client;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -12,7 +13,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.transport.TransportClient;
@@ -119,8 +119,9 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean transportClientPartialIncomplete, // only applicable for useStreamingBatchGetAsDefault
       boolean mockTransportClient,
       long routingLeakedRequestCleanupThresholdMS) throws InterruptedException {
+
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
-        .setR2Client(mock(Client.class))
+        .setR2Client(getMockR2Client(false))
         .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
         .setMetadataRefreshIntervalInSeconds(1L)
         .setRoutingLeakedRequestCleanupThresholdMS(routingLeakedRequestCleanupThresholdMS)
@@ -142,20 +143,8 @@ public class DispatchingAvroGenericStoreClientTest {
     }
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(dispatchingAvroGenericStoreClient, clientConfig);
     statsAvroGenericStoreClient.start();
-
-    // Wait till metadata is initialized
-    while (true) {
-      try {
-        dispatchingAvroGenericStoreClient.verifyMetadataInitialized();
-        break;
-      } catch (VeniceClientException e) {
-        if (e.getMessage().endsWith("metadata is not ready, attempting to re-initialize")) {
-          // retry until its initialized
-          continue;
-        }
-        throw e;
-      }
-    }
+    // metadata should be initialized after start()
+    dispatchingAvroGenericStoreClient.verifyMetadataInitialized();
 
     if (mockTransportClient) {
       // mock get()

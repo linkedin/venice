@@ -31,15 +31,21 @@ public class RequestBasedMetadataTest {
   private static final int CURRENT_VERSION = 1;
   private static final int TEST_TIMEOUT = 10 * Time.MS_PER_SECOND;
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testMetadataWarmup(boolean firstUpdateFails) throws IOException, InterruptedException {
+  /**
+   * Metadata update: If this fails, start() will be blocked until metadata can be fetched.
+   * Conn warmup: This is on best effort basis and this failing or succeeding shouldn't have
+   *              any difference in how metadata refresh works.
+   */
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testMetadataWarmup(boolean firstMetadataUpdateFails, boolean firstConnWarmupFails)
+      throws IOException, InterruptedException {
     String storeName = "testStore";
 
-    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, firstConnWarmupFails);
     RequestBasedMetadata requestBasedMetadata = null;
     ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
     try {
-      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false, true, firstUpdateFails, scheduler);
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false, true, firstMetadataUpdateFails, scheduler);
       requestBasedMetadata.start();
       CountDownLatch isReadyLatch = requestBasedMetadata.getIsReadyLatch();
 
@@ -48,8 +54,8 @@ public class RequestBasedMetadataTest {
 
       // 2. verify based on the scheduled retries
       RequestBasedMetadata finalRequestBasedMetadata = requestBasedMetadata;
-      if (firstUpdateFails) {
-        // schedule retry after WARMUP_REFRESH_INTERVAL_IN_SECONDS
+      if (firstMetadataUpdateFails) {
+        // schedule retry after INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS
         verify(requestBasedMetadata.getScheduler()).schedule(
             any(Runnable.class),
             eq(INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS),

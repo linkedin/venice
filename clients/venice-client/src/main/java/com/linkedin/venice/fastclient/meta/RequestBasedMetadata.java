@@ -69,8 +69,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final long ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS = 10;
-  static final long H2_CONN_WARMUP_TIMEOUT_IN_SECONDS = 10;
-  static final long INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS = 20;
+  static final long H2_CONN_WARMUP_TIMEOUT_IN_SECONDS = 20;
+  static final long INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS = 5;
 
   private long refreshIntervalInSeconds;
   /** scheduler to run {@link #refresh()} to periodically update metadata */
@@ -88,7 +88,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
   private final AtomicReference<SchemaData> schemas = new AtomicReference<>();
   private final Map<String, List<String>> readyToServeInstancesMap = new VeniceConcurrentHashMap<>();
-  private final Set<String> warmedUpInstances = new HashSet<>();
+  private final Set<String> warmedUpInstances = VeniceConcurrentHashMap.newKeySet();
   private final Map<Integer, VenicePartitioner> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
@@ -203,8 +203,14 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * Warmup the connection from the client to Instances discovered from the metadata update.
    * To avoid duplicate warmup requests being sent which might delay the warmup process,
    * {@link #warmedUpInstances} is used to track the list of already warmed up instances.
+   * <p>
+   * As we are not trying to validate the metadata here but just to warmup conns beforehand,
+   * warmup is on best effort basis for now. If we want to improve the long tail and potentially
+   * further improve the client startup speed by not waiting till the timeout for all the conns
+   * to be warmed up, we can think of adding more fine-grained logic wrt partitions, replicas or
+   * warmup success rate, which might succeed faster that waiting for all conns.
    */
-  private boolean warmupConnectionToInstances(int currentFetchedVersion, int partitionCount)
+  private void warmupConnectionToInstances(int currentFetchedVersion, int partitionCount)
       throws ExecutionException, InterruptedException {
     List<CompletableFuture<?>> futureList = new ArrayList<>();
     Set<String> allReplicasInCurrentFetchedVersion = new HashSet<>();
@@ -232,8 +238,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         storeName,
         currentFetchedVersion);
     if (instanceNum == 0) {
-      return Boolean.TRUE;
+      return;
     }
+    AtomicInteger numberOfWarmUpSuccess = new AtomicInteger(0);
+    AtomicInteger numberOfWarmUpFailure = new AtomicInteger(0);
 
     // Warmup the instances that haven't been warmed up yet
     newInstances.forEach((replica) -> {
@@ -241,31 +249,41 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       futureList.add(r2TransportClient.get(url).whenCompleteAsync((ignore, throwable) -> {
         if (throwable == null) {
           warmedUpInstances.add(replica);
+          numberOfWarmUpSuccess.incrementAndGet();
+        } else {
+          numberOfWarmUpFailure.incrementAndGet();
         }
       }, h2ConnWarmupExecutorService));
     });
 
-    CompletableFuture<Boolean> warmupResultFuture = new CompletableFuture<>();
-
+    CompletableFuture<Object> warmupResultFuture = new CompletableFuture<>();
     CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0])).whenComplete((response, throwable) -> {
       if (throwable != null) {
-        LOGGER.error("H2 connection warmup to {} instances failed", instanceNum, throwable);
-        warmupResultFuture.complete(Boolean.FALSE);
+        LOGGER.error(
+            "H2 connection warmup to {} instances succeeded and {} instances failed",
+            numberOfWarmUpSuccess.get(),
+            numberOfWarmUpFailure.get(),
+            throwable);
+        warmupResultFuture.complete(null);
       } else {
-        LOGGER.info("H2 connection warmup to {} instances completed successfully", instanceNum);
-        warmupResultFuture.complete(Boolean.TRUE);
+        LOGGER.info("H2 connection warmup to {} instances succeeded", numberOfWarmUpSuccess.get());
+        warmupResultFuture.complete(null);
       }
     });
 
     try {
-      return warmupResultFuture.get(H2_CONN_WARMUP_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS);
+      warmupResultFuture.get(H2_CONN_WARMUP_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS);
     } catch (TimeoutException e) {
+      int successCount = numberOfWarmUpSuccess.get();
+      int failureCount = numberOfWarmUpFailure.get();
+      int notCompletedCount = instanceNum - (successCount + failureCount);
       LOGGER.error(
-          "H2 connection warmup to {} instances failed to finish within {} seconds. It will be retried during the periodic metadata refresh.",
-          instanceNum,
+          "H2 connection warmup to {} instances succeeded, {} instances failed and {} instances failed to finish within {} seconds. It will be retried during the periodic metadata refresh.",
+          successCount,
+          failureCount,
+          notCompletedCount,
           H2_CONN_WARMUP_TIMEOUT_IN_SECONDS,
           e);
-      return Boolean.FALSE;
     }
   }
 
@@ -361,11 +379,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       }
 
       // warmup H2 conns before setting the fetched version as the current version
-      boolean warmupStatus = warmupConnectionToInstances(fetchedCurrentVersion, partitionCount);
-      if (!warmupStatus) {
-        // throw exception to make start() blocking
-        throw new VeniceException("Connection warm up failed, will be retried again");
-      }
+      warmupConnectionToInstances(fetchedCurrentVersion, partitionCount);
 
       // Evict entries from inactive versions
       Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
