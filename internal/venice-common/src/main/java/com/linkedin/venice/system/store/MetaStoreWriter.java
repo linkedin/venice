@@ -78,7 +78,7 @@ public class MetaStoreWriter implements Closeable {
 
   private final PubSubTopicRepository pubSubTopicRepository;
   private final long closeTimeoutMs;
-  private int numOfConcurrentVwCloseOps;
+  private final int numOfConcurrentVwCloseOps;
 
   public MetaStoreWriter(
       TopicManager topicManager,
