@@ -84,7 +84,9 @@ public class MetaStoreWriter implements Closeable {
       TopicManager topicManager,
       VeniceWriterFactory writerFactory,
       HelixReadOnlyZKSharedSchemaRepository schemaRepo,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      long closeTimeoutMs,
+      int numOfConcurrentVwCloseOps) {
     /**
      * TODO: get the write compute schema from the constructor so that this class does not use {@link WriteComputeSchemaConverter}
      */
@@ -96,8 +98,8 @@ public class MetaStoreWriter implements Closeable {
             .convertFromValueRecordSchema(
                 AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()),
         pubSubTopicRepository,
-        TimeUnit.MINUTES.toMillis(5),
-        -1);
+        closeTimeoutMs,
+        numOfConcurrentVwCloseOps);
   }
 
   MetaStoreWriter(
