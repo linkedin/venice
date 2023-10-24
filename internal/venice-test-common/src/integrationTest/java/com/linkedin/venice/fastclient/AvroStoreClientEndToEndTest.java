@@ -236,7 +236,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       boolean retryEnabled,
       int batchGetKeySize,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
-    storeMetadataFetchMode = StoreMetadataFetchMode.SERVER_BASED_METADATA;
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
