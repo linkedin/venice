@@ -55,6 +55,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -545,13 +546,8 @@ public class TestActiveActiveIngestion {
     Map<String, String> viewConfig = new HashMap<>();
     props.put(KAFKA_LINGER_MS, 0);
     viewConfig.put(
-        "testView",
+        "testViewWrong",
         "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
-
-    viewConfig.put(
-        "changeCaptureView",
-        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName()
-            + "\", \"viewParameters\" : {\"kafka.linger.ms\": \"0\"}}");
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(8)
@@ -561,11 +557,39 @@ public class TestActiveActiveIngestion {
     MetricsRepository metricsRepository = new MetricsRepository();
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-    storeParms.setStoreViews(viewConfig);
-    // IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
+    UpdateStoreQueryParams storeParams1 = new UpdateStoreQueryParams().setStoreViews(viewConfig);
     setupControllerClient
-        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
-    // controllerClient.updateStore(storeName, storeParms);
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParams1));
+    UpdateStoreQueryParams storeParams2 =
+        new UpdateStoreQueryParams().setViewName("testViewWrong").setDisableStoreView();
+    setupControllerClient
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParams2));
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Map<String, ViewConfig> viewConfigMap = setupControllerClient.getStore(storeName).getStore().getViewConfigs();
+      Assert.assertTrue(viewConfigMap.isEmpty());
+    });
+
+    UpdateStoreQueryParams storeParams3 = new UpdateStoreQueryParams().setViewName("changeCaptureView")
+        .setViewClassName(ChangeCaptureView.class.getCanonicalName())
+        .setViewClassParams(Collections.singletonMap("kafka.linger.ms", "0"));
+    setupControllerClient
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParams3));
+
+    UpdateStoreQueryParams storeParams4 =
+        new UpdateStoreQueryParams().setViewName("testView").setViewClassName(TestView.class.getCanonicalName());
+    setupControllerClient
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParams4));
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Map<String, ViewConfig> viewConfigMap = setupControllerClient.getStore(storeName).getStore().getViewConfigs();
+      Assert.assertEquals(viewConfigMap.size(), 2);
+      Assert.assertEquals(viewConfigMap.get("testView").getViewClassName(), TestView.class.getCanonicalName());
+      Assert.assertEquals(
+          viewConfigMap.get("changeCaptureView").getViewClassName(),
+          ChangeCaptureView.class.getCanonicalName());
+      Assert.assertEquals(viewConfigMap.get("changeCaptureView").getViewParameters().size(), 1);
+    });
+
     TestWriteUtils.runPushJob("Run push job", props);
     Map<String, String> samzaConfig = getSamzaConfig(storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();

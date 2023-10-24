@@ -81,6 +81,7 @@ import static com.linkedin.venice.Arg.READ_QUOTA;
 import static com.linkedin.venice.Arg.RECOVERY_COMMAND;
 import static com.linkedin.venice.Arg.REGIONS_FILTER;
 import static com.linkedin.venice.Arg.REGULAR_VERSION_ETL_ENABLED;
+import static com.linkedin.venice.Arg.REMOVE_VIEW;
 import static com.linkedin.venice.Arg.REPLICATE_ALL_CONFIGS;
 import static com.linkedin.venice.Arg.REPLICATION_FACTOR;
 import static com.linkedin.venice.Arg.RETRY;
@@ -107,6 +108,9 @@ import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
 import static com.linkedin.venice.Arg.VENICE_CLIENT_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.VENICE_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.VERSION;
+import static com.linkedin.venice.Arg.VIEW_CLASS;
+import static com.linkedin.venice.Arg.VIEW_NAME;
+import static com.linkedin.venice.Arg.VIEW_PARAMS;
 import static com.linkedin.venice.Arg.VOLDEMORT_STORE;
 import static com.linkedin.venice.Arg.VSON_STORE;
 import static com.linkedin.venice.Arg.WRITEABILITY;
@@ -474,6 +478,10 @@ public enum Command {
       "dump-ingestion-state",
       "Dump the real-time ingestion state for a certain store version in a certain storage node",
       new Arg[] { SERVER_URL, STORE, VERSION }, new Arg[] { PARTITION }
+  ),
+  CONFIGURE_STORE_VIEW(
+      "configure-store-view", "Configure store view of a certain store", new Arg[] { URL, CLUSTER, STORE, VIEW_NAME },
+      new Arg[] { VIEW_CLASS, VIEW_PARAMS, REMOVE_VIEW }
   );
 
   private final String commandName;

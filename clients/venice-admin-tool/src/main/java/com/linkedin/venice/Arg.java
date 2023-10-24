@@ -217,7 +217,10 @@ public enum Arg {
   STORE_VIEW_CONFIGS(
       "storage-view-configs", "svc", true,
       "Config that describes views to be added for a store.  Input is a json map.  Example: {\"ExampleView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\": {}}}"
-  ),
+  ), VIEW_NAME("view-name", "vn", true, "Name of a store view"),
+  VIEW_CLASS("view-class", "vc", true, "Name of a store view class"),
+  VIEW_PARAMS("view-params", "vp", true, "Additional parameter map of a store view class"),
+  REMOVE_VIEW("remove-view", "rv", false, "Optional config to specify to disable certain store view"),
   PARTITION_DETAIL_ENABLED(
       "partition-detail-enabled", "pde", true, "A flag to indicate whether to retrieve partition details"
   ),
