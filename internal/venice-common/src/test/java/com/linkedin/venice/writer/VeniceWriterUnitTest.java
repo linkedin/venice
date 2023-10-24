@@ -4,7 +4,6 @@ import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -94,7 +93,6 @@ public class VeniceWriterUnitTest {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
-    when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -147,7 +145,6 @@ public class VeniceWriterUnitTest {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
-    when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -326,7 +323,6 @@ public class VeniceWriterUnitTest {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
-    when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     String stringSchema = "\"string\"";
@@ -423,7 +419,6 @@ public class VeniceWriterUnitTest {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
-    when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 0);
