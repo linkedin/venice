@@ -557,10 +557,10 @@ public class MetaStoreWriter implements Closeable {
       }
     }
 
-    // wait for all the VeniceWriters to be closed with a timeout
-    CompletableFuture<Void> combinedFuture = CompletableFuture.allOf(closeFutures.toArray(new CompletableFuture[0]));
+    // wait for all the VeniceWriters to be closed with a bounded timeout
     try {
-      combinedFuture.get(Math.max(1000, deadline - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
+      CompletableFuture.allOf(closeFutures.toArray(new CompletableFuture[0]))
+          .get(Math.max(1000, deadline - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
     } catch (Exception e) {
       LOGGER.warn("Caught exception while closing VeniceWriters", e);
     }
@@ -568,16 +568,16 @@ public class MetaStoreWriter implements Closeable {
     // collect the close results
     EnumMap<VeniceResourceCloseResult, Integer> closeResultMap = new EnumMap<>(VeniceResourceCloseResult.class);
     for (CompletableFuture<VeniceResourceCloseResult> future: closeFutures) {
-      if (future.isDone()) {
-        try {
-          VeniceResourceCloseResult closeResult = future.get(5, TimeUnit.MILLISECONDS);
-          closeResultMap.compute(closeResult, (key, value) -> value == null ? 1 : value + 1);
-        } catch (Exception e) {
-          LOGGER.warn("Caught exception while getting VeniceResourceCloseResult", e);
-          closeResultMap.compute(VeniceResourceCloseResult.FAILED, (key, value) -> value == null ? 1 : value + 1);
-        }
-      } else {
+      if (!future.isDone()) {
         closeResultMap.compute(VeniceResourceCloseResult.UNKNOWN, (key, value) -> value == null ? 1 : value + 1);
+        continue;
+      }
+      // for the completed future, get the close result and increment the counter
+      try {
+        closeResultMap.compute(future.get(), (key, value) -> value == null ? 1 : value + 1);
+      } catch (Exception e) {
+        LOGGER.warn("Caught exception while getting VeniceResourceCloseResult", e);
+        closeResultMap.compute(VeniceResourceCloseResult.FAILED, (key, value) -> value == null ? 1 : value + 1);
       }
     }
 
