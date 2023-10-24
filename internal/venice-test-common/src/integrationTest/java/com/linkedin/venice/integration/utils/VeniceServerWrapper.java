@@ -2,7 +2,35 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_OPTIONS_USE_DIRECT_READS;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
+import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
+import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
+import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_D2_SERVICE_NAME;
+import static com.linkedin.venice.ConfigKeys.LOCAL_D2_ZK_HOST;
+import static com.linkedin.venice.ConfigKeys.MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER;
+import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
+import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -10,7 +38,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
-import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
@@ -67,7 +94,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   private final ClientConfig consumerClientConfig;
   private final SSLFactory sslFactory;
   private final File dataDirectory;
-  private final PubSubClientsFactory pubSubClientsFactory;
+  private String regionName;
+  private final String serverD2ServiceName;
 
   /**
    * Following member fields are only needed when server runs in forked mode. We need to save these information and
@@ -75,7 +103,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
    * proper configurations.
    */
   private boolean forkServer = false;
-  private String regionName;
   private String clusterName;
   private int listenPort;
   private String serverConfigPath;
@@ -96,7 +123,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       ClientConfig consumerClientConfig,
       SSLFactory sslFactory,
       String regionName,
-      PubSubClientsFactory pubSubClientsFactory) {
+      String serverD2ServiceName) {
     super(serviceName, dataDirectory);
     this.dataDirectory = dataDirectory;
     this.veniceServer = veniceServer;
@@ -105,7 +132,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     this.consumerClientConfig = consumerClientConfig;
     this.sslFactory = sslFactory;
     this.regionName = Objects.requireNonNull(regionName, "Region name cannot be null for VeniceServerWrapper");
-    this.pubSubClientsFactory = pubSubClientsFactory;
+    this.serverD2ServiceName = serverD2ServiceName;
   }
 
   VeniceServerWrapper(
@@ -125,7 +152,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean isAutoJoin,
       String serverName,
       String regionName,
-      PubSubClientsFactory pubSubClientsFactory) {
+      String serverD2ServiceName) {
     this(
         serviceName,
         dataDirectory,
@@ -135,7 +162,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         consumerClientConfig,
         sslFactory,
         regionName,
-        pubSubClientsFactory);
+        serverD2ServiceName);
     this.forkServer = forkServer;
     this.clusterName = clusterName;
     this.listenPort = listenPort;
@@ -148,7 +175,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       this.d2ServiceName = consumerClientConfig.getD2ServiceName();
     }
     this.serverName = serverName;
-    this.regionName = Objects.requireNonNull(regionName, "Region name cannot be null for VeniceServerWrapper");
   }
 
   static StatefulServiceProvider<VeniceServerWrapper> generateService(
@@ -289,7 +315,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             consumerClientConfig,
             sslFactory,
             regionName,
-            pubSubBrokerWrapper.getPubSubClientsFactory());
+            serverD2ServiceName);
       } else {
         return new VeniceServerWrapper(
             serviceName,
@@ -308,7 +334,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             isAutoJoin,
             serverName,
             regionName,
-            pubSubBrokerWrapper.getPubSubClientsFactory());
+            serverD2ServiceName);
       }
     };
   }
@@ -409,11 +435,22 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     if (forkServer) {
       return; // nothing to be done in forked mode.
     }
+
+    String zkAddress = serverProps.getString(LOCAL_D2_ZK_HOST);
+    boolean https = serverProps.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
+    int listenPort = serverProps.getInt(LISTENER_PORT);
+    String httpURI = "http://localhost:" + listenPort;
+    String httpsURI = "https://localhost:" + listenPort;
+    String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, serverD2ServiceName);
+    List<ServiceDiscoveryAnnouncer> d2Servers =
+        new ArrayList<>(D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI));
+
     this.veniceServer = new TestVeniceServer(
         new VeniceServerContext.Builder().setVeniceConfigLoader(config)
             .setMetricsRepository(new MetricsRepository())
             .setSslFactory(sslFactory)
             .setClientConfigForConsumer(consumerClientConfig)
+            .setServiceDiscoveryAnnouncers(d2Servers)
             .build());
   }
 

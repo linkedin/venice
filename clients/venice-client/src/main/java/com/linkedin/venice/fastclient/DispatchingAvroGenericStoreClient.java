@@ -710,7 +710,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE)) {
         LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
       }
-      decoder.onCompletion(Optional.of(new VeniceClientException("Exception received from transport", exception)));
+      VeniceClientException clientException;
+      if (exception instanceof VeniceClientException) {
+        clientException = (VeniceClientException) exception;
+      } else {
+        clientException = new VeniceClientException("Exception received from transport", exception);
+      }
+      decoder.onCompletion(Optional.of(clientException));
       return;
     }
 

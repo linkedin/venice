@@ -745,7 +745,7 @@ ext.createDiffFile = { ->
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"
   def command = [
-      'git', 'diff', diffBase, '--no-color', '--minimal', '--', '.'
+      'git', 'diff', "${diffBase}...", '--no-color', '--minimal', '--', '.'
   ]
   command.addAll(exclusionFilter)
   file.withOutputStream { out ->

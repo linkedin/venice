@@ -437,8 +437,10 @@ public class StorageReadRequestHandlerTest {
     assertEquals(shortcutResponse.getMessage(), "Unrecognized object in StorageExecutionHandler");
   }
 
-  @Test
-  public void testHandleComputeRequest() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHandleComputeRequest(boolean readComputationEnabled) throws Exception {
+    doReturn(readComputationEnabled).when(storeRepository).isReadComputationEnabled(any());
+
     String keyString = "test-key";
     String missingKeyString = "missing-test-key";
     GenericRecord valueRecord = new GenericData.Record(
@@ -493,33 +495,38 @@ public class StorageReadRequestHandlerTest {
     requestHandler.channelRead(context, request);
 
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
-    ComputeResponseWrapper computeResponse = (ComputeResponseWrapper) argumentCaptor.getValue();
-    assertEquals(computeResponse.isStreamingResponse(), request.isStreamingRequest());
-    assertEquals(computeResponse.getRecordCount(), keySet.size());
-    assertEquals(computeResponse.getMultiChunkLargeValueCount(), 0);
-    assertEquals(computeResponse.getCompressionStrategy(), CompressionStrategy.NO_OP);
+    if (!readComputationEnabled) {
+      HttpShortcutResponse errorResponse = (HttpShortcutResponse) argumentCaptor.getValue();
+      assertEquals(errorResponse.getStatus(), HttpResponseStatus.METHOD_NOT_ALLOWED);
+    } else {
+      ComputeResponseWrapper computeResponse = (ComputeResponseWrapper) argumentCaptor.getValue();
+      assertEquals(computeResponse.isStreamingResponse(), request.isStreamingRequest());
+      assertEquals(computeResponse.getRecordCount(), keySet.size());
+      assertEquals(computeResponse.getMultiChunkLargeValueCount(), 0);
+      assertEquals(computeResponse.getCompressionStrategy(), CompressionStrategy.NO_OP);
 
-    assertEquals(computeResponse.getDotProductCount(), 1);
-    assertEquals(computeResponse.getHadamardProductCount(), 1);
-    assertEquals(computeResponse.getCountOperatorCount(), 0);
-    assertEquals(computeResponse.getCosineSimilarityCount(), 0);
+      assertEquals(computeResponse.getDotProductCount(), 1);
+      assertEquals(computeResponse.getHadamardProductCount(), 1);
+      assertEquals(computeResponse.getCountOperatorCount(), 0);
+      assertEquals(computeResponse.getCosineSimilarityCount(), 0);
 
-    assertEquals(computeResponse.getValueSize(), valueBytes.length);
+      assertEquals(computeResponse.getValueSize(), valueBytes.length);
 
-    int expectedReadComputeOutputSize = 0;
-    RecordDeserializer<ComputeResponseRecordV1> responseDeserializer =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeResponseRecordV1.class);
-    for (ComputeResponseRecordV1 record: responseDeserializer
-        .deserializeObjects(computeResponse.getResponseBody().array())) {
-      if (record.getKeyIndex() < 0) {
-        assertEquals(record.getValue(), StreamingUtils.EMPTY_BYTE_BUFFER);
-      } else {
-        assertEquals(record.getKeyIndex(), 0);
-        Assert.assertNotEquals(record.getValue(), StreamingUtils.EMPTY_BYTE_BUFFER);
-        expectedReadComputeOutputSize += record.getValue().limit();
+      int expectedReadComputeOutputSize = 0;
+      RecordDeserializer<ComputeResponseRecordV1> responseDeserializer =
+          SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeResponseRecordV1.class);
+      for (ComputeResponseRecordV1 record: responseDeserializer
+          .deserializeObjects(computeResponse.getResponseBody().array())) {
+        if (record.getKeyIndex() < 0) {
+          assertEquals(record.getValue(), StreamingUtils.EMPTY_BYTE_BUFFER);
+        } else {
+          assertEquals(record.getKeyIndex(), 0);
+          Assert.assertNotEquals(record.getValue(), StreamingUtils.EMPTY_BYTE_BUFFER);
+          expectedReadComputeOutputSize += record.getValue().limit();
+        }
       }
+      assertEquals(computeResponse.getReadComputeOutputSize(), expectedReadComputeOutputSize);
     }
-    assertEquals(computeResponse.getReadComputeOutputSize(), expectedReadComputeOutputSize);
   }
 
   /**
