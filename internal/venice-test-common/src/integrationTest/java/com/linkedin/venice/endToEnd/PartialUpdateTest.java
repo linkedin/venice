@@ -6,6 +6,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
@@ -119,6 +121,7 @@ public class PartialUpdateTest {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final int TEST_TIMEOUT_MS = 180_000;
+  private static final int ASSERTION_TIMEOUT_MS = 30_000;
   private static final String CLUSTER_NAME = "venice-cluster0";
 
   private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
@@ -612,7 +615,7 @@ public class PartialUpdateTest {
    */
   @Test(timeOut = TEST_TIMEOUT_MS
       * 3, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
-  public void testActiveAcitvePartialUpdateWithCompression(CompressionStrategy compressionStrategy) throws IOException {
+  public void testActiveActivePartialUpdateWithCompression(CompressionStrategy compressionStrategy) throws IOException {
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";
@@ -833,6 +836,147 @@ public class PartialUpdateTest {
     } finally {
       veniceProducer.stop();
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testRepushWithTTLWithActiveActivePartialUpdateStore() {
+    final String storeName = Utils.getUniqueString("rmdChunking");
+    String parentControllerUrl = parentController.getControllerUrl();
+    String keySchemaStr = "{\"type\" : \"string\"}";
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+    when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
+    when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, partialUpdateSchema));
+    when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
+    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setPartitionCount(1)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setHybridRewindSeconds(1L)
+              .setHybridOffsetLagThreshold(1L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+
+    String key1 = "key1";
+    // This update is expected to be carried into TTL repush.
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setEntriesToAddToMapField("stringMap", Collections.singletonMap("k1", "v1"));
+    sendStreamingRecord(veniceProducer, storeName, key1, updateBuilder.build(), 100000L);
+    // This update is expected to be WIPED OUT after TTL repush.
+    updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setNewFieldValue("name", "new_name");
+    updateBuilder.setEntriesToAddToMapField("stringMap", Collections.singletonMap("k2", "v2"));
+    sendStreamingRecord(veniceProducer, storeName, key1, updateBuilder.build(), 99999L);
+
+    String key2 = "key2";
+    // This update is expected to be WIPED OUT after TTL repush.
+    updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setNewFieldValue("name", "new_name_2");
+    sendStreamingRecord(veniceProducer, storeName, key2, updateBuilder.build(), 99999L);
+
+    String key3 = "key3";
+    // This update is expected to be carried into TTL repush.
+    updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setNewFieldValue("name", "new_name_3");
+    sendStreamingRecord(veniceProducer, storeName, key3, updateBuilder.build(), 100000L);
+
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, key1);
+          assertNotNull(valueRecord);
+          assertEquals(valueRecord.get("name"), new Utf8("new_name"));
+          assertNotNull(valueRecord.get("stringMap"));
+          Map<String, String> stringMapValue = (Map<String, String>) valueRecord.get("stringMap");
+          assertEquals(stringMapValue.get(new Utf8("k1")), new Utf8("v1"));
+          assertEquals(stringMapValue.get(new Utf8("k2")), new Utf8("v2"));
+
+          valueRecord = readValue(storeReader, key2);
+          assertNotNull(valueRecord);
+          assertEquals(valueRecord.get("name"), new Utf8("new_name_2"));
+
+          valueRecord = readValue(storeReader, key3);
+          assertNotNull(valueRecord);
+          assertEquals(valueRecord.get("name"), new Utf8("new_name_3"));
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
+
+    // Perform one time repush to make sure repush can handle RMD chunks data correctly.
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+    props.setProperty(SOURCE_KAFKA, "true");
+    props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    props.setProperty(REPUSH_TTL_ENABLE, "true");
+    props.setProperty(REPUSH_TTL_START_TIMESTAMP, "101000");
+    props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+    TestWriteUtils.runPushJob("Run repush job 1", props);
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          // Key 1 is partially preserved.
+          GenericRecord valueRecord = readValue(storeReader, key1);
+          assertNotNull(valueRecord);
+          assertEquals(valueRecord.get("name"), new Utf8("default_name"));
+          assertNotNull(valueRecord.get("stringMap"));
+          Map<String, String> stringMapValue = (Map<String, String>) valueRecord.get("stringMap");
+          assertEquals(stringMapValue.get(new Utf8("k1")), new Utf8("v1"));
+          assertNull(stringMapValue.get(new Utf8("k2")));
+
+          // Key 2 is fully removed.
+          valueRecord = readValue(storeReader, key2);
+          assertNull(valueRecord);
+
+          // Key 3 is fully preserved.
+          valueRecord = readValue(storeReader, key3);
+          assertNotNull(valueRecord);
+          assertEquals(valueRecord.get("name"), new Utf8("new_name_3"));
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
+
   }
 
   private void validateRmdData(

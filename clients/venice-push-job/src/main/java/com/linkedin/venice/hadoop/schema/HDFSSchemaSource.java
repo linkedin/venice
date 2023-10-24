@@ -1,9 +1,11 @@
 package com.linkedin.venice.hadoop.schema;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.schema.SchemaUtils;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.utils.Utils;
 import java.io.BufferedReader;
@@ -96,7 +98,11 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
       if (!fs.exists(schemaPath)) {
         try (FSDataOutputStream outputStream = fs.create(schemaPath);
             OutputStreamWriter outputStreamWriter = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {
-          outputStreamWriter.write(schema.getSchemaStr() + "\n");
+          Schema originalSchema = AvroSchemaParseUtils.parseSchemaFromJSON(schema.getSchemaStr(), false);
+          Schema annotatedSchema = isRmdSchema
+              ? SchemaUtils.annotateRmdSchema(originalSchema)
+              : SchemaUtils.annotateValueSchema(originalSchema);
+          outputStreamWriter.write(annotatedSchema.toString() + "\n");
           outputStreamWriter.flush();
         }
         LOGGER.info(

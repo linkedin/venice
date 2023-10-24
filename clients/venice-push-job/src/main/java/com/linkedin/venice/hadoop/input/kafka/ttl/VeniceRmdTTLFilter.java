@@ -5,20 +5,19 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.schema.merge.UpdateResultStatus;
+import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
-import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -47,13 +46,13 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     super(props);
     ttlPolicy = TTLResolutionPolicy.valueOf(props.getInt(VenicePushJob.REPUSH_TTL_POLICY));
     long ttlInMs = TimeUnit.SECONDS.toMillis(props.getLong(VenicePushJob.REPUSH_TTL_IN_SECONDS));
-    this.filterTimestamp = System.currentTimeMillis() - ttlInMs;
+    long ttlStartTimestamp = props.getLong(VenicePushJob.REPUSH_TTL_START_TIMESTAMP);
+    this.filterTimestamp = ttlStartTimestamp - ttlInMs;
     this.schemaSource = new HDFSSchemaSource(
         props.getString(VenicePushJob.VALUE_SCHEMA_DIR),
         props.getString(VenicePushJob.RMD_SCHEMA_DIR));
     this.rmdSchemaMap = schemaSource.fetchRmdSchemas();
-    // TODO:
-    this.valueSchemaMap = new HashMap<>();
+    this.valueSchemaMap = schemaSource.fetchValueSchemas();
     this.rmdDeserializerCache = new VeniceConcurrentHashMap<>();
     this.valueDeserializerCache = new VeniceConcurrentHashMap<>();
     this.rmdSerializerCache = new VeniceConcurrentHashMap<>();
@@ -95,7 +94,8 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     RecordDeserializer<GenericRecord> valueDeserializer =
         valueDeserializerCache.computeIfAbsent(valueSchemaId, this::generateValueDeserializer);
     GenericRecord valueRecord = valueDeserializer.deserialize(getValuePayload(value));
-    UpdateResultStatus updateResultStatus = mergeRecordHelper.deleteRecord(valueRecord, rmdRecord, filterTimestamp, 0);
+    UpdateResultStatus updateResultStatus =
+        mergeRecordHelper.deleteRecord(valueRecord, (GenericRecord) rmdTimestampObject, filterTimestamp - 1, 0);
     if (updateResultStatus.equals(UpdateResultStatus.COMPLETELY_UPDATED)) {
       // This means the record is fully stale, we should drop it.
       return true;
@@ -116,22 +116,22 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
 
   RecordDeserializer<GenericRecord> generateRmdDeserializer(RmdVersionId rmdVersionId) {
     Schema schema = rmdSchemaMap.get(rmdVersionId);
-    return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(schema, schema);
+    return MapOrderingPreservingSerDeFactory.getDeserializer(schema, schema);
   }
 
   RecordDeserializer<GenericRecord> generateValueDeserializer(int valueSchemaId) {
     Schema schema = valueSchemaMap.get(valueSchemaId);
-    return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(schema, schema);
+    return MapOrderingPreservingSerDeFactory.getDeserializer(schema, schema);
   }
 
   RecordSerializer<GenericRecord> generateRmdSerializer(RmdVersionId rmdVersionId) {
     Schema schema = rmdSchemaMap.get(rmdVersionId);
-    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema);
+    return MapOrderingPreservingSerDeFactory.getSerializer(schema);
   }
 
   RecordSerializer<GenericRecord> generateValueSerializer(int valueSchemaId) {
     Schema schema = valueSchemaMap.get(valueSchemaId);
-    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema);
+    return MapOrderingPreservingSerDeFactory.getSerializer(schema);
   }
 
   protected abstract int getSchemaId(final INPUT_VALUE value);

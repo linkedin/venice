@@ -397,9 +397,10 @@ public class VenicePushJob implements AutoCloseable {
   public static final String REPUSH_TTL_ENABLE = "repush.ttl.enable";
   public static final String REPUSH_TTL_IN_SECONDS = "repush.ttl.seconds";
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
+  public static final String REPUSH_TTL_START_TIMESTAMP = "repush.ttl.start.timestamp";
   public static final String RMD_SCHEMA_DIR = "rmd.schema.dir";
   public static final String VALUE_SCHEMA_DIR = "value.schema.dir";
-  private static final String TEMP_DIR_PREFIX = "/tmp/veniceRmdSchemas/";
+  private static final String TEMP_DIR_PREFIX = "/tmp/veniceSchemas/";
   public static final int NOT_SET = -1;
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
 
@@ -524,6 +525,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean repushTTLEnabled;
     // specify ttl time to drop stale records.
     long repushTTLInSeconds;
+    long repushTTLStartTimeMs;
     // HDFS directory to cache RMD schemas
     String rmdSchemaDir;
     String valueSchemaDir;
@@ -710,6 +712,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
+    pushJobSettingToReturn.repushTTLStartTimeMs = props.getLong(REPUSH_TTL_START_TIMESTAMP, System.currentTimeMillis());
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.postValidationConsumption = props.getBoolean(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
@@ -2996,6 +2999,7 @@ public class VenicePushJob implements AutoCloseable {
       conf.set(KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
       conf.set(KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
       conf.setLong(REPUSH_TTL_IN_SECONDS, pushJobSetting.repushTTLInSeconds);
+      conf.setLong(REPUSH_TTL_START_TIMESTAMP, pushJobSetting.repushTTLStartTimeMs);
       if (pushJobSetting.repushTTLEnabled) {
         conf.setInt(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue()); // only support one policy
         // thus not allow any value passed
