@@ -40,7 +40,7 @@ public class FilterChain<INPUT_VALUE> implements Closeable {
   public boolean apply(final INPUT_VALUE value) {
     if (!filterList.isEmpty()) {
       for (AbstractVeniceFilter<INPUT_VALUE> filter: filterList) {
-        if (filter.apply(value)) {
+        if (filter.checkAndMaybeFilterValue(value)) {
           return true;
         }
       }

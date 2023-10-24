@@ -103,7 +103,8 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   @Test
   public void testProcessWithFilterFilteringPartialRecords() {
     AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
-    doReturn(true, false, true, false, false).when(filter).apply(any()); // filter out partial records
+    doReturn(true, false, true, false, false).when(filter).checkAndMaybeFilterValue(any()); // filter out partial
+                                                                                            // records
 
     VeniceKafkaInputMapper mapper = spy(newMapper());
     FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>(filter);
@@ -124,7 +125,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
   public void testProcessWithFilterFilteringAllRecords(int numReducers, int taskId) throws IOException {
     AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
-    doReturn(true).when(filter).apply(any()); // filter out all records
+    doReturn(true).when(filter).checkAndMaybeFilterValue(any()); // filter out all records
 
     FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>(filter);
     VeniceKafkaInputMapper mapper = spy(getMapper(numReducers, taskId));

@@ -23,6 +23,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRe
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema;
@@ -842,13 +843,13 @@ public class PartialUpdateTest {
   public void testRepushWithTTLWithActiveActivePartialUpdateStore() {
     final String storeName = Utils.getUniqueString("ttlRepsuhAAWC");
     String parentControllerUrl = parentController.getControllerUrl();
-    String keySchemaStr = "{\"type\" : \"string\"}";
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
-          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setPartitionCount(1)
@@ -876,6 +877,9 @@ public class PartialUpdateTest {
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
     SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
 
+    /**
+     * Case 1: The record is partially stale, TTL repush should only keep the part that's fresh.
+     */
     String key1 = "key1";
     // This update is expected to be carried into TTL repush.
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
@@ -887,18 +891,27 @@ public class PartialUpdateTest {
     updateBuilder.setEntriesToAddToMapField("stringMap", Collections.singletonMap("k2", "v2"));
     sendStreamingRecord(veniceProducer, storeName, key1, updateBuilder.build(), 99999L);
 
+    /**
+     * Case 2: The record is fully stale, TTL repush should drop the record.
+     */
     String key2 = "key2";
     // This update is expected to be WIPED OUT after TTL repush.
     updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
     updateBuilder.setNewFieldValue("name", "new_name_2");
     sendStreamingRecord(veniceProducer, storeName, key2, updateBuilder.build(), 99999L);
 
+    /**
+     * Case 3: The record is fully fresh, TTL repush should keep the record.
+     */
     String key3 = "key3";
     // This update is expected to be carried into TTL repush.
     updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
     updateBuilder.setNewFieldValue("name", "new_name_3");
     sendStreamingRecord(veniceProducer, storeName, key3, updateBuilder.build(), 100000L);
 
+    /**
+     * Validate the data is ready in storage before TTL repush.
+     */
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
@@ -931,7 +944,9 @@ public class PartialUpdateTest {
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     props.setProperty(REPUSH_TTL_ENABLE, "true");
+    // Override the TTL repush start TS to work with logical TS setup.
     props.setProperty(REPUSH_TTL_START_TIMESTAMP, "101000");
+    // Override the rewind time to make sure not to consume 24hrs data from RT topic.
     props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
     TestWriteUtils.runPushJob("Run repush job 1", props);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
@@ -942,6 +957,9 @@ public class PartialUpdateTest {
           TimeUnit.SECONDS);
     }
 
+    /**
+     * Validate the data is ready in storage after TTL repush.
+     */
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {

@@ -114,7 +114,7 @@ public class TestVeniceKafkaInputTTLFilter {
     List<KafkaInputMapperValue> records = generateRecord(4, 6, 4, DUMMY_CURRENT_TIMESTAMP, TTL_IN_SECONDS_DEFAULT);
     int validCount = 0, expiredCount = 0;
     for (KafkaInputMapperValue value: records) {
-      if (filterWithSupportedPolicy.apply(value)) {
+      if (filterWithSupportedPolicy.checkAndMaybeFilterValue(value)) {
         expiredCount++;
       } else {
         validCount++;
@@ -127,7 +127,7 @@ public class TestVeniceKafkaInputTTLFilter {
   @Test(expectedExceptions = IllegalStateException.class)
   public void testFilterWithRTPolicyWithInvalidValues() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
-    Assert.assertFalse(filterWithSupportedPolicy.apply(value));
+    Assert.assertFalse(filterWithSupportedPolicy.checkAndMaybeFilterValue(value));
   }
 
   /**

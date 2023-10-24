@@ -43,7 +43,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
   private final MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
 
   public VeniceRmdTTLFilter(final VeniceProperties props) throws IOException {
-    super(props);
+    super();
     ttlPolicy = TTLResolutionPolicy.valueOf(props.getInt(VenicePushJob.REPUSH_TTL_POLICY));
     long ttlInMs = TimeUnit.SECONDS.toMillis(props.getLong(VenicePushJob.REPUSH_TTL_IN_SECONDS));
     long ttlStartTimestamp = props.getLong(VenicePushJob.REPUSH_TTL_START_TIMESTAMP);
@@ -60,7 +60,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
   }
 
   @Override
-  public boolean apply(final INPUT_VALUE value) {
+  public boolean checkAndMaybeFilterValue(final INPUT_VALUE value) {
     if (skipRmdRecord(value)) {
       return false;
     }
@@ -88,6 +88,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
         rmdDeserializerCache.computeIfAbsent(rmdVersionId, this::generateRmdDeserializer).deserialize(rmdPayload);
     Object rmdTimestampObject = rmdRecord.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(rmdTimestampObject);
+    // For value-level RMD timestamp, just compare the value with the filter TS.
     if (rmdTimestampType.equals(RmdTimestampType.VALUE_LEVEL_TIMESTAMP)) {
       return (long) rmdTimestampObject < filterTimestamp;
     }

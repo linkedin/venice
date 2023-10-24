@@ -122,7 +122,7 @@ public class TestVeniceKafkaInputReducer {
   public void testExtractWithTTL(boolean isChunkingEnabled) {
     // set up filter
     AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
-    doReturn(true).when(filter).apply(any()); // filter out all records
+    doReturn(true).when(filter).checkAndMaybeFilterValue(any()); // filter out all records
     FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>(filter);
 
     byte[] keyBytes = "test_key".getBytes();
