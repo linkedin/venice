@@ -2,7 +2,9 @@ package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_POLICY;
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_DIR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -74,6 +76,8 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     props.put(REPUSH_TTL_IN_SECONDS, 10L);
     props.put(REPUSH_TTL_POLICY, 0);
     props.put(RMD_SCHEMA_DIR, "tmp");
+    props.put(VALUE_SCHEMA_DIR, "tmp2");
+    props.put(REPUSH_TTL_START_TIMESTAMP, System.currentTimeMillis());
     Assert.assertFalse(newMapper().getFilterChain(new VeniceProperties(props)).isEmpty());
 
     // filter is also present when chunking is enabled.

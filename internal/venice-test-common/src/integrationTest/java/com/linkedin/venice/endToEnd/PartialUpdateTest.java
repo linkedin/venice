@@ -840,19 +840,11 @@ public class PartialUpdateTest {
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testRepushWithTTLWithActiveActivePartialUpdateStore() {
-    final String storeName = Utils.getUniqueString("rmdChunking");
+    final String storeName = Utils.getUniqueString("ttlRepsuhAAWC");
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
-    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
-    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
-    when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
-    when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, partialUpdateSchema));
-    when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
-    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
-        new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
-    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -915,7 +907,7 @@ public class PartialUpdateTest {
           assertNotNull(valueRecord);
           assertEquals(valueRecord.get("name"), new Utf8("new_name"));
           assertNotNull(valueRecord.get("stringMap"));
-          Map<String, String> stringMapValue = (Map<String, String>) valueRecord.get("stringMap");
+          Map<Utf8, Utf8> stringMapValue = (Map<Utf8, Utf8>) valueRecord.get("stringMap");
           assertEquals(stringMapValue.get(new Utf8("k1")), new Utf8("v1"));
           assertEquals(stringMapValue.get(new Utf8("k2")), new Utf8("v2"));
 
@@ -959,7 +951,7 @@ public class PartialUpdateTest {
           assertNotNull(valueRecord);
           assertEquals(valueRecord.get("name"), new Utf8("default_name"));
           assertNotNull(valueRecord.get("stringMap"));
-          Map<String, String> stringMapValue = (Map<String, String>) valueRecord.get("stringMap");
+          Map<Utf8, Utf8> stringMapValue = (Map<Utf8, Utf8>) valueRecord.get("stringMap");
           assertEquals(stringMapValue.get(new Utf8("k1")), new Utf8("v1"));
           assertNull(stringMapValue.get(new Utf8("k2")));
 
