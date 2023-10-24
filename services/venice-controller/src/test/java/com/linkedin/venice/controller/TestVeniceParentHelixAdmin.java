@@ -64,6 +64,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
@@ -84,11 +85,13 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -1837,9 +1840,122 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     int schemaId = schemaCaptor.getValue();
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertTrue(
-        "dc1".equals(updateStore.nativeReplicationSourceFabric.toString()),
+    Assert.assertEquals(
+        updateStore.nativeReplicationSourceFabric.toString(),
+        "dc1",
         "Native replication source fabric does not match after updating the store!");
+  }
+
+  @Test
+  public void testSetStoreViewConfig() {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    store.setActiveActiveReplicationEnabled(true);
+    store.setChunkingEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+
+    parentAdmin.initStorageCluster(clusterName);
+    Map<String, String> viewConfig = new HashMap<>();
+    viewConfig.put(
+        "changeCapture",
+        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig));
+
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+
+    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertTrue(updateStore.getViews().containsKey("changeCapture"));
+  }
+
+  @Test
+  public void testInsertStoreViewConfig() {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    store.setActiveActiveReplicationEnabled(true);
+    store.setChunkingEnabled(true);
+    store.setViewConfigs(
+        Collections.singletonMap("testView", new ViewConfigImpl("testViewClassDummyName", Collections.emptyMap())));
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setViewName("changeCapture")
+            .setViewClassName(ChangeCaptureView.class.getCanonicalName()));
+
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+
+    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertEquals(updateStore.getViews().size(), 2);
+    Assert.assertTrue(updateStore.getViews().containsKey("changeCapture"));
+    Assert.assertEquals(
+        updateStore.getViews().get("changeCapture").viewClassName.toString(),
+        ChangeCaptureView.class.getCanonicalName());
+    Assert.assertTrue(updateStore.getViews().get("changeCapture").viewParameters.isEmpty());
+  }
+
+  @Test
+  public void testRemoveStoreViewConfig() {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    store.setActiveActiveReplicationEnabled(true);
+    store.setChunkingEnabled(true);
+    store.setViewConfigs(
+        Collections.singletonMap(
+            "changeCapture",
+            new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap())));
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setViewName("changeCapture").setDisableStoreView());
+
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+
+    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertEquals(updateStore.getViews().size(), 0);
   }
 
   @Test

@@ -20,8 +20,8 @@ public class StoreViewUtils {
   private static final VeniceJsonSerializer<ViewConfig> viewConfigVeniceJsonSerializer =
       new VeniceJsonSerializer<>(ViewConfig.class);
 
-  static Map<String, StoreViewConfigRecord> convertStringMapViewToStoreViewConfigRecord(Map<String, String> stringMap)
-      throws VeniceException {
+  static Map<String, StoreViewConfigRecord> convertStringMapViewToStoreViewConfigRecordMap(
+      Map<String, String> stringMap) throws VeniceException {
     Map<String, StoreViewConfigRecord> mergedViewConfigRecords = new HashMap<>();
     if (!stringMap.isEmpty()) {
       for (Map.Entry<String, String> stringViewConfig: stringMap.entrySet()) {
@@ -41,40 +41,41 @@ public class StoreViewUtils {
     return mergedViewConfigRecords;
   }
 
-  static Map<String, StoreViewConfig> convertStringMapViewToStoreViewConfig(Map<String, String> stringMap) {
+  static Map<String, StoreViewConfig> convertStringMapViewToStoreViewConfigMap(Map<String, String> stringMap) {
     Map<String, StoreViewConfig> mergedViewConfigRecords = new HashMap<>();
     if (!stringMap.isEmpty()) {
       for (Map.Entry<String, String> stringViewConfig: stringMap.entrySet()) {
+        StoreViewConfig newViewConfig;
         try {
           ViewConfig viewConfig =
               viewConfigVeniceJsonSerializer.deserialize(stringViewConfig.getValue().getBytes(), "");
-          StoreViewConfig newViewConfig = new StoreViewConfig(
+          newViewConfig = new StoreViewConfig(
               viewConfig.getViewClassName(),
               CollectionUtils.getStringKeyCharSequenceValueMapFromStringMap(viewConfig.getViewParameters()));
-          mergedViewConfigRecords.put(stringViewConfig.getKey(), newViewConfig);
         } catch (IOException e) {
           LOGGER.error("Failed to serialize provided view config: {}", stringViewConfig.getValue());
           throw new VeniceException("Failed to serialize provided view config:" + stringViewConfig.getValue(), e);
         }
+        mergedViewConfigRecords.put(stringViewConfig.getKey(), newViewConfig);
       }
     }
     return mergedViewConfigRecords;
   }
 
-  static Map<String, ViewConfig> convertStringMapViewToViewConfig(Map<String, String> stringMap) {
-    return convertStringMapViewToStoreViewConfig(stringMap).entrySet()
+  static Map<String, ViewConfig> convertStringMapViewToViewConfigMap(Map<String, String> stringMap) {
+    return convertStringMapViewToStoreViewConfigMap(stringMap).entrySet()
         .stream()
         .collect(Collectors.toMap(Map.Entry::getKey, e -> new ViewConfigImpl(e.getValue())));
   }
 
-  static Map<String, StoreViewConfigRecord> convertViewConfigToStoreViewConfig(Map<String, ViewConfig> viewConfigMap) {
+  static Map<String, StoreViewConfigRecord> convertViewConfigMapToStoreViewRecordMap(
+      Map<String, ViewConfig> viewConfigMap) {
     return viewConfigMap.entrySet()
         .stream()
-        .collect(
-            Collectors.toMap(
-                Map.Entry::getKey,
-                e -> new StoreViewConfigRecord(
-                    e.getValue().getViewClassName(),
-                    e.getValue().dataModel().getViewParameters())));
+        .collect(Collectors.toMap(Map.Entry::getKey, e -> convertViewConfigToStoreViewConfigRecord(e.getValue())));
+  }
+
+  static StoreViewConfigRecord convertViewConfigToStoreViewConfigRecord(ViewConfig viewConfig) {
+    return new StoreViewConfigRecord(viewConfig.getViewClassName(), viewConfig.dataModel().getViewParameters());
   }
 }
