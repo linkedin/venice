@@ -97,7 +97,7 @@ public class MetaStoreWriter implements Closeable {
                 AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()),
         pubSubTopicRepository,
         TimeUnit.MINUTES.toMillis(5),
-        256);
+        -1);
   }
 
   MetaStoreWriter(
@@ -580,7 +580,7 @@ public class MetaStoreWriter implements Closeable {
     }
 
     LOGGER.info(
-        "Closed MetaStoreWriter in {} ms - numbOfVeniceWriters: {} - closeResults: {}",
+        "Closed MetaStoreWriter in {} ms - numbOfVeniceWriters: {} veniceWriterCloseResult: {}",
         System.currentTimeMillis() - startTime,
         writersToClose.size(),
         closeResultMap);

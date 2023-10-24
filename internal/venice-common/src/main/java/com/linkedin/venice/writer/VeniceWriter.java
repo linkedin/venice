@@ -218,7 +218,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final Time time;
   private final VenicePartitioner partitioner;
   private final int numberOfPartitions;
-  private final int closeTimeOut;
+  private final int closeTimeOutInMs;
   private final CheckSumType checkSumType;
   private final int maxSizeForUserPayloadPerMessageInBytes;
   private final int maxAttemptsWhenTopicMissing;
@@ -283,7 +283,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.writeComputeSerializer = params.getWriteComputeSerializer();
     this.time = params.getTime();
     this.partitioner = params.getPartitioner();
-    this.closeTimeOut = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
+    this.closeTimeOutInMs = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
     this.checkSumType = CheckSumType.valueOf(props.getString(CHECK_SUM_TYPE, DEFAULT_CHECK_SUM_TYPE));
     // override factory chunking settings
     this.isChunkingEnabled = params.isChunkingEnabled();
@@ -328,9 +328,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     // Create a thread pool which can have max 2 threads.
     // Except during VW start and close we expect it to have zero threads to avoid unnecessary resource usage.
     this.threadPoolExecutor = new ThreadPoolExecutor(
-        1,
-        1,
-        10,
+        2,
+        2,
+        5,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("VW-" + topicName));
@@ -394,7 +394,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
         // For non-shared producer mode gracefulClose will flush the producer
 
-        producerAdapter.close(topicName, closeTimeOut, gracefulClose);
+        producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
         OPEN_VENICE_WRITER_COUNT.decrementAndGet();
       } catch (Exception e) {
         logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
@@ -420,7 +420,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             CompletableFuture<Void> endSegmentsFuture =
                 CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
             try {
-              endSegmentsFuture.get(Math.min(10, closeTimeOut / 2), TimeUnit.SECONDS);
+              endSegmentsFuture.get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
             } catch (Exception e) {
               // cancel the endSegmentsFuture if it's not done in time
               if (!endSegmentsFuture.isDone()) {
@@ -429,7 +429,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
             }
           }
-          producerAdapter.close(topicName, closeTimeOut, gracefulClose);
+          producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
           OPEN_VENICE_WRITER_COUNT.decrementAndGet();
         } catch (Exception e) {
           logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
