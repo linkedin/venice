@@ -58,6 +58,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -286,26 +287,26 @@ public class TestVenicePushJob {
     File inputDir_v2_file = new File(inputDir_v2, "v3.avro"); // Added to ensure lexically greater files do not get
                                                               // resolved
     inputDir_v2_file.createNewFile();
-
-    FileSystem fs = FileSystem.get(new Configuration());
+    String basePath = "file:" + inputDir.getAbsolutePath();
+    FileSystem fs = new Path(basePath).getFileSystem(new Configuration());
 
     Assert.assertEquals(
-        getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST", fs).toString(),
+        getLatestPathOfInputDirectory(basePath + "/#LATEST", fs).toString(),
         "file:" + inputDir_v2.getAbsolutePath(),
         "VenicePushJob should parse #LATEST to latest directory when it is in the last level in the input path");
 
     Assert.assertEquals(
-        getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST/v1", fs).toString(),
+        getLatestPathOfInputDirectory(basePath + "/#LATEST/v1", fs).toString(),
         "file:" + inputDir_v2_v1.getAbsolutePath(),
         "VenicePushJob should parse #LATEST to latest directory when it is only in an intermediate level in the input path");
 
     Assert.assertEquals(
-        getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST/#LATEST", fs).toString(),
+        getLatestPathOfInputDirectory(basePath + "/#LATEST/#LATEST", fs).toString(),
         "file:" + inputDir_v2_v2.getAbsolutePath(),
         "VenicePushJob should parse all occurrences of #LATEST to respective latest directories");
 
     Assert.assertEquals(
-        getLatestPathOfInputDirectory("file:" + inputDir.getAbsolutePath() + "/#LATEST/#LATEST/", fs).toString(),
+        getLatestPathOfInputDirectory(basePath + "/#LATEST/#LATEST/", fs).toString(),
         "file:" + inputDir_v2_v2.getAbsolutePath(),
         "VenicePushJob should parse #LATEST to latest directory to respective latest directories");
   }

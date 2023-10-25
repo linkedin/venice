@@ -276,8 +276,8 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     }
 
     try {
-      fileSystem = FileSystem.get(job);
       Path srcPath = new Path(inputDirectory);
+      fileSystem = srcPath.getFileSystem(job);
       fileStatuses = fileSystem.listStatus(srcPath, PATH_FILTER);
     } catch (IOException e) {
       /** Should not happen as this is already done in driver, unless there has
