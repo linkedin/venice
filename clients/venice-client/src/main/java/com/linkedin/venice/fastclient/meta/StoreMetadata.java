@@ -1,10 +1,10 @@
 package com.linkedin.venice.fastclient.meta;
 
-import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
@@ -46,7 +46,7 @@ public interface StoreMetadata extends SchemaReader {
       int requiredReplicaCount,
       Set<String> excludedInstances);
 
-  CompletableFuture<HttpStatus> trackHealthBasedOnRequestToInstance(
+  ChainedCompletableFuture<Integer, Integer> trackHealthBasedOnRequestToInstance(
       String instance,
       int version,
       int partitionId,

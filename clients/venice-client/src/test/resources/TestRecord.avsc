@@ -1,0 +1,91 @@
+{
+  "name": "Person",
+  "type": "record",
+  "fields": [
+    {
+      "name": "name",
+      "type": "string",
+      "default": "default_name"
+    },
+    {
+      "name": "age",
+      "type": "int",
+      "default": -1
+    },
+    {
+      "name": "address",
+      "type": [
+        "null",
+        {
+          "type": "record",
+          "name": "AddressUSRecord",
+          "fields": [
+            {
+              "name": "streetaddress",
+              "type": "string",
+              "default": "unknown"
+            },
+            {
+              "name": "city",
+              "type": "string",
+              "default": "Sunnyvale"
+            }
+          ]
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "intArray",
+      "type": {
+        "type": "array",
+        "items": "int"
+      },
+      "default": []
+    },
+    {
+      "name": "recordArray",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "ArrayRecord",
+          "fields": [
+            {
+              "name": "number",
+              "type": "int",
+              "default": -1
+            }
+          ]
+        }
+      },
+      "default": []
+    },
+    {
+      "name": "stringMap",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {}
+    },
+    {
+      "name": "recordMap",
+      "type": {
+        "type": "map",
+        "values": {
+          "type": "record",
+          "name": "MapRecord",
+          "fields": [
+            {
+              "name": "number",
+              "type": "int",
+              "default": -1
+            }
+          ]
+        }
+      },
+      "default": []
+    }
+  ]
+}
