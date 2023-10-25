@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyDouble;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -13,6 +14,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -20,6 +22,7 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -70,19 +73,21 @@ public class DualReadAvroGenericStoreClientTest {
     InternalAvroStoreClient<String, String> fastClient = mock(DispatchingAvroGenericStoreClient.class);
     AvroGenericStoreClient<String, String> thinClient = mock(AvroGenericStoreClient.class);
     ClientConfig clientConfig = mock(ClientConfig.class);
-    doReturn(dualClientStats).when(clientConfig).getStats(RequestType.MULTI_GET);
+    doReturn(dualClientStats).when(clientConfig).getStats(RequestType.MULTI_GET_STREAMING);
     doReturn(dualClientStats).when(clientConfig).getStats(RequestType.SINGLE_GET);
     doReturn(useStreamingBatchGetAsDefault).when(clientConfig).useStreamingBatchGetAsDefault();
     doReturn(thinClient).when(clientConfig).getGenericThinClient();
+    doReturn(2).when(clientConfig).getMaxAllowedKeyCntInBatchGetReq();
 
     if (fastClientThrowExceptionWhenSending) {
       String fcRequestFailException = "Mocked VeniceClientException for fast-client while sending out request";
       if (batchGet) {
-        if (!useStreamingBatchGetAsDefault) {
-          doThrow(new VeniceClientException(fcRequestFailException)).when(fastClient).batchGet(any());
+        if (useStreamingBatchGetAsDefault) {
+          doThrow(new VeniceClientException(fcRequestFailException)).when(fastClient)
+              .streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
         } else {
           doThrow(new VeniceClientException(fcRequestFailException)).when(fastClient)
-              .batchGet(any(BatchGetRequestContext.class), any());
+              .get(any(GetRequestContext.class), any());
         }
       } else {
         doThrow(new VeniceClientException(fcRequestFailException)).when(fastClient)
@@ -92,12 +97,18 @@ public class DualReadAvroGenericStoreClientTest {
       if (fastClientSucceed) {
         if (fastClientDelayMS == 0) {
           if (batchGet) {
-            if (!useStreamingBatchGetAsDefault) {
-              doReturn(CompletableFuture.completedFuture(FAST_CLIENT_BATCH_GET_RESPONSE)).when(fastClient)
-                  .batchGet(any());
+            if (useStreamingBatchGetAsDefault) {
+              doAnswer(invocation -> {
+                StreamingCallback callback = invocation.getArgument(2);
+                FAST_CLIENT_BATCH_GET_RESPONSE.forEach((k, v) -> callback.onRecordReceived(k, v));
+                callback.onCompletion(Optional.empty());
+                return null;
+              }).when(fastClient).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
             } else {
-              doReturn(CompletableFuture.completedFuture(FAST_CLIENT_BATCH_GET_RESPONSE)).when(fastClient)
-                  .batchGet(any(BatchGetRequestContext.class), any());
+              doAnswer(invocation -> {
+                String key = invocation.getArgument(1);
+                return CompletableFuture.completedFuture(FAST_CLIENT_BATCH_GET_RESPONSE.get(key));
+              }).when(fastClient).get(any(GetRequestContext.class), any());
             }
           } else {
             doReturn(CompletableFuture.completedFuture(FAST_CLIENT_SINGLE_GET_RESPONSE)).when(fastClient)
@@ -105,54 +116,63 @@ public class DualReadAvroGenericStoreClientTest {
           }
         } else {
           if (batchGet) {
-            CompletableFuture<Map<String, String>> fastClientFuture = new CompletableFuture<>();
-            if (!useStreamingBatchGetAsDefault) {
-              doReturn(fastClientFuture).when(fastClient).batchGet(any());
+            if (useStreamingBatchGetAsDefault) {
+              doAnswer(invocation -> {
+                maybeDelayExecute(() -> {
+                  StreamingCallback callback = invocation.getArgument(2);
+                  FAST_CLIENT_BATCH_GET_RESPONSE.forEach(callback::onRecordReceived);
+                  callback.onCompletion(Optional.empty());
+                }, fastClientDelayMS);
+                return null;
+              }).when(fastClient).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
             } else {
-              doReturn(fastClientFuture).when(fastClient).batchGet(any(BatchGetRequestContext.class), any());
+              doAnswer(invocation -> {
+                CompletableFuture<String> fastClientFuture = new CompletableFuture<>();
+                maybeDelayExecute(() -> {
+                  String key = invocation.getArgument(1);
+                  fastClientFuture.complete(FAST_CLIENT_BATCH_GET_RESPONSE.get(key));
+                }, fastClientDelayMS);
+                return fastClientFuture;
+              }).when(fastClient).get(any(GetRequestContext.class), any());
             }
-            scheduledExecutor.schedule(
-                () -> fastClientFuture.complete(FAST_CLIENT_BATCH_GET_RESPONSE),
-                fastClientDelayMS,
-                TimeUnit.MILLISECONDS);
           } else {
-            CompletableFuture<String> fastClientFuture = new CompletableFuture<>();
-            doReturn(fastClientFuture).when(fastClient).get(any(GetRequestContext.class), any());
-            scheduledExecutor.schedule(
-                () -> fastClientFuture.complete(FAST_CLIENT_SINGLE_GET_RESPONSE),
-                fastClientDelayMS,
-                TimeUnit.MILLISECONDS);
+            doAnswer(invocation -> {
+              CompletableFuture<String> fastClientFuture = new CompletableFuture<>();
+              maybeDelayExecute(() -> {
+                fastClientFuture.complete(FAST_CLIENT_SINGLE_GET_RESPONSE);
+              }, fastClientDelayMS);
+              return fastClientFuture;
+            }).when(fastClient).get(any(GetRequestContext.class), any());
           }
         }
       } else {
         String fcException = "Mocked VeniceClientException for fast-client";
         if (batchGet) {
-          CompletableFuture<Map<String, String>> fastClientFuture = new CompletableFuture<>();
-          if (!useStreamingBatchGetAsDefault) {
-            doReturn(fastClientFuture).when(fastClient).batchGet(any());
+          if (useStreamingBatchGetAsDefault) {
+            doAnswer(invocation -> {
+              maybeDelayExecute(() -> {
+                StreamingCallback callback = invocation.getArgument(2);
+                callback.onCompletion(Optional.of(new VeniceClientException(fcException)));
+              }, fastClientDelayMS);
+              return null;
+            }).when(fastClient).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
           } else {
-            doReturn(fastClientFuture).when(fastClient).batchGet(any(BatchGetRequestContext.class), any());
-          }
-          if (fastClientDelayMS == 0) {
-            fastClientFuture.completeExceptionally(new VeniceClientException(fcException));
-          } else {
-            scheduledExecutor.schedule(
-                () -> fastClientFuture.completeExceptionally(new VeniceClientException(fcException)),
-                fastClientDelayMS,
-                TimeUnit.MILLISECONDS);
+            doAnswer(invocation -> {
+              CompletableFuture<Map<String, String>> fastClientFuture = new CompletableFuture<>();
+              maybeDelayExecute(() -> {
+                fastClientFuture.completeExceptionally(new VeniceClientException(fcException));
+              }, fastClientDelayMS);
+              return fastClientFuture;
+            }).when(fastClient).get(any(GetRequestContext.class), any());
           }
         } else {
           CompletableFuture<String> fastClientFuture = new CompletableFuture<>();
-          doReturn(fastClientFuture).when(fastClient).get(any(GetRequestContext.class), any());
-
-          if (fastClientDelayMS == 0) {
-            fastClientFuture.completeExceptionally(new VeniceClientException(fcException));
-          } else {
-            scheduledExecutor.schedule(
-                () -> fastClientFuture.completeExceptionally(new VeniceClientException(fcException)),
-                fastClientDelayMS,
-                TimeUnit.MILLISECONDS);
-          }
+          doAnswer(invocation -> {
+            maybeDelayExecute(() -> {
+              fastClientFuture.completeExceptionally(new VeniceClientException(fcException));
+            }, fastClientDelayMS);
+            return fastClientFuture;
+          }).when(fastClient).get(any(GetRequestContext.class), any());
         }
       }
     }
@@ -175,46 +195,41 @@ public class DualReadAvroGenericStoreClientTest {
           }
         } else {
           if (batchGet) {
-            CompletableFuture<Map<String, String>> thinClientFuture = new CompletableFuture<>();
-
-            doReturn(thinClientFuture).when(thinClient).batchGet(any());
-            scheduledExecutor.schedule(
-                () -> thinClientFuture.complete(THIN_CLIENT_BATCH_GET_RESPONSE),
-                fastClientDelayMS,
-                TimeUnit.MILLISECONDS);
+            doAnswer(invocation -> {
+              CompletableFuture<Map<String, String>> thinClientFuture = new CompletableFuture<>();
+              maybeDelayExecute(() -> {
+                thinClientFuture.complete(THIN_CLIENT_BATCH_GET_RESPONSE);
+              }, thinClientDelayMS);
+              return thinClientFuture;
+            }).when(thinClient).batchGet(any());
           } else {
-            CompletableFuture<String> thinClientFuture = new CompletableFuture<>();
-            doReturn(thinClientFuture).when(thinClient).get(any());
-            scheduledExecutor.schedule(
-                () -> thinClientFuture.complete(THIN_CLIENT_SINGLE_GET_RESPONSE),
-                fastClientDelayMS,
-                TimeUnit.MILLISECONDS);
+            doAnswer(invocation -> {
+              CompletableFuture<String> thinClientFuture = new CompletableFuture<>();
+              maybeDelayExecute(() -> {
+                thinClientFuture.complete(THIN_CLIENT_SINGLE_GET_RESPONSE);
+              }, thinClientDelayMS);
+              return thinClientFuture;
+            }).when(thinClient).get(any());
           }
         }
       } else {
         String tcException = "Mocked VeniceClientException for thin-client";
         if (batchGet) {
           CompletableFuture<Map<String, String>> thinClientFuture = new CompletableFuture<>();
-          doReturn(thinClientFuture).when(thinClient).batchGet(any());
-          if (thinClientDelayMS == 0) {
-            thinClientFuture.completeExceptionally(new VeniceClientException(tcException));
-          } else {
-            scheduledExecutor.schedule(
-                () -> thinClientFuture.completeExceptionally(new VeniceClientException(tcException)),
-                thinClientDelayMS,
-                TimeUnit.MILLISECONDS);
-          }
+          doAnswer(invocation -> {
+            maybeDelayExecute(() -> {
+              thinClientFuture.completeExceptionally(new VeniceClientException(tcException));
+            }, thinClientDelayMS);
+            return thinClientFuture;
+          }).when(thinClient).batchGet(any());
         } else {
           CompletableFuture<String> thinClientFuture = new CompletableFuture<>();
-          doReturn(thinClientFuture).when(thinClient).get(any());
-          if (thinClientDelayMS == 0) {
-            thinClientFuture.completeExceptionally(new VeniceClientException(tcException));
-          } else {
-            scheduledExecutor.schedule(
-                () -> thinClientFuture.completeExceptionally(new VeniceClientException(tcException)),
-                thinClientDelayMS,
-                TimeUnit.MILLISECONDS);
-          }
+          doAnswer(invocation -> {
+            maybeDelayExecute(() -> {
+              thinClientFuture.completeExceptionally(new VeniceClientException(tcException));
+            }, thinClientDelayMS);
+            return thinClientFuture;
+          }).when(thinClient).get(any());
         }
       }
     }
@@ -260,9 +275,12 @@ public class DualReadAvroGenericStoreClientTest {
           FAST_CLIENT_SINGLE_GET_RESPONSE,
           "Fast client response should be returned since it is faster");
     }
-    verify(dualClientStats, never()).recordFastClientErrorThinClientSucceedRequest();
-    verify(dualClientStats, never()).recordFastClientSlowerRequest();
-    verify(dualClientStats, timeout(2000)).recordThinClientFastClientLatencyDelta(anyDouble());
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(dualClientStats, never()).recordFastClientErrorThinClientSucceedRequest();
+      verify(dualClientStats, never()).recordFastClientSlowerRequest();
+      verify(dualClientStats, timeout(2000)).recordThinClientFastClientLatencyDelta(anyDouble());
+    });
   }
 
   // Both returns, but thin-client is faster
@@ -285,9 +303,11 @@ public class DualReadAvroGenericStoreClientTest {
           THIN_CLIENT_SINGLE_GET_RESPONSE,
           "Thin client response should be returned since it is faster");
     }
-    verify(dualClientStats, never()).recordFastClientErrorThinClientSucceedRequest();
-    verify(dualClientStats, timeout(2000)).recordFastClientSlowerRequest();
-    verify(dualClientStats).recordThinClientFastClientLatencyDelta(anyDouble());
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(dualClientStats, never()).recordFastClientErrorThinClientSucceedRequest();
+      verify(dualClientStats, timeout(2000)).recordFastClientSlowerRequest();
+      verify(dualClientStats).recordThinClientFastClientLatencyDelta(anyDouble());
+    });
   }
 
   // Fast-client returns ok, but thin-client returns error
@@ -310,9 +330,11 @@ public class DualReadAvroGenericStoreClientTest {
           FAST_CLIENT_SINGLE_GET_RESPONSE,
           "Fast client response should be returned since it succeeds");
     }
-    verify(dualClientStats, never()).recordFastClientErrorThinClientSucceedRequest();
-    verify(dualClientStats, never()).recordFastClientSlowerRequest();
-    verify(dualClientStats, never()).recordThinClientFastClientLatencyDelta(anyDouble());
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(dualClientStats, never()).recordFastClientErrorThinClientSucceedRequest();
+      verify(dualClientStats, never()).recordFastClientSlowerRequest();
+      verify(dualClientStats, never()).recordThinClientFastClientLatencyDelta(anyDouble());
+    });
   }
 
   // Fast-client returns error, but thin-client returns ok
@@ -335,9 +357,11 @@ public class DualReadAvroGenericStoreClientTest {
           THIN_CLIENT_SINGLE_GET_RESPONSE,
           "Thin client response should be returned since it succeeds");
     }
-    verify(dualClientStats).recordFastClientErrorThinClientSucceedRequest();
-    verify(dualClientStats, never()).recordFastClientSlowerRequest();
-    verify(dualClientStats, never()).recordThinClientFastClientLatencyDelta(anyDouble());
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(dualClientStats).recordFastClientErrorThinClientSucceedRequest();
+      verify(dualClientStats, never()).recordFastClientSlowerRequest();
+      verify(dualClientStats, never()).recordThinClientFastClientLatencyDelta(anyDouble());
+    });
   }
 
   // Both return error
@@ -379,9 +403,11 @@ public class DualReadAvroGenericStoreClientTest {
           FAST_CLIENT_SINGLE_GET_RESPONSE,
           "Fast client response should be returned since it succeeds");
     }
-    verify(dualClientStats, never()).recordFastClientErrorThinClientSucceedRequest();
-    verify(dualClientStats, never()).recordFastClientSlowerRequest();
-    verify(dualClientStats, never()).recordThinClientFastClientLatencyDelta(anyDouble());
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(dualClientStats, never()).recordFastClientErrorThinClientSucceedRequest();
+      verify(dualClientStats, never()).recordFastClientSlowerRequest();
+      verify(dualClientStats, never()).recordThinClientFastClientLatencyDelta(anyDouble());
+    });
   }
 
   // Fast-client fails to send out request, but thin-client returns ok
@@ -404,9 +430,11 @@ public class DualReadAvroGenericStoreClientTest {
           THIN_CLIENT_SINGLE_GET_RESPONSE,
           "Thin client response should be returned since it succeeds");
     }
-    verify(dualClientStats).recordFastClientErrorThinClientSucceedRequest();
-    verify(dualClientStats, never()).recordFastClientSlowerRequest();
-    verify(dualClientStats, never()).recordThinClientFastClientLatencyDelta(anyDouble());
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(dualClientStats).recordFastClientErrorThinClientSucceedRequest();
+      verify(dualClientStats, never()).recordFastClientSlowerRequest();
+      verify(dualClientStats, never()).recordThinClientFastClientLatencyDelta(anyDouble());
+    });
   }
 
   // Both fail to send out request
@@ -425,6 +453,14 @@ public class DualReadAvroGenericStoreClientTest {
     } catch (Exception e) {
       // expected
       assertEquals(e.getClass(), ExecutionException.class);
+    }
+  }
+
+  private void maybeDelayExecute(Runnable runnable, long delayMS) {
+    if (delayMS > 0) {
+      scheduledExecutor.schedule(runnable, delayMS, java.util.concurrent.TimeUnit.MILLISECONDS);
+    } else {
+      runnable.run();
     }
   }
 }

@@ -605,21 +605,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute(
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
-      long preRequestTimeInNS) {
-    return compute(stats, streamingStats, this, preRequestTimeInNS);
-  }
-
-  @Override
-  public ComputeRequestBuilder<K> compute(
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
-      InternalAvroStoreClient computeStoreClient,
-      long preRequestTimeInNS) {
-    return new AvroComputeRequestBuilderV3<K>(computeStoreClient, getLatestValueSchema()).setStats(streamingStats)
-        .setValidateProjectionFields(getClientConfig().isProjectionFieldValidationEnabled());
+  public boolean isProjectionFieldValidationEnabled() {
+    return getClientConfig().isProjectionFieldValidationEnabled();
   }
 
   @Override

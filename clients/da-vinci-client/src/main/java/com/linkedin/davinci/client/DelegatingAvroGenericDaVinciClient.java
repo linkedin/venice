@@ -67,6 +67,11 @@ public class DelegatingAvroGenericDaVinciClient<K, V>
   }
 
   @Override
+  public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    delegate.streamingBatchGet(keys, callback);
+  }
+
+  @Override
   public void start() throws VeniceClientException {
     delegate.start();
   }
@@ -92,11 +97,17 @@ public class DelegatingAvroGenericDaVinciClient<K, V>
   }
 
   @Override
+  public boolean isProjectionFieldValidationEnabled() {
+    return delegate.isProjectionFieldValidationEnabled();
+  }
+
+  @Override
   public ComputeRequestBuilder<K> compute(
       Optional<ClientStats> stats,
       Optional<ClientStats> streamingStats,
+      AvroGenericReadComputeStoreClient computeStoreClient,
       long preRequestTimeInNS) throws VeniceClientException {
-    return delegate.compute(stats, streamingStats, preRequestTimeInNS);
+    return delegate.compute(stats, streamingStats, computeStoreClient, preRequestTimeInNS);
   }
 
   @Override

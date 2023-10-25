@@ -72,7 +72,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   private static final RecordSerializer<ComputeRouterRequestKeyV1> COMPUTE_ROUTER_REQUEST_KEY_V1_SERIALIZER =
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(ComputeRouterRequestKeyV1.getClassSchema());
 
-  public static void skipOverComputeRequest(BinaryDecoder decoder) {
+  private static void skipOverComputeRequest(BinaryDecoder decoder) {
     COMPUTE_REQUEST_NO_OP_DESERIALIZER.deserialize(EMPTY_COMPUTE_REQUEST_RECORD.get(), decoder);
   }
 

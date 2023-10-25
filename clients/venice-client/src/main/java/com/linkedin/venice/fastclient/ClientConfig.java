@@ -58,8 +58,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long metadataRefreshIntervalInSeconds;
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
+  private final boolean longTailRetryEnabledForCompute;
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
+  private final int longTailRetryThresholdForComputeInMicroSeconds;
   private final ClusterStats clusterStats;
   private final boolean isVsonStore;
   private final StoreMetadataFetchMode storeMetadataFetchMode;
@@ -80,6 +82,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * route requests to the correct server/partition
    */
   private final GrpcClientConfig grpcClientConfig;
+
+  private boolean projectionFieldValidation;
 
   private ClientConfig(
       String storeName,
@@ -106,13 +110,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       int longTailRetryThresholdForSingleGetInMicroSeconds,
       boolean longTailRetryEnabledForBatchGet,
       int longTailRetryThresholdForBatchGetInMicroSeconds,
+      boolean longTailRetryEnabledForCompute,
+      int longTailRetryThresholdForComputeInMicroSeconds,
       boolean isVsonStore,
       StoreMetadataFetchMode storeMetadataFetchMode,
       D2Client d2Client,
       String clusterDiscoveryD2Service,
       boolean useStreamingBatchGetAsDefault,
       boolean useGrpc,
-      GrpcClientConfig grpcClientConfig) {
+      GrpcClientConfig grpcClientConfig,
+      boolean projectionFieldValidation) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -190,6 +197,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.longTailRetryEnabledForBatchGet = longTailRetryEnabledForBatchGet;
     this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
 
+    this.longTailRetryEnabledForCompute = longTailRetryEnabledForCompute;
+    this.longTailRetryThresholdForComputeInMicroSeconds = longTailRetryThresholdForComputeInMicroSeconds;
+
     if (this.longTailRetryEnabledForSingleGet) {
       if (this.longTailRetryThresholdForSingleGetInMicroSeconds <= 0) {
         throw new VeniceClientException(
@@ -203,6 +213,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         throw new VeniceClientException(
             "longTailRetryThresholdForBatchGetInMicroSeconds must be positive, but got: "
                 + this.longTailRetryThresholdForBatchGetInMicroSeconds);
+      }
+    }
+
+    if (this.longTailRetryEnabledForCompute) {
+      if (this.longTailRetryThresholdForComputeInMicroSeconds <= 0) {
+        throw new VeniceClientException(
+            "longTailRetryThresholdForComputeInMicroSeconds must be positive, but got: "
+                + this.longTailRetryThresholdForComputeInMicroSeconds);
       }
     }
 
@@ -236,6 +254,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.useGrpc = useGrpc;
     this.grpcClientConfig = grpcClientConfig;
+
+    this.projectionFieldValidation = projectionFieldValidation;
   }
 
   public String getStoreName() {
@@ -326,6 +346,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRetryThresholdForBatchGetInMicroSeconds;
   }
 
+  public boolean isLongTailRetryEnabledForCompute() {
+    return longTailRetryEnabledForCompute;
+  }
+
+  public int getLongTailRetryThresholdForComputeInMicroSeconds() {
+    return longTailRetryThresholdForComputeInMicroSeconds;
+  }
+
   @Deprecated
   public boolean isVsonStore() {
     return isVsonStore;
@@ -361,6 +389,15 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public GrpcClientConfig getGrpcClientConfig() {
     return grpcClientConfig;
+  }
+
+  public boolean isProjectionFieldValidationEnabled() {
+    return projectionFieldValidation;
+  }
+
+  public ClientConfig setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
+    this.projectionFieldValidation = projectionFieldValidation;
+    return this;
   }
 
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
@@ -399,6 +436,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean longTailRetryEnabledForBatchGet = false;
     private int longTailRetryThresholdForBatchGetInMicroSeconds = 10000; // 10ms.
 
+    private boolean longTailRetryEnabledForCompute = false;
+    private int longTailRetryThresholdForComputeInMicroSeconds = 10000; // 10ms.
+
     private boolean isVsonStore = false;
     private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA;
     private D2Client d2Client;
@@ -406,6 +446,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean useStreamingBatchGetAsDefault = false;
     private boolean useGrpc = false;
     private GrpcClientConfig grpcClientConfig = null;
+
+    private boolean projectionFieldValidation = true;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -537,6 +579,17 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setLongTailRetryEnabledForCompute(boolean longTailRetryEnabledForCompute) {
+      this.longTailRetryEnabledForCompute = longTailRetryEnabledForCompute;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setLongTailRetryThresholdForComputeInMicroSeconds(
+        int longTailRetryThresholdForComputeInMicroSeconds) {
+      this.longTailRetryThresholdForComputeInMicroSeconds = longTailRetryThresholdForComputeInMicroSeconds;
+      return this;
+    }
+
     @Deprecated
     public ClientConfigBuilder<K, V, T> setVsonStore(boolean vsonStore) {
       isVsonStore = vsonStore;
@@ -573,6 +626,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
+      this.projectionFieldValidation = projectionFieldValidation;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -598,13 +656,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroSeconds)
           .setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroSeconds)
+          .setLongTailRetryEnabledForCompute(longTailRetryEnabledForCompute)
+          .setLongTailRetryThresholdForComputeInMicroSeconds(longTailRetryThresholdForComputeInMicroSeconds)
           .setVsonStore(isVsonStore)
           .setStoreMetadataFetchMode(storeMetadataFetchMode)
           .setD2Client(d2Client)
           .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
           .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
           .setUseGrpc(useGrpc)
-          .setGrpcClientConfig(grpcClientConfig);
+          .setGrpcClientConfig(grpcClientConfig)
+          .setProjectionFieldValidationEnabled(projectionFieldValidation);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -633,13 +694,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           longTailRetryThresholdForSingleGetInMicroSeconds,
           longTailRetryEnabledForBatchGet,
           longTailRetryThresholdForBatchGetInMicroSeconds,
+          longTailRetryEnabledForCompute,
+          longTailRetryThresholdForComputeInMicroSeconds,
           isVsonStore,
           storeMetadataFetchMode,
           d2Client,
           clusterDiscoveryD2Service,
           useStreamingBatchGetAsDefault,
           useGrpc,
-          grpcClientConfig);
+          grpcClientConfig,
+          projectionFieldValidation);
     }
   }
 }

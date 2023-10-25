@@ -7,11 +7,13 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
@@ -36,35 +38,18 @@ import org.testng.annotations.Test;
  */
 
 public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
-  protected void runTest(
-      ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      boolean batchGet,
-      int batchGetKeySize,
-      Optional<AvroGenericStoreClient> vsonThinClient,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
-    runTest(
-        clientConfigBuilder,
-        batchGet,
-        batchGetKeySize,
-        (metricsRepository) -> {},
-        (metricsRepository) -> {},
-        null,
-        vsonThinClient,
-        storeMetadataFetchMode);
-  }
-
   /**
    * Run fast client tests based on the input parameters.
    * Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is called.
    *
    * @param clientConfigBuilder config to build client
-   * @param batchGet singleGet or batchGet
+   * @param requestType singleGet or batchGet or compute
    * @throws Exception
    */
-  protected void runTest(
+  private void runTest(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      boolean batchGet,
-      int batchGetKeySize,
+      RequestType requestType,
+      int multiKeyRequestKeyCount,
       Consumer<MetricsRepository> fastClientStatsValidation,
       Consumer<MetricsRepository> thinClientStatsValidation,
       MetricsRepository thinClientMetricsRepository,
@@ -73,6 +58,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
+    boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
+    boolean compute = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
     try {
       genericFastClient =
           getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, storeMetadataFetchMode);
@@ -86,7 +73,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
       if (batchGet) {
         // test batch get of size 2 (current default max)
-        if (batchGetKeySize == 2) {
+        if (multiKeyRequestKeyCount == 2) {
           for (int i = 0; i < recordCnt - 1; ++i) {
             String key1 = keyPrefix + i;
             String key2 = keyPrefix + (i + 1);
@@ -116,7 +103,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             vsonResult = (Map) vsonResultObj;
             assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i + 1);
           }
-        } else if (batchGetKeySize == recordCnt) {
+        } else if (multiKeyRequestKeyCount == recordCnt) {
           // test batch get of size recordCnt (configured)
           Set<String> keys = new HashSet<>();
           for (int i = 0; i < recordCnt; ++i) {
@@ -145,7 +132,40 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
           }
         } else {
-          throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
+          throw new VeniceException("unsupported multiKeyRequestKeyCount: " + multiKeyRequestKeyCount);
+        }
+      } else if (compute) {
+        // test compute of size 2 (current default max)
+        if (multiKeyRequestKeyCount == 2) {
+          for (int i = 0; i < recordCnt - 1; ++i) {
+            String key1 = keyPrefix + i;
+            String key2 = keyPrefix + (i + 1);
+            Set<String> keys = new HashSet<>();
+            keys.add(key1);
+            keys.add(key2);
+            Map<String, ComputeGenericRecord> resultMap =
+                genericFastClient.compute().project(VALUE_FIELD_NAME).execute(keys).get();
+            assertEquals(resultMap.size(), 2);
+            assertEquals((int) resultMap.get(key1).get(VALUE_FIELD_NAME), i);
+            assertEquals((int) resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
+          }
+        } else if (multiKeyRequestKeyCount == recordCnt) {
+          // test compute of size recordCnt (configured)
+          Set<String> keys = new HashSet<>();
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            keys.add(key);
+          }
+          Map<String, ComputeGenericRecord> resultMap =
+              genericFastClient.compute().project(VALUE_FIELD_NAME).execute(keys).get();
+          assertEquals(resultMap.size(), recordCnt);
+
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            assertEquals((int) resultMap.get(key).get(VALUE_FIELD_NAME), i);
+          }
+        } else {
+          throw new VeniceException("unsupported multiKeyRequestKeyCount: " + multiKeyRequestKeyCount);
         }
       } else {
         for (int i = 0; i < recordCnt; ++i) {
@@ -182,7 +202,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     try {
       if (batchGet) {
         // test batch get of size 2 (default)
-        if (batchGetKeySize == 2) {
+        if (multiKeyRequestKeyCount == 2) {
           for (int i = 0; i < recordCnt - 1; ++i) {
             String key1 = keyPrefix + i;
             String key2 = keyPrefix + (i + 1);
@@ -194,7 +214,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             assertEquals(resultMap.get(key1).int_field, i);
             assertEquals(resultMap.get(key2).int_field, i + 1);
           }
-        } else if (batchGetKeySize == recordCnt) {
+        } else if (multiKeyRequestKeyCount == recordCnt) {
           // test batch get of size recordCnt (configured)
           Set<String> keys = new HashSet<>();
           for (int i = 0; i < recordCnt; ++i) {
@@ -209,7 +229,41 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             assertEquals(resultMap.get(key).int_field, i);
           }
         } else {
-          throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
+          throw new VeniceException("unsupported multiKeyRequestKeyCount: " + multiKeyRequestKeyCount);
+        }
+      } else if (compute) { // Compute response is same in both generic and specific clients since the result is always
+                            // a ComputeGenericRecord
+        // test compute of size 2 (default)
+        if (multiKeyRequestKeyCount == 2) {
+          for (int i = 0; i < recordCnt - 1; ++i) {
+            String key1 = keyPrefix + i;
+            String key2 = keyPrefix + (i + 1);
+            Set<String> keys = new HashSet<>();
+            keys.add(key1);
+            keys.add(key2);
+            Map<String, ComputeGenericRecord> resultMap =
+                specificFastClient.compute().project(VALUE_FIELD_NAME).execute(keys).get();
+            assertEquals(resultMap.size(), 2);
+            assertEquals(resultMap.get(key1).get(VALUE_FIELD_NAME), i);
+            assertEquals(resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
+          }
+        } else if (multiKeyRequestKeyCount == recordCnt) {
+          // test compute of size recordCnt (configured)
+          Set<String> keys = new HashSet<>();
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            keys.add(key);
+          }
+          Map<String, ComputeGenericRecord> resultMap =
+              specificFastClient.compute().project(VALUE_FIELD_NAME).execute(keys).get();
+          assertEquals(resultMap.size(), recordCnt);
+
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            assertEquals(resultMap.get(key).get(VALUE_FIELD_NAME), i);
+          }
+        } else {
+          throw new VeniceException("unsupported multiKeyRequestKeyCount: " + multiKeyRequestKeyCount);
         }
       } else {
         for (int i = 0; i < recordCnt; ++i) {
@@ -226,27 +280,30 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Six-Boolean-A-Number-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Test-Permutations", timeOut = TIME_OUT)
   public void testFastClientGet(
       boolean dualRead,
       boolean speculativeQueryEnabled,
-      boolean batchGet,
       boolean useStreamingBatchGetAsDefault,
       boolean enableGrpc,
       boolean retryEnabled,
       int batchGetKeySize,
+      RequestType requestType,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+    boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
+    boolean compute = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
+
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(speculativeQueryEnabled)
             .setDualReadEnabled(dualRead)
             // this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt)
+            .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
 
-    if (batchGet) {
-      clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(recordCnt)
-          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+    if (batchGet || compute) {
+      clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(recordCnt);
     }
 
     if (enableGrpc) {
@@ -305,13 +362,20 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             batchGetKeySize,
             batchGetKeySize,
             false);
+      } else if (compute) {
+        fastClientStatsValidation = metricsRepository -> validateComputeMetrics(
+            metricsRepository,
+            false,
+            batchGetKeySize,
+            batchGetKeySize,
+            false);
       } else {
         fastClientStatsValidation = metricsRepository -> validateSingleGetMetrics(metricsRepository, false);
       }
 
       runTest(
           clientConfigBuilder,
-          batchGet,
+          requestType,
           batchGetKeySize,
           fastClientStatsValidation,
           thinClientStatsValidation,
@@ -349,7 +413,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
     runTest(
         clientConfigBuilder,
-        false,
+        RequestType.SINGLE_GET,
         recordCnt,
         fastClientStatsValidation,
         m -> {},
@@ -367,7 +431,20 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         false);
     runTest(
         clientConfigBuilder,
-        true,
+        RequestType.MULTI_GET,
+        recordCnt,
+        fastClientStatsValidation,
+        m -> {},
+        null,
+        Optional.empty(),
+        storeMetadataFetchMode);
+
+    // compute
+    fastClientStatsValidation =
+        metricsRepository -> validateComputeMetrics(metricsRepository, false, recordCnt, recordCnt, false);
+    runTest(
+        clientConfigBuilder,
+        RequestType.COMPUTE,
         recordCnt,
         fastClientStatsValidation,
         m -> {},
@@ -376,13 +453,20 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         storeMetadataFetchMode);
   }
 
-  @Test(dataProvider = "FastClient-One-Boolean", timeOut = TIME_OUT)
-  public void testFastClientWithLongTailRetry(boolean batchGet) throws Exception {
+  @Test(dataProvider = "FastClient-Request-Types-Small", timeOut = TIME_OUT)
+  public void testFastClientWithLongTailRetry(RequestType requestType) throws Exception {
+    boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
+    boolean compute = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
+
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
 
+    if (batchGet || compute) {
+      clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(recordCnt);
+    }
+
     if (batchGet) {
-      clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(recordCnt).setUseStreamingBatchGetAsDefault(true);
+      clientConfigBuilder.setUseStreamingBatchGetAsDefault(true);
     }
 
     Consumer<MetricsRepository> fastClientStatsValidation;
@@ -391,6 +475,10 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
       fastClientStatsValidation =
           metricsRepository -> validateBatchGetMetrics(metricsRepository, true, false, recordCnt, recordCnt, true);
+    } else if (compute) {
+      clientConfigBuilder.setLongTailRetryEnabledForCompute(true).setLongTailRetryThresholdForComputeInMicroSeconds(1);
+      fastClientStatsValidation =
+          metricsRepository -> validateComputeMetrics(metricsRepository, false, recordCnt, recordCnt, true);
     } else {
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
@@ -398,7 +486,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
     runTest(
         clientConfigBuilder,
-        batchGet,
+        requestType,
         recordCnt,
         fastClientStatsValidation,
         m -> {},

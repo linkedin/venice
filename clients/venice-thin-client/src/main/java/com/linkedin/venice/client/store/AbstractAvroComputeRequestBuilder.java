@@ -294,7 +294,8 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   @Override
   public CompletableFuture<Map<K, ComputeGenericRecord>> execute(Set<K> keys) throws VeniceClientException {
     CompletableFuture<Map<K, ComputeGenericRecord>> resultFuture = new CompletableFuture<>();
-    CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamResultFuture = streamingExecute(keys);
+    CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamResultFuture =
+        streamingExecuteInternal(keys, false);
     streamResultFuture.whenComplete((response, throwable) -> {
       if (throwable != null) {
         resultFuture.completeExceptionally(throwable);
@@ -316,6 +317,12 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
 
   @Override
   public CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamingExecute(Set<K> keys) {
+    return streamingExecuteInternal(keys, true);
+  }
+
+  private CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamingExecuteInternal(
+      Set<K> keys,
+      boolean originallyStreaming) {
     Map<K, ComputeGenericRecord> resultMap = new VeniceConcurrentHashMap<>(keys.size());
     Queue<K> nonExistingKeyList = new ConcurrentLinkedQueue<>();
     VeniceResponseCompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> resultFuture =
@@ -323,7 +330,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
             () -> new VeniceResponseMapImpl(resultMap, nonExistingKeyList, false),
             keys.size(),
             streamingStats);
-    streamingExecute(keys, new StreamingCallback<K, ComputeGenericRecord>() {
+    streamingExecuteInternal(keys, originallyStreaming, new StreamingCallback<K, ComputeGenericRecord>() {
       @Override
       public void onRecordReceived(K key, ComputeGenericRecord value) {
         if (value != null) {
@@ -353,6 +360,13 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   @Override
   public void streamingExecute(Set<K> keys, StreamingCallback<K, ComputeGenericRecord> callback)
       throws VeniceClientException {
+    streamingExecuteInternal(keys, true, callback);
+  }
+
+  private void streamingExecuteInternal(
+      Set<K> keys,
+      boolean originallyStreaming,
+      StreamingCallback<K, ComputeGenericRecord> callback) throws VeniceClientException {
     if (executed) {
       throw new VeniceClientException(getClass().getName() + " reuse is not supported.");
     }
@@ -361,7 +375,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     long preRequestTimeInNS = time.nanoseconds();
     SchemaAndToString resultSchema = getResultSchema();
     // Generate ComputeRequest object
-    ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema);
+    ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema, originallyStreaming);
     storeClient.compute(computeRequestWrapper, keys, resultSchema.getSchema(), callback, preRequestTimeInNS);
   }
 
@@ -473,11 +487,12 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     return this;
   }
 
-  protected ComputeRequestWrapper generateComputeRequest(SchemaAndToString resultSchema) {
+  protected ComputeRequestWrapper generateComputeRequest(SchemaAndToString resultSchema, boolean originallyStreaming) {
     return new ComputeRequestWrapper(
         this.latestValueSchema,
         resultSchema.getSchema(),
         resultSchema.getToString(),
-        getComputeRequestOperations());
+        getComputeRequestOperations(),
+        originallyStreaming);
   }
 }
