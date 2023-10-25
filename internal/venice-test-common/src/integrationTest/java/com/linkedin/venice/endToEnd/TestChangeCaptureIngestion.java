@@ -69,9 +69,11 @@ import com.linkedin.venice.view.TestView;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.io.File;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -90,7 +92,9 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 
 
 public class TestChangeCaptureIngestion {
@@ -104,6 +108,18 @@ public class TestChangeCaptureIngestion {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private String clusterName;
   private VeniceClusterWrapper clusterWrapper;
+  private List<Closeable> additionalCloseablesPerMethod;
+
+  @BeforeMethod(alwaysRun = true)
+  public void setUpBeforeMethod() {
+    additionalCloseablesPerMethod = new ArrayList<>();
+  }
+
+  @AfterMethod(alwaysRun = true)
+  public void cleanUpAfterMethod() {
+    additionalCloseablesPerMethod.forEach(Utils::closeQuietlyWithErrorLogged);
+    additionalCloseablesPerMethod.clear();
+  }
 
   @BeforeClass
   public void setUp() {
@@ -201,6 +217,7 @@ public class TestChangeCaptureIngestion {
             .setMockTime(testMockTime)
             .setRegionName(STANDALONE_REGION_NAME)
             .build());
+    additionalCloseablesPerMethod.add(localKafka);
     Properties consumerProperties = new Properties();
     String localKafkaUrl = localKafka.getAddress();
     consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
