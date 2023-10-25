@@ -2,7 +2,9 @@ package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_POLICY;
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_DIR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -74,6 +76,8 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     props.put(REPUSH_TTL_IN_SECONDS, 10L);
     props.put(REPUSH_TTL_POLICY, 0);
     props.put(RMD_SCHEMA_DIR, "tmp");
+    props.put(VALUE_SCHEMA_DIR, "tmp2");
+    props.put(REPUSH_TTL_START_TIMESTAMP, System.currentTimeMillis());
     Assert.assertFalse(newMapper().getFilterChain(new VeniceProperties(props)).isEmpty());
 
     // filter is also present when chunking is enabled.
@@ -99,7 +103,8 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   @Test
   public void testProcessWithFilterFilteringPartialRecords() {
     AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
-    doReturn(true, false, true, false, false).when(filter).apply(any()); // filter out partial records
+    doReturn(true, false, true, false, false).when(filter).checkAndMaybeFilterValue(any()); // filter out partial
+                                                                                            // records
 
     VeniceKafkaInputMapper mapper = spy(newMapper());
     FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>(filter);
@@ -120,7 +125,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
   public void testProcessWithFilterFilteringAllRecords(int numReducers, int taskId) throws IOException {
     AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
-    doReturn(true).when(filter).apply(any()); // filter out all records
+    doReturn(true).when(filter).checkAndMaybeFilterValue(any()); // filter out all records
 
     FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>(filter);
     VeniceKafkaInputMapper mapper = spy(getMapper(numReducers, taskId));

@@ -130,27 +130,6 @@ public class VenicePushJobTest {
     pushJob.run();
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush TTL is not supported when the store has write compute enabled.*")
-  public void testRepushTTLJobWithWC() {
-    Properties repushProps = getRepushReadyProps();
-
-    ControllerClient client = getClient(storeInfo -> {
-      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
-      storeInfo.setWriteComputationEnabled(true);
-      storeInfo.setVersions(Collections.singletonList(version));
-      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
-      storeInfo.setColoToCurrentVersions(new HashMap<String, Integer>() {
-        {
-          // the initial version for all regions is 1, otherwise the topic name would mismatch
-          put("dc-0", 1);
-          put("dc-1", 1);
-        }
-      });
-    });
-    VenicePushJob pushJob = getSpyVenicePushJob(repushProps, client);
-    pushJob.run();
-  }
-
   @Test
   public void testPushJobSettingWithD2Routing() {
     ControllerClient client = getClient(storeInfo -> {

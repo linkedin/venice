@@ -4,7 +4,9 @@ import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_POLICY;
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.hadoop.VeniceReducer.MAP_REDUCE_JOB_ID_PROP;
 import static org.mockito.ArgumentMatchers.any;
@@ -120,7 +122,7 @@ public class TestVeniceKafkaInputReducer {
   public void testExtractWithTTL(boolean isChunkingEnabled) {
     // set up filter
     AbstractVeniceFilter<KafkaInputMapperValue> filter = mock(AbstractVeniceFilter.class);
-    doReturn(true).when(filter).apply(any()); // filter out all records
+    doReturn(true).when(filter).checkAndMaybeFilterValue(any()); // filter out all records
     FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>(filter);
 
     byte[] keyBytes = "test_key".getBytes();
@@ -185,7 +187,9 @@ public class TestVeniceKafkaInputReducer {
     props.put(VALUE_SCHEMA_ID_PROP, 1);
     props.put(REPUSH_TTL_IN_SECONDS, 10L);
     props.put(REPUSH_TTL_POLICY, 0);
+    props.put(REPUSH_TTL_START_TIMESTAMP, 10000000L);
     props.put(RMD_SCHEMA_DIR, "tmp");
+    props.put(VALUE_SCHEMA_DIR, "tmp2");
     return new VeniceProperties(props);
   }
 

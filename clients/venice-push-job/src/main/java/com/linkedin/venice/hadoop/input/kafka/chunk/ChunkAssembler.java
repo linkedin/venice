@@ -250,11 +250,10 @@ public class ChunkAssembler {
   }
 
   public static class ValueBytesAndSchemaId {
-    private final byte[] bytes;
     private final int schemaID;
-
     private final int replicationMetadataVersionId;
-    private final ByteBuffer replicationMetadataPayload;
+    private byte[] bytes;
+    private ByteBuffer replicationMetadataPayload;
 
     ValueBytesAndSchemaId(byte[] bytes, int schemaID, int rmdId, ByteBuffer rmdPayload) {
       this.bytes = bytes;
@@ -277,6 +276,14 @@ public class ChunkAssembler {
 
     public ByteBuffer getReplicationMetadataPayload() {
       return replicationMetadataPayload;
+    }
+
+    public void setReplicationMetadataPayload(ByteBuffer replicationMetadataPayload) {
+      this.replicationMetadataPayload = replicationMetadataPayload;
+    }
+
+    public void setBytes(byte[] bytes) {
+      this.bytes = bytes;
     }
   }
 }
