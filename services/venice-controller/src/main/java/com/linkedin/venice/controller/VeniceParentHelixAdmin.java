@@ -534,8 +534,6 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public synchronized void initStorageCluster(String clusterName) {
-    getVeniceHelixAdmin().initStorageCluster(clusterName);
-    asyncSetupEnabledMap.put(clusterName, true);
     /*
      * We might not be able to call a lot of functions of veniceHelixAdmin since
      * current controller might not be the leader controller for the given clusterName
@@ -574,6 +572,9 @@ public class VeniceParentHelixAdmin implements Admin {
               .setPartitionCount(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC)
               .build());
     });
+
+    getVeniceHelixAdmin().initStorageCluster(clusterName);
+    asyncSetupEnabledMap.put(clusterName, true);
   }
 
   /**

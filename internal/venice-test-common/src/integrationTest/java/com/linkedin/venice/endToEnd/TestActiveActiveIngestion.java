@@ -77,9 +77,11 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.io.File;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -99,6 +101,7 @@ import org.apache.avro.util.Utf8;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -116,6 +119,7 @@ public class TestActiveActiveIngestion {
   private VeniceServerWrapper serverWrapper;
   private AvroSerializer serializer;
   private ControllerClient parentControllerClient;
+  private List<Closeable> additionalCloseablesPerMethod = new ArrayList<>();
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -160,6 +164,12 @@ public class TestActiveActiveIngestion {
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
     TestView.resetCounters();
+  }
+
+  @AfterMethod(alwaysRun = true)
+  public void cleanUpAfterMethod() {
+    additionalCloseablesPerMethod.forEach(Utils::closeQuietlyWithErrorLogged);
+    additionalCloseablesPerMethod.clear();
   }
 
   private void pollChangeEventsFromChangeCaptureConsumer(
@@ -628,6 +638,7 @@ public class TestActiveActiveIngestion {
             .setMockTime(testMockTime)
             .setRegionName("local-pubsub")
             .build());
+    additionalCloseablesPerMethod.add(localKafka);
     Properties consumerProperties = new Properties();
     String localKafkaUrl = localKafka.getAddress();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
