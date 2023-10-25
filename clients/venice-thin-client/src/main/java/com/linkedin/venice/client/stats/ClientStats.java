@@ -110,137 +110,80 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordHttpRequest(int httpStatus) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     httpStatusSensorMap
         .computeIfAbsent(httpStatus, status -> registerSensor("http_" + httpStatus + "_request", new OccurrenceRate()))
         .record();
   }
 
   public void recordUnhealthyLatency(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     unhealthyRequestLatencySensor.record(latency);
   }
 
   public void recordRequestRetryCount() {
-    if (isMetaSystemStore()) {
-      return;
-    }
     requestRetryCountSensor.record();
   }
 
   public void recordSuccessDuplicateRequestKeyCount(int duplicateKeyCount) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     successRequestDuplicateKeyCountSensor.record(duplicateKeyCount);
   }
 
   public void recordRequestSerializationTime(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     requestSerializationTime.record(latency);
   }
 
   public void recordRequestSubmissionToResponseHandlingTime(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     requestSubmissionToResponseHandlingTime.record(latency);
   }
 
   public void recordResponseDeserializationTime(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     responseDeserializationTime.record(latency);
   }
 
   public void recordResponseDecompressionTime(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     responseDecompressionTimeSensor.record(latency);
   }
 
   public void recordStreamingResponseTimeToReceiveFirstRecord(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     streamingResponseTimeToReceiveFirstRecord.record(latency);
   }
 
   public void recordStreamingResponseTimeToReceive50PctRecord(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     streamingResponseTimeToReceive50PctRecord.record(latency);
   }
 
   public void recordStreamingResponseTimeToReceive90PctRecord(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     streamingResponseTimeToReceive90PctRecord.record(latency);
   }
 
   public void recordStreamingResponseTimeToReceive95PctRecord(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     streamingResponseTimeToReceive95PctRecord.record(latency);
   }
 
   public void recordStreamingResponseTimeToReceive99PctRecord(double latency) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     streamingResponseTimeToReceive99PctRecord.record(latency);
   }
 
   public void recordAppTimedOutRequest() {
-    if (isMetaSystemStore()) {
-      return;
-    }
     appTimedOutRequestSensor.record();
   }
 
   public void recordAppTimedOutRequestResultRatio(double ratio) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     appTimedOutRequestResultRatioSensor.record(ratio);
   }
 
   public void recordClientFutureTimeout(long clientFutureTimeout) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     clientFutureTimeoutSensor.record(clientFutureTimeout);
   }
 
   public void recordRetryRequestKeyCount(int numberOfKeysSentInRetryRequest) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     retryRequestKeyCountSensor.record(numberOfKeysSentInRetryRequest);
   }
 
   public void recordRetryRequestSuccessKeyCount(int numberOfKeysCompletedInRetryRequest) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     retryRequestSuccessKeyCountSensor.record(numberOfKeysCompletedInRetryRequest);
   }
 
   public void recordMultiGetFallback(int keyCount) {
-    if (isMetaSystemStore()) {
-      return;
-    }
     multiGetFallbackSensor.record(keyCount);
   }
 }
