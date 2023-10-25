@@ -98,7 +98,7 @@ ext.libraries = [
     mapreduceClientCore: "org.apache.hadoop:hadoop-mapreduce-client-core:${hadoopVersion}",
     mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
     mockito: 'org.mockito:mockito-core:4.11.0',
-    netty: 'io.netty:netty-all:4.1.52.Final',
+    netty: 'io.netty:netty-all:4.1.74.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
     pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
@@ -229,14 +229,14 @@ subprojects {
       exclude module: 'kafka_2.11'
 
       // These various netty modules clash with netty-all, and we transitively pull a different version, which causes NoSuchMethodError
-      exclude group: 'io.netty', module: 'netty-buffer'
-      exclude group: 'io.netty', module: 'netty-codec'
-      exclude group: 'io.netty', module: 'netty-common'
-      exclude group: 'io.netty', module: 'netty-handler'
-      exclude group: 'io.netty', module: 'netty-resolver'
-      exclude group: 'io.netty', module: 'netty-transport'
-      exclude group: 'io.netty', module: 'netty-transport-native-epoll'
-      exclude group: 'io.netty', module: 'netty-transport-native-unix-common'
+     // exclude group: 'io.netty', module: 'netty-buffer'
+      //exclude group: 'io.netty', module: 'netty-codec'
+      //exclude group: 'io.netty', module: 'netty-common'
+      //exclude group: 'io.netty', module: 'netty-handler'
+      //exclude group: 'io.netty', module: 'netty-resolver'
+      //exclude group: 'io.netty', module: 'netty-transport'
+      //exclude group: 'io.netty', module: 'netty-transport-native-epoll'
+      //exclude group: 'io.netty', module: 'netty-transport-native-unix-common'
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
