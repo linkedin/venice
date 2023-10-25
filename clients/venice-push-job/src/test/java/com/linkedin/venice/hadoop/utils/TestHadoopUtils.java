@@ -27,9 +27,9 @@ public class TestHadoopUtils {
   public void testCleanUpHDFSPath() throws IOException {
     String path = "/tmp/venice-test/";
     Configuration conf = new Configuration();
-    FileSystem fs = FileSystem.get(conf);
     // create the path
     Path p = new Path(path);
+    FileSystem fs = p.getFileSystem(conf);
     if (!fs.exists(p)) {
       fs.mkdirs(p);
     }

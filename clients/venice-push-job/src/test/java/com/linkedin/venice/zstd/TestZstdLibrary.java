@@ -33,8 +33,9 @@ public class TestZstdLibrary {
 
   private void runTest(int numOfFiles, int numOfRecordsPerFile, int dictSizeLimitInKB, int dictSampleSizeLimitInMB)
       throws Exception {
-    FileSystem fs = FileSystem.get(new Configuration());
     File inputDir = Utils.getTempDataDirectory();
+    Path srcPath = new Path(inputDir.getAbsolutePath());
+    FileSystem fs = srcPath.getFileSystem(new Configuration());
     try {
       for (int i = 0; i < numOfFiles; i++) {
         writeSimpleAvroFileWithStringToStringSchema(inputDir, numOfRecordsPerFile, "testInput" + i + ".avro");
@@ -46,7 +47,6 @@ public class TestZstdLibrary {
 
       PushJobZstdConfig pushJobZstdConfig = new PushJobZstdConfig(vProps, numOfFiles);
 
-      Path srcPath = new Path(inputDir.getAbsolutePath());
       FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
       LOGGER.info("Collect maximum of {} Bytes from {} files", pushJobZstdConfig.getMaxBytesPerFile(), numOfFiles);
       for (FileStatus fileStatus: fileStatuses) {
