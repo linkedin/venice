@@ -7,8 +7,8 @@ public interface PubSubMessage<K, V, OFFSET> {
   K getKey();
 
   /**
-  * @return the value part of this message
-  */
+   * @return the value part of this message
+   */
   V getValue();
 
   /**
@@ -38,4 +38,9 @@ public interface PubSubMessage<K, V, OFFSET> {
   default int getPartition() {
     return getTopicPartition().getPartitionNumber();
   }
+
+  /**
+   * @return whether this message marks the end of bootstrap.
+   */
+  boolean isEndOfBootstrap();
 }

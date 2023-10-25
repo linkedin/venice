@@ -13,6 +13,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   private final VeniceChangeCoordinate offset;
   private final long timestamp;
   private final int payloadSize;
+  private final boolean isEndOfBootstrap;
 
   public ImmutableChangeCapturePubSubMessage(
       K key,
@@ -20,7 +21,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
       PubSubTopicPartition topicPartition,
       long offset,
       long timestamp,
-      int payloadSize) {
+      int payloadSize,
+      boolean isEndOfBootstrap) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
@@ -30,6 +32,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
         this.topicPartition.getPubSubTopic().getName(),
         new ApacheKafkaOffsetPosition(offset),
         this.topicPartition.getPartitionNumber());
+    this.isEndOfBootstrap = isEndOfBootstrap;
   }
 
   @Override
@@ -60,5 +63,10 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   @Override
   public int getPayloadSize() {
     return payloadSize;
+  }
+
+  @Override
+  public boolean isEndOfBootstrap() {
+    return isEndOfBootstrap;
   }
 }
