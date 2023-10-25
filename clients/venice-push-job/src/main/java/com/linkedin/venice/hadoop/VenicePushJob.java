@@ -1055,7 +1055,7 @@ public class VenicePushJob implements AutoCloseable {
             pushJobSetting.repushTTLInSeconds = storeSetting.storeRewindTimeInSeconds;
             // make the base directory TEMP_DIR_PREFIX with 777 permissions
             Path baseSchemaDir = new Path(TEMP_DIR_PREFIX);
-            FileSystem fs = FileSystem.get(new Configuration());
+            FileSystem fs = baseSchemaDir.getFileSystem(new Configuration());
             if (!fs.exists(baseSchemaDir)) {
               fs.mkdirs(baseSchemaDir);
               fs.setPermission(baseSchemaDir, new FsPermission("777"));
@@ -2001,8 +2001,9 @@ public class VenicePushJob implements AutoCloseable {
       return "";
     }
     Configuration conf = new Configuration();
-    FileSystem fs = FileSystem.get(conf);
     String uri = props.getString(INPUT_PATH_PROP);
+    Path uriPath = new Path(uri);
+    FileSystem fs = uriPath.getFileSystem(conf);
     Path sourcePath = getLatestPathOfInputDirectory(uri, fs);
     return sourcePath.toString();
   }

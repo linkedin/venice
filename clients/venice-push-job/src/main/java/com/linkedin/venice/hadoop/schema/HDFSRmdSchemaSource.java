@@ -42,8 +42,8 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
 
   public HDFSRmdSchemaSource(final String schemaDir, final String storeName) throws IOException {
     Configuration conf = new Configuration();
-    this.fs = FileSystem.get(conf);
     this.schemaDir = new Path(schemaDir);
+    this.fs = this.schemaDir.getFileSystem(conf);
     if (!fs.exists(this.schemaDir)) {
       fs.mkdirs(this.schemaDir);
     }

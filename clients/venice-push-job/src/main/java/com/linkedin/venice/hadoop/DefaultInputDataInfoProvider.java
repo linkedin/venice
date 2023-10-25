@@ -9,7 +9,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
-import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
@@ -102,7 +101,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   public InputDataInfo validateInputAndGetInfo(String inputUri) throws Exception {
     long inputModificationTime = getInputLastModificationTime(inputUri);
     Path srcPath = new Path(inputUri);
-    FileSystem fs = srcPath.getFileSystem(getConfiguration());
+    FileSystem fs = srcPath.getFileSystem(new Configuration());
     FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
 
     if (fileStatuses == null || fileStatuses.length == 0) {
@@ -325,16 +324,10 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     return field.schema();
   }
 
-  private Configuration getConfiguration() {
-    Configuration conf = new Configuration();
-    HadoopUtils.setHadoopConfigurationFromProperties(conf, props);
-    return conf;
-  }
-
   @Override
   public long getInputLastModificationTime(String inputUri) throws IOException {
     Path srcPath = new Path(inputUri);
-    FileSystem fs = srcPath.getFileSystem(getConfiguration());
+    FileSystem fs = srcPath.getFileSystem(new Configuration());
     try {
       return fs.getFileStatus(srcPath).getModificationTime();
     } catch (FileNotFoundException e) {

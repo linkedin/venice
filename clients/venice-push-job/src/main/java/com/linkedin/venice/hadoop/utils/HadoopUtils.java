@@ -45,8 +45,8 @@ public class HadoopUtils {
   public static void cleanUpHDFSPath(String path, boolean recursive) {
     Configuration conf = new Configuration();
     try {
-      FileSystem fs = FileSystem.get(conf);
       Path p = new Path(path);
+      FileSystem fs = p.getFileSystem(conf);
       fs.delete(p, recursive);
       fs.close();
     } catch (IOException e) {
