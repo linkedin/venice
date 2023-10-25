@@ -4,6 +4,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -16,7 +17,7 @@ class VeniceWriterWithNewerProtocol extends VeniceWriter<String, String, byte[]>
       VeniceProperties props,
       PubSubProducerAdapter producerAdapter,
       Schema overrideProtocolSchema) {
-    super(veniceWriterOptions, props, producerAdapter, overrideProtocolSchema);
+    super(veniceWriterOptions, props, Lazy.of(() -> producerAdapter), overrideProtocolSchema);
   }
 
   @Override

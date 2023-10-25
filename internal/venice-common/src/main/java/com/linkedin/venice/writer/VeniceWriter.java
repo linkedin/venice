@@ -53,6 +53,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -87,7 +88,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       new ChunkedPayloadAndManifest(null, null);
 
   // use for running async close and to fetch number of partitions with timeout from producer
-  private final ThreadPoolExecutor threadPoolExecutor;
+  private final Lazy<ThreadPoolExecutor> threadPoolExecutorLazy = Lazy.of(this::createThreadPoolExecutor);
 
   // log4j logger
   private final Logger logger;
@@ -213,7 +214,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final VeniceKafkaSerializer<K> keySerializer;
   private final VeniceKafkaSerializer<V> valueSerializer;
   private final VeniceKafkaSerializer<U> writeComputeSerializer;
-  private final PubSubProducerAdapter producerAdapter;
+  private final Lazy<PubSubProducerAdapter> producerAdapterLazy;
   private final GUID producerGUID;
   private final Time time;
   private final VenicePartitioner partitioner;
@@ -263,7 +264,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final boolean isRmdChunkingEnabled;
 
   public VeniceWriter(VeniceWriterOptions params, VeniceProperties props, PubSubProducerAdapter producerAdapter) {
-    this(params, props, producerAdapter, KafkaMessageEnvelope.SCHEMA$);
+    this(params, props, Lazy.of(() -> producerAdapter), KafkaMessageEnvelope.SCHEMA$);
   }
 
   /**
@@ -275,7 +276,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public VeniceWriter(
       VeniceWriterOptions params,
       VeniceProperties props,
-      PubSubProducerAdapter producerAdapter,
+      Lazy<PubSubProducerAdapter> producerAdapterLazy,
       Schema overrideProtocolSchema) {
     super(params.getTopicName());
     this.keySerializer = params.getKeySerializer();
@@ -325,16 +326,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
     this.producerGUID = GuidUtils.getGUID(props);
     this.logger = LogManager.getLogger("VeniceWriter [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
-    // Create a thread pool which can have max 2 threads.
-    // Except during VW start and close we expect it to have zero threads to avoid unnecessary resource usage.
-    this.threadPoolExecutor = new ThreadPoolExecutor(
-        2,
-        2,
-        5,
-        TimeUnit.SECONDS,
-        new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("VW-" + topicName));
-    this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
 
     this.protocolSchemaHeaders = overrideProtocolSchema == null
         ? EMPTY_MSG_HEADERS
@@ -342,16 +333,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             PubSubMessageDeserializer.VENICE_TRANSPORT_PROTOCOL_HEADER,
             overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
     try {
-      this.producerAdapter = producerAdapter;
+      this.producerAdapterLazy = producerAdapterLazy;
       // We cache the number of partitions, as it is expected to be immutable, and the call to Kafka is expensive.
       // Also avoiding a metadata call to kafka here as the partitionsFor() call sometimes may get blocked indefinitely
       // if the kafka broker is overloaded and does not respond in timely manner.
       if (params.getPartitionCount() != null) {
         this.numberOfPartitions = params.getPartitionCount();
       } else {
-        this.numberOfPartitions =
-            CompletableFuture.supplyAsync(() -> producerAdapter.getNumberOfPartitions(topicName), threadPoolExecutor)
-                .get(30, TimeUnit.SECONDS);
+        this.numberOfPartitions = CompletableFuture
+            .supplyAsync(() -> getProducerAdapter().getNumberOfPartitions(topicName), getThreadPoolExecutor())
+            .get(30, TimeUnit.SECONDS);
       }
       if (this.numberOfPartitions <= 0) {
         throw new VeniceException("Invalid number of partitions: " + this.numberOfPartitions);
@@ -370,6 +361,28 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       logger.error("VeniceWriter cannot be constructed with the props: {}", props);
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
     }
+  }
+
+  private PubSubProducerAdapter getProducerAdapter() {
+    return producerAdapterLazy.get();
+  }
+
+  private ThreadPoolExecutor getThreadPoolExecutor() {
+    return threadPoolExecutorLazy.get();
+  }
+
+  // Create a thread pool which can have max 2 threads.
+  // Except during VW start and close we expect it to have zero threads to avoid unnecessary resource usage.
+  private ThreadPoolExecutor createThreadPoolExecutor() {
+    ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(
+        2,
+        2,
+        5,
+        TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(),
+        new DaemonThreadFactory("VeniceWriter-" + topicName));
+    threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
+    return threadPoolExecutor;
   }
 
   /**
@@ -394,13 +407,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
         // For non-shared producer mode gracefulClose will flush the producer
 
-        producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
+        getProducerAdapter().close(topicName, closeTimeOutInMs, gracefulClose);
         OPEN_VENICE_WRITER_COUNT.decrementAndGet();
       } catch (Exception e) {
         logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
         VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
       }
-      threadPoolExecutor.shutdown();
+      getThreadPoolExecutor().shutdown();
       isClosed = true;
       logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
     }
@@ -418,7 +431,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           // try to end all segments before closing the producer
           if (gracefulClose) {
             CompletableFuture<Void> endSegmentsFuture =
-                CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
+                CompletableFuture.runAsync(() -> endAllSegments(true), getThreadPoolExecutor());
             try {
               endSegmentsFuture.get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
             } catch (Exception e) {
@@ -429,18 +442,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
             }
           }
-          producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
+          getProducerAdapter().close(topicName, closeTimeOutInMs, gracefulClose);
           OPEN_VENICE_WRITER_COUNT.decrementAndGet();
         } catch (Exception e) {
           logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
           VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
         }
-        threadPoolExecutor.shutdown();
+        getThreadPoolExecutor().shutdown();
         isClosed = true;
         logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
         return VeniceResourceCloseResult.SUCCESS;
       }
-    }, threadPoolExecutor);
+    }, getThreadPoolExecutor());
   }
 
   @Override
@@ -448,17 +461,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     close(true);
   }
 
-  /** Used in tests only */
-  PubSubProducerAdapter getProducerAdapter() {
-    return producerAdapter;
-  }
-
   /**
    * Call flush on the internal {@link PubSubProducerAdapter}.
    */
   @Override
   public void flush() {
-    producerAdapter.flush();
+    getProducerAdapter().flush();
   }
 
   @Override
@@ -1078,7 +1086,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     controlMessage.controlMessageUnion = startOfPush;
     broadcastControlMessage(controlMessage, debugInfo);
     // Flush start of push message to avoid data message arrives before it.
-    producerAdapter.flush();
+    getProducerAdapter().flush();
   }
 
   /**
@@ -1116,7 +1124,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     topicSwitch.rewindStartTimestamp = rewindStartTimestamp;
     controlMessage.controlMessageUnion = topicSwitch;
     broadcastControlMessage(controlMessage, debugInfo);
-    producerAdapter.flush();
+    getProducerAdapter().flush();
   }
 
   /**
@@ -1139,7 +1147,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     versionSwap.newServingVersionTopic = newServingVersionTopic;
     controlMessage.controlMessageUnion = versionSwap;
     broadcastControlMessage(controlMessage, debugInfo);
-    producerAdapter.flush();
+    getProducerAdapter().flush();
   }
 
   public void broadcastStartOfIncrementalPush(String version, Map<String, String> debugInfo) {
@@ -1148,7 +1156,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     startOfIncrementalPush.version = version;
     controlMessage.controlMessageUnion = startOfIncrementalPush;
     broadcastControlMessage(controlMessage, debugInfo);
-    producerAdapter.flush();
+    getProducerAdapter().flush();
   }
 
   public void broadcastEndOfIncrementalPush(String version, Map<String, String> debugInfo) {
@@ -1157,7 +1165,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     endOfIncrementalPush.version = version;
     controlMessage.controlMessageUnion = endOfIncrementalPush;
     broadcastControlMessage(controlMessage, debugInfo);
-    producerAdapter.flush();
+    getProducerAdapter().flush();
   }
 
   /**
@@ -1304,7 +1312,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }
       }
       try {
-        return producerAdapter.sendMessage(
+        return getProducerAdapter().sendMessage(
             topicName,
             partition,
             key,
@@ -1870,6 +1878,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @return Returns a string of format: topicName@brokerAddress
    */
   public String getDestination() {
-    return topicName + "@" + producerAdapter.getBrokerAddress();
+    return topicName + "@" + getProducerAdapter().getBrokerAddress();
   }
 }

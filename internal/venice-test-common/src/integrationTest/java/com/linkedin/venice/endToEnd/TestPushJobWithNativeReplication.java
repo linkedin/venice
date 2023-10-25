@@ -148,10 +148,10 @@ public class TestPushJobWithNativeReplication {
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
+
+  // ["venice-cluster0", "venice-cluster1", ...];
   private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
-                                                                                                         // "venice-cluster1",
-                                                                                                         // ...];
+      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   private static final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
 
   private static final String SYSTEM_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"

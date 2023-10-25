@@ -1,9 +1,11 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.stats.VeniceWriterStats;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Properties;
 
@@ -41,6 +43,7 @@ public class VeniceWriterFactory {
     return new VeniceWriter<>(
         options,
         props,
-        producerAdapterFactory.create(props, options.getTopicName(), options.getBrokerAddress()));
+        Lazy.of(() -> producerAdapterFactory.create(props, options.getTopicName(), options.getBrokerAddress())),
+        KafkaMessageEnvelope.SCHEMA$);
   }
 }
