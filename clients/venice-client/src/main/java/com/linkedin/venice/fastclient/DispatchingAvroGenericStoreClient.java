@@ -37,6 +37,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -49,6 +50,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -66,6 +68,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private static final Logger LOGGER = LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
   private static final String URI_SEPARATOR = "/";
   private static final Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+  private final String BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
+  private final String COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
 
   private final StoreMetadata metadata;
   private final int requiredReplicaCount;
@@ -119,6 +125,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
     this.deserializationExecutor =
         Optional.ofNullable(config.getDeserializationExecutor()).orElse(DESERIALIZATION_EXECUTOR);
+    String storeName = metadata.getStoreName();
+    BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "BatchGet Transport Exception for " + storeName;
+    COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "Compute Transport Exception for " + storeName;
   }
 
   protected StoreMetadata getStoreMetadata() {
@@ -142,7 +151,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return sb;
   }
 
-  private String composeRouteForBatchGetRequest(MultiKeyRequestContext<K, V> requestContext) {
+  private String composeRouteForBatchGetRequest(BatchGetRequestContext<K, V> requestContext) {
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
 
@@ -152,7 +161,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return sb.toString();
   }
 
-  private String composeRouteForComputeRequest(MultiKeyRequestContext<K, V> requestContext) {
+  private String composeRouteForComputeRequest(ComputeRequestContext<K, V> requestContext) {
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
 
@@ -355,18 +364,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         composeRouteForBatchGetRequest(requestContext),
         HEADERS_FOR_MULTIGET_REQUEST,
         this::serializeMultiGetRequest,
-        new MultiKeyStreamingRouteResponseHandler() {
-          @Override
-          void handle(
-              List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes,
-              TransportClientResponseForRoute response,
-              Throwable throwable) {
-            batchGetTransportRequestCompletionHandler(requestContext, response, throwable, callback);
-          }
-        });
+        (MultiKeyStreamingRouteResponseHandler<K>) (
+            keysForRoutes,
+            response,
+            throwable) -> batchGetTransportRequestCompletionHandler(requestContext, response, throwable, callback));
   }
 
-  private abstract class MultiKeyStreamingRouteResponseHandler {
+  private interface MultiKeyStreamingRouteResponseHandler<K> {
     /**
      * Multi-key requests might be routed to different server hosts and this class offers a way to handle the response
      * per route, and it is responsible for:
@@ -374,7 +378,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
      * 2. Completing the {@link TransportClientResponseForRoute#getRouteRequestFuture()} with appropriate HTTP status
      * codes for that route after the response has been processed completely. (200 and 404 are considered SUCCESS).
      */
-    abstract void handle(
+    void handle(
         List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes,
         TransportClientResponseForRoute transportClientResponse,
         Throwable exception);
@@ -419,7 +423,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     int currentVersion = requestContext.currentVersion;
     Map<Integer, List<String>> partitionRouteMap = new HashMap<>();
-    Set<String> partitionsWithNoRoutes = new HashSet<>();
+    Set<String> partitionsWithNoRoutes = new ConcurrentSkipListSet<>();
     for (K key: keys) {
       byte[] keyBytes = keySerializer.serialize(key);
       // For each key determine partition
@@ -484,7 +488,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
           getStoreName(),
           currentVersion,
           String.join(", ", partitionsWithNoRoutes));
-      LOGGER.error(errorMessage);
+      // TODO: Explore if we need to use a different message as the filter for the redundant filter as different
+      // partition sets will have different error messages
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMessage)) {
+        LOGGER.error(errorMessage);
+      }
       VeniceClientHttpException clientException = new VeniceClientHttpException(errorMessage, SC_BAD_GATEWAY);
       requestContext.setPartialResponseException(clientException);
       CompletableFuture<Integer> placeholderFailedFuture = new CompletableFuture<>();
@@ -537,7 +545,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       Throwable exception,
       StreamingCallback<K, V> callback) {
     if (exception != null) {
-      LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE)) {
+        LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
+      }
+
       requestContext.markCompleteExceptionally(transportClientResponse, exception);
       transportClientResponse.getRouteRequestFuture().completeExceptionally(exception);
       return;
@@ -605,6 +616,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         VENICE_COMPUTE_VALUE_SCHEMA_ID,
         Integer.toString(metadata.getValueSchemaId(computeRequest.getValueSchema())));
 
+    RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
+        getComputeResultRecordDeserializer(resultSchema);
     multiKeyStreamingRequest(
         requestContext,
         RequestType.COMPUTE_STREAMING,
@@ -613,21 +626,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         composeRouteForComputeRequest(requestContext),
         headers,
         (keysForRoutes) -> serializeComputeRequest(computeRequest, keysForRoutes),
-        new MultiKeyStreamingRouteResponseHandler() {
-          @Override
-          void handle(
-              List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes,
-              TransportClientResponseForRoute response,
-              Throwable throwable) {
-            ComputeRecordStreamDecoder decoder = getComputeDecoderForRoute(
-                requestContext,
-                computeRequest,
-                keysForRoutes,
-                response,
-                resultSchema,
-                callback);
-            computeTransportRequestCompletionHandler(response, throwable, decoder);
-          }
+        (MultiKeyStreamingRouteResponseHandler<K>) (keysForRoutes, response, throwable) -> {
+          ComputeRecordStreamDecoder decoder = getComputeDecoderForRoute(
+              requestContext,
+              computeRequest,
+              keysForRoutes,
+              response,
+              computeResultRecordDeserializer,
+              callback);
+          computeTransportRequestCompletionHandler(response, throwable, decoder);
         });
   }
 
@@ -636,7 +643,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       ComputeRequestWrapper computeRequest,
       List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes,
       TransportClientResponseForRoute transportClientResponse,
-      Schema resultSchema,
+      RecordDeserializer<GenericRecord> computeResultRecordDeserializer,
       StreamingCallback<K, ComputeGenericRecord> allRecordsCallback) {
     List<K> keyList = new ArrayList<>(keysForRoutes.size());
     for (MultiKeyRequestContext.KeyInfo keyInfo: keysForRoutes) {
@@ -688,7 +695,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         nonCompletingStreamingCallback,
         deserializationExecutor,
         STREAMING_FOOTER_RECORD_DESERIALIZER,
-        getComputeResultRecordDeserializer(resultSchema));
+        computeResultRecordDeserializer);
   }
 
   /**
@@ -700,7 +707,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       Throwable exception,
       ComputeRecordStreamDecoder decoder) {
     if (exception != null) {
-      LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE)) {
+        LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
+      }
       decoder.onCompletion(Optional.of(new VeniceClientException("Exception received from transport", exception)));
       return;
     }

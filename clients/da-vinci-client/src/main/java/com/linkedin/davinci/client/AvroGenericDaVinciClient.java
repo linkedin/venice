@@ -356,6 +356,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return batchGetImplementation(keys);
   }
 
+  // Visible for testing
   CompletableFuture<Map<K, V>> batchGetImplementation(Set<K> keys) {
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {

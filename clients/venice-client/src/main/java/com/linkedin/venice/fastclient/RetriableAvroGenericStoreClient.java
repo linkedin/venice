@@ -256,12 +256,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     streamingRequestExecutor.trigger(
         originalRequestContext,
         keys,
-        getStreamingCallback(
-            originalRequestContext,
-            callback,
-            finalRequestCompletionFuture,
-            savedException,
-            pendingKeysFuture));
+        getStreamingCallback(originalRequestContext, finalRequestCompletionFuture, savedException, pendingKeysFuture));
 
     if (timeoutProcessor == null) {
       /** Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} of the original request to
@@ -283,12 +278,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         streamingRequestExecutor.trigger(
             retryRequestContext,
             pendingKeys,
-            getStreamingCallback(
-                retryRequestContext,
-                callback,
-                finalRequestCompletionFuture,
-                savedException,
-                pendingKeysFuture));
+            getStreamingCallback(retryRequestContext, finalRequestCompletionFuture, savedException, pendingKeysFuture));
       } else {
         /** If there are no keys pending at this point , the onCompletion callback of the original
          request will be triggered. So no need to do anything.*/
@@ -320,7 +310,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   private <RESPONSE> StreamingCallback<K, RESPONSE> getStreamingCallback(
       MultiKeyRequestContext<K, V> requestContext,
-      StreamingCallback<K, RESPONSE> upstreamCallback,
       CompletableFuture<Void> finalRequestCompletionFuture,
       AtomicReference<Throwable> savedException,
       VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture) {
@@ -330,7 +319,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         // Remove the key and if successful , mark it as complete
         CompletableFuture<RESPONSE> removed = pendingKeysFuture.remove(key);
         if (removed != null) {
-          removed.complete(value);
+          removed.complete(value); // This will invoke the onRecordReceived callback of the original request
           requestContext.numKeysCompleted.incrementAndGet();
         }
         if (pendingKeysFuture.isEmpty() && !finalRequestCompletionFuture.isDone()) {
