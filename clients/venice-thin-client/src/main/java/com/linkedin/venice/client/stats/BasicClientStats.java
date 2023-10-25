@@ -24,7 +24,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final Sensor successRequestKeyCountSensor;
   private final Sensor successRequestRatioSensor;
   private final Sensor successRequestKeyRatioSensor;
-
   private final Rate requestRate = new OccurrenceRate();
   private final Rate successRequestKeyCountRate = new Rate();
 
@@ -85,5 +84,9 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   protected final Rate getRequestRate() {
     return requestRate;
+  }
+
+  protected final Rate getSuccessRequestKeyCountRate() {
+    return successRequestKeyCountRate;
   }
 }

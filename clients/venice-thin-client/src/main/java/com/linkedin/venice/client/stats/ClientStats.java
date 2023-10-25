@@ -2,6 +2,7 @@ package com.linkedin.venice.client.stats;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -32,6 +33,7 @@ public class ClientStats extends BasicClientStats {
   private final Sensor clientFutureTimeoutSensor;
   private final Sensor retryRequestKeyCountSensor;
   private final Sensor retryRequestSuccessKeyCountSensor;
+  private final Sensor retryKeySuccessRatioSensor;
   /**
    * Tracks the number of keys handled via MultiGet fallback mechanism for Client-Compute.
    */
@@ -49,11 +51,13 @@ public class ClientStats extends BasicClientStats {
 
   protected ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName, requestType);
+
     /**
      * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of
      * {@link io.tehuti.metrics.stats.SampledStat}.
      */
     Rate requestRetryCountRate = new OccurrenceRate();
+
     requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
     unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
@@ -106,6 +110,9 @@ public class ClientStats extends BasicClientStats {
     Rate retryRequestSuccessKeyCount = new Rate();
     retryRequestSuccessKeyCountSensor =
         registerSensor("retry_request_success_key_count", retryRequestSuccessKeyCount, new Avg(), new Max());
+    retryKeySuccessRatioSensor = registerSensor(
+        "retry_key_success_ratio",
+        new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, getSuccessRequestKeyCountRate()));
     multiGetFallbackSensor = registerSensor("multiget_fallback", new OccurrenceRate());
   }
 
