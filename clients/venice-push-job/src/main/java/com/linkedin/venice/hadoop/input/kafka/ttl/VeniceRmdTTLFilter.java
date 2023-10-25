@@ -65,7 +65,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
       return false;
     }
     if (Objects.requireNonNull(ttlPolicy) == TTLResolutionPolicy.RT_WRITE_ONLY) {
-      return validateByTTLandMaybeUpdateValue(value);
+      return filterByTTLandMaybeUpdateValue(value);
     }
     throw new UnsupportedOperationException(ttlPolicy + " policy is not supported.");
   }
@@ -75,7 +75,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     schemaSource.close();
   }
 
-  boolean validateByTTLandMaybeUpdateValue(final INPUT_VALUE value) {
+  boolean filterByTTLandMaybeUpdateValue(final INPUT_VALUE value) {
     ByteBuffer rmdPayload = getRmdPayload(value);
     if (rmdPayload == null || !rmdPayload.hasRemaining()) {
       throw new IllegalStateException(
