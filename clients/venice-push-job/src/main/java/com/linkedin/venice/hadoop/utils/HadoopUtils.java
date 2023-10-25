@@ -1,7 +1,5 @@
 package com.linkedin.venice.hadoop.utils;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.HADOOP_PREFIX;
-
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Properties;
@@ -51,17 +49,6 @@ public class HadoopUtils {
       fs.close();
     } catch (IOException e) {
       LOGGER.error("Failed to clean up the HDFS path: {}", path);
-    }
-  }
-
-  public static void setHadoopConfigurationFromProperties(Configuration conf, VeniceProperties props) {
-    for (String key: props.keySet()) {
-      String lowerCase = key.toLowerCase();
-      if (lowerCase.startsWith(HADOOP_PREFIX)) {
-        String overrideKey = key.substring(HADOOP_PREFIX.length());
-        conf.set(overrideKey, props.getString(key));
-        LOGGER.info("Hadoop configuration {} is overwritten by {}", overrideKey, key);
-      }
     }
   }
 
