@@ -54,11 +54,6 @@ public class HadoopUtils {
     }
   }
 
-  /**
-   * Set Hadoop configuration from Venice properties.
-   * @param conf Configuration to be updated
-   * @param props Venice properties
-   */
   public static void setHadoopConfigurationFromProperties(Configuration conf, VeniceProperties props) {
     for (String key: props.keySet()) {
       String lowerCase = key.toLowerCase();
