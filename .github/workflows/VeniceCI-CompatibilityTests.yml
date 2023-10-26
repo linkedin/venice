@@ -1,6 +1,6 @@
 # GitHub Actions workflow for running compatibility tests: Avro, Alpini unit, Alpini functional tests, and Pulsar Venice integration tests
 
-name:  TestsDeCompatibilité
+name:  TestsDeCompatibilite
 
 on: [push, pull_request, workflow_dispatch]
 
