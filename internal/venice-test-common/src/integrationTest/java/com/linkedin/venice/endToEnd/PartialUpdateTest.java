@@ -326,6 +326,7 @@ public class PartialUpdateTest {
         runVPJ(vpjProperties, 1, childControllerClient);
       }
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      veniceClusterWrapper.waitVersion(storeName, 1);
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -389,6 +390,8 @@ public class PartialUpdateTest {
         runVPJ(vpjProperties, 1, childControllerClient);
       }
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      veniceClusterWrapper.waitVersion(storeName, 1);
+
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -452,6 +455,7 @@ public class PartialUpdateTest {
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
         runVPJ(vpjProperties, 1, childControllerClient);
       }
+      veniceClusterWrapper.waitVersion(storeName, 1);
       // Produce partial updates on batch pushed keys
       SystemProducer veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
       for (int i = 1; i < 100; i++) {
@@ -1179,7 +1183,7 @@ public class PartialUpdateTest {
         try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
           runVPJ(vpjProperties, 1, childControllerClient);
         }
-
+        veniceClusterWrapper.waitVersion(storeName, 1);
         try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)
                 .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {

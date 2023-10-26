@@ -223,7 +223,9 @@ public abstract class AbstractClientEndToEndSetup {
 
     d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
 
-    dataPath = Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString();
+    dataPath = Paths.get(System.getProperty("java.io.tmpdir"), Utils.getUniqueString("venice-server-data"))
+        .toAbsolutePath()
+        .toString();
 
     prepareData();
     prepareMetaSystemStore();
