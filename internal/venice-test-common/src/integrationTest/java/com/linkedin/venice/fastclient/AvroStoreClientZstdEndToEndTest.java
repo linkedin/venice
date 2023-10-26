@@ -7,6 +7,7 @@ import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.read.RequestType;
@@ -92,6 +93,7 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
           byte[] compressionDictionaryBytes = trainer.trainSamples();
           return ByteBuffer.wrap(compressionDictionaryBytes);
         });
+    veniceCluster.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
 }

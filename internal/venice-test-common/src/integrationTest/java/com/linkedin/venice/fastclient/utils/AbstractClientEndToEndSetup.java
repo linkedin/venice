@@ -566,30 +566,30 @@ public abstract class AbstractClientEndToEndSetup {
       assertTrue(
           metrics.get(metricPrefix + "success_request_key_count.Max").value() >= successKeyCount,
           "Respective success_request_key_count should have been incremented");
+
+      Set<String> allMetricPrefixes = ClientTestUtils.getAllMetricPrefixes(storeName);
+      Set<String> allIncorrectMetricPrefixes = new HashSet<>(allMetricPrefixes);
+      allIncorrectMetricPrefixes.remove(metricPrefix);
+
+      for (String incorrectMetricPrefix: allIncorrectMetricPrefixes) {
+        // incorrect metric should not be incremented
+        assertFalse(
+            metrics.get(incorrectMetricPrefix + "request_key_count.Rate").value() > 0,
+            "Incorrect request_key_count should not be incremented");
+      }
+
+      if (retryEnabled) {
+        assertTrue(
+            metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0,
+            "Long tail retry should be triggered");
+      } else {
+        metrics.forEach((mName, metric) -> {
+          if (mName.contains("long_tail_retry_request")) {
+            assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
+          }
+        });
+      }
     });
-
-    Set<String> allMetricPrefixes = ClientTestUtils.getAllMetricPrefixes(storeName);
-    Set<String> allIncorrectMetricPrefixes = new HashSet<>(allMetricPrefixes);
-    allIncorrectMetricPrefixes.remove(metricPrefix);
-
-    for (String incorrectMetricPrefix: allIncorrectMetricPrefixes) {
-      // incorrect metric should not be incremented
-      assertFalse(
-          metrics.get(incorrectMetricPrefix + "request_key_count.Rate").value() > 0,
-          "Incorrect request_key_count should not be incremented");
-    }
-
-    if (retryEnabled) {
-      assertTrue(
-          metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0,
-          "Long tail retry should be triggered");
-    } else {
-      metrics.forEach((mName, metric) -> {
-        if (mName.contains("long_tail_retry_request")) {
-          assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
-        }
-      });
-    }
   }
 
   @AfterClass(alwaysRun = true)
