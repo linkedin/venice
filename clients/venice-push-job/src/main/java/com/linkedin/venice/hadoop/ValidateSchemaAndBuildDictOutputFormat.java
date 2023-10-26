@@ -73,9 +73,9 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
   protected static void setValidateSchemaAndBuildDictionaryOutputDirPath(JobConf job) throws IOException {
     // parent directory: Common directory under which all the different push jobs
     // create their job specific directories.
-    FileSystem fs = FileSystem.get(job);
     String parentOutputDir = job.get(MAPPER_OUTPUT_DIRECTORY);
     Path outputPath = new Path(parentOutputDir);
+    FileSystem fs = outputPath.getFileSystem(job);
     createDirectoryWithPermission(fs, outputPath, "777");
 
     // store+job specific unique directory under parent directory: already derived in VPJ driver

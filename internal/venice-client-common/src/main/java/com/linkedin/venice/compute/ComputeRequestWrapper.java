@@ -26,17 +26,20 @@ public class ComputeRequestWrapper {
   private final ComputeRequestV3 computeRequest;
   private final Schema valueSchema;
   private final List<Schema.Field> operationResultFields;
+  private final boolean originallyStreaming;
 
   public ComputeRequestWrapper(
       Schema valueSchema,
       Schema resultSchema,
       String resultSchemaString,
-      List<ComputeOperation> operations) {
+      List<ComputeOperation> operations,
+      boolean originallyStreaming) {
     this.computeRequest = new ComputeRequestV3();
     this.computeRequest.setResultSchemaStr(resultSchemaString);
     this.computeRequest.setOperations((List) operations);
     this.valueSchema = valueSchema;
     this.operationResultFields = ComputeUtils.getOperationResultFields(operations, resultSchema);
+    this.originallyStreaming = originallyStreaming;
   }
 
   public byte[] serialize() {
@@ -57,5 +60,9 @@ public class ComputeRequestWrapper {
 
   public List<Schema.Field> getOperationResultFields() {
     return this.operationResultFields;
+  }
+
+  public boolean isRequestOriginallyStreaming() {
+    return this.originallyStreaming;
   }
 }

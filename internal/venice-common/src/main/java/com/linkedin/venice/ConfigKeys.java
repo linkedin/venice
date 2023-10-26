@@ -1870,6 +1870,16 @@ public class ConfigKeys {
       "controller.server.incremental.push.use.push.status.store";
 
   /**
+   * A config to control the maximum time spent on closing the meta store writer.
+   */
+  public static final String META_STORE_WRITER_CLOSE_TIMEOUT_MS = "meta.store.writer.close.timeout.ms";
+
+  /**
+   * A config to control the maximum number of concurrent meta store writer close operations.
+   */
+  public static final String META_STORE_WRITER_CLOSE_CONCURRENCY = "meta.store.writer.close.concurrency";
+
+  /**
    * A config to control whether VeniceServer will optimize the database for the backup version to
    * free up memory resources occupied.
    * TODO: explore to apply this feature to DVC as well.

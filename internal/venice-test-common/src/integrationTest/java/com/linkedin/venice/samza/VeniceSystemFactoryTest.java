@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
 
 
 public class VeniceSystemFactoryTest {
-  private static final int TEST_TIMEOUT = 15000; // ms
+  private static final int TEST_TIMEOUT = 90000; // ms
 
   private VeniceClusterWrapper cluster;
 

@@ -21,7 +21,7 @@ ext.git = [
     def remoteName = ext.git.getUpstreamRemote()
     def stdout = new ByteArrayOutputStream()
     exec {
-      commandLine = ['git', 'diff', '--name-status', "${remoteName}/main"]
+      commandLine = ['git', 'diff', '--name-status', "${remoteName}/main..."]
       standardOutput = stdout
     }
     return "$stdout"

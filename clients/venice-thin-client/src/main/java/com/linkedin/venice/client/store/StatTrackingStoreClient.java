@@ -35,8 +35,8 @@ import org.apache.logging.log4j.Logger;
 public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(StatTrackingStoreClient.class);
 
-  private static String STAT_VENICE_CLIENT_NAME = "venice_client";
-  private static String STAT_SCHEMA_READER = "schema_reader";
+  private static final String STAT_VENICE_CLIENT_NAME = "venice_client";
+  private static final String STAT_SCHEMA_READER = "schema_reader";
 
   private final ClientStats singleGetStats;
   private final ClientStats multiGetStats;
@@ -279,14 +279,12 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   @Override
   public ComputeRequestBuilder<K> compute() throws VeniceClientException {
-    long startTimeInNS = System.nanoTime();
-
     /**
      * Here, we have to use {@link #compute(Optional, InternalAvroStoreClient, long)}
      * to pass {@link StatTrackingStoreClient}, so that {@link #compute(ComputeRequestWrapper, Set, Schema, Optional, long)}
      * will be invoked when serving 'compute' request.
      */
-    return super.compute(Optional.of(computeStats), Optional.of(computeStreamingStats), this, startTimeInNS);
+    return super.compute(Optional.of(computeStreamingStats), this);
   }
 
   private static void emitRequestHealthyMetrics(ClientStats clientStats, double latency) {

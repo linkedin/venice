@@ -1,10 +1,17 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
+import static org.apache.hc.core5.http.HttpStatus.SC_METHOD_NOT_ALLOWED;
+import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
+import static org.apache.hc.core5.http.HttpStatus.SC_OK;
+import static org.apache.hc.core5.http.HttpStatus.SC_SERVICE_UNAVAILABLE;
+import static org.apache.hc.core5.http.HttpStatus.SC_TOO_MANY_REQUESTS;
+
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
-import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -69,7 +76,7 @@ public class InstanceHealthMonitor implements Closeable {
     return this.timeoutProcessor;
   }
 
-  public CompletableFuture<HttpStatus> trackHealthBasedOnRequestToInstance(String instance) {
+  public ChainedCompletableFuture<Integer, Integer> trackHealthBasedOnRequestToInstance(String instance) {
     return trackHealthBasedOnRequestToInstance(instance, null);
   }
 
@@ -83,10 +90,10 @@ public class InstanceHealthMonitor implements Closeable {
    *
    * Using this we can track the number of pending requests for each server instance.
    */
-  public CompletableFuture<HttpStatus> trackHealthBasedOnRequestToInstance(
+  public ChainedCompletableFuture<Integer, Integer> trackHealthBasedOnRequestToInstance(
       String instance,
       CompletableFuture<TransportClientResponse> transportFuture) {
-    CompletableFuture<HttpStatus> requestFuture = new CompletableFuture<>();
+    CompletableFuture<Integer> requestFuture = new CompletableFuture<>();
     pendingRequestCounterMap.compute(instance, (k, v) -> {
       // currently tracking the number of requests as 1 for single get
       // and 1 for each route requests in batchGet scatter.
@@ -101,24 +108,18 @@ public class InstanceHealthMonitor implements Closeable {
       timeoutFuture = timeoutProcessor.schedule(
           /** Using a special http status to indicate the leaked request */
           () -> {
-            transportFuture.completeExceptionally(
-                new VeniceClientHttpException("Request timed out", HttpStatus.S_410_GONE.getCode()));
+            transportFuture.completeExceptionally(new VeniceClientHttpException("Request timed out", SC_GONE));
           },
           clientConfig.getRoutingLeakedRequestCleanupThresholdMS(),
           TimeUnit.MILLISECONDS);
     }
 
     TimeoutProcessor.TimeoutFuture finalTimeoutFuture = timeoutFuture;
-    requestFuture.whenComplete((httpStatus, throwable) -> {
+    CompletableFuture<Integer> resultFuture = requestFuture.whenComplete((httpStatus, throwable) -> {
       if (throwable != null) {
-        /**
-         * In theory, throwable should be null all the time since {@link DispatchingAvroGenericStoreClient}
-         * will always set a http status in every code path, and this is defensive code.
-         */
-        LOGGER.error(
-            "Received unexpected throwable in replica request future since DispatchingAvroGenericStoreClient"
-                + " should always setup a http status");
-        return;
+        httpStatus = (throwable instanceof VeniceClientHttpException)
+            ? ((VeniceClientHttpException) throwable).getHttpStatus()
+            : SC_SERVICE_UNAVAILABLE;
       }
 
       if (finalTimeoutFuture != null && !finalTimeoutFuture.isDone()) {
@@ -128,10 +129,10 @@ public class InstanceHealthMonitor implements Closeable {
       long counterResetDelayMS = 0;
       boolean unhealthyInstance = false;
       switch (httpStatus) {
-        case S_200_OK:
-        case S_404_NOT_FOUND:
+        case SC_OK:
+        case SC_NOT_FOUND:
           break;
-        case S_429_TOO_MANY_REQUESTS:
+        case SC_TOO_MANY_REQUESTS:
           /**
            * Specific to a store.
            * This case will fall under blocked instances as there are too many requests waiting on
@@ -139,10 +140,14 @@ public class InstanceHealthMonitor implements Closeable {
             */
           counterResetDelayMS = clientConfig.getRoutingQuotaExceededRequestCounterResetDelayMS();
           break;
-        case S_410_GONE:
-        case S_503_SERVICE_UNAVAILABLE:
+        case SC_GONE:
+        case SC_SERVICE_UNAVAILABLE:
           counterResetDelayMS = clientConfig.getRoutingUnavailableRequestCounterResetDelayMS();
           unhealthyInstance = true;
+          break;
+        case SC_METHOD_NOT_ALLOWED:
+          // Use the same delay as service unavailable without marking the instance as unhealthy
+          counterResetDelayMS = clientConfig.getRoutingUnavailableRequestCounterResetDelayMS();
           break;
         default:
           // All other error statuses
@@ -172,7 +177,7 @@ public class InstanceHealthMonitor implements Closeable {
       }
     });
 
-    return requestFuture;
+    return new ChainedCompletableFuture<>(requestFuture, resultFuture);
   }
 
   /**

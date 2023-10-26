@@ -1,18 +1,27 @@
 package com.linkedin.venice.fastclient;
 
-import com.linkedin.restli.common.HttpStatus;
+import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
+import static com.linkedin.venice.client.store.AbstractAvroStoreClient.TYPE_COMPUTE;
+import static org.apache.hc.core5.http.HttpStatus.SC_BAD_GATEWAY;
+import static org.apache.hc.core5.http.HttpStatus.SC_INTERNAL_SERVER_ERROR;
+import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
+import static org.apache.hc.core5.http.HttpStatus.SC_OK;
+
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
+import com.linkedin.venice.client.store.streaming.ComputeRecordStreamDecoder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
-import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
-import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
+import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
@@ -20,6 +29,7 @@ import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -27,7 +37,8 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,14 +48,14 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiConsumer;
+import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -57,6 +68,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private static final Logger LOGGER = LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
   private static final String URI_SEPARATOR = "/";
   private static final Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+  private final String BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
+  private final String COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
 
   private final StoreMetadata metadata;
   private final int requiredReplicaCount;
@@ -67,7 +82,17 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   // Key serializer
   private RecordSerializer<K> keySerializer;
-  private RecordSerializer<MultiGetRouterRequestKeyV1> multiGetSerializer;
+  private static final RecordSerializer<MultiGetRouterRequestKeyV1> MULTI_GET_REQUEST_SERIALIZER =
+      FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
+  private static final RecordSerializer<ComputeRouterRequestKeyV1> COMPUTE_REQUEST_SERIALIZER =
+      FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeRouterRequestKeyV1.SCHEMA$);
+  private static final RecordDeserializer<StreamingFooterRecordV1> STREAMING_FOOTER_RECORD_DESERIALIZER =
+      FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class);
+
+  private static final Map<String, String> HEADERS_FOR_MULTIGET_REQUEST = Collections.singletonMap(
+      HttpConstants.VENICE_API_VERSION,
+      Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
 
   public DispatchingAvroGenericStoreClient(StoreMetadata metadata, ClientConfig config) {
     /**
@@ -100,6 +125,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
     this.deserializationExecutor =
         Optional.ofNullable(config.getDeserializationExecutor()).orElse(DESERIALIZATION_EXECUTOR);
+    String storeName = metadata.getStoreName();
+    BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "BatchGet Transport Exception for " + storeName;
+    COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "Compute Transport Exception for " + storeName;
   }
 
   protected StoreMetadata getStoreMetadata() {
@@ -109,9 +137,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private String composeURIForSingleGet(GetRequestContext requestContext, K key) {
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
-    long beforeSerializationTimeStamp = System.nanoTime();
+    long nanoTsBeforeSerialization = System.nanoTime();
     byte[] keyBytes = keySerializer.serialize(key);
-    requestContext.requestSerializationTime = getLatencyInNS(beforeSerializationTimeStamp);
+    requestContext.requestSerializationTime = getLatencyInNS(nanoTsBeforeSerialization);
     int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
     String b64EncodedKeyBytes = EncodingUtils.base64EncodeToString(keyBytes);
 
@@ -123,13 +151,23 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return sb;
   }
 
-  private String composeURIForBatchGetRequest(BatchGetRequestContext<K, V> requestContext) {
+  private String composeRouteForBatchGetRequest(BatchGetRequestContext<K, V> requestContext) {
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
 
     requestContext.currentVersion = currentVersion;
     StringBuilder sb = new StringBuilder();
     sb.append(URI_SEPARATOR).append(AbstractAvroStoreClient.TYPE_STORAGE).append(URI_SEPARATOR).append(resourceName);
+    return sb.toString();
+  }
+
+  private String composeRouteForComputeRequest(ComputeRequestContext<K, V> requestContext) {
+    int currentVersion = getCurrentVersion();
+    String resourceName = getResourceName(currentVersion);
+
+    requestContext.currentVersion = currentVersion;
+    StringBuilder sb = new StringBuilder();
+    sb.append(URI_SEPARATOR).append(TYPE_COMPUTE).append(URI_SEPARATOR).append(resourceName);
     return sb.toString();
   }
 
@@ -143,6 +181,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       throw new VeniceClientException("No available current version, please do a push first");
     }
     return currentVersion;
+  }
+
+  @Override
+  public ClientConfig getClientConfig() {
+    return config;
   }
 
   @Override
@@ -161,7 +204,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     int partitionId = requestContext.partitionId;
 
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
-    long timestampBeforeSendingRequest = System.nanoTime();
+    long nanoTsBeforeSendingRequest = System.nanoTime();
 
     /**
      * Check {@link StoreMetadata#getReplicas} to understand why the below method
@@ -209,49 +252,46 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     List<CompletableFuture<TransportClientResponse>> transportFutures = new LinkedList<>();
     requestContext.requestSentTimestampNS = System.nanoTime();
     for (String route: routes) {
-      CompletableFuture<HttpStatus> routeRequestFuture = null;
+      CompletableFuture<Integer> routeRequestFuture = null;
       try {
         String url = route + uri;
         CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(url);
         routeRequestFuture =
-            metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, partitionId, transportFuture);
+            metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, partitionId, transportFuture)
+                .getOriginalFuture();
         requestContext.routeRequestMap.put(route, routeRequestFuture);
 
         transportFutures.add(transportFuture);
-        CompletableFuture<HttpStatus> finalRouteRequestFuture = routeRequestFuture;
+        CompletableFuture<Integer> finalRouteRequestFuture = routeRequestFuture;
         transportFuture.whenCompleteAsync((response, throwable) -> {
           if (throwable != null) {
-            HttpStatus statusCode = (throwable instanceof VeniceClientHttpException)
-                ? HttpStatus.fromCode(((VeniceClientHttpException) throwable).getHttpStatus())
-                : HttpStatus.S_503_SERVICE_UNAVAILABLE;
-            finalRouteRequestFuture.complete(statusCode);
+            finalRouteRequestFuture.completeExceptionally(throwable);
           } else if (response == null) {
-            finalRouteRequestFuture.complete(HttpStatus.S_404_NOT_FOUND);
+            finalRouteRequestFuture.complete(SC_NOT_FOUND);
             if (!receivedSuccessfulResponse.getAndSet(true)) {
               requestContext.requestSubmissionToResponseHandlingTime =
-                  LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
+                  LatencyUtils.getLatencyInMS(nanoTsBeforeSendingRequest);
 
               valueFuture.complete(null);
             }
           } else {
             try {
-              finalRouteRequestFuture.complete(HttpStatus.S_200_OK);
+              finalRouteRequestFuture.complete(SC_OK);
               if (!receivedSuccessfulResponse.getAndSet(true)) {
                 requestContext.requestSubmissionToResponseHandlingTime =
-                    LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
+                    LatencyUtils.getLatencyInMS(nanoTsBeforeSendingRequest);
                 CompressionStrategy compressionStrategy = response.getCompressionStrategy();
-                long timestampBeforeDecompression = System.nanoTime();
+                long nanoTsBeforeDecompression = System.nanoTime();
                 ByteBuffer data = decompressRecord(
                     compressionStrategy,
                     ByteBuffer.wrap(response.getBody()),
                     requestContext.currentVersion,
                     metadata.getCompressor(compressionStrategy, requestContext.currentVersion));
-                requestContext.decompressionTime = LatencyUtils.getLatencyInMS(timestampBeforeDecompression);
-                long timestampBeforeDeserialization = System.nanoTime();
+                requestContext.decompressionTime = LatencyUtils.getLatencyInMS(nanoTsBeforeDecompression);
+                long nanoTsBeforeDeserialization = System.nanoTime();
                 RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
                 V value = tryToDeserialize(deserializer, data, response.getSchemaId(), key);
-                requestContext.responseDeserializationTime =
-                    LatencyUtils.getLatencyInMS(timestampBeforeDeserialization);
+                requestContext.responseDeserializationTime = LatencyUtils.getLatencyInMS(nanoTsBeforeDeserialization);
                 requestContext.successRequestKeyCount.incrementAndGet();
                 valueFuture.complete(value);
               }
@@ -266,10 +306,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         LOGGER.error("Received exception while sending request to route: {}", route, e);
         if (routeRequestFuture == null) {
           // to update health data, create a future if the exception was thrown before it could be created
-          routeRequestFuture = metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, partitionId, null);
+          routeRequestFuture = metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, partitionId, null)
+              .getOriginalFuture();
           requestContext.routeRequestMap.put(route, routeRequestFuture);
         }
-        routeRequestFuture.complete(HttpStatus.S_503_SERVICE_UNAVAILABLE);
+        routeRequestFuture.completeExceptionally(e);
       }
     }
     if (transportFutures.isEmpty()) {
@@ -280,87 +321,24 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                   + partitionId));
       // TODO: metrics?
     } else {
-      CompletableFuture.allOf(transportFutures.toArray(new CompletableFuture[transportFutures.size()]))
-          .exceptionally(throwable -> {
-            boolean allFailed = true;
-            for (CompletableFuture transportFuture: transportFutures) {
-              if (!transportFuture.isCompletedExceptionally()) {
-                allFailed = false;
-                break;
-              }
-            }
-            if (allFailed) {
-              // Only fail the request if all the transport futures are completed exceptionally.
-              requestContext.requestSubmissionToResponseHandlingTime =
-                  LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
-              valueFuture.completeExceptionally(throwable);
-            }
-            return null;
-          });
+      CompletableFuture.allOf(transportFutures.toArray(new CompletableFuture[0])).exceptionally(throwable -> {
+        boolean allFailed = true;
+        for (CompletableFuture transportFuture: transportFutures) {
+          if (!transportFuture.isCompletedExceptionally()) {
+            allFailed = false;
+            break;
+          }
+        }
+        if (allFailed) {
+          // Only fail the request if all the transport futures are completed exceptionally.
+          requestContext.requestSubmissionToResponseHandlingTime =
+              LatencyUtils.getLatencyInMS(nanoTsBeforeSendingRequest);
+          valueFuture.completeExceptionally(throwable);
+        }
+        return null;
+      });
     }
     return valueFuture;
-  }
-
-  /**
-   * batchGet using streamingBatchGet implementation
-   */
-  @Override
-  protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
-      throws VeniceClientException {
-    verifyMetadataInitialized();
-    CompletableFuture<Map<K, V>> responseFuture = new CompletableFuture<>();
-    CompletableFuture<VeniceResponseMap<K, V>> streamingResponseFuture = streamingBatchGet(requestContext, keys);
-    streamingResponseFuture.whenComplete((response, throwable) -> {
-      if (throwable != null) {
-        responseFuture.completeExceptionally(throwable);
-      } else if (!response.isFullResponse()) {
-        responseFuture.completeExceptionally(
-            new VeniceClientException(
-                "Response was not complete",
-                requestContext.getPartialResponseException().orElse(null)));
-      } else {
-        responseFuture.complete(response);
-      }
-    });
-    return responseFuture;
-  }
-
-  @Override
-  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
-      BatchGetRequestContext<K, V> requestContext,
-      Set<K> keys) throws VeniceClientException {
-    verifyMetadataInitialized();
-    int keySize = keys.size();
-    // keys that do not exist in the storage nodes
-    Queue<K> nonExistingKeys = new ConcurrentLinkedQueue<>();
-    VeniceConcurrentHashMap<K, V> valueMap = new VeniceConcurrentHashMap<>();
-    CompletableFuture<VeniceResponseMap<K, V>> streamingResponseFuture = new VeniceResponseCompletableFuture<>(
-        () -> new VeniceResponseMapImpl<K, V>(valueMap, nonExistingKeys, false),
-        keys.size(),
-        Optional.empty());
-    streamingBatchGet(requestContext, keys, new StreamingCallback<K, V>() {
-      @Override
-      public void onRecordReceived(K key, V value) {
-        if (value == null) {
-          nonExistingKeys.add(key);
-        } else {
-          requestContext.successRequestKeyCount.incrementAndGet();
-          valueMap.put(key, value);
-        }
-      }
-
-      @Override
-      public void onCompletion(Optional<Exception> exception) {
-        requestContext.complete();
-        if (exception.isPresent()) {
-          streamingResponseFuture.completeExceptionally(exception.get());
-        } else {
-          boolean isFullResponse = (valueMap.size() + nonExistingKeys.size()) == keySize;
-          streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, isFullResponse));
-        }
-      }
-    });
-    return streamingResponseFuture;
   }
 
   /**
@@ -378,59 +356,74 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) {
-    verifyMetadataInitialized();
-    /* This implementation is intentionally designed to separate the request phase (scatter) and the response handling
-     * phase (gather). These internal methods help to keep this separation and leaves room for future fine-grained control. */
-    streamingBatchGetInternal(requestContext, keys, (transportClientResponse, throwable) -> {
-      // This method binds the internal transport client response to the events delivered to the callback
-      transportRequestCompletionHandler(requestContext, transportClientResponse, throwable, callback);
-    });
+    multiKeyStreamingRequest(
+        requestContext,
+        RequestType.MULTI_GET_STREAMING,
+        keys,
+        callback,
+        composeRouteForBatchGetRequest(requestContext),
+        HEADERS_FOR_MULTIGET_REQUEST,
+        this::serializeMultiGetRequest,
+        (MultiKeyStreamingRouteResponseHandler<K>) (
+            keysForRoutes,
+            response,
+            throwable) -> batchGetTransportRequestCompletionHandler(requestContext, response, throwable, callback));
+  }
 
-    /* Wiring in a callback for when all events have been received. If any route failed with an exception,
-     * that exception will be passed to the aggregate future's next stages. */
-    CompletableFuture.allOf(requestContext.getAllRouteFutures().toArray(new CompletableFuture[0]))
-        .whenComplete((response, throwable) -> {
-          if (throwable != null || (!keys.isEmpty() && requestContext.getAllRouteFutures().isEmpty())) {
-            // If there is an exception or if no partition has a healthy replica.
-            // The exception to send to the client might be different. Get from the requestContext
-            Throwable clientException = throwable;
-            if (requestContext.getPartialResponseException().isPresent()) {
-              clientException = requestContext.getPartialResponseException().get();
-            }
-            callback.onCompletion(
-                Optional.of(new VeniceClientException("At least one route did not complete", clientException)));
-          } else {
-            callback.onCompletion(Optional.empty());
-          }
-        });
+  private interface MultiKeyStreamingRouteResponseHandler<K> {
+    /**
+     * Multi-key requests might be routed to different server hosts and this class offers a way to handle the response
+     * per route, and it is responsible for:
+     * 1. Marking the original {@link RequestContext} as completed (successfully or exceptionally).
+     * 2. Completing the {@link TransportClientResponseForRoute#getRouteRequestFuture()} with appropriate HTTP status
+     * codes for that route after the response has been processed completely. (200 and 404 are considered SUCCESS).
+     */
+    void handle(
+        List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes,
+        TransportClientResponseForRoute transportClientResponse,
+        Throwable exception);
   }
 
   /**
-   * This internal method takes a batchGet request context, a set of keys and determines the strategy for scattering
-   * the requests. The callback is invoked whenever a response is received from the internal transport.
-   * @param requestContext
-   * @param keys
-   * @param transportClientResponseCompletionHandler
+   * This internal method offers a generic way to perform scatter-gather operations on a set of keys.
+   * The function determines the strategy for scattering the requests, triggers the requests, and waits for all requests
+   * to be completed and responses to be processed.
+   * @param requestContext The context that is used to track the state of the request.
+   * @param requestType The type of the request.
+   * @param keys The set of keys to be queried.
+   * @param callback When all routes have completed, the {@link StreamingCallback#onCompletion(Optional)} is triggered.
+   * @param routeForMultiKeyRequest The endpoint on the servers that the POST request will be sent to
+   * @param requestHeaders The headers to be sent with the request
+   * @param requestSerializer The function that serializes the request from a list of keys to a byte array. This will form the body of the request.
+   * @param routeResponseHandler The callback is invoked whenever a response is received from the internal transport.
+   *                             It is responsible for invoking {@link StreamingCallback#onRecordReceived(Object, Object)}
+   *                             on the {@param callback} function for each key, marking the {@param requestContext} as
+   *                             completed, and for completing the {@link TransportClientResponseForRoute#getRouteRequestFuture()} for that route.
    */
-  private void streamingBatchGetInternal(
-      BatchGetRequestContext<K, V> requestContext,
+  private void multiKeyStreamingRequest(
+      MultiKeyRequestContext<K, V> requestContext,
+      RequestType requestType,
       Set<K> keys,
-      BiConsumer<TransportClientResponseForRoute, Throwable> transportClientResponseCompletionHandler) {
-
+      StreamingCallback callback,
+      String routeForMultiKeyRequest,
+      Map<String, String> requestHeaders,
+      Function<List<MultiKeyRequestContext.KeyInfo<K>>, byte[]> requestSerializer,
+      MultiKeyStreamingRouteResponseHandler routeResponseHandler) {
+    verifyMetadataInitialized();
     int keyCnt = keys.size();
     if (keyCnt > this.config.getMaxAllowedKeyCntInBatchGetReq()) {
       throw new VeniceKeyCountLimitException(
           getStoreName(),
-          RequestType.MULTI_GET,
+          requestType,
           keyCnt,
           this.config.getMaxAllowedKeyCntInBatchGetReq());
     }
 
     /* Prepare each of the routes needed to query the keys */
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
-    String uriForBatchGetRequest = composeURIForBatchGetRequest(requestContext);
     int currentVersion = requestContext.currentVersion;
     Map<Integer, List<String>> partitionRouteMap = new HashMap<>();
+    Set<String> partitionsWithNoRoutes = new ConcurrentSkipListSet<>();
     for (K key: keys) {
       byte[] keyBytes = keySerializer.serialize(key);
       // For each key determine partition
@@ -438,110 +431,161 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       // Find routes for each partition
       List<String> routes = partitionRouteMap.computeIfAbsent(
           partitionId,
-          (partId) -> metadata.getReplicas(
+          (ignored) -> metadata.getReplicas(
               requestContext.requestId,
               currentVersion,
               partitionId,
               1,
-              requestContext.getRoutesForPartitionMapping().getOrDefault(partId, Collections.emptySet())));
+              requestContext.getRoutesForPartitionMapping().getOrDefault(partitionId, Collections.emptySet())));
 
       if (routes.isEmpty()) {
         /* If a partition doesn't have an available route then there is something wrong about or metadata and this is
          * an error */
         requestContext.noAvailableReplica = true;
-        String errorMessage = String.format(
-            "No available route for store: %s, version: %s, partitionId: %s",
-            getStoreName(),
-            currentVersion,
-            partitionId);
-        LOGGER.error(errorMessage);
-        requestContext.setPartialResponseException(new VeniceClientException(errorMessage));
+        partitionsWithNoRoutes.add(String.valueOf(partitionId));
       }
 
       /* Add this key into each route we are going to send request to.
         Current implementation has only one replica/route count , so each key will go via one route.
         For loop is not necessary here but if in the future we send to multiple routes then the code below remains */
       for (String route: routes) {
-        requestContext.addKey(route, key, partitionId);
+        requestContext.addKey(route, key, keyBytes, partitionId);
       }
     }
+
+    int numberOfRequestCompletionFutures =
+        requestContext.getRoutes().size() + (partitionsWithNoRoutes.isEmpty() ? 0 : 1);
+    CompletableFuture<Integer>[] requestCompletionFutures = new CompletableFuture[numberOfRequestCompletionFutures];
+
+    int routeIndex = 0;
     // Start the request and invoke handler for response
     for (String route: requestContext.getRoutes()) {
-      String url = route + uriForBatchGetRequest;
-      Map<String, String> headers = new HashMap<>();
-      headers.put(
-          HttpConstants.VENICE_API_VERSION,
-          Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
-      long tsBeforeSerialization = System.nanoTime();
-      byte[] serializedKeys = serializeMultiGetRequest(requestContext.keysForRoutes(route));
-      requestContext.recordRequestSerializationTime(route, getLatencyInNS(tsBeforeSerialization));
+      String url = route + routeForMultiKeyRequest;
+      long nanoTsBeforeSerialization = System.nanoTime();
+      List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes = requestContext.keysForRoutes(route);
+      byte[] serializedRequest = requestSerializer.apply(keysForRoutes);
+      requestContext.recordRequestSerializationTime(route, getLatencyInNS(nanoTsBeforeSerialization));
       requestContext.recordRequestSentTimeStamp(route);
-      CompletableFuture<TransportClientResponse> routeFuture = transportClient.post(url, headers, serializedKeys);
-      CompletableFuture<HttpStatus> routeRequestFuture =
-          metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, 0, routeFuture);
-      requestContext.routeRequestMap.put(route, routeRequestFuture);
+      CompletableFuture<TransportClientResponse> transportClientFutureForRoute =
+          transportClient.post(url, requestHeaders, serializedRequest);
+      ChainedCompletableFuture<Integer, Integer> routeRequestFuture =
+          metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, 0, transportClientFutureForRoute);
+      requestContext.routeRequestMap.put(route, routeRequestFuture.getOriginalFuture());
+      requestCompletionFutures[routeIndex] = routeRequestFuture.getResultFuture();
 
-      routeFuture.whenComplete((transportClientResponse, throwable) -> {
+      transportClientFutureForRoute.whenComplete((transportClientResponse, throwable) -> {
         requestContext.recordRequestSubmissionToResponseHandlingTime(route);
         TransportClientResponseForRoute response = TransportClientResponseForRoute
-            .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture);
-        transportClientResponseCompletionHandler.accept(response, throwable);
+            .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture.getOriginalFuture());
+        routeResponseHandler.handle(keysForRoutes, response, throwable);
       });
+      routeIndex++;
     }
+
+    if (!partitionsWithNoRoutes.isEmpty()) {
+      String errorMessage = String.format(
+          "No available route for store: %s, version: %s, partitionIds: %s",
+          getStoreName(),
+          currentVersion,
+          String.join(", ", partitionsWithNoRoutes));
+      // TODO: Explore if we need to use a different message as the filter for the redundant filter as different
+      // partition sets will have different error messages
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMessage)) {
+        LOGGER.error(errorMessage);
+      }
+      VeniceClientHttpException clientException = new VeniceClientHttpException(errorMessage, SC_BAD_GATEWAY);
+      requestContext.setPartialResponseException(clientException);
+      CompletableFuture<Integer> placeholderFailedFuture = new CompletableFuture<>();
+      placeholderFailedFuture.completeExceptionally(clientException);
+      requestCompletionFutures[routeIndex] = placeholderFailedFuture;
+    }
+
+    CompletableFuture.allOf(requestCompletionFutures).whenComplete((response, throwable) -> {
+      requestContext.complete();
+
+      boolean failedOverall = throwable != null;
+      if (!failedOverall) {
+        for (CompletableFuture<Integer> requestCompletionFuture: requestCompletionFutures) {
+          try {
+            int status = requestCompletionFuture.get();
+            if (status != SC_OK && status != SC_NOT_FOUND) {
+              failedOverall = true;
+              break;
+            }
+          } catch (Exception e) {
+            failedOverall = true;
+            break;
+          }
+        }
+      }
+
+      // Wiring in a callback for when all events have been received. If any route failed with an exception,
+      // that exception will be passed to the aggregate future's next stages.
+      if (failedOverall && !requestContext.isPartialSuccessAllowed) {
+        // The exception to send to the client might be different. Get from the requestContext
+        Throwable clientException = throwable;
+        if (requestContext.getPartialResponseException().isPresent()) {
+          clientException = requestContext.getPartialResponseException().get();
+        }
+        callback.onCompletion(
+            Optional.of(new VeniceClientException("At least one route did not complete", clientException)));
+      } else {
+        callback.onCompletion(Optional.empty());
+      }
+    });
   }
 
   /**
    * This callback handles results from one route for multiple keys in that route once the post()
    * is completed with {@link TransportClientResponseForRoute} for this route.
    */
-  private void transportRequestCompletionHandler(
-      BatchGetRequestContext<K, V> requestContext,
+  private void batchGetTransportRequestCompletionHandler(
+      MultiKeyRequestContext<K, V> requestContext,
       TransportClientResponseForRoute transportClientResponse,
       Throwable exception,
       StreamingCallback<K, V> callback) {
     if (exception != null) {
-      LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE)) {
+        LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
+      }
+
       requestContext.markCompleteExceptionally(transportClientResponse, exception);
-      HttpStatus statusCode = (exception instanceof VeniceClientHttpException)
-          ? HttpStatus.fromCode(((VeniceClientHttpException) exception).getHttpStatus())
-          : HttpStatus.S_503_SERVICE_UNAVAILABLE;
-      transportClientResponse.getRouteRequestFuture().complete(statusCode);
+      transportClientResponse.getRouteRequestFuture().completeExceptionally(exception);
       return;
     }
     // deserialize records and find the status
     RecordDeserializer<MultiGetResponseRecordV1> deserializer =
         getMultiGetResponseRecordDeserializer(transportClientResponse.getSchemaId());
-    long timestampBeforeRequestDeserialization = System.nanoTime();
+    long nanoTsBeforeRequestDeserialization = System.nanoTime();
     Iterable<MultiGetResponseRecordV1> records =
         deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(transportClientResponse.getBody()));
     requestContext.recordRequestDeserializationTime(
         transportClientResponse.getRouteId(),
-        getLatencyInNS(timestampBeforeRequestDeserialization));
+        getLatencyInNS(nanoTsBeforeRequestDeserialization));
     RecordDeserializer<V> dataRecordDeserializer = getDataRecordDeserializer(transportClientResponse.getSchemaId());
 
-    List<BatchGetRequestContext.KeyInfo<K>> keyInfos =
+    List<MultiKeyRequestContext.KeyInfo<K>> keyInfos =
         requestContext.keysForRoutes(transportClientResponse.getRouteId());
     Set<Integer> keysSeen = new HashSet<>();
 
-    LOGGER.debug("Response received for route {} -> {} ", transportClientResponse.getRouteId(), records);
     long totalDecompressionTimeForResponse = 0;
     VeniceCompressor compressor =
         metadata.getCompressor(transportClientResponse.getCompressionStrategy(), requestContext.currentVersion);
     for (MultiGetResponseRecordV1 r: records) {
-      long timeStampBeforeDecompression = System.nanoTime();
+      long nanoTsBeforeDecompression = System.nanoTime();
       ByteBuffer decompressRecord = decompressRecord(
           transportClientResponse.getCompressionStrategy(),
           r.value,
           requestContext.currentVersion,
           compressor);
-      totalDecompressionTimeForResponse += System.nanoTime() - timeStampBeforeDecompression;
+      totalDecompressionTimeForResponse += System.nanoTime() - nanoTsBeforeDecompression;
 
-      long timeStampBeforeDeserialization = System.nanoTime();
+      long nanoTsBeforeDeserialization = System.nanoTime();
       V deserializedValue = dataRecordDeserializer.deserialize(decompressRecord);
       requestContext.recordRecordDeserializationTime(
           transportClientResponse.getRouteId(),
-          getLatencyInNS(timeStampBeforeDeserialization));
-      BatchGetRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
+          getLatencyInNS(nanoTsBeforeDeserialization));
+      MultiKeyRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
       keysSeen.add(r.keyIndex);
       callback.onRecordReceived(k.getKey(), deserializedValue);
     }
@@ -552,7 +596,159 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       }
     }
     requestContext.markComplete(transportClientResponse);
-    transportClientResponse.getRouteRequestFuture().complete(HttpStatus.S_200_OK);
+    transportClientResponse.getRouteRequestFuture().complete(SC_OK);
+  }
+
+  @Override
+  protected void compute(
+      ComputeRequestContext<K, V> requestContext,
+      ComputeRequestWrapper computeRequest,
+      Set<K> keys,
+      Schema resultSchema,
+      StreamingCallback<K, ComputeGenericRecord> callback,
+      long preRequestTimeInNS) throws VeniceClientException {
+    verifyMetadataInitialized();
+    Map<String, String> headers = new HashMap<>(2);
+    headers.put(
+        HttpConstants.VENICE_API_VERSION,
+        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
+    headers.put(
+        VENICE_COMPUTE_VALUE_SCHEMA_ID,
+        Integer.toString(metadata.getValueSchemaId(computeRequest.getValueSchema())));
+
+    RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
+        getComputeResultRecordDeserializer(resultSchema);
+    multiKeyStreamingRequest(
+        requestContext,
+        RequestType.COMPUTE_STREAMING,
+        keys,
+        callback,
+        composeRouteForComputeRequest(requestContext),
+        headers,
+        (keysForRoutes) -> serializeComputeRequest(computeRequest, keysForRoutes),
+        (MultiKeyStreamingRouteResponseHandler<K>) (keysForRoutes, response, throwable) -> {
+          ComputeRecordStreamDecoder decoder = getComputeDecoderForRoute(
+              requestContext,
+              computeRequest,
+              keysForRoutes,
+              response,
+              computeResultRecordDeserializer,
+              callback);
+          computeTransportRequestCompletionHandler(response, throwable, decoder);
+        });
+  }
+
+  private ComputeRecordStreamDecoder getComputeDecoderForRoute(
+      ComputeRequestContext<K, V> requestContext,
+      ComputeRequestWrapper computeRequest,
+      List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes,
+      TransportClientResponseForRoute transportClientResponse,
+      RecordDeserializer<GenericRecord> computeResultRecordDeserializer,
+      StreamingCallback<K, ComputeGenericRecord> allRecordsCallback) {
+    List<K> keyList = new ArrayList<>(keysForRoutes.size());
+    for (MultiKeyRequestContext.KeyInfo keyInfo: keysForRoutes) {
+      keyList.add((K) keyInfo.getKey());
+    }
+
+    // Don't want it to mark the future for all routes complete
+    TrackingStreamingCallback<K, GenericRecord> nonCompletingStreamingCallback =
+        new TrackingStreamingCallback<K, GenericRecord>() {
+          @Override
+          public Optional<ClientStats> getStats() {
+            return Optional.empty();
+          }
+
+          @Override
+          public void onRecordDeserialized() {
+          }
+
+          @Override
+          public void onDeserializationCompletion(
+              Optional<Exception> exception,
+              int successKeyCount,
+              int duplicateEntryCount) {
+          }
+
+          @Override
+          public void onRecordReceived(K key, GenericRecord value) {
+            allRecordsCallback.onRecordReceived(
+                key,
+                value != null ? new ComputeGenericRecord(value, computeRequest.getValueSchema()) : null);
+          }
+
+          @Override
+          public void onCompletion(Optional<Exception> exception) {
+            // Don't complete the main callback here. It will be completed when all routes are done.
+            if (exception.isPresent()) {
+              Exception e = exception.get();
+              requestContext.markCompleteExceptionally(transportClientResponse, e);
+              transportClientResponse.getRouteRequestFuture().completeExceptionally(e);
+            } else {
+              requestContext.markComplete(transportClientResponse);
+              transportClientResponse.getRouteRequestFuture().complete(SC_OK);
+            }
+          }
+        };
+
+    return new ComputeRecordStreamDecoder<>(
+        keyList,
+        nonCompletingStreamingCallback,
+        deserializationExecutor,
+        STREAMING_FOOTER_RECORD_DESERIALIZER,
+        computeResultRecordDeserializer);
+  }
+
+  /**
+   * This callback handles results from one route for multiple keys in that route once the post()
+   * is completed with {@link TransportClientResponseForRoute} for this route.
+   */
+  private void computeTransportRequestCompletionHandler(
+      TransportClientResponseForRoute transportClientResponse,
+      Throwable exception,
+      ComputeRecordStreamDecoder decoder) {
+    if (exception != null) {
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE)) {
+        LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
+      }
+      VeniceClientException clientException;
+      if (exception instanceof VeniceClientException) {
+        clientException = (VeniceClientException) exception;
+      } else {
+        clientException = new VeniceClientException("Exception received from transport", exception);
+      }
+      decoder.onCompletion(Optional.of(clientException));
+      return;
+    }
+
+    try {
+      Map<String, String> headers = Collections
+          .singletonMap(HttpConstants.VENICE_SCHEMA_ID, String.valueOf(transportClientResponse.getSchemaId()));
+
+      decoder.onHeaderReceived(headers);
+      decoder.onDataReceived(ByteBuffer.wrap(transportClientResponse.getBody()));
+      decoder.onCompletion(Optional.empty());
+    } catch (Throwable t) {
+      LOGGER.error("Exception while decoding compute response. ExMsg: {}", t.getMessage());
+      decoder.onCompletion(
+          Optional.of(new VeniceClientHttpException("Failed to decode compute response", SC_INTERNAL_SERVER_ERROR, t)));
+    }
+  }
+
+  private byte[] serializeComputeRequest(
+      ComputeRequestWrapper computeRequest,
+      List<MultiKeyRequestContext.KeyInfo<K>> keyList) {
+    List<ComputeRouterRequestKeyV1> routerRequestKeys = new ArrayList<>(keyList.size());
+    for (int i = 0; i < keyList.size(); i++) {
+      MultiKeyRequestContext.KeyInfo<K> keyInfo = keyList.get(i);
+      ComputeRouterRequestKeyV1 routerRequestKey = new ComputeRouterRequestKeyV1();
+      byte[] keyBytes = keyInfo.getSerializedKey();
+      routerRequestKey.keyBytes = ByteBuffer.wrap(keyBytes);
+      routerRequestKey.keyIndex = i;
+      routerRequestKey.partitionId = keyInfo.getPartitionId();
+      routerRequestKeys.add(routerRequestKey);
+    }
+
+    return COMPUTE_REQUEST_SERIALIZER.serializeObjects(routerRequestKeys, ByteBuffer.wrap(computeRequest.serialize()));
   }
 
   /* Batch get helper methods */
@@ -574,6 +770,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
           "Failed to get writer schema with id: " + schemaId + " from store: " + metadata.getStoreName());
     }
     return getValueDeserializer(writerSchema, readerSchema);
+  }
+
+  private RecordDeserializer<GenericRecord> getComputeResultRecordDeserializer(Schema resultSchema) {
+    return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(resultSchema, resultSchema);
   }
 
   protected RecordDeserializer<V> getValueDeserializer(Schema writerSchema, Schema readerSchema) {
@@ -619,27 +819,26 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   /* Short utility methods */
 
-  private byte[] serializeMultiGetRequest(List<BatchGetRequestContext.KeyInfo<K>> keyList) {
+  private byte[] serializeMultiGetRequest(List<MultiKeyRequestContext.KeyInfo<K>> keyList) {
     List<MultiGetRouterRequestKeyV1> routerRequestKeys = new ArrayList<>(keyList.size());
-    BatchGetRequestContext.KeyInfo<K> keyInfo;
     for (int i = 0; i < keyList.size(); i++) {
-      keyInfo = keyList.get(i);
+      MultiKeyRequestContext.KeyInfo<K> keyInfo = keyList.get(i);
       MultiGetRouterRequestKeyV1 routerRequestKey = new MultiGetRouterRequestKeyV1();
-      byte[] keyBytes = keySerializer.serialize(keyInfo.getKey());
+      byte[] keyBytes = keyInfo.getSerializedKey();
       ByteBuffer keyByteBuffer = ByteBuffer.wrap(keyBytes);
       routerRequestKey.keyBytes = keyByteBuffer;
       routerRequestKey.keyIndex = i;
       routerRequestKey.partitionId = keyInfo.getPartitionId();
       routerRequestKeys.add(routerRequestKey);
     }
-    return multiGetSerializer.serializeObjects(routerRequestKeys);
+    return MULTI_GET_REQUEST_SERIALIZER.serializeObjects(routerRequestKeys);
   }
 
   private long getLatencyInNS(long startTimeStamp) {
     return System.nanoTime() - startTimeStamp;
   }
 
-  public void verifyMetadataInitialized() throws VeniceClientException {
+  void verifyMetadataInitialized() throws VeniceClientException {
     if (!metadata.isReady()) {
       throw new VeniceClientException(metadata.getStoreName() + " metadata is not ready, attempting to re-initialize");
     }
@@ -652,9 +851,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   public void start() throws VeniceClientException {
     metadata.start();
-
-    this.multiGetSerializer =
-        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
   }
 
   protected RecordSerializer getKeySerializer(Schema keySchema) {
@@ -683,10 +879,5 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   public Schema getLatestValueSchema() {
     return metadata.getLatestValueSchema();
-  }
-
-  // Visible for testing
-  public RecordSerializer<K> getKeySerializer() {
-    return keySerializer;
   }
 }

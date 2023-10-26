@@ -18,12 +18,17 @@ import java.util.function.Supplier;
  * 1. If both of them succeed, return the faster one.
  * 2. If one of them fails, return the succeeded one.
  * 3. If both of them fail, throw exception.
+ *
+ * Currently, this implementation only supports dual-read for single-get and batch-get requests. Compute requests have
+ * not been implemented for two reasons:
+ * 1. We prefer to do a gradual ramp of the feature as dual reads can lead to extra load on the storage nodes
+ * 2. The complexity of implementing dual reads for compute is higher and needs extra work to convert a
+ * {@link com.linkedin.venice.client.store.streaming.StreamingCallback} into a {@link CompletableFuture Future}.
  */
 public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
   private final AvroGenericStoreClient<K, V> thinClient;
   private final FastClientStats clientStatsForSingleGet;
   private final FastClientStats clientStatsForMultiGet;
-  private final boolean useStreamingBatchGetAsDefault;
 
   public DualReadAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig config) {
     this(delegate, config, config.getGenericThinClient());
@@ -37,20 +42,19 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       InternalAvroStoreClient<K, V> delegate,
       ClientConfig config,
       AvroGenericStoreClient<K, V> thinClient) {
-    super(delegate);
+    super(delegate, config);
     this.thinClient = thinClient;
     this.clientStatsForSingleGet = config.getStats(RequestType.SINGLE_GET);
-    this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET);
-    this.useStreamingBatchGetAsDefault = config.useStreamingBatchGetAsDefault();
+    this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET_STREAMING);
   }
 
   private static <T> CompletableFuture<T> sendRequest(
       Supplier<CompletableFuture<T>> supplier,
-      long startTimeNS,
       AtomicBoolean error,
       AtomicReference<Double> latency,
       CompletableFuture<T> valueFuture) {
     CompletableFuture<T> requestFuture;
+    long startTimeNS = System.nanoTime();
     try {
       requestFuture = supplier.get();
     } catch (Exception e) {
@@ -94,15 +98,14 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       Supplier<CompletableFuture<T>> thinClientFutureSupplier,
       FastClientStats clientStats) {
     CompletableFuture<T> valueFuture = new CompletableFuture<>();
-    long startTimeNS = System.nanoTime();
     AtomicBoolean fastClientError = new AtomicBoolean(false);
     AtomicBoolean thinClientError = new AtomicBoolean(false);
     AtomicReference<Double> fastClientLatency = new AtomicReference<>();
     AtomicReference<Double> thinClientLatency = new AtomicReference<>();
     CompletableFuture<T> fastClientFuture =
-        sendRequest(fastClientFutureSupplier, startTimeNS, fastClientError, fastClientLatency, valueFuture);
+        sendRequest(fastClientFutureSupplier, fastClientError, fastClientLatency, valueFuture);
     CompletableFuture<T> thinClientFuture =
-        sendRequest(thinClientFutureSupplier, startTimeNS, thinClientError, thinClientLatency, valueFuture);
+        sendRequest(thinClientFutureSupplier, thinClientError, thinClientLatency, valueFuture);
 
     CompletableFuture.allOf(fastClientFuture, thinClientFuture).whenComplete((response, throwable) -> {
       /**
@@ -135,6 +138,14 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
    *  Needs to be investigated */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+    /**
+     * If a user calls {@link batchGet}, the {@link batchGet} would trigger a dual read on the thin-client and
+     * fast-client. If internally, batch get gets executed through a series of single gets, we shouldn't trigger dual
+     * reads on the internal {@link get} calls.
+     */
+    if (requestContext.isTriggeredByBatchGet) {
+      return super.get(requestContext, key);
+    }
     return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);
   }
 
@@ -142,9 +153,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   public CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
     return dualExecute(
-        this.useStreamingBatchGetAsDefault
-            ? () -> super.batchGet(requestContext, keys)
-            : () -> super.batchGetUsingSingleGet(keys),
+        () -> super.batchGet(requestContext, keys),
         () -> thinClient.batchGet(keys),
         clientStatsForMultiGet);
   }

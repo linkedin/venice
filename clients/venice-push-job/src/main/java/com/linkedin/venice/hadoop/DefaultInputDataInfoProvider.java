@@ -100,8 +100,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   @Override
   public InputDataInfo validateInputAndGetInfo(String inputUri) throws Exception {
     long inputModificationTime = getInputLastModificationTime(inputUri);
-    FileSystem fs = FileSystem.get(new Configuration());
     Path srcPath = new Path(inputUri);
+    FileSystem fs = srcPath.getFileSystem(new Configuration());
     FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
 
     if (fileStatuses == null || fileStatuses.length == 0) {
@@ -326,8 +326,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
   @Override
   public long getInputLastModificationTime(String inputUri) throws IOException {
-    FileSystem fs = FileSystem.get(new Configuration());
     Path srcPath = new Path(inputUri);
+    FileSystem fs = srcPath.getFileSystem(new Configuration());
     try {
       return fs.getFileStatus(srcPath).getModificationTime();
     } catch (FileNotFoundException e) {

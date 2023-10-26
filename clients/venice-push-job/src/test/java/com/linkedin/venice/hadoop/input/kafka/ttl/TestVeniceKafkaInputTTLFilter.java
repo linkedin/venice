@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka.ttl;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
@@ -13,21 +14,19 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
-import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
+import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -42,27 +41,23 @@ public class TestVeniceKafkaInputTTLFilter {
   private static final String VALUE_RECORD_SCHEMA_STR =
       "{\"type\":\"record\"," + "\"name\":\"User\"," + "\"namespace\":\"example.avro\"," + "\"fields\":["
           + "{\"name\":\"name\",\"type\":\"string\",\"default\":\"venice\"}]}";
-  private Schema valueSchema;
-  private Schema rmdSchema;
-  private HDFSRmdSchemaSource source;
+  private static final Schema VALUE_SCHEMA =
+      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_RECORD_SCHEMA_STR);
+  private static final Schema RMD_SCHEMA = RmdSchemaGenerator.generateMetadataSchema(VALUE_SCHEMA, 1);
   private VeniceKafkaInputTTLFilter filterWithSupportedPolicy;
-
+  private static final long DUMMY_CURRENT_TIMESTAMP = System.currentTimeMillis();
   private FilterChain<KafkaInputMapperValue> filterChain;
 
   @BeforeClass
   public void setUp() throws IOException {
-    valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_RECORD_SCHEMA_STR);
-    rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema, 1);
-
-    File inputDir = getTempDataDirectory();
-
     Properties validProps = new Properties();
     validProps.put(VenicePushJob.REPUSH_TTL_IN_SECONDS, TTL_IN_SECONDS_DEFAULT);
     validProps.put(VenicePushJob.REPUSH_TTL_POLICY, 0);
-    validProps.put(RMD_SCHEMA_DIR, inputDir.getAbsolutePath());
+    validProps.put(VenicePushJob.REPUSH_TTL_START_TIMESTAMP, DUMMY_CURRENT_TIMESTAMP);
+    validProps.put(RMD_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
+    validProps.put(VALUE_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     validProps.put(VENICE_STORE_NAME_PROP, TEST_STORE);
     VeniceProperties valid = new VeniceProperties(validProps);
-
     // set up HDFS schema source to write dummy RMD schemas on temp directory
     setupHDFS(valid);
 
@@ -72,25 +67,38 @@ public class TestVeniceKafkaInputTTLFilter {
 
   private void setupHDFS(VeniceProperties props) throws IOException {
     ControllerClient client = mock(ControllerClient.class);
-    // for simplicity of writing the test, we only have one schema on disk
-    // so the both schemaId and valueSchemaID is 1
-    MultiSchemaResponse.Schema[] schemas = generateMultiSchema(1);
-    MultiSchemaResponse response = new MultiSchemaResponse();
-    response.setSchemas(schemas);
-    doReturn(response).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
-
-    source = new HDFSRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR), TEST_STORE);
-    source.loadRmdSchemasOnDisk(client);
+    MultiSchemaResponse rmdResponse = new MultiSchemaResponse();
+    rmdResponse.setSchemas(generateRmdSchemas(1));
+    doReturn(rmdResponse).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
+    MultiSchemaResponse valueResponse = new MultiSchemaResponse();
+    valueResponse.setSchemas(generateValueSchema(1));
+    doReturn(valueResponse).when(client).getAllValueSchema(TEST_STORE);
+    HDFSSchemaSource source = new HDFSSchemaSource(
+        props.getString(VenicePushJob.VALUE_SCHEMA_DIR),
+        props.getString(VenicePushJob.RMD_SCHEMA_DIR),
+        TEST_STORE);
+    source.saveSchemasOnDisk(client);
   }
 
-  private MultiSchemaResponse.Schema[] generateMultiSchema(int n) {
+  private MultiSchemaResponse.Schema[] generateRmdSchemas(int n) {
     MultiSchemaResponse.Schema[] response = new MultiSchemaResponse.Schema[n];
     for (int i = 1; i <= n; i++) {
       MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
-      schema.setRmdValueSchemaId(i);
+      schema.setRmdSchemaId(i);
       schema.setDerivedSchemaId(i);
       schema.setId(i);
-      schema.setSchemaStr(rmdSchema.toString());
+      schema.setSchemaStr(RMD_SCHEMA.toString());
+      response[i - 1] = schema;
+    }
+    return response;
+  }
+
+  private MultiSchemaResponse.Schema[] generateValueSchema(int n) {
+    MultiSchemaResponse.Schema[] response = new MultiSchemaResponse.Schema[n];
+    for (int i = 1; i <= n; i++) {
+      MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
+      schema.setId(i);
+      schema.setSchemaStr(VALUE_SCHEMA.toString());
       response[i - 1] = schema;
     }
     return response;
@@ -103,10 +111,10 @@ public class TestVeniceKafkaInputTTLFilter {
 
   @Test
   public void testFilterWithRTPolicyWithValidValues() {
-    List<KafkaInputMapperValue> records = generateRecord(4, 6, 4, Instant.now(), TTL_IN_SECONDS_DEFAULT);
+    List<KafkaInputMapperValue> records = generateRecord(4, 6, 4, DUMMY_CURRENT_TIMESTAMP, TTL_IN_SECONDS_DEFAULT);
     int validCount = 0, expiredCount = 0;
     for (KafkaInputMapperValue value: records) {
-      if (filterWithSupportedPolicy.apply(value)) {
+      if (filterWithSupportedPolicy.checkAndMaybeFilterValue(value)) {
         expiredCount++;
       } else {
         validCount++;
@@ -117,9 +125,9 @@ public class TestVeniceKafkaInputTTLFilter {
   }
 
   @Test(expectedExceptions = IllegalStateException.class)
-  public void testFilterWithRTPolicyWithInValidValues() {
+  public void testFilterWithRTPolicyWithInvalidValues() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
-    Assert.assertFalse(filterWithSupportedPolicy.apply(value));
+    Assert.assertFalse(filterWithSupportedPolicy.checkAndMaybeFilterValue(value));
   }
 
   /**
@@ -132,24 +140,24 @@ public class TestVeniceKafkaInputTTLFilter {
       int valid,
       int expired,
       int chunked,
-      Instant curTime,
+      long currentTimestamp,
       long ttlInSeconds) {
     List<KafkaInputMapperValue> records = new ArrayList<>();
 
     // generate valid records
     for (int i = 0; i < valid; i++) {
-      records.add(generateKIMWithRmdTimeStamp(curTime.toEpochMilli(), false));
+      records.add(generateKIMWithRmdTimeStamp(currentTimestamp, false));
     }
 
     // generate expired records
-    Instant expiredTime = curTime.minus(ttlInSeconds + 1, ChronoUnit.SECONDS);
+    long expiredTimestamp = currentTimestamp - (TimeUnit.SECONDS.toMillis(ttlInSeconds) + 1);
     for (int i = 0; i < expired; i++) {
-      records.add(generateKIMWithRmdTimeStamp(expiredTime.toEpochMilli(), false));
+      records.add(generateKIMWithRmdTimeStamp(expiredTimestamp, false));
     }
 
     // generate expired chunked records, which should be filtered by the filter in mapper
     for (int i = 0; i < chunked; i++) {
-      records.add(generateKIMWithRmdTimeStamp(expiredTime.toEpochMilli(), true));
+      records.add(generateKIMWithRmdTimeStamp(expiredTimestamp, true));
     }
     return records;
   }
@@ -159,14 +167,14 @@ public class TestVeniceKafkaInputTTLFilter {
     value.schemaId = isChunkedRecord ? -10 : 1;
     value.replicationMetadataVersionId = 1;
     value.replicationMetadataPayload = ByteBuffer.wrap(
-        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema)
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(RMD_SCHEMA)
             .serialize(generateRmdRecordWithValueLevelTimeStamp(timestamp)));
     return value;
   }
 
   private GenericRecord generateRmdRecordWithValueLevelTimeStamp(long timestamp) {
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
-    GenericRecord record = new GenericData.Record(rmdSchema);
+    GenericRecord record = new GenericData.Record(RMD_SCHEMA);
     record.put(TIMESTAMP_FIELD_NAME, timestamp);
     record.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, vectors);
     return record;

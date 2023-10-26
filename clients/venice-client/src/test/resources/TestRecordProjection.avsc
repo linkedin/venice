@@ -1,0 +1,17 @@
+{
+  "name": "test_store_VeniceComputeResult",
+  "type": "record",
+  "fields": [
+    {
+      "name": "name",
+      "type": "string",
+      "default": "default_name"
+    },
+    {
+      "name": "__veniceComputationError__",
+      "type": { "type": "map", "values": "string" },
+      "doc": "",
+      "default": {}
+    }
+  ]
+}

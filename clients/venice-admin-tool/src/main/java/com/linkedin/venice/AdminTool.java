@@ -542,6 +542,9 @@ public class AdminTool {
         case DUMP_INGESTION_STATE:
           dumpIngestionState(cmd);
           break;
+        case CONFIGURE_STORE_VIEW:
+          configureStoreView(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -1013,7 +1016,6 @@ public class AdminTool {
 
   private static void updateStore(CommandLine cmd) {
     UpdateStoreQueryParams params = getUpdateStoreQueryParams(cmd);
-    params.setStoreViews(new HashMap<>());
     String storeName = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
     ControllerResponse response = controllerClient.updateStore(storeName, params);
     printSuccess(response);
@@ -1024,6 +1026,21 @@ public class AdminTool {
 
     ControllerResponse response = controllerClient.updateClusterConfig(params);
     printSuccess(response);
+  }
+
+  static UpdateStoreQueryParams getConfigureStoreViewQueryParams(CommandLine cmd) {
+    Set<Arg> argSet = new HashSet<>(Arrays.asList(Command.CONFIGURE_STORE_VIEW.getOptionalArgs()));
+    argSet.addAll(new HashSet<>(Arrays.asList(Command.CONFIGURE_STORE_VIEW.getRequiredArgs())));
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setViewName(getRequiredArgument(cmd, Arg.VIEW_NAME));
+    if (cmd.hasOption(Arg.REMOVE_VIEW.toString())) {
+      params.setDisableStoreView();
+    } else {
+      // If configuring a view, view class name is required.
+      params.setViewClassName(getRequiredArgument(cmd, Arg.VIEW_CLASS));
+    }
+    stringMapParam(cmd, Arg.VIEW_PARAMS, p -> params.setViewClassParams(p), argSet);
+    return params;
   }
 
   static UpdateStoreQueryParams getUpdateStoreQueryParams(CommandLine cmd) {
@@ -2879,6 +2896,13 @@ public class AdminTool {
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
+  }
+
+  private static void configureStoreView(CommandLine cmd) {
+    UpdateStoreQueryParams params = getConfigureStoreViewQueryParams(cmd);
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.CONFIGURE_STORE_VIEW);
+    ControllerResponse response = controllerClient.updateStore(storeName, params);
+    printObject(response);
   }
 
   static void dumpIngestionState(TransportClient transportClient, String storeName, String version, String partition)

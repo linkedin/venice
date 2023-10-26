@@ -67,6 +67,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
+import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
@@ -271,6 +273,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean controllerInAzureFabric;
 
   private final boolean usePushStatusStoreForIncrementalPush;
+
+  private final long metaStoreWriterCloseTimeoutInMS;
+
+  private final int metaStoreWriterCloseConcurrency;
 
   private final boolean unregisterMetricForDeletedStoreEnabled;
 
@@ -486,6 +492,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled =
         props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, false);
     this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
+    this.metaStoreWriterCloseTimeoutInMS = props.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
+    this.metaStoreWriterCloseConcurrency = props.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
     this.childControllerAdminTopicConsumptionEnabled =
@@ -915,6 +923,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean usePushStatusStoreForIncrementalPush() {
     return usePushStatusStoreForIncrementalPush;
+  }
+
+  public long getMetaStoreWriterCloseTimeoutInMS() {
+    return metaStoreWriterCloseTimeoutInMS;
+  }
+
+  public int getMetaStoreWriterCloseConcurrency() {
+    return metaStoreWriterCloseConcurrency;
   }
 
   public boolean isUnregisterMetricForDeletedStoreEnabled() {

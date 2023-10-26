@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+  implementation project(':clients:da-vinci-client')
   implementation (project(':internal:venice-common')) {
     exclude module: ':internal:alpini'
   }
