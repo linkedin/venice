@@ -8,154 +8,16 @@
 #
 #     ./gradlew generateGHCI
 
-name: VeniceCI
+name: E2ETests
 
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
-  ValidateGradleWrapper:
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v1
-
-  StaticAnalysis:
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [8, 11, 17]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification"
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  UnitTestsAndCodeCoverage:
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [8, 11, 17]
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "-x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  AvroCompatibilityTests:
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [8, 11, 17]
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
   IntegrationTestsA:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -197,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -239,7 +101,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -281,7 +143,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -323,7 +185,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -365,7 +227,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -407,7 +269,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -449,7 +311,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -491,7 +353,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -533,7 +395,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -575,7 +437,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -617,7 +479,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -659,7 +521,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -701,7 +563,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -743,7 +605,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -785,7 +647,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -827,7 +689,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -869,7 +731,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -907,153 +769,13 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  AlpiniUnitTests:
+  E2ETestsCompletion:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
-    timeout-minutes: 120
-    outputs:
-      alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          # Checkout as many commits as needed for the diff
-          fetch-depth: 2
-      - name: Check if files have changed
-        uses: dorny/paths-filter@v2
-        id: check_alpini_files_changed
-        with:
-          filters: |
-            alpini:
-              - 'internal/alpini/**'
-      - uses: actions/checkout@v3
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      # - name: Allow Deprecated TLS versions for Alpini tests
-      #   run: |
-      #     echo "java.security file before modifications: "
-      #     cat "$JAVA_HOME/conf/security/java.security"
-
-      #     # This is possibly flaky but
-      #     sed -i 's/TLSv1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1
-      #     sed -i 's/TLSv1.1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1.1
-
-      #     echo "java.security file after modifications: "
-      #     cat "$JAVA_HOME/conf/security/java.security"
-      - shell: bash
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Build with Gradle
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DmaxParallelForks=1 alpiniUnitTest"
-      - name: Package Build Artifacts
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  AlpiniFunctionalTests:
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [8, 11, 17]
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    outputs:
-      alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          # Checkout as many commits as needed for the diff
-          fetch-depth: 2
-      - name: Check if files have changed
-        uses: dorny/paths-filter@v2
-        id: check_alpini_files_changed
-        with:
-          filters: |
-            alpini:
-              - 'internal/alpini/**'
-      - uses: actions/checkout@v3
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      # - name: Allow Deprecated TLS versions for Alpini tests
-      #   run: |
-      #     echo "java.security file before modifications: "
-      #     cat "$JAVA_HOME/conf/security/java.security"
-
-      #     # This is possibly flaky but
-      #     sed -i 's/TLSv1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1
-      #     sed -i 's/TLSv1.1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1.1
-
-      #     echo "java.security file after modifications: "
-      #     cat "$JAVA_HOME/conf/security/java.security"
-      - shell: bash
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Build with Gradle
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DmaxParallelForks=1 alpiniFunctionalTest"
-      - name: Package Build Artifacts
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  DummyStep:
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [8, 11, 17]
-    runs-on: ubuntu-latest
-    needs: [ValidateGradleWrapper, StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ, AlpiniUnitTests, AlpiniFunctionalTests]
+    needs: [IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
