@@ -467,14 +467,11 @@ public abstract class AbstractClientEndToEndSetup {
    * TODO: Explore to see if we can reuse these for all the tests rather than cleaning it up everytime.
    * */
   protected void cleanupDaVinciClientForMetaStore() {
-    if (daVinciClientForMetaStore != null) {
-      daVinciClientForMetaStore.close();
-      daVinciClientForMetaStore = null;
-    }
-    if (daVinciClientFactory != null) {
-      daVinciClientFactory.close();
-      daVinciClientFactory = null;
-    }
+    Utils.closeQuietlyWithErrorLogged(daVinciClientForMetaStore);
+    daVinciClientForMetaStore = null;
+
+    Utils.closeQuietlyWithErrorLogged(daVinciClientFactory);
+    daVinciClientFactory = null;
   }
 
   protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient(MetricsRepository metricsRepository) {
