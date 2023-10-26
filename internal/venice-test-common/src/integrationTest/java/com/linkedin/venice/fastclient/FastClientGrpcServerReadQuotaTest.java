@@ -20,7 +20,7 @@ import org.testng.annotations.Test;
 
 public class FastClientGrpcServerReadQuotaTest extends AbstractClientEndToEndSetup {
   /**
-   * test is copied from {@link FastClientServerReadQuotaTest}, we need to reset server-side stats before each test class
+   * test is copied from {@link FastClientIndividualFeatureConfigurationTest}, we need to reset server-side stats before each test class
    * @throws Exception
    */
   @Test(timeOut = TIME_OUT)

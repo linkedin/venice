@@ -1,25 +1,34 @@
 package com.linkedin.venice.fastclient;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.Test;
 
 
-public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
-  @Test
+public class FastClientIndividualFeatureConfigurationTest extends AbstractClientEndToEndSetup {
+  private static final Logger LOGGER = LogManager.getLogger();
+
+  @Test(timeOut = TIME_OUT)
   public void testServerReadQuota() throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -46,7 +55,7 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
       serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
     }
     String readQuotaStorageNodeTokenBucketRemaining =
-        "." + "venice-storage-node-token-bucket--QuotaRcuTokensRemaining.Gauge";
+        ".venice-storage-node-token-bucket--QuotaRcuTokensRemaining.Gauge";
     String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
     String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
     String readQuotaAllowedUnintentionally = "." + storeName + "--quota_rcu_allowed_unintentionally.Count";
@@ -111,6 +120,7 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
     assertTrue(readQuotaRejected);
     // Restart the servers and quota should still be working
     for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
+      LOGGER.info("RESTARTING servers");
       veniceCluster.stopAndRestartVeniceServer(veniceServerWrapper.getPort());
     }
     for (int j = 0; j < 5; j++) {
@@ -127,5 +137,49 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
       assertTrue(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining).value() > 0d);
     }
     assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testServerRejectReadComputeRequest() throws Exception {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setSpeculativeQueryEnabled(false);
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(
+        clientConfigBuilder,
+        new MetricsRepository(),
+        StoreMetadataFetchMode.SERVER_BASED_METADATA);
+
+    String key = keyPrefix + 0;
+
+    // When read-computation is enabled, FC should return the value.
+    VeniceResponseMap<String, ComputeGenericRecord> responseMap = genericFastClient.compute()
+        .project(VALUE_FIELD_NAME)
+        .streamingExecute(Collections.singleton(key))
+        .get(TIME_OUT, TimeUnit.MILLISECONDS);
+    assertFalse(responseMap.isEmpty());
+    assertTrue(responseMap.isFullResponse());
+
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils.assertCommand(
+          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(false)));
+    });
+
+    try {
+      genericFastClient.compute()
+          .project(VALUE_FIELD_NAME)
+          .execute(Collections.singleton(key))
+          .get(TIME_OUT, TimeUnit.MILLISECONDS);
+      fail();
+    } catch (Exception clientException) {
+      assertTrue(ExceptionUtils.recursiveMessageContains(clientException, "Read compute is not enabled for the store"));
+    }
+
+    VeniceResponseMap<String, ComputeGenericRecord> responseMapWhenComputeDisabled = genericFastClient.compute()
+        .project(VALUE_FIELD_NAME)
+        .streamingExecute(Collections.singleton(key))
+        .get(TIME_OUT, TimeUnit.MILLISECONDS);
+    assertTrue(responseMapWhenComputeDisabled.isEmpty());
+    assertFalse(responseMapWhenComputeDisabled.isFullResponse());
   }
 }

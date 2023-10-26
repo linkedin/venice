@@ -4,6 +4,7 @@ import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.read.RequestType;
@@ -77,6 +78,7 @@ public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest
           storeVersionName = topic;
           return null;
         });
+    veniceCluster.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
 

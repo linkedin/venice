@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient.meta;
 
 import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
+import static org.apache.hc.core5.http.HttpStatus.SC_METHOD_NOT_ALLOWED;
 import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
 import static org.apache.hc.core5.http.HttpStatus.SC_OK;
 import static org.apache.hc.core5.http.HttpStatus.SC_SERVICE_UNAVAILABLE;
@@ -143,6 +144,10 @@ public class InstanceHealthMonitor implements Closeable {
         case SC_SERVICE_UNAVAILABLE:
           counterResetDelayMS = clientConfig.getRoutingUnavailableRequestCounterResetDelayMS();
           unhealthyInstance = true;
+          break;
+        case SC_METHOD_NOT_ALLOWED:
+          // Use the same delay as service unavailable without marking the instance as unhealthy
+          counterResetDelayMS = clientConfig.getRoutingUnavailableRequestCounterResetDelayMS();
           break;
         default:
           // All other error statuses
