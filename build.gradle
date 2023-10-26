@@ -49,7 +49,7 @@ def jacksonVersion = '2.13.3'
 def pulsarGroup = 'org.apache.pulsar'
 def pulsarVersion = '2.10.3'
 def alpnAgentVersion = '2.0.10'
-def hadoopVersion = '2.7.2'
+def hadoopVersion = '2.10.2'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
@@ -98,7 +98,7 @@ ext.libraries = [
     mapreduceClientCore: "org.apache.hadoop:hadoop-mapreduce-client-core:${hadoopVersion}",
     mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
     mockito: 'org.mockito:mockito-core:4.11.0',
-    netty: 'io.netty:netty-all:4.1.52.Final',
+    netty: 'io.netty:netty-all:4.1.74.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
     pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
@@ -227,16 +227,6 @@ subprojects {
       exclude module: 'clojure'
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
       exclude module: 'kafka_2.11'
-
-      // These various netty modules clash with netty-all, and we transitively pull a different version, which causes NoSuchMethodError
-      exclude group: 'io.netty', module: 'netty-buffer'
-      exclude group: 'io.netty', module: 'netty-codec'
-      exclude group: 'io.netty', module: 'netty-common'
-      exclude group: 'io.netty', module: 'netty-handler'
-      exclude group: 'io.netty', module: 'netty-resolver'
-      exclude group: 'io.netty', module: 'netty-transport'
-      exclude group: 'io.netty', module: 'netty-transport-native-epoll'
-      exclude group: 'io.netty', module: 'netty-transport-native-unix-common'
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
@@ -375,13 +365,6 @@ subprojects {
 
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
-
-    if (!project.ext.has("skipAlpnBoot") || !project.ext.skipAlpnBoot) {
-      // The ALPN version should match the JVM version
-      if (JavaVersion.current() < JavaVersion.VERSION_11) {
-        jvmArgs "-javaagent:${rootProject.configurations.alpnAgent.asPath}"
-      }
-    }
 
     forkEvery = Integer.valueOf(System.getProperty('forkEvery', '0'))
     maxParallelForks = Integer.valueOf(System.getProperty('maxParallelForks', '4'))
@@ -752,7 +735,7 @@ ext.createDiffFile = { ->
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"
   def command = [
-      'git', 'diff', diffBase, '--no-color', '--minimal', '--', '.'
+      'git', 'diff', "${diffBase}...", '--no-color', '--minimal', '--', '.'
   ]
   command.addAll(exclusionFilter)
   file.withOutputStream { out ->

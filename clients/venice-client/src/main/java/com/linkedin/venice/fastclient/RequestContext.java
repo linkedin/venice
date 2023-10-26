@@ -1,6 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -31,7 +30,7 @@ public class RequestContext {
 
   InstanceHealthMonitor instanceHealthMonitor = null;
 
-  Map<String, CompletableFuture<HttpStatus>> routeRequestMap = new VeniceConcurrentHashMap<>();
+  Map<String, CompletableFuture<Integer>> routeRequestMap = new VeniceConcurrentHashMap<>();
 
   public RequestContext() {
     this.requestId = REQUEST_ID_GENERATOR.getAndIncrement();

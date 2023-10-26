@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.FASTCLIENT_HTTP_VARIANTS;
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES_SMALL;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
@@ -46,6 +47,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -67,15 +69,15 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -86,7 +88,6 @@ import org.testng.annotations.DataProvider;
  */
 
 public abstract class AbstractClientEndToEndSetup {
-  private static final Logger LOGGER = LogManager.getLogger(AbstractClientEndToEndSetup.class);
   protected VeniceClusterWrapper veniceCluster;
   protected String storeVersionName;
   protected int valueSchemaId;
@@ -133,16 +134,17 @@ public abstract class AbstractClientEndToEndSetup {
    */
   protected static final ImmutableList<Object> BATCH_GET_KEY_SIZE = ImmutableList.of(2, recordCnt);
 
-  @DataProvider(name = "FastClient-Six-Boolean-A-Number-Store-Metadata-Fetch-Mode")
-  public Object[][] sixBooleanANumberStoreMetadataFetchMode() {
+  @DataProvider(name = "FastClient-Test-Permutations")
+  public Object[][] fastClientTestPermutations() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean dualRead = (boolean) permutation[0];
       boolean speculativeQueryEnabled = (boolean) permutation[1];
-      boolean batchGet = (boolean) permutation[2];
-      boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
-      boolean retryEnabled = (boolean) permutation[5];
-      int batchGetKeySize = (int) permutation[6];
+      boolean useStreamingBatchGetAsDefault = (boolean) permutation[2];
+      boolean retryEnabled = (boolean) permutation[4];
+      int batchGetKeySize = (int) permutation[5];
+      RequestType requestType = (RequestType) permutation[6];
       StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[7];
-      if (!batchGet) {
+      if (requestType != RequestType.MULTI_GET && requestType != RequestType.MULTI_GET_STREAMING) {
         if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
           // to avoid duplicate tests
@@ -157,15 +159,19 @@ public abstract class AbstractClientEndToEndSetup {
       if (retryEnabled && speculativeQueryEnabled) {
         return false;
       }
+      if (dualRead && (requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING)) {
+        // Compute requests don't do dual reads
+        return false;
+      }
       return true;
     },
         DataProviderUtils.BOOLEAN, // dualRead
         DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
-        DataProviderUtils.BOOLEAN, // batchGet
         DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
         DataProviderUtils.BOOLEAN, // enableGrpc
         DataProviderUtils.BOOLEAN, // retryEnabled
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
+        REQUEST_TYPES_SMALL, // requestType
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
 
@@ -180,44 +186,19 @@ public abstract class AbstractClientEndToEndSetup {
         .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
   }
 
-  @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
-  public Object[][] threeBooleanAndANumber() {
-    return DataProviderUtils.allPermutationGenerator((permutation) -> {
-      boolean batchGet = (boolean) permutation[0];
-      int batchGetKeySize = (int) permutation[3];
-      if (!batchGet) {
-        if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
-          // these parameters are related only to batchGet, so just allowing 1 set
-          // to avoid duplicate tests
-          return false;
-        }
-      }
-      return true;
-    },
-        DataProviderUtils.BOOLEAN, // batchGet
-        DataProviderUtils.BOOLEAN, // dualRead
-        DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
-        BATCH_GET_KEY_SIZE.toArray());
-  }
-
-  @DataProvider(name = "FastClient-One-Boolean")
-  public Object[][] oneBoolean() {
-    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN);
-  }
-
   @DataProvider(name = "fastClientHTTPVariantsAndStoreMetadataFetchModes")
   public static Object[][] httpVariantsAndStoreMetadataFetchModes() {
     return DataProviderUtils.allPermutationGenerator(FASTCLIENT_HTTP_VARIANTS, STORE_METADATA_FETCH_MODES);
   }
 
-  @DataProvider(name = "StoreMetadataFetchModes")
-  public static Object[][] storeMetadataFetchModes() {
-    return DataProviderUtils.allPermutationGenerator(STORE_METADATA_FETCH_MODES);
+  @DataProvider(name = "Boolean-And-StoreMetadataFetchModes")
+  public static Object[][] booleanAndStoreMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
   }
 
-  @DataProvider(name = "Boolean-And-StoreMetadataFetchModes")
-  public static Object[][] booleanAndstoreMetadataFetchModes() {
-    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
+  @DataProvider(name = "FastClient-Request-Types-Small")
+  public static Object[][] fastClientRequestTypesSmall() {
+    return DataProviderUtils.allPermutationGenerator(REQUEST_TYPES_SMALL);
   }
 
   @BeforeClass(alwaysRun = true)
@@ -242,7 +223,9 @@ public abstract class AbstractClientEndToEndSetup {
 
     d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
 
-    dataPath = Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString();
+    dataPath = Paths.get(System.getProperty("java.io.tmpdir"), Utils.getUniqueString("venice-server-data"))
+        .toAbsolutePath()
+        .toString();
 
     prepareData();
     prepareMetaSystemStore();
@@ -255,7 +238,9 @@ public abstract class AbstractClientEndToEndSetup {
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     veniceCluster.useControllerClient(
-        client -> client.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
+        client -> client.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true).setReadComputationEnabled(true)));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.
@@ -482,14 +467,11 @@ public abstract class AbstractClientEndToEndSetup {
    * TODO: Explore to see if we can reuse these for all the tests rather than cleaning it up everytime.
    * */
   protected void cleanupDaVinciClientForMetaStore() {
-    if (daVinciClientForMetaStore != null) {
-      daVinciClientForMetaStore.close();
-      daVinciClientForMetaStore = null;
-    }
-    if (daVinciClientFactory != null) {
-      daVinciClientFactory.close();
-      daVinciClientFactory = null;
-    }
+    Utils.closeQuietlyWithErrorLogged(daVinciClientForMetaStore);
+    daVinciClientForMetaStore = null;
+
+    Utils.closeQuietlyWithErrorLogged(daVinciClientFactory);
+    daVinciClientFactory = null;
   }
 
   protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient(MetricsRepository metricsRepository) {
@@ -517,20 +499,51 @@ public abstract class AbstractClientEndToEndSetup {
   }
 
   protected void validateSingleGetMetrics(MetricsRepository metricsRepository, boolean retryEnabled) {
-    validateBatchGetMetrics(metricsRepository, false, false, 0, 0, retryEnabled);
+    validateMetrics(metricsRepository, false, RequestType.SINGLE_GET, 0, 0, retryEnabled);
   }
 
   protected void validateBatchGetMetrics(
       MetricsRepository metricsRepository,
       boolean useStreamingBatchGetAsDefault,
       boolean streamingBatchGetApi,
+      int expectedMultiKeySizeMetricsCount,
+      int expectedMultiKeySizeSuccessMetricsCount,
+      boolean retryEnabled) {
+    validateMetrics(
+        metricsRepository,
+        useStreamingBatchGetAsDefault,
+        streamingBatchGetApi ? RequestType.MULTI_GET_STREAMING : RequestType.MULTI_GET,
+        expectedMultiKeySizeMetricsCount,
+        expectedMultiKeySizeSuccessMetricsCount,
+        retryEnabled);
+  }
+
+  protected void validateComputeMetrics(
+      MetricsRepository metricsRepository,
+      boolean streamingComputeApi,
       int expectedBatchGetKeySizeMetricsCount,
       int expectedBatchGetKeySizeSuccessMetricsCount,
       boolean retryEnabled) {
-    String metricPrefix = "." + storeName
-        + (streamingBatchGetApi ? "--multiget_streaming_" : (useStreamingBatchGetAsDefault ? "--multiget_" : "--"));
-    double keyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeMetricsCount : 1;
-    double successKeyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeSuccessMetricsCount : 1;
+    validateMetrics(
+        metricsRepository,
+        true,
+        streamingComputeApi ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE,
+        expectedBatchGetKeySizeMetricsCount,
+        expectedBatchGetKeySizeSuccessMetricsCount,
+        retryEnabled);
+  }
+
+  private void validateMetrics(
+      MetricsRepository metricsRepository,
+      boolean useStreamingBatchGetAsDefault,
+      RequestType requestType,
+      int expectedMultiKeySizeMetricsCount,
+      int expectedMultiKeySizeSuccessMetricsCount,
+      boolean retryEnabled) {
+    final String metricPrefix = ClientTestUtils.getMetricPrefix(storeName, requestType, useStreamingBatchGetAsDefault);
+
+    double keyCount = useStreamingBatchGetAsDefault ? expectedMultiKeySizeMetricsCount : 1;
+    double successKeyCount = useStreamingBatchGetAsDefault ? expectedMultiKeySizeSuccessMetricsCount : 1;
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
 
     // counters are incremented in an async manner, so adding non-deterministic wait
@@ -552,25 +565,30 @@ public abstract class AbstractClientEndToEndSetup {
       assertTrue(
           metrics.get(metricPrefix + "success_request_key_count.Max").value() >= successKeyCount,
           "Respective success_request_key_count should have been incremented");
-    });
-    // incorrect metric should not be incremented
-    assertFalse(
-        metrics.get("." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
-            .value() > 0,
-        "Incorrect request_key_count should not be incremented");
 
-    if (retryEnabled) {
-      String log = useStreamingBatchGetAsDefault ? "batch Get" : "single Get";
-      assertTrue(
-          metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0,
-          "Long tail retry for " + log + " should be triggered");
-    } else {
-      metrics.forEach((mName, metric) -> {
-        if (mName.contains("long_tail_retry_request")) {
-          assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
-        }
-      });
-    }
+      Set<String> allMetricPrefixes = ClientTestUtils.getAllMetricPrefixes(storeName);
+      Set<String> allIncorrectMetricPrefixes = new HashSet<>(allMetricPrefixes);
+      allIncorrectMetricPrefixes.remove(metricPrefix);
+
+      for (String incorrectMetricPrefix: allIncorrectMetricPrefixes) {
+        // incorrect metric should not be incremented
+        assertFalse(
+            metrics.get(incorrectMetricPrefix + "request_key_count.Rate").value() > 0,
+            "Incorrect request_key_count should not be incremented");
+      }
+
+      if (retryEnabled) {
+        assertTrue(
+            metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0,
+            "Long tail retry should be triggered");
+      } else {
+        metrics.forEach((mName, metric) -> {
+          if (mName.contains("long_tail_retry_request")) {
+            assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
+          }
+        });
+      }
+    });
   }
 
   @AfterClass(alwaysRun = true)

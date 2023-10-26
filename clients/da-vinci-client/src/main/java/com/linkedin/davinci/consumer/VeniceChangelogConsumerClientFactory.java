@@ -54,44 +54,8 @@ public class VeniceChangelogConsumerClientFactory {
   public synchronized <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName) {
     return storeClientMap.computeIfAbsent(storeName, name -> {
 
-      ChangelogClientConfig newStoreChangelogClientConfig =
-          ChangelogClientConfig.cloneConfig(globalChangelogClientConfig).setStoreName(storeName);
-      newStoreChangelogClientConfig.getInnerClientConfig().setMetricsRepository(metricsRepository);
-
-      D2ControllerClient d2ControllerClient;
-      if (this.d2ControllerClient != null) {
-        d2ControllerClient = this.d2ControllerClient;
-      } else if (newStoreChangelogClientConfig.getD2Client() != null) {
-        d2ControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
-            storeName,
-            globalChangelogClientConfig.getControllerD2ServiceName(),
-            globalChangelogClientConfig.getControllerRequestRetryCount(),
-            newStoreChangelogClientConfig.getD2Client());
-      } else {
-        d2ControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
-            storeName,
-            globalChangelogClientConfig.getControllerD2ServiceName(),
-            globalChangelogClientConfig.getLocalD2ZkHosts(),
-            Optional.ofNullable(newStoreChangelogClientConfig.getInnerClientConfig().getSslFactory()),
-            globalChangelogClientConfig.getControllerRequestRetryCount());
-      }
-      newStoreChangelogClientConfig.setD2ControllerClient(d2ControllerClient);
-      if (newStoreChangelogClientConfig.getSchemaReader() == null) {
-        newStoreChangelogClientConfig
-            .setSchemaReader(ClientFactory.getSchemaReader(newStoreChangelogClientConfig.getInnerClientConfig()));
-      }
-
-      // TODO: This is a redundant controller query. Need to condense it with the storeInfo query that happens
-      // inside the change capture client itself
-      String viewClass =
-          newStoreChangelogClientConfig.getViewName() == null ? "" : newStoreChangelogClientConfig.getViewName();
-      if (!viewClass.isEmpty()) {
-        viewClass = getViewClass(
-            storeName,
-            newStoreChangelogClientConfig.getViewName(),
-            d2ControllerClient,
-            globalChangelogClientConfig.getControllerRequestRetryCount());
-      }
+      ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
+      String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
       if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
         return new VeniceChangelogConsumerImpl(
@@ -106,6 +70,68 @@ public class VeniceChangelogConsumerClientFactory {
               ? consumer
               : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
     });
+  }
+
+  public synchronized <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
+      String storeName) {
+    return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap.computeIfAbsent(storeName, name -> {
+      ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
+      String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
+      String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
+      return new LocalBootstrappingVeniceChangelogConsumer(
+          newStoreChangelogClientConfig,
+          consumer != null
+              ? consumer
+              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
+    });
+  }
+
+  private ChangelogClientConfig getNewStoreChangelogClientConfig(String storeName) {
+    ChangelogClientConfig newStoreChangelogClientConfig =
+        ChangelogClientConfig.cloneConfig(globalChangelogClientConfig).setStoreName(storeName);
+    newStoreChangelogClientConfig.getInnerClientConfig().setMetricsRepository(metricsRepository);
+
+    D2ControllerClient d2ControllerClient;
+    if (this.d2ControllerClient != null) {
+      d2ControllerClient = this.d2ControllerClient;
+    } else if (newStoreChangelogClientConfig.getD2Client() != null) {
+      d2ControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
+          storeName,
+          globalChangelogClientConfig.getControllerD2ServiceName(),
+          globalChangelogClientConfig.getControllerRequestRetryCount(),
+          newStoreChangelogClientConfig.getD2Client());
+    } else {
+      d2ControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
+          storeName,
+          globalChangelogClientConfig.getControllerD2ServiceName(),
+          globalChangelogClientConfig.getLocalD2ZkHosts(),
+          Optional.ofNullable(newStoreChangelogClientConfig.getInnerClientConfig().getSslFactory()),
+          globalChangelogClientConfig.getControllerRequestRetryCount());
+    }
+    newStoreChangelogClientConfig.setD2ControllerClient(d2ControllerClient);
+    if (newStoreChangelogClientConfig.getSchemaReader() == null) {
+      newStoreChangelogClientConfig
+          .setSchemaReader(ClientFactory.getSchemaReader(newStoreChangelogClientConfig.getInnerClientConfig()));
+    }
+
+    return newStoreChangelogClientConfig;
+  }
+
+  private String getViewClass(ChangelogClientConfig newStoreChangelogClientConfig, String storeName) {
+    // TODO: This is a redundant controller query. Need to condense it with the storeInfo query that happens
+    // inside the change capture client itself
+    String viewClass =
+        newStoreChangelogClientConfig.getViewName() == null ? "" : newStoreChangelogClientConfig.getViewName();
+
+    if (!viewClass.isEmpty()) {
+      viewClass = getViewClass(
+          storeName,
+          newStoreChangelogClientConfig.getViewName(),
+          newStoreChangelogClientConfig.getD2ControllerClient(),
+          globalChangelogClientConfig.getControllerRequestRetryCount());
+    }
+
+    return viewClass;
   }
 
   private PubSubConsumerAdapter getConsumer(Properties consumerProps, String consumerName) {

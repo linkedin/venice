@@ -1,6 +1,5 @@
 package com.linkedin.venice.fastclient.meta;
 
-import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -8,6 +7,7 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -80,7 +80,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   }
 
   @Override
-  public CompletableFuture<HttpStatus> trackHealthBasedOnRequestToInstance(
+  public ChainedCompletableFuture<Integer, Integer> trackHealthBasedOnRequestToInstance(
       String instance,
       int version,
       int partitionId,

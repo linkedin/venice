@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -437,7 +438,7 @@ public class StatTrackingStoreClientTest {
         + "\t\"name\": \"test_store_VeniceComputeResult\", \"doc\" : \"\",\n" + "\t\"fields\": [\n"
         + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0, \"doc\": \"\"},\n"
         + "\t\t{\"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\" : null},\n"
-        + "\t\t{\"name\": \"veniceComputationError\", \"type\": {\"type\": \"map\", \"values\": \"string\"}, \"doc\": \"\", \"default\" : {}}]}";
+        + "\t\t{\"name\": \"__veniceComputationError__\", \"type\": {\"type\": \"map\", \"values\": \"string\"}, \"doc\": \"\", \"default\" : {}}]}";
     Schema resultSchema = Schema.parse(resultSchemaStr);
     RecordSerializer<GenericRecord> resultSerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(resultSchema);
@@ -445,7 +446,7 @@ public class StatTrackingStoreClientTest {
     GenericRecord result1 = new GenericData.Record(resultSchema);
     result1.put("int_field", 1);
     result1.put("dot_product_for_float_array_field1", 1.1f);
-    result1.put("veniceComputationError", Collections.emptyMap());
+    result1.put(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, Collections.emptyMap());
     ComputeResponseRecordV1 record1 = new ComputeResponseRecordV1();
     record1.keyIndex = 0;
     record1.value = ByteBuffer.wrap(resultSerializer.serialize(result1));
@@ -453,7 +454,7 @@ public class StatTrackingStoreClientTest {
     GenericRecord result2 = new GenericData.Record(resultSchema);
     result2.put("int_field", 2);
     result2.put("dot_product_for_float_array_field1", 1.2f);
-    result2.put("veniceComputationError", Collections.emptyMap());
+    result2.put(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, Collections.emptyMap());
     ComputeResponseRecordV1 record2 = new ComputeResponseRecordV1();
     record2.keyIndex = 1;
     record2.value = ByteBuffer.wrap(resultSerializer.serialize(result2));

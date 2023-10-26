@@ -53,7 +53,7 @@ import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
-import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
+import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
@@ -401,8 +401,10 @@ public class VenicePushJob implements AutoCloseable {
   public static final String REPUSH_TTL_ENABLE = "repush.ttl.enable";
   public static final String REPUSH_TTL_IN_SECONDS = "repush.ttl.seconds";
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
+  public static final String REPUSH_TTL_START_TIMESTAMP = "repush.ttl.start.timestamp";
   public static final String RMD_SCHEMA_DIR = "rmd.schema.dir";
-  private static final String TEMP_DIR_PREFIX = "/tmp/veniceRmdSchemas/";
+  public static final String VALUE_SCHEMA_DIR = "value.schema.dir";
+  private static final String TEMP_DIR_PREFIX = "/tmp/veniceSchemas/";
   public static final int NOT_SET = -1;
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
 
@@ -527,8 +529,10 @@ public class VenicePushJob implements AutoCloseable {
     boolean repushTTLEnabled;
     // specify ttl time to drop stale records.
     long repushTTLInSeconds;
+    long repushTTLStartTimeMs;
     // HDFS directory to cache RMD schemas
     String rmdSchemaDir;
+    String valueSchemaDir;
     String controllerD2ServiceName;
     String parentControllerRegionD2ZkHosts;
     String childControllerRegionD2ZkHosts;
@@ -715,6 +719,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
+    pushJobSettingToReturn.repushTTLStartTimeMs = props.getLong(REPUSH_TTL_START_TIMESTAMP, System.currentTimeMillis());
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.postValidationConsumption = props.getBoolean(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
@@ -969,10 +974,6 @@ public class VenicePushJob implements AutoCloseable {
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
 
-      if (pushJobSetting.repushTTLEnabled && storeSetting.isWriteComputeEnabled) {
-        throw new VeniceException("Repush TTL is not supported when the store has write compute enabled.");
-      }
-
       if (pushJobSetting.isSourceETL) {
         MultiSchemaResponse allValueSchemaResponses = controllerClient.getAllValueSchema(pushJobSetting.storeName);
         MultiSchemaResponse.Schema[] allValueSchemas = allValueSchemaResponses.getSchemas();
@@ -1060,7 +1061,7 @@ public class VenicePushJob implements AutoCloseable {
             pushJobSetting.repushTTLInSeconds = storeSetting.storeRewindTimeInSeconds;
             // make the base directory TEMP_DIR_PREFIX with 777 permissions
             Path baseSchemaDir = new Path(TEMP_DIR_PREFIX);
-            FileSystem fs = FileSystem.get(new Configuration());
+            FileSystem fs = baseSchemaDir.getFileSystem(new Configuration());
             if (!fs.exists(baseSchemaDir)) {
               fs.mkdirs(baseSchemaDir);
               fs.setPermission(baseSchemaDir, new FsPermission("777"));
@@ -1068,15 +1069,13 @@ public class VenicePushJob implements AutoCloseable {
 
             // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
             // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
-            StringBuilder schemaDirBuilder = new StringBuilder();
-            schemaDirBuilder.append(TEMP_DIR_PREFIX)
-                .append(pushJobSetting.storeName)
-                .append("/")
-                .append(System.currentTimeMillis());
-            try (HDFSRmdSchemaSource rmdSchemaSource =
-                new HDFSRmdSchemaSource(schemaDirBuilder.toString(), pushJobSetting.storeName)) {
-              rmdSchemaSource.loadRmdSchemasOnDisk(controllerClient);
-              pushJobSetting.rmdSchemaDir = rmdSchemaSource.getPath();
+            String rmdSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/rmd_" + System.currentTimeMillis();
+            String valueSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/value_" + System.currentTimeMillis();
+            try (HDFSSchemaSource schemaSource =
+                new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
+              schemaSource.saveSchemasOnDisk(controllerClient);
+              pushJobSetting.rmdSchemaDir = schemaSource.getRmdSchemaPath();
+              pushJobSetting.valueSchemaDir = schemaSource.getValueSchemaPath();
             }
           }
         }
@@ -2016,8 +2015,9 @@ public class VenicePushJob implements AutoCloseable {
       return "";
     }
     Configuration conf = new Configuration();
-    FileSystem fs = FileSystem.get(conf);
     String uri = props.getString(INPUT_PATH_PROP);
+    Path uriPath = new Path(uri);
+    FileSystem fs = uriPath.getFileSystem(conf);
     Path sourcePath = getLatestPathOfInputDirectory(uri, fs);
     return sourcePath.toString();
   }
@@ -3015,11 +3015,13 @@ public class VenicePushJob implements AutoCloseable {
       conf.set(KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
       conf.set(KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
       conf.setLong(REPUSH_TTL_IN_SECONDS, pushJobSetting.repushTTLInSeconds);
+      conf.setLong(REPUSH_TTL_START_TIMESTAMP, pushJobSetting.repushTTLStartTimeMs);
       if (pushJobSetting.repushTTLEnabled) {
         conf.setInt(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue()); // only support one policy
         // thus not allow any value passed
         // in.
         conf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
+        conf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       }
       // Pass the compression strategy of source version to repush MR job
       conf.set(

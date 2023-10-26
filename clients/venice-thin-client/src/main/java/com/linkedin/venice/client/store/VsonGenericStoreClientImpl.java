@@ -1,10 +1,12 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import java.util.Optional;
 import org.apache.avro.Schema;
 
 
@@ -40,7 +42,9 @@ public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute() {
+  public ComputeRequestBuilder<K> compute(
+      Optional<ClientStats> stats,
+      AvroGenericReadComputeStoreClient computeStoreClient) throws VeniceClientException {
     throw new VeniceClientException("'compute' is not supported in JSON store");
   }
 }

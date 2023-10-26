@@ -38,8 +38,8 @@ class VeniceFileInputRecordReader implements RecordReader<IntWritable, NullWrita
 
   protected int getTotalNumberOfFiles(String inputDirectory, JobConf job) throws IOException {
     Configuration conf = new Configuration();
-    FileSystem fs = FileSystem.get(conf);
     Path srcPath = new Path(inputDirectory);
+    FileSystem fs = srcPath.getFileSystem(conf);
     FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
     // Path validity and length validity are already checked for the flow to be here, so not checking again
     return fileStatuses.length;

@@ -1,16 +1,34 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
+import java.util.Base64;
+import java.util.Objects;
 
 
 public class VeniceChangeCoordinate implements Externalizable {
   private static final long serialVersionUID = 1L;
+
+  private static final ThreadLocal<ByteArrayOutputStream> _byteArrayOutputStream =
+      ThreadLocal.withInitial(ByteArrayOutputStream::new);
+
+  private static final ThreadLocal<ObjectOutputStream> _objectOutputStream = ThreadLocal.withInitial(() -> {
+    try {
+      return new ObjectOutputStream(_byteArrayOutputStream.get());
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  });
 
   private String topic;
   private Integer partition;
@@ -43,6 +61,24 @@ public class VeniceChangeCoordinate implements Externalizable {
     return Version.parseStoreFromKafkaTopicName(topic);
   }
 
+  /**
+   * @param other the other position to compare to
+   * @return returns 0 if the positions are equal,
+   *         -1 if this position is less than the other position,
+   *          and 1 if this position is greater than the other position
+   */
+  public int comparePosition(VeniceChangeCoordinate other) {
+    if (!Objects.equals(other.partition, partition)) {
+      throw new VeniceException("Coordinates from different partitions are not comparable!");
+    }
+    if (topic.compareTo(other.topic) != 0) {
+      // TODO: This works for cases where the version number increases and we traverse between CC and version topics
+      // but it DOESNT account for version rollbacks.
+      return topic.compareTo(other.topic);
+    }
+    return pubSubPosition.comparePosition(other.pubSubPosition);
+  }
+
   // These methods contain 'need to know' information and expose underlying details.
   protected String getTopic() {
     return topic;
@@ -56,5 +92,24 @@ public class VeniceChangeCoordinate implements Externalizable {
     this.partition = partition;
     this.topic = topic;
     this.pubSubPosition = pubSubPosition;
+  }
+
+  public static String convertVeniceChangeCoordinateToStringAndEncode(VeniceChangeCoordinate veniceChangeCoordinate)
+      throws IOException {
+    veniceChangeCoordinate.writeExternal(_objectOutputStream.get());
+    _objectOutputStream.get().flush();
+    _objectOutputStream.get().close();
+    byte[] data = _byteArrayOutputStream.get().toByteArray();
+    return Base64.getEncoder().encodeToString(data);
+  }
+
+  public static VeniceChangeCoordinate decodeStringAndConvertToVeniceChangeCoordinate(String offsetString)
+      throws IOException, ClassNotFoundException {
+    byte[] newData = Base64.getDecoder().decode(offsetString);
+    ByteArrayInputStream inMemoryInputStream = new ByteArrayInputStream(newData);
+    ObjectInputStream objectInputStream = new ObjectInputStream(inMemoryInputStream);
+    VeniceChangeCoordinate restoredCoordinate = new VeniceChangeCoordinate();
+    restoredCoordinate.readExternal(objectInputStream);
+    return restoredCoordinate;
   }
 }

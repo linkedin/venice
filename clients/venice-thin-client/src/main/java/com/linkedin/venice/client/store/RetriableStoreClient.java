@@ -34,10 +34,8 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
    */
   @Override
   public CompletableFuture<V> get(K key) throws VeniceClientException {
-    CompletableFuture<V> innerFuture = super.get(key);
     Supplier<CompletableFuture<V>> supplier = () -> super.get(key);
-
-    return retryOnError(innerFuture, supplier, RequestType.SINGLE_GET);
+    return executeWithRetry(supplier, RequestType.SINGLE_GET);
   }
 
   /**
@@ -56,19 +54,13 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
    */
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    CompletableFuture<Map<K, V>> innerFuture = super.batchGet(keys);
     Supplier<CompletableFuture<Map<K, V>>> supplier = () -> super.batchGet(keys);
-
-    return retryOnError(innerFuture, supplier, RequestType.MULTI_GET);
+    return executeWithRetry(supplier, RequestType.MULTI_GET);
   }
 
-  private <T> CompletableFuture<T> retryOnError(
-      CompletableFuture<T> originalFuture,
-      Supplier<CompletableFuture<T>> supplier,
-      RequestType requestType) {
+  private <T> CompletableFuture<T> executeWithRetry(Supplier<CompletableFuture<T>> supplier, RequestType requestType) {
     CompletableFuture<T> retryFuture = new CompletableFuture<>();
-
-    originalFuture.whenComplete((T val, Throwable throwable) -> {
+    supplier.get().whenComplete((T val, Throwable throwable) -> {
       if (throwable != null) {
         int attempt = 0;
         Throwable retryThrowable = throwable;

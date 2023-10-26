@@ -1,50 +1,48 @@
 package com.linkedin.venice.fastclient;
 
-import com.linkedin.restli.common.HttpStatus;
+import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
+import static org.apache.hc.core5.http.HttpStatus.SC_INTERNAL_SERVER_ERROR;
+import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
+import static org.apache.hc.core5.http.HttpStatus.SC_OK;
+import static org.apache.hc.core5.http.HttpStatus.SC_SERVICE_UNAVAILABLE;
+import static org.apache.hc.core5.http.HttpStatus.SC_TOO_MANY_REQUESTS;
+
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AppTimeOutTrackingCompletableFuture;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.apache.avro.Schema;
 
 
 /**
  * This class is in charge of all the metric emissions per request.
  */
 public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
-  private static final Logger LOGGER = LogManager.getLogger(StatsAvroGenericStoreClient.class);
   private static final int TIMEOUT_IN_SECOND = 5;
 
   private final FastClientStats clientStatsForSingleGet;
-  private final FastClientStats clientStatsForBatchGet;
   private final FastClientStats clientStatsForStreamingBatchGet;
+  private final FastClientStats clientStatsForStreamingCompute;
   private final ClusterStats clusterStats;
 
-  private final int maxAllowedKeyCntInBatchGetReq;
-  private final boolean useStreamingBatchGetAsDefault;
-
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
-    super(delegate);
+    super(delegate, clientConfig);
     this.clientStatsForSingleGet = clientConfig.getStats(RequestType.SINGLE_GET);
-    this.clientStatsForBatchGet = clientConfig.getStats(RequestType.MULTI_GET);
     this.clientStatsForStreamingBatchGet = clientConfig.getStats(RequestType.MULTI_GET_STREAMING);
+    this.clientStatsForStreamingCompute = clientConfig.getStats(RequestType.COMPUTE_STREAMING);
     this.clusterStats = clientConfig.getClusterStats();
-    this.maxAllowedKeyCntInBatchGetReq = clientConfig.getMaxAllowedKeyCntInBatchGetReq();
-    this.useStreamingBatchGetAsDefault = clientConfig.useStreamingBatchGetAsDefault();
   }
 
   @Override
@@ -52,64 +50,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     long startTimeInNS = System.nanoTime();
     CompletableFuture<V> innerFuture = super.get(requestContext, key);
     return recordMetrics(requestContext, 1, innerFuture, startTimeInNS, clientStatsForSingleGet);
-  }
-
-  protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
-      throws VeniceClientException {
-    return this.useStreamingBatchGetAsDefault
-        ? batchGetUsingStreamingBatchGet(requestContext, keys)
-        : batchGetUsingSingleGet(keys);
-  }
-
-  protected CompletableFuture<Map<K, V>> batchGetUsingStreamingBatchGet(
-      BatchGetRequestContext<K, V> requestContext,
-      Set<K> keys) throws VeniceClientException {
-    long startTimeInNS = System.nanoTime();
-
-    CompletableFuture<Map<K, V>> innerFuture = super.batchGet(requestContext, keys);
-    return recordMetrics(requestContext, keys.size(), innerFuture, startTimeInNS, clientStatsForBatchGet);
-  }
-
-  /**
-   *  Leverage single-get implementation here:
-   *  1. Looping through all keys and call get() for each of the keys
-   *  2. Collect the replies and pass it to the caller
-   *
-   *  Transient change to support {@link ClientConfig#useStreamingBatchGetAsDefault}
-   */
-  protected CompletableFuture<Map<K, V>> batchGetUsingSingleGet(Set<K> keys) throws VeniceClientException {
-    if (keys.isEmpty()) {
-      return CompletableFuture.completedFuture(Collections.emptyMap());
-    }
-    int keyCnt = keys.size();
-    if (keyCnt > maxAllowedKeyCntInBatchGetReq) {
-      throw new VeniceKeyCountLimitException(
-          getStoreName(),
-          RequestType.MULTI_GET,
-          keyCnt,
-          maxAllowedKeyCntInBatchGetReq);
-    }
-    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
-    Map<K, CompletableFuture<V>> valueFutures = new HashMap<>();
-    keys.forEach(k -> valueFutures.put(k, (get(k))));
-    CompletableFuture.allOf(valueFutures.values().toArray(new CompletableFuture[keyCnt]))
-        .whenComplete(((aVoid, throwable) -> {
-          if (throwable != null) {
-            resultFuture.completeExceptionally(throwable);
-          }
-          Map<K, V> resultMap = new HashMap<>();
-          valueFutures.forEach((k, f) -> {
-            try {
-              resultMap.put(k, f.get());
-            } catch (Exception e) {
-              resultFuture.completeExceptionally(
-                  new VeniceClientException("Failed to complete future for key: " + k.toString(), e));
-            }
-          });
-          resultFuture.complete(resultMap);
-        }));
-
-    return resultFuture;
   }
 
   @Override
@@ -127,13 +67,23 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   }
 
   @Override
-  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
-      BatchGetRequestContext<K, V> requestContext,
-      Set<K> keys) {
+  public void compute(
+      ComputeRequestContext<K, V> requestContext,
+      ComputeRequestWrapper computeRequestWrapper,
+      Set<K> keys,
+      Schema resultSchema,
+      StreamingCallback<K, ComputeGenericRecord> callback,
+      long preRequestTimeInNS) throws VeniceClientException {
     long startTimeInNS = System.nanoTime();
-    CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGetFuture = super.streamingBatchGet(requestContext, keys);
-    recordMetrics(requestContext, keys.size(), streamingBatchGetFuture, startTimeInNS, clientStatsForStreamingBatchGet);
-    return streamingBatchGetFuture;
+    CompletableFuture<Void> statFuture = new CompletableFuture<>();
+    super.compute(
+        requestContext,
+        computeRequestWrapper,
+        keys,
+        resultSchema,
+        new StatTrackingStreamingCallBack<>(callback, statFuture, requestContext),
+        preRequestTimeInNS);
+    recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForStreamingCompute);
   }
 
   private <R> CompletableFuture<R> recordMetrics(
@@ -145,7 +95,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     CompletableFuture<R> statFuture =
         recordRequestMetrics(requestContext, numberOfKeys, innerFuture, startTimeInNS, clientStats);
     // Record per replica metric
-    recordPerRouteMetrics(requestContext, clientStats);
+    statFuture.whenComplete((result, throwable) -> {
+      recordPerRouteMetrics(requestContext, clientStats);
+    });
 
     return AppTimeOutTrackingCompletableFuture.track(statFuture, clientStats);
   }
@@ -164,20 +116,14 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       CompletableFuture<R> innerFuture,
       long startTimeInNS,
       FastClientStats clientStats) {
-
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
       clientStats.recordRequestKeyCount(numberOfKeys);
-
-      boolean exceptionReceived = false;
-      if (throwable != null) {
-        /**
-         * If the request (both original and retry) failed due to an exception, its
-         * considered an unhealthy request: so only incrementing a subset of metrics.
-         */
-        exceptionReceived = true;
-      }
-
+      // If partial success is allowed, the previous layers will not complete the future exceptionally. In such cases,
+      // we check if the request is completed successfully with partial exceptions - and these are considered unhealthy
+      // requests from metrics point of view.
+      boolean exceptionReceived = throwable != null || (requestContext instanceof MultiKeyRequestContext
+          && ((MultiKeyRequestContext) requestContext).isCompletedSuccessfullyWithPartialResponse());
       if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
@@ -211,29 +157,34 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       if (requestContext instanceof GetRequestContext) {
         GetRequestContext getRequestContext = (GetRequestContext) requestContext;
 
-        if (getRequestContext.longTailRetryRequestTriggered) {
-          clientStats.recordLongTailRetryRequest();
-          clientStats.recordRetryRequestKeyCount(1);
-        }
-        if (getRequestContext.errorRetryRequestTriggered) {
-          clientStats.recordErrorRetryRequest();
-          clientStats.recordRetryRequestKeyCount(1);
-        }
-        if (!exceptionReceived) {
-          if (getRequestContext.retryWin) {
-            clientStats.recordRetryRequestWin();
-            clientStats.recordRetryRequestSuccessKeyCount(1);
+        if (getRequestContext.retryContext != null) {
+          if (getRequestContext.retryContext.longTailRetryRequestTriggered) {
+            clientStats.recordLongTailRetryRequest();
+            clientStats.recordRetryRequestKeyCount(1);
+          }
+          if (getRequestContext.retryContext.errorRetryRequestTriggered) {
+            clientStats.recordErrorRetryRequest();
+            clientStats.recordRetryRequestKeyCount(1);
+          }
+          if (!exceptionReceived) {
+            if (getRequestContext.retryContext.retryWin) {
+              clientStats.recordRetryRequestWin();
+              clientStats.recordRetryRequestSuccessKeyCount(1);
+            }
           }
         }
-      } else if (requestContext instanceof BatchGetRequestContext) {
-        BatchGetRequestContext<K, V> batchGetRequestContext = (BatchGetRequestContext<K, V>) requestContext;
-        if (batchGetRequestContext.longTailRetryTriggered) {
+      } else if (requestContext instanceof MultiKeyRequestContext) {
+        // MultiKeyRequestContext is the superclass for ComputeRequestContext and BatchGetRequestContext
+        MultiKeyRequestContext<K, V> multiKeyRequestContext = (MultiKeyRequestContext<K, V>) requestContext;
+        if (multiKeyRequestContext.retryContext != null
+            && multiKeyRequestContext.retryContext.retryRequestContext != null) {
           clientStats.recordLongTailRetryRequest();
-          clientStats.recordRetryRequestKeyCount(batchGetRequestContext.numberOfKeysSentInRetryRequest);
+          clientStats
+              .recordRetryRequestKeyCount(multiKeyRequestContext.retryContext.retryRequestContext.numKeysInRequest);
           if (!exceptionReceived) {
-            clientStats
-                .recordRetryRequestSuccessKeyCount(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get());
-            if (batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0) {
+            clientStats.recordRetryRequestSuccessKeyCount(
+                multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get());
+            if (multiKeyRequestContext.retryContext.retryRequestContext.numKeysCompleted.get() > 0) {
               clientStats.recordRetryRequestWin();
             }
           }
@@ -256,7 +207,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private void recordPerRouteMetrics(RequestContext requestContext, FastClientStats clientStats) {
     final long requestSentTimestampNS = requestContext.requestSentTimestampNS;
     if (requestSentTimestampNS > 0) {
-      Map<String, CompletableFuture<HttpStatus>> replicaRequestFuture = requestContext.routeRequestMap;
+      Map<String, CompletableFuture<Integer>> replicaRequestFuture = requestContext.routeRequestMap;
       final InstanceHealthMonitor monitor = requestContext.instanceHealthMonitor;
       if (monitor != null) {
         clusterStats.recordBlockedInstanceCount(monitor.getBlockedInstanceCount());
@@ -269,27 +220,29 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           }
 
           if (throwable != null) {
-            LOGGER.error("Received unexpected exception from replica request future: ", throwable);
-            return;
+            status = (throwable instanceof VeniceClientHttpException)
+                ? ((VeniceClientHttpException) throwable).getHttpStatus()
+                : SC_SERVICE_UNAVAILABLE;
           }
+
           clientStats.recordRequest(instance);
           clientStats.recordResponseWaitingTime(instance, LatencyUtils.getLatencyInMS(requestSentTimestampNS));
           switch (status) {
-            case S_200_OK:
-            case S_404_NOT_FOUND:
+            case SC_OK:
+            case SC_NOT_FOUND:
               clientStats.recordHealthyRequest(instance);
               break;
-            case S_429_TOO_MANY_REQUESTS:
+            case SC_TOO_MANY_REQUESTS:
               clientStats.recordQuotaExceededRequest(instance);
               break;
-            case S_500_INTERNAL_SERVER_ERROR:
+            case SC_INTERNAL_SERVER_ERROR:
               clientStats.recordInternalServerErrorRequest(instance);
               break;
-            case S_410_GONE:
+            case SC_GONE:
               /* Check {@link InstanceHealthMonitor#trackHealthBasedOnRequestToInstance} to understand this special http status. */
               clientStats.recordLeakedRequest(instance);
               break;
-            case S_503_SERVICE_UNAVAILABLE:
+            case SC_SERVICE_UNAVAILABLE:
               clientStats.recordServiceUnavailableRequest(instance);
               break;
             default:
@@ -304,12 +257,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     private final StreamingCallback<K, V> inner;
     // This future is completed with a number of keys whose values were successfully received.
     private final CompletableFuture<Void> statFuture;
-    private final RequestContext requestContext;
+    private final MultiKeyRequestContext requestContext;
 
     StatTrackingStreamingCallBack(
         StreamingCallback<K, V> callback,
         CompletableFuture<Void> statFuture,
-        RequestContext requestContext) {
+        MultiKeyRequestContext requestContext) {
       this.inner = callback;
       this.statFuture = statFuture;
       this.requestContext = requestContext;

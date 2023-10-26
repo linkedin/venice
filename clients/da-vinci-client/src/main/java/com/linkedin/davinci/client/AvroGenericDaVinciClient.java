@@ -44,6 +44,7 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -295,7 +296,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
   }
 
-  CompletableFuture<Map<K, V>> batchGetFromLocalStorage(Iterable<K> keys) {
+  private CompletableFuture<Map<K, V>> batchGetFromLocalStorage(Iterable<K> keys) {
     // expose underlying getAll functionality.
     Map<K, V> result = new HashMap<>();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
@@ -350,7 +351,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   @Override
-  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) {
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    throwIfNotReady();
+    return batchGetImplementation(keys);
+  }
+
+  // Visible for testing
+  CompletableFuture<Map<K, V>> batchGetImplementation(Set<K> keys) {
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
@@ -369,16 +376,21 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute() throws VeniceClientException {
-    return compute(Optional.empty(), Optional.empty(), 0);
+  public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    throw new VeniceUnsupportedOperationException("streamingBatchGet for DaVinci client");
+  }
+
+  @Override
+  public boolean isProjectionFieldValidationEnabled() {
+    return clientConfig.isProjectionFieldValidationEnabled();
   }
 
   @Override
   public ComputeRequestBuilder<K> compute(
       Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
-      long preRequestTimeInNS) {
-    return new AvroComputeRequestBuilderV4<K>(this, getLatestValueSchema()).setStats(streamingStats);
+      AvroGenericReadComputeStoreClient computeStoreClient) throws VeniceClientException {
+    return new AvroComputeRequestBuilderV4<K>(computeStoreClient, getLatestValueSchema()).setStats(stats)
+        .setValidateProjectionFields(isProjectionFieldValidationEnabled());
   }
 
   private Schema getComputeResultSchema(ComputeRequestWrapper computeRequestWrapper) {

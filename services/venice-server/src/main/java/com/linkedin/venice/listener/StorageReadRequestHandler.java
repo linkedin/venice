@@ -22,6 +22,7 @@ import com.linkedin.venice.compute.protocol.request.ComputeRequest;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.exceptions.OperationNotAllowedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.listener.request.AdminRequest;
@@ -316,6 +317,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
               new HttpShortcutResponse("No storage exists for: " + e.getStoreName(), HttpResponseStatus.BAD_REQUEST));
         } catch (VeniceRequestEarlyTerminationException e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.REQUEST_TIMEOUT));
+        } catch (OperationNotAllowedException e) {
+          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.METHOD_NOT_ALLOWED));
         } catch (Exception e) {
           LOGGER.error("Exception thrown for {}", request.getResourceName(), e);
           HttpShortcutResponse shortcutResponse =
@@ -611,11 +614,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return responseWrapper;
   }
 
-  public ReadResponse handleMultiGetGrpcRequest(MultiGetRouterRequestWrapper request) {
-    return handleMultiGetRequest(request);
-  }
-
   private ReadResponse handleComputeRequest(ComputeRouterRequestWrapper request) {
+    if (!metadataRepository.isReadComputationEnabled(request.getStoreName())) {
+      throw new OperationNotAllowedException(
+          "Read compute is not enabled for the store. Please contact Venice team to enable the feature.");
+    }
     SchemaEntry superSetOrLatestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(request.getStoreName());
     SchemaEntry valueSchemaEntry = getComputeValueSchema(request, superSetOrLatestValueSchema);
     Schema resultSchema = getComputeResultSchema(request.getComputeRequest(), valueSchemaEntry.getSchema());

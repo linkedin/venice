@@ -2,7 +2,7 @@
     strategy:
       fail-fast: false
       matrix:
-        jdk: [8, 11, 17]
+        jdk: [17]
     runs-on: ubuntu-latest
     needs: $Dependency
     if: $Conditional

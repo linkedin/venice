@@ -42,18 +42,6 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute() throws VeniceClientException {
-    return compute(Optional.empty(), Optional.empty(), 0);
-  }
-
-  // The following function allows to pass one compute store client
-  public abstract ComputeRequestBuilder<K> compute(
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
-      InternalAvroStoreClient computeStoreClient,
-      long preRequestTimeInNS) throws VeniceClientException;
-
-  @Override
   public void computeWithKeyPrefixFilter(
       byte[] keyPrefix,
       ComputeRequestWrapper computeRequestWrapper,

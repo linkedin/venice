@@ -39,17 +39,17 @@ public class ValidateSchemaAndBuildDictMapperOutputReader implements Closeable {
         ValidateSchemaAndBuildDictMapper.class.getSimpleName() + " output fileName should not be empty");
 
     this.outputDir = outputDir;
-    String filePath = outputDir + "/" + fileName;
+    Path filePath = new Path(String.format("%s/%s", outputDir, fileName));
 
     LOGGER.info(
         "Reading file {} to retrieve info persisted by {}",
         filePath,
         ValidateSchemaAndBuildDictMapper.class.getSimpleName());
     Configuration conf = new Configuration();
-    fs = FileSystem.get(conf);
+    fs = filePath.getFileSystem(conf);
 
     try {
-      inputStream = fs.open(new Path(filePath));
+      inputStream = fs.open(filePath);
       avroDataFileStream =
           new DataFileStream(inputStream, new SpecificDatumReader(ValidateSchemaAndBuildDictMapperOutput.class));
       try {
