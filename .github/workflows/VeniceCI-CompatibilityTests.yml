@@ -261,4 +261,4 @@ jobs:
       - name: AllIsWell
         shell: bash
         run: |
-          echo "Life is blah!"
+          echo "LGTM!"

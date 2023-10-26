@@ -110,7 +110,7 @@ jobs:
       - name: AllIsWell
         shell: bash
         run: |
-          echo "Life is good!"
+          echo "LGTM!"
 
 
 
