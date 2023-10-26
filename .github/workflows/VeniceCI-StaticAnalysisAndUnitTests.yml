@@ -100,7 +100,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  SacUtCompletion:
+  StaticAnalysisAndUnitTestsCompletionCheck:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest

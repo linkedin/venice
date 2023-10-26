@@ -251,7 +251,7 @@ jobs:
           retention-days: 30
 
 
-  CompatTestsCompletion:
+  CompatibilityTestsCompletionCheck:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
