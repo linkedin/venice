@@ -98,19 +98,16 @@ public class AbstractAvroStoreClientTest {
     }
 
     @Override
-    protected SchemaReader getSchemaReader() {
+    public SchemaReader getSchemaReader() {
       if (overrideGetSchemaReader) {
         SchemaReader mockSchemaReader = mock(SchemaReader.class);
         doReturn(Schema.create(Schema.Type.STRING)).when(mockSchemaReader).getKeySchema();
+        doReturn(1).when(mockSchemaReader).getLatestValueSchemaId();
+        doReturn(VALUE_SCHEMA).when(mockSchemaReader).getValueSchema(1);
         return mockSchemaReader;
       } else {
         return super.getSchemaReader();
       }
-    }
-
-    @Override
-    public Schema getLatestValueSchema() {
-      return VALUE_SCHEMA;
     }
   }
 

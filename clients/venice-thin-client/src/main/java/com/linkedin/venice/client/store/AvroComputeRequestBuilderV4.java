@@ -1,6 +1,5 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V4;
 import static org.apache.avro.Schema.Type.RECORD;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -12,6 +11,7 @@ import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.util.ArrayList;
@@ -25,10 +25,8 @@ import org.apache.avro.generic.GenericRecord;
 
 
 public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<K> {
-  private static final int COMPUTE_REQUEST_VERSION = COMPUTE_REQUEST_VERSION_V4;
-
-  public AvroComputeRequestBuilderV4(AvroGenericReadComputeStoreClient storeClient, Schema latestValueSchema) {
-    super(storeClient, latestValueSchema);
+  public AvroComputeRequestBuilderV4(AvroGenericReadComputeStoreClient storeClient, SchemaReader schemaReader) {
+    super(storeClient, schemaReader);
   }
 
   @Override

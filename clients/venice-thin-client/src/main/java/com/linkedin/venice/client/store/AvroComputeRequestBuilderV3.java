@@ -1,6 +1,5 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V3;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.COUNT;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -11,6 +10,7 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.Count;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.Pair;
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -30,14 +30,13 @@ import org.apache.avro.generic.GenericRecord;
  * @param <K>
  */
 public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBuilder<K> {
-  private static final int COMPUTE_REQUEST_VERSION = COMPUTE_REQUEST_VERSION_V3;
   private static final String COUNT_SPEC = "count_spec";
   private static final Schema COUNT_RESULT_SCHEMA =
       Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.INT)));
   private final List<Count> countOperations = new LinkedList<>();
 
-  public AvroComputeRequestBuilderV3(AvroGenericReadComputeStoreClient storeClient, Schema latestValueSchema) {
-    super(storeClient, latestValueSchema);
+  public AvroComputeRequestBuilderV3(AvroGenericReadComputeStoreClient storeClient, SchemaReader schemaReader) {
+    super(storeClient, schemaReader);
   }
 
   @Override

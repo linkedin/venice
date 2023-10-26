@@ -1,6 +1,7 @@
 package com.linkedin.venice.schema;
 
 import static com.linkedin.venice.serializer.SerializerDeserializerFactory.getAvroGenericSerializer;
+import static org.testng.Assert.assertFalse;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -156,7 +157,7 @@ public class TestAvroSchema {
     if (AvroSchemaUtils.schemaResolveHasErrors(schemaWithoutNamespace, schemaWithNamespace)) {
       Schema massagedWriterSchema = AvroSchemaUtils
           .generateSchemaWithNamespace(schemaWithoutNamespace.toString(), schemaWithNamespace.getNamespace());
-      Assert.assertFalse(
+      assertFalse(
           AvroSchemaUtils.schemaResolveHasErrors(massagedWriterSchema, schemaWithNamespace),
           "Resolve error should go away after the writer schema fix");
       deserializer =

@@ -11,6 +11,7 @@ import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
@@ -66,7 +67,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final Optional<Schema> readerSchema;
   private volatile Schema keySchema;
   private final Map<Integer, SchemaEntry> valueSchemaEntryMap = new VeniceConcurrentHashMap<>();
-  private final Cache<Schema, Integer> valueSchemaMapR = Caffeine.newBuilder().maximumSize(1000).build();
+  private final Cache<Schema, Integer> canonicalValueSchemaMapR = Caffeine.newBuilder().maximumSize(1000).build();
   private final Map<Integer, DerivedSchemaEntry> valueSchemaIdToUpdateSchemaEntryMap = new VeniceConcurrentHashMap<>();
   private final AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
   private final AtomicInteger supersetSchemaIdAtomic = new AtomicInteger(SchemaData.INVALID_VALUE_SCHEMA_ID);
@@ -211,16 +212,18 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public int getValueSchemaId(Schema schema) {
-    if (valueSchemaMapR.getIfPresent(schema) == null) {
+    String canonicalSchemaStr = AvroCompatibilityHelper.toParsingForm(schema);
+    Schema canonicalSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(canonicalSchemaStr);
+    Integer valueSchemaId = canonicalValueSchemaMapR.getIfPresent(canonicalSchema);
+    if (valueSchemaId == null || !isValidSchemaId(valueSchemaId)) {
       // Perform one time refresh of all schemas.
       updateAllValueSchemas(false);
     }
-    Integer valueSchemaId = valueSchemaMapR.get(schema, s -> NOT_EXIST_UPDATE_SCHEMA_ENTRY.getValueSchemaID());
-
+    valueSchemaId = canonicalValueSchemaMapR.getIfPresent(canonicalSchema);
     if (valueSchemaId != null && isValidSchemaId(valueSchemaId)) {
       return valueSchemaId;
     }
-    valueSchemaMapR.put(schema, NOT_EXIST_UPDATE_SCHEMA_ENTRY.getValueSchemaID());
+    canonicalValueSchemaMapR.put(canonicalSchema, NOT_EXIST_UPDATE_SCHEMA_ENTRY.getValueSchemaID());
     throw new VeniceClientException("Could not find schema: " + schema + ". for store " + storeName);
   }
 
@@ -316,7 +319,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
         // Fall back to fetch all value schema.
         for (SchemaEntry valueSchemaEntry: fetchAllValueSchemaEntriesFromRouter()) {
           valueSchemaEntryMap.put(valueSchemaEntry.getId(), valueSchemaEntry);
-          valueSchemaMapR.put(valueSchemaEntry.getSchema(), valueSchemaEntry.getId());
+          Schema valueSchema = valueSchemaEntry.getSchema();
+          String canonicalValueSchemaStr = AvroCompatibilityHelper.toParsingForm(valueSchema);
+          Schema canonicalValueSchema =
+              AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(canonicalValueSchemaStr);
+          canonicalValueSchemaMapR.put(canonicalValueSchema, valueSchemaEntry.getId());
         }
         return;
       }
@@ -456,7 +463,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
       SchemaEntry oldEntry = valueSchemaEntryMap.get(valueSchemaId);
       // Do not need to refresh if the schema id is already present in the schema repo.
       if (oldEntry != null && isValidSchemaEntry(oldEntry)) {
-        valueSchemaMapR.put(oldEntry.getSchema(), valueSchemaId);
+        String canonicalSchemaStr = AvroCompatibilityHelper.toParsingForm(oldEntry.getSchema());
+        Schema canonicalSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(canonicalSchemaStr);
+        canonicalValueSchemaMapR.put(canonicalSchema, valueSchemaId);
         return oldEntry;
       }
       SchemaEntry entry = fetchValueSchemaEntryFromRouter(valueSchemaId);
@@ -465,7 +474,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
         return NOT_EXIST_VALUE_SCHEMA_ENTRY;
       } else {
         valueSchemaEntryMap.put(valueSchemaId, entry);
-        valueSchemaMapR.put(entry.getSchema(), valueSchemaId);
+        String canonicalSchemaStr = AvroCompatibilityHelper.toParsingForm(entry.getSchema());
+        Schema canonicalSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(canonicalSchemaStr);
+        canonicalValueSchemaMapR.put(canonicalSchema, valueSchemaId);
         return entry;
       }
     } else {
@@ -477,7 +488,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
         // Every time when we fetch a new value schema to cache during non-force-refresh logic, we should try to mark
         // the flag as true.
         shouldRefreshLatestValueSchemaEntry.compareAndSet(false, true);
-        valueSchemaMapR.put(entry.getSchema(), valueSchemaId);
+        String canonicalSchemaStr = AvroCompatibilityHelper.toParsingForm(entry.getSchema());
+        Schema canonicalSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(canonicalSchemaStr);
+        canonicalValueSchemaMapR.put(canonicalSchema, valueSchemaId);
         return entry;
       });
     }
