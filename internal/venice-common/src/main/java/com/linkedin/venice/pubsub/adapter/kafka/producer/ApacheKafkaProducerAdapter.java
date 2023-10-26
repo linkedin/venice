@@ -43,7 +43,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
 
   private KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
   private final ApacheKafkaProducerConfig producerConfig;
-  private boolean forceClosed = false;
+  private volatile boolean forceClosed = false;
 
   /**
    * @param producerConfig contains producer configs
