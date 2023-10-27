@@ -2099,7 +2099,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 partitionConsumptionState,
                 leaderProducedRecordContext,
                 (callback, leaderMetadataWrapper) -> veniceWriter.get()
-                    .asyncSendControlMessage(
+                    .sendControlMessageAsync(
                         controlMessage,
                         versionTopicPartitionToBeProduced,
                         new HashMap<>(),
@@ -2129,7 +2129,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 partitionConsumptionState,
                 leaderProducedRecordContext,
                 (callback, leaderMetadataWrapper) -> veniceWriter.get()
-                    .asyncSendControlMessage(
+                    .sendControlMessageAsync(
                         controlMessage,
                         consumerRecord.getTopicPartition().getPartitionNumber(),
                         new HashMap<>(),

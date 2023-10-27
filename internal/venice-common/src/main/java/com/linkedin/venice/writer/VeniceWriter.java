@@ -67,6 +67,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
@@ -375,9 +376,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   // Except during VW start and close we expect it to have zero threads to avoid unnecessary resource usage.
   private ThreadPoolExecutor createThreadPoolExecutor() {
     ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(
-        2,
-        2,
-        5,
+        1,
+        1,
+        3,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("VeniceWriter-" + topicName));
@@ -399,14 +400,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       long startTime = System.currentTimeMillis();
       logger.info("Closing VeniceWriter for topic: {}", topicName);
       try {
-        // If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
-        // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
+        // try to end all segments before closing the producer
         if (gracefulClose) {
-          endAllSegments(true);
+          try {
+            endAllSegments().get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
+          } catch (Exception e) {
+            logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
+          }
         }
-        // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
-        // For non-shared producer mode gracefulClose will flush the producer
-
         getProducerAdapter().close(topicName, closeTimeOutInMs, gracefulClose);
         OPEN_VENICE_WRITER_COUNT.decrementAndGet();
       } catch (Exception e) {
@@ -419,38 +420,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
+  /**
+   * Close the {@link VeniceWriter} asynchronously. This method will return immediately and the actual close will be
+   * executed in a separate thread.
+   * @param gracefulClose whether to end the segments and send END_OF_SEGMENT control message.
+   *                      Also flush the producer before closing.
+   * @return a {@link CompletableFuture} that will be completed when the close is done.
+   */
   public CompletableFuture<VeniceResourceCloseResult> closeAsync(boolean gracefulClose) {
     return CompletableFuture.supplyAsync(() -> {
       synchronized (closeLock) {
         if (isClosed) {
           return VeniceResourceCloseResult.ALREADY_CLOSED;
         }
-        long startTime = System.currentTimeMillis();
-        logger.info("Closing VeniceWriter for topic: {}", topicName);
-        try {
-          // try to end all segments before closing the producer
-          if (gracefulClose) {
-            CompletableFuture<Void> endSegmentsFuture =
-                CompletableFuture.runAsync(() -> endAllSegments(true), getThreadPoolExecutor());
-            try {
-              endSegmentsFuture.get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
-            } catch (Exception e) {
-              // cancel the endSegmentsFuture if it's not done in time
-              if (!endSegmentsFuture.isDone()) {
-                endSegmentsFuture.cancel(true);
-              }
-              logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
-            }
-          }
-          getProducerAdapter().close(topicName, closeTimeOutInMs, gracefulClose);
-          OPEN_VENICE_WRITER_COUNT.decrementAndGet();
-        } catch (Exception e) {
-          logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
-          VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
-        }
-        getThreadPoolExecutor().shutdown();
-        isClosed = true;
-        logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
+        close(gracefulClose);
         return VeniceResourceCloseResult.SUCCESS;
       }
     }, getThreadPoolExecutor());
@@ -1106,7 +1089,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public void broadcastEndOfPush(Map<String, String> debugInfo) {
     broadcastControlMessage(getEmptyControlMessage(ControlMessageType.END_OF_PUSH), debugInfo);
-    endAllSegments(true);
+    try {
+      endAllSegments().get(5, TimeUnit.MINUTES);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while waiting for endAllSegments to complete", e);
+    } catch (ExecutionException | TimeoutException e) {
+      throw new VeniceException("Failed to end all segments", e);
+    }
   }
 
   public void broadcastTopicSwitch(
@@ -1520,7 +1510,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param finalSegment a boolean indicating if this is the final segment that this producer will send
    *                     into this partition.
    */
-  private void sendEndOfSegment(int partition, Map<String, String> debugInfo, boolean finalSegment) {
+  private CompletableFuture<PubSubProduceResult> sendEndOfSegmentAsync(
+      int partition,
+      Map<String, String> debugInfo,
+      boolean finalSegment) {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
     EndOfSegment endOfSegment = new EndOfSegment();
@@ -1528,7 +1521,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     endOfSegment.computedAggregates = new ArrayList<>(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
-    sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
+    return sendControlMessageAsync(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
   }
 
   /**
@@ -1632,31 +1625,43 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               leaderMetadataWrapper,
               VENICE_DEFAULT_LOGICAL_TS).get();
           return;
-        } catch (InterruptedException | ExecutionException e) {
-          if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicDoesNotExistException.class)) {
-            /**
-             * Not a super clean way to match the exception, but unfortunately, since it is wrapped inside of an
-             * {@link ExecutionException}, there may be no other way.
-             */
-            String errorMessage =
-                "Caught a UNKNOWN_TOPIC_OR_PARTITION error, attempt " + attempt + "/" + maxAttemptsWhenTopicMissing;
-            if (attempt < maxAttemptsWhenTopicMissing) {
-              attempt++;
-              updateCheckSum = false; // checksum has already been updated, and should not be updated again for retries
-              logger.warn("{}, will sleep {} ms before the next attempt.", errorMessage, sleepTimeMsWhenTopicMissing);
-            } else {
-              throw new VeniceException(errorMessage + ", will bubble up.");
-            }
-          } else if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new VeniceException("Got interrupted while trying to send a control message.", e);
+        } catch (ExecutionException e) {
+          // If send failed due to permission issue, we won't retry.
+          if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
             throw new VeniceResourceAccessException(
                 "You do not have permission to write to this store. Please check that ACLs are set correctly.",
                 e);
-          } else {
+          }
+          // If exception is not due to topic not exist, we won't retry.
+          if (!ExceptionUtils.recursiveClassEquals(e, PubSubTopicDoesNotExistException.class)) {
             throw new VeniceException(
                 "Got an exception while trying to send a control message ("
                     + ControlMessageType.valueOf(controlMessage).name() + ")",
                 e);
           }
+          // Exceeded max attempts, throw exception.
+          if (attempt >= maxAttemptsWhenTopicMissing) {
+            throw new VeniceException(
+                "Got a PubSubTopicDoesNotExistException while trying to send a control message: "
+                    + ControlMessageType.valueOf(controlMessage).name(),
+                e);
+          }
+          // Retry just in case the topic was created in the meantime.
+          logger.warn(
+              "Got a PubSubTopicDoesNotExistException while trying to send a control message: {}, will retry in {} ms.",
+              ControlMessageType.valueOf(controlMessage).name(),
+              sleepTimeMsWhenTopicMissing);
+          attempt++;
+          updateCheckSum = false; // checksum has already been updated, and should not be updated again for retries
+          logger.warn(
+              "Got a PubSubTopicDoesNotExistException while trying to send a control message: {}"
+                  + ", will retry with attempt {}/{}.",
+              ControlMessageType.valueOf(controlMessage).name(),
+              attempt,
+              maxAttemptsWhenTopicMissing);
         }
       }
     }
@@ -1668,7 +1673,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * Producer DIV will be recalculated (not DIV pass-through mode); checksum for the input partition in this producer
    * will also be updated.
    */
-  public Future<PubSubProduceResult> asyncSendControlMessage(
+  public CompletableFuture<PubSubProduceResult> sendControlMessageAsync(
       ControlMessage controlMessage,
       int partition,
       Map<String, String> debugInfo,
@@ -1832,37 +1837,52 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
-  private void endAllSegments(boolean finalSegment) {
-    Segment segment;
+  private CompletableFuture<Void> endAllSegments() {
+    List<CompletableFuture<Void>> eosFutures = new ArrayList<>(segments.length);
     for (int i = 0; i < segments.length; i++) {
-      segment = segments[i];
-      if (segment != null) {
-        endSegment(i, finalSegment);
+      if (segments[i] != null) {
+        eosFutures.add(endSegmentAsync(i, true));
       }
     }
+    return CompletableFuture.allOf(eosFutures.toArray(new CompletableFuture[0]));
   }
 
   /**
    * @param partition in which to end the current segment
    */
   public void endSegment(int partition, boolean finalSegment) {
+    try {
+      synchronized (this.partitionLocks[partition]) {
+        endSegmentAsync(partition, finalSegment).get(5, TimeUnit.MINUTES);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while waiting for segment to end for topic: " + topicName, e);
+    } catch (ExecutionException e) {
+      throw new VeniceException("Failed to end segment for topic: " + topicName, e);
+    } catch (TimeoutException e) {
+      throw new VeniceException("Timed out while waiting for segment to end for topic: " + topicName, e);
+    }
+  }
+
+  public CompletableFuture<Void> endSegmentAsync(int partition, boolean finalSegment) {
     synchronized (this.partitionLocks[partition]) {
       Segment currentSegment = segments[partition];
-      if (currentSegment == null) {
-        logger.warn("endSegment(partition {}) called but currentSegment == null. Ignoring.", partition);
-      } else if (!currentSegment.isStarted()) {
-        logger.warn("endSegment(partition {}) called but currentSegment.begun == false. Ignoring.", partition);
-      } else if (currentSegment.isEnded()) {
-        logger.warn("endSegment(partition {}) called but currentSegment.ended == true. Ignoring.", partition);
-      } else {
-        sendEndOfSegment(
+      if (currentSegment == null || !currentSegment.isStarted() || currentSegment.isEnded()) {
+        logger.warn(
+            "endSegment(partition {}) called but currentSegment{}. Ignoring.",
             partition,
-            new HashMap<>(), // TODO: Add extra debugging info
-            finalSegment // TODO: This will not always be true, once we support streaming, or more than one segment per
-                         // mapper in batch
-        );
-        currentSegment.end(finalSegment);
+            currentSegment == null ? " == null" : currentSegment.isEnded() ? ".ended == true" : ".begun == false");
+        return CompletableFuture.completedFuture(null);
       }
+      CompletableFuture<PubSubProduceResult> future = sendEndOfSegmentAsync(
+          partition,
+          new HashMap<>(), // TODO: Add extra debugging info
+          finalSegment // TODO: This will not always be true, once we support streaming, or more than one segment per
+      // mapper in batch
+      );
+      currentSegment.end(finalSegment);
+      return future.thenApply(result -> null);
     }
   }
 

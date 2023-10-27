@@ -98,7 +98,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       /**
        * performs some sanity checks for chunks.
        * key may be null in case of producing control messages with direct api's like
-       * {@link VeniceWriter#SendControlMessage} or {@link VeniceWriter#asyncSendControlMessage}
+       * {@link VeniceWriter#SendControlMessage} or {@link VeniceWriter#sendControlMessageAsync}
        */
       if (chunkedValueManifest != null) {
         if (valueChunks == null) {
