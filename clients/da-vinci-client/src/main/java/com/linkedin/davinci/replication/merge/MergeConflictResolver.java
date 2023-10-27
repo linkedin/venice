@@ -21,7 +21,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.AvroSchemaUtils;
@@ -464,17 +463,6 @@ public class MergeConflictResolver {
     }
     final ByteBuffer rmdBytes = rmdSerde.serializeRmdRecord(writerValueSchemaID, oldRmdRecord);
     return rmdSerde.deserializeRmdBytes(writerValueSchemaID, readerValueSchemaID, rmdBytes);
-  }
-
-  private GenericRecord deserializeValue(ByteBuffer bytes, Schema writerSchema, Schema readerSchema) {
-    /**
-     * TODO: Refactor this to use {@link com.linkedin.venice.serialization.StoreDeserializerCache}
-     */
-    AvroGenericDeserializer<GenericRecord> deserializer = fastAvroEnabled
-        ? MapOrderPreservingFastSerDeFactory.getDeserializer(writerSchema, readerSchema)
-        : MapOrderPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
-
-    return deserializer.deserialize(bytes);
   }
 
   private boolean ignoreNewPut(
