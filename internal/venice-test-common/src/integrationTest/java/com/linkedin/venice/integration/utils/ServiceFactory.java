@@ -175,6 +175,10 @@ public class ServiceFactory {
     });
   }
 
+  /**
+   * @deprecated Future use should use {@link #getVeniceServer(String, String, PubSubBrokerWrapper, String, Properties, Properties, boolean, String, Map, String)}
+   * to have the correct kafka cluster map in multi-fabric environment for essential features like A/A and heartbeat to work.
+   */
   public static VeniceServerWrapper getVeniceServer(
       String regionName,
       String clusterName,
