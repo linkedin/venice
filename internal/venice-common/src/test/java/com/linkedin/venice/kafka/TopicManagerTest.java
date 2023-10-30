@@ -518,8 +518,7 @@ public class TopicManagerTest {
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
     // Mock an admin client to pass topic existence check
     PubSubAdminAdapter mockPubSubAdminAdapter = mock(PubSubAdminAdapter.class);
-    doReturn(true).when(mockPubSubAdminAdapter)
-        .containsTopicWithPartitionCheckExpectationAndRetry(eq(pubSubTopicPartition), anyInt(), eq(true));
+    doReturn(true).when(mockPubSubAdminAdapter).containsTopicWithExpectationAndRetry(eq(topic), anyInt(), eq(true));
     PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
     doThrow(new PubSubOpTimeoutException("Timed out while fetching end offsets")).when(mockPubSubConsumer)
         .endOffsets(any(), any());
