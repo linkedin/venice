@@ -17,7 +17,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
 
-
 @NotThreadsafe
 @Experimental
 public class UpdateBuilderImpl implements UpdateBuilder {
@@ -25,6 +24,9 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   private final RecordSerializer<GenericRecord> serializer;
   private final Set<String> updateFieldNameSet;
   private final Set<String> collectionMergeFieldNameSet;
+
+  private static final Logger LOGGER = LogManager.getLogger(UpdateBuilderImpl.class);
+
 
   /**
    * @param updateSchema Update schema that is derived from the value Record schema.
@@ -131,6 +133,10 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     try {
       serializer.serialize(updateRecord);
     } catch (Exception serializationException) {
+      if (serializationException instanceof AvroRuntimeException || serializationException instanceof UnresolvedUnionException) {
+        Object unresolvedDatum = e.getUnresolvedDatum();
+        LOGGER.error("Unresolved datum encountered: {}", unresolvedDatum, e);
+      }
       return serializationException;
     }
     return null;
