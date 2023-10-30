@@ -15,6 +15,7 @@ import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.UnresolvedUnionException;
 import org.apache.commons.lang3.Validate;
 
 
@@ -130,8 +131,11 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   private Exception validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
     try {
       serializer.serialize(updateRecord);
+    } catch (UnresolvedUnionException e) {
+        Object unresolvedDatum = e.getUnresolvedDatum();
+        return unresolvedDatum;
     } catch (Exception serializationException) {
-      return serializationException;
+        return serializationException;
     }
     return null;
   }
