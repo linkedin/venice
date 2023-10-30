@@ -67,6 +67,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_CONCURRENT_STREAMS
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_FRAME_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_HEADER_LIST_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
@@ -442,6 +443,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long metaStoreWriterCloseTimeoutInMS;
   private final int metaStoreWriterCloseConcurrency;
 
+  private final long ingestionHeartbeatIntervalMs;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -726,6 +729,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionTaskMaxIdleCount = serverProperties.getInt(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 10000);
     metaStoreWriterCloseTimeoutInMS = serverProperties.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
     metaStoreWriterCloseConcurrency = serverProperties.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
+    ingestionHeartbeatIntervalMs =
+        serverProperties.getLong(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
   }
 
   long extractIngestionMemoryLimit(
@@ -1274,5 +1279,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getMetaStoreWriterCloseConcurrency() {
     return metaStoreWriterCloseConcurrency;
+  }
+
+  public long getIngestionHeartbeatIntervalMs() {
+    return ingestionHeartbeatIntervalMs;
   }
 }

@@ -1,10 +1,12 @@
 package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
@@ -14,15 +16,20 @@ import static org.mockito.Mockito.when;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -449,4 +456,48 @@ public class VeniceWriterUnitTest {
     }
   }
 
+  @Test
+  public void testSendHeartbeat() throws ExecutionException, InterruptedException, TimeoutException {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
+    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    Properties writerProperties = new Properties();
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_rt";
+    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
+        .setValueSerializer(serializer)
+        .setWriteComputeSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic topic = mock(PubSubTopic.class);
+    when(topic.getName()).thenReturn(testTopic);
+    when(topicPartition.getPubSubTopic()).thenReturn(topic);
+    when(topicPartition.getPartitionNumber()).thenReturn(0);
+    for (int i = 0; i < 10; i++) {
+      writer.sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER);
+    }
+    ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+    verify(mockedProducer, atLeast(10))
+        .sendMessage(eq(testTopic), eq(0), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+    for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
+      Assert.assertTrue(Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey()));
+    }
+    for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
+      Assert.assertEquals(kme.messageType, MessageType.CONTROL_MESSAGE.getValue());
+      ControlMessage controlMessage = (ControlMessage) kme.payloadUnion;
+      Assert.assertEquals(controlMessage.controlMessageType, ControlMessageType.START_OF_SEGMENT.getValue());
+      ProducerMetadata producerMetadata = kme.producerMetadata;
+      Assert.assertEquals(producerMetadata.producerGUID, HeartbeatGuidV3Generator.getInstance().getGuid());
+      Assert.assertEquals(producerMetadata.segmentNumber, 0);
+      Assert.assertEquals(producerMetadata.messageSequenceNumber, 0);
+    }
+  }
 }

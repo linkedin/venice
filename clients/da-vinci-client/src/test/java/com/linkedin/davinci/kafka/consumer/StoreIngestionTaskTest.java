@@ -3509,6 +3509,71 @@ public abstract class StoreIngestionTaskTest {
     Assert.assertTrue(storeIngestionTask.maybeSetIngestionTaskActiveState(false));
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testMaybeSendIngestionHeartbeat(boolean isActiveActive) {
+    String storeName = Utils.getUniqueString("store");
+    Store mockStore = mock(Store.class);
+    String versionTopic = Version.composeKafkaTopic(storeName, 1);
+    VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
+    Version mockVersion = mock(Version.class);
+    doReturn(1).when(mockVersion).getPartitionCount();
+    doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
+    doReturn(true).when(mockVersion).isUseVersionLevelHybridConfig();
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+    doReturn(mockHybridConfig).when(mockVersion).getHybridStoreConfig();
+    Properties mockKafkaConsumerProperties = mock(Properties.class);
+    doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));
+    ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
+    doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
+    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
+    doReturn(isActiveActive).when(mockVersion).isActiveActiveReplicationEnabled();
+    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
+    doReturn(true).when(mockVeniceProperties).isEmpty();
+    doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToUrlMap();
+    doReturn(TimeUnit.MINUTES.toMillis(1)).when(mockVeniceServerConfig).getIngestionHeartbeatIntervalMs();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(pcs).getOffsetRecord();
+    doReturn(LEADER).when(pcs).getLeaderFollowerState();
+    PubSubTopic pubsubTopic = mock(PubSubTopic.class);
+    doReturn(pubsubTopic).when(offsetRecord).getLeaderTopic(any());
+    doReturn(true).when(pubsubTopic).isRealTime();
+
+    VeniceWriter veniceWriter = mock(VeniceWriter.class);
+    VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
+    doReturn(veniceWriter).when(veniceWriterFactory).createVeniceWriter(any());
+
+    StoreIngestionTaskFactory ingestionTaskFactory = TestUtils.getStoreIngestionTaskBuilder(storeName)
+        .setTopicManagerRepository(mockTopicManagerRepository)
+        .setStorageMetadataService(mockStorageMetadataService)
+        .setMetadataRepository(mockReadOnlyStoreRepository)
+        .setTopicManagerRepository(mockTopicManagerRepository)
+        .setServerConfig(mockVeniceServerConfig)
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setVeniceWriterFactory(veniceWriterFactory)
+        .build();
+    LeaderFollowerStoreIngestionTask ingestionTask =
+        (LeaderFollowerStoreIngestionTask) ingestionTaskFactory.getNewIngestionTask(
+            mockStore,
+            mockVersion,
+            mockKafkaConsumerProperties,
+            () -> true,
+            mockVeniceStoreVersionConfig,
+            0,
+            false,
+            Optional.empty());
+    ingestionTask.setPartitionConsumptionState(0, pcs);
+    ingestionTask.maybeSendIngestionHeartbeat();
+    // Second invocation should be skipped since it shouldn't be time for another heartbeat yet.
+    ingestionTask.maybeSendIngestionHeartbeat();
+    verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any());
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config

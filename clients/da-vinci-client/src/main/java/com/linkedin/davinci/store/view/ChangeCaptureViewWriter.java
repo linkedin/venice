@@ -1,6 +1,5 @@
 package com.linkedin.davinci.store.view;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;

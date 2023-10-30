@@ -2009,4 +2009,11 @@ public class ConfigKeys {
    * Venice router's principal name used for ssl. Default should contain "venice-router".
    */
   public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
+
+  /**
+   * The time interval in milliseconds for leader replica to send heartbeat to RT topic for consumers
+   * (including the leader) to keep its latest processed upstream RT offset up-to-date in case when the RT topic ends
+   * with SOS, EOS or skipped records.
+   */
+  public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
 }

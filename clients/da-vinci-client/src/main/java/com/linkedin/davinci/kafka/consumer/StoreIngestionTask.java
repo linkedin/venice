@@ -100,6 +100,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -1295,6 +1296,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
+        maybeSendIngestionHeartbeat();
       }
 
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
@@ -2742,6 +2744,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       PartitionConsumptionState partitionConsumptionState) {
+    KafkaKey key = consumerRecord.getKey();
+    if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
+      // Skip DIV for ingestion heartbeat records.
+      return;
+    }
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
       TopicManager topicManager = topicManagerRepository.getTopicManager();
       // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
@@ -3686,4 +3693,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
 
+  protected void maybeSendIngestionHeartbeat() {
+    // No op, heartbeat is only useful for L/F hybrid stores.
+  }
 }
