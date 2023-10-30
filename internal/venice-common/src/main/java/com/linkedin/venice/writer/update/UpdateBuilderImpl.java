@@ -132,8 +132,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     try {
       serializer.serialize(updateRecord);
     } catch (UnresolvedUnionException e) {
-        Object unresolvedDatum = e.getUnresolvedDatum();
-        return unresolvedDatum;
+        System.out.println("Unresolved datum: " + unresolvedDatum);
+        return e;
     } catch (Exception serializationException) {
         return serializationException;
     }
