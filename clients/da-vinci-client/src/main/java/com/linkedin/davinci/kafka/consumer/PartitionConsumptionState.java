@@ -443,7 +443,6 @@ public class PartitionConsumptionState {
     if (this.expectedSSTFileChecksum == null) {
       return;
     }
-    // Checksum calculation should skip RMD chunk.
     /**
      * 1. For regular value and value chunk, we will take the value payload.
      * 2. When A/A partial update is enabled, RMD chunking is turned on, we should skip the RMD chunk.
