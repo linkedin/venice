@@ -261,7 +261,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         // Half of servers on each mode, with 1 server clusters aligning with the default (true)
         featureProperties.setProperty(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, Boolean.toString(i % 2 == 0));
         // Half of servers will in PT mode, with 1 server clusters aligning with the default (block based mode)
-        featureProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, Boolean.toString(i % 2 == 1));
+        featureProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, Boolean.toString(i % 2 != 0));
 
         if (!veniceRouterWrappers.isEmpty()) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
