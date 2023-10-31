@@ -134,8 +134,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
       serializer.serialize(updateRecord);
     } catch (Exception serializationException) {
       if (serializationException instanceof AvroRuntimeException || serializationException instanceof UnresolvedUnionException) {
-        Object unresolvedDatum = e.getUnresolvedDatum();
-        LOGGER.error("Unresolved datum encountered: {}", unresolvedDatum, e);
+        Object unresolvedDatum = serializationException.getUnresolvedDatum();
+        LOGGER.error("Unresolved datum encountered: {}", unresolvedDatum, serializationException);
       }
       return serializationException;
     }
