@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
-import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.MetadataRetriever;
@@ -111,8 +110,6 @@ public interface StoreIngestionService extends MetadataRetriever {
   AggVersionedIngestionStats getAggVersionedIngestionStats();
 
   StoreIngestionTask getStoreIngestionTask(String topic);
-
-  Optional<MetaSystemStoreReplicaStatusNotifier> getMetaSystemStoreReplicaStatusNotifier();
 
   void traverseAllIngestionTasksAndApply(Consumer<StoreIngestionTask> consumer);
 

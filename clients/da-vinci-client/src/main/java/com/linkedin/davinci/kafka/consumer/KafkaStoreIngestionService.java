@@ -26,7 +26,6 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
-import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
@@ -181,8 +180,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
 
   private final MetaStoreWriter metaStoreWriter;
-
-  private final MetaSystemStoreReplicaStatusNotifier metaSystemStoreReplicaStatusNotifier;
 
   private final StoreIngestionTaskFactory ingestionTaskFactory;
 
@@ -344,12 +341,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           pubSubTopicRepository,
           serverConfig.getMetaStoreWriterCloseTimeoutInMS(),
           serverConfig.getMetaStoreWriterCloseConcurrency());
-      this.metaSystemStoreReplicaStatusNotifier = new MetaSystemStoreReplicaStatusNotifier(
-          serverConfig.getClusterName(),
-          metaStoreWriter,
-          metadataRepo,
-          Instance.fromHostAndPort(Utils.getHostName(), serverConfig.getListenerPort()));
-      LOGGER.info("MetaSystemStoreReplicaStatusNotifier was initialized");
       metadataRepo.registerStoreDataChangedListener(new StoreDataChangedListener() {
         @Override
         public void handleStoreDeleted(Store store) {
@@ -362,7 +353,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       });
     } else {
       this.metaStoreWriter = null;
-      this.metaSystemStoreReplicaStatusNotifier = null;
     }
 
     this.hostLevelIngestionStats = new AggHostLevelIngestionStats(
@@ -515,30 +505,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setRunnableForKillIngestionTasksForNonCurrentVersions(
             serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .build();
-  }
-
-  /**
-   * This function should only be triggered in classical Venice since replica status reporting is only valid
-   * in classical Venice for meta system store.
-   */
-  public synchronized void addMetaSystemStoreReplicaStatusNotifier() {
-    if (metaSystemStoreReplicaStatusNotifierQueued) {
-      throw new VeniceException("MetaSystemStoreReplicaStatusNotifier should NOT be added twice");
-    }
-    if (this.metaSystemStoreReplicaStatusNotifier == null) {
-      throw new VeniceException("MetaSystemStoreReplicaStatusNotifier wasn't initialized properly");
-    }
-    addIngestionNotifier(this.metaSystemStoreReplicaStatusNotifier);
-    metaSystemStoreReplicaStatusNotifierQueued = true;
-  }
-
-  @Override
-  public synchronized Optional<MetaSystemStoreReplicaStatusNotifier> getMetaSystemStoreReplicaStatusNotifier() {
-    if (metaSystemStoreReplicaStatusNotifierQueued) {
-      return Optional.of(metaSystemStoreReplicaStatusNotifier);
-    } else {
-      return Optional.empty();
-    }
   }
 
   /**

@@ -1,8 +1,18 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
+import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.repository.NativeMetadataRepository;
@@ -199,19 +209,6 @@ public class MetaSystemStoreTest {
     StoreMetaKey individualValueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(keyMap);
     String valueSchema = storeClient.get(individualValueSchemaKey).get().storeValueSchema.valueSchema.toString();
     assertEquals(Schema.parse(valueSchema), Schema.parse(VALUE_SCHEMA_1));
-    // Query replica status
-    StoreMetaKey replicaStatusKeyForV1P0 =
-        MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
-          {
-            put(KEY_STRING_STORE_NAME, regularVeniceStoreName);
-            put(KEY_STRING_CLUSTER_NAME, venice.getClusterName());
-            put(KEY_STRING_VERSION_NUMBER, "1");
-            put(KEY_STRING_PARTITION_ID, "0");
-          }
-        });
-    StoreMetaValue replicaStatusForV1P0 = storeClient.get(replicaStatusKeyForV1P0).get();
-    // the different situations.
-    assertTrue(replicaStatusForV1P0 != null && replicaStatusForV1P0.storeReplicaStatuses != null);
 
     // Update store config
     controllerClient.updateStore(regularVeniceStoreName, new UpdateStoreQueryParams().setBatchGetLimit(100));
@@ -233,69 +230,6 @@ public class MetaSystemStoreTest {
       assertEquals(Schema.parse(valueSchema1), Schema.parse(VALUE_SCHEMA_2));
     });
 
-    // Do the 2nd empty push to the Venice store
-    // Do an empty push
-    versionCreationResponse = controllerClient.emptyPush(regularVeniceStoreName, "test_push_id_2", 100000);
-    assertFalse(
-        versionCreationResponse.isError(),
-        "New version creation should success, but got error: " + versionCreationResponse.getError());
-    TestUtils.waitForNonDeterministicPushCompletion(
-        versionCreationResponse.getKafkaTopic(),
-        controllerClient,
-        10,
-        TimeUnit.SECONDS);
-    // Query replica status
-    StoreMetaKey replicaStatusKeyForV2P0 =
-        MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
-          {
-            put(KEY_STRING_STORE_NAME, regularVeniceStoreName);
-            put(KEY_STRING_CLUSTER_NAME, venice.getClusterName());
-            put(KEY_STRING_VERSION_NUMBER, "2");
-            put(KEY_STRING_PARTITION_ID, "0");
-          }
-        });
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      StoreMetaValue replicaStatusForV2P0 = storeClient.get(replicaStatusKeyForV2P0).get();
-      assertNotNull(replicaStatusForV2P0);
-      if (replicaStatusForV2P0 != null) {
-        assertEquals(replicaStatusForV2P0.storeReplicaStatuses.size(), 2);
-      }
-    });
-
-    // Do the 3rd empty push to the Venice store, and the replica status for 1st version should become empty
-    versionCreationResponse = controllerClient.emptyPush(regularVeniceStoreName, "test_push_id_3", 100000);
-    assertFalse(
-        versionCreationResponse.isError(),
-        "New version creation should success, but got error: " + versionCreationResponse.getError());
-    TestUtils.waitForNonDeterministicPushCompletion(
-        versionCreationResponse.getKafkaTopic(),
-        controllerClient,
-        10,
-        TimeUnit.SECONDS);
-    // Query replica status
-    StoreMetaKey replicaStatusKeyForV3P0 =
-        MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
-          {
-            put(KEY_STRING_STORE_NAME, regularVeniceStoreName);
-            put(KEY_STRING_CLUSTER_NAME, venice.getClusterName());
-            put(KEY_STRING_VERSION_NUMBER, "3");
-            put(KEY_STRING_PARTITION_ID, "0");
-          }
-        });
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      StoreMetaValue replicaStatusForV3P0 = storeClient.get(replicaStatusKeyForV3P0).get();
-      assertNotNull(replicaStatusForV3P0);
-      if (replicaStatusForV3P0 != null) {
-        assertEquals(replicaStatusForV3P0.storeReplicaStatuses.size(), 2);
-      }
-
-      /**
-       * The replica statuses for the deprecated versions should be removed from meta system store.
-       */
-      StoreMetaValue currentReplicaStatusForV1P0 = storeClient.get(replicaStatusKeyForV1P0).get();
-      assertNull(currentReplicaStatusForV1P0);
-    });
-
     // Meta system store should be deleted when the regular Venice store gets deleted.
     ControllerResponse storeDeletionResponse = controllerClient.disableAndDeleteStore(regularVeniceStoreName);
     assertFalse(
@@ -307,16 +241,6 @@ public class MetaSystemStoreTest {
             .getVeniceAdmin()
             .getMetaStoreWriter()
             .getMetaStoreWriter(metaSystemStoreName));
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      try {
-        storeClient.get(replicaStatusKeyForV3P0).get();
-        fail("An exception is expected here");
-      } catch (Exception e) {
-        assertTrue(
-            e.getMessage().contains("does not exist"),
-            "Any request to meta system store should throw exception before non-existing store");
-      }
-    });
 
     /**
      * Wait for the RT topic deletion.
