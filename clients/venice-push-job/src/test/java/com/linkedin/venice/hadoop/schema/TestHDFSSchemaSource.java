@@ -79,7 +79,7 @@ public class TestHDFSSchemaSource {
     MultiSchemaResponse.Schema[] response = new MultiSchemaResponse.Schema[n];
     for (int i = 1; i <= n; i++) {
       MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
-      schema.setRmdSchemaId(i);
+      schema.setRmdValueSchemaId(i);
       schema.setDerivedSchemaId(i);
       schema.setId(i);
       schema.setSchemaStr(RMD_SCHEMA.toString());

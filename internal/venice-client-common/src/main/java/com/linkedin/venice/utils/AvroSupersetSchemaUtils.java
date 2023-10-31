@@ -148,7 +148,7 @@ public class AvroSupersetSchemaUtils {
       if (schema.getDerivedSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
         continue;
       }
-      if (schema.getRmdSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      if (schema.getRmdValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
         continue;
       }
       return schema;

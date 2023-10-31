@@ -27,7 +27,7 @@ public class MultiSchemaResponse
      */
     private int derivedSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
 
-    private int rmdSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+    private int rmdValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
 
     private String schemaStr;
 
@@ -60,12 +60,12 @@ public class MultiSchemaResponse
       this.schemaStr = schemaStr;
     }
 
-    public int getRmdSchemaId() {
-      return rmdSchemaId;
+    public int getRmdValueSchemaId() {
+      return rmdValueSchemaId;
     }
 
-    public void setRmdSchemaId(int rmdSchemaId) {
-      this.rmdSchemaId = rmdSchemaId;
+    public void setRmdValueSchemaId(int rmdSchemaId) {
+      this.rmdValueSchemaId = rmdSchemaId;
     }
   }
 
