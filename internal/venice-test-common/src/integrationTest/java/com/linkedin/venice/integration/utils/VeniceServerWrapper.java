@@ -1,5 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_OPTIONS_USE_DIRECT_READS;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -195,6 +197,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean ssl = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SSL, "false"));
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
       boolean isGrpcEnabled = Boolean.parseBoolean(featureProperties.getProperty(ENABLE_GRPC_READ_SERVER, "false"));
+      boolean isPlainTableEnabled =
+          Boolean.parseBoolean(featureProperties.getProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false"));
       int numGrpcWorkerThreads = Integer.parseInt(
           featureProperties.getProperty(
               GRPC_SERVER_WORKER_THREAD_COUNT,
@@ -257,6 +261,11 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       if (isGrpcEnabled) {
         serverPropsBuilder.put(GRPC_READ_SERVER_PORT, TestUtils.getFreePort());
         serverPropsBuilder.put(GRPC_SERVER_WORKER_THREAD_COUNT, numGrpcWorkerThreads);
+      }
+
+      if (isPlainTableEnabled) {
+        serverPropsBuilder.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
+        serverPropsBuilder.put(ROCKSDB_OPTIONS_USE_DIRECT_READS, false); // Required by PlainTable format
       }
 
       // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
