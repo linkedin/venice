@@ -15,7 +15,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -208,7 +207,7 @@ public class KafkaInputDictTrainer {
             KafkaInputUtils.getConsumerProperties(jobConf),
             false,
             new PubSubMessageDeserializer(
-                new OptimizedKafkaValueSerializer(),
+                KafkaInputUtils.getKafkaValueSerializer(jobConf),
                 new LandFillObjectPool<>(KafkaMessageEnvelope::new),
                 new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
             null));

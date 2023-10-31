@@ -299,6 +299,9 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         LOGGER.warn("{} threw an exception while closing.", kafkaConsumer.getClass().getSimpleName(), e);
       }
     }
+    if (pubSubMessageDeserializer != null) {
+      pubSubMessageDeserializer.close();
+    }
   }
 
   @Override
