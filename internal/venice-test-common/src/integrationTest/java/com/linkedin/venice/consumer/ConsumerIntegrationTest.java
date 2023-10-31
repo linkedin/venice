@@ -16,7 +16,6 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -96,12 +95,12 @@ public abstract class ConsumerIntegrationTest {
     NEW_PROTOCOL_SCHEMA.setFields(protocolSchemaFields);
   }
 
-  private VeniceClusterWrapper cluster;
+  VeniceClusterWrapper cluster;
+  String store;
+  int version;
+  AvroGenericStoreClient client;
   private ControllerClient controllerClient;
-  private String store;
-  private int version;
   private String topicName;
-  private AvroGenericStoreClient client;
 
   @BeforeClass
   public void sharedSetUp() {
@@ -158,6 +157,13 @@ public abstract class ConsumerIntegrationTest {
       writeAndVerifyRecord(regularVeniceWriter, client, "value1");
     }
 
+    try (VeniceWriter<String, String, byte[]> veniceWriterWithNewerProtocol =
+        getVeniceWriterWithNewerProtocol(getOverrideProtocolSchema(), topicName)) {
+      writeAndVerifyRecord(veniceWriterWithNewerProtocol, client, "value2");
+    }
+  }
+
+  VeniceWriterWithNewerProtocol getVeniceWriterWithNewerProtocol(Schema overrideProtocolSchema, String topicName) {
     Properties javaProps = new Properties();
     javaProps
         .put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializerWithNewerProtocol.class.getName());
@@ -175,21 +181,14 @@ public abstract class ConsumerIntegrationTest {
         .setTime(time)
         .setPartitioner(partitioner)
         .build();
-
-    try (VeniceWriter<String, String, byte[]> veniceWriterWithNewerProtocol = getVeniceWriter(
+    return new VeniceWriterWithNewerProtocol(
         veniceWriterOptions,
         props,
         new ApacheKafkaProducerWithNewerProtocolAdapter(props),
-        NEW_PROTOCOL_SCHEMA)) {
-      writeAndVerifyRecord(veniceWriterWithNewerProtocol, client, "value2");
-    }
+        overrideProtocolSchema);
   }
 
-  abstract VeniceWriterWithNewerProtocol getVeniceWriter(
-      VeniceWriterOptions veniceWriterOptions,
-      VeniceProperties props,
-      PubSubProducerAdapter producerAdapter,
-      Schema overrideProtocolSchema);
+  abstract Schema getOverrideProtocolSchema();
 
   private void writeAndVerifyRecord(
       VeniceWriter<String, String, byte[]> veniceWriter,

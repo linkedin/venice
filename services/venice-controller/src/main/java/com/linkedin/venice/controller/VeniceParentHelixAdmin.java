@@ -1676,6 +1676,8 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
+    VeniceControllerConfig systemSchemaClusterConfig = multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
 
     if (fabricName.isPresent()) {
       StoreResponse response = controllerClients.get(fabricName.get()).getStore(storeName);
@@ -1686,7 +1688,9 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       return RepushInfo.createRepushInfo(
           response.getStore().getVersion(response.getStore().getCurrentVersion()).get(),
-          response.getStore().getKafkaBrokerUrl());
+          response.getStore().getKafkaBrokerUrl(),
+          systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName),
+          systemSchemaClusterConfig.getChildControllerD2ZkHost(fabricName.get()));
     }
     // fabricName not present, get the largest version info among the child colos.
     Map<String, Integer> currentVersionsMap =
@@ -1707,7 +1711,9 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     return RepushInfo.createRepushInfo(
         response.getStore().getVersion((response.getStore().getCurrentVersion())).get(),
-        response.getStore().getKafkaBrokerUrl());
+        response.getStore().getKafkaBrokerUrl(),
+        systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName),
+        systemSchemaClusterConfig.getChildControllerD2ZkHost(colo));
   }
 
   /**
