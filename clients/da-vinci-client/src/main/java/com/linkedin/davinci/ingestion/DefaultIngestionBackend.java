@@ -91,10 +91,6 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       int partition,
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
-    String topicName = storeConfig.getStoreVersionName();
-    // Delete this replica from meta system store if exists.
-    getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier()
-        .ifPresent(systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier.drop(topicName, partition));
     // Stop consumption of the partition.
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;

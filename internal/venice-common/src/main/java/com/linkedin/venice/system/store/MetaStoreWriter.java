@@ -252,36 +252,6 @@ public class MetaStoreWriter implements Closeable {
   }
 
   /**
-   * This function should be invoked during ingestion when execution status changes.
-   */
-  public void writeStoreReplicaStatus(
-      String clusterName,
-      String storeName,
-      int version,
-      int partitionId,
-      Instance instance,
-      ExecutionStatus executionStatus) {
-    update(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {
-      {
-        put(KEY_STRING_STORE_NAME, storeName);
-        put(KEY_STRING_CLUSTER_NAME, clusterName);
-        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-      }
-    }, () -> {
-      // Construct an update
-      UpdateBuilder updateBuilder = new UpdateBuilderImpl(this.derivedComputeSchema);
-      updateBuilder.setNewFieldValue("timestamp", System.currentTimeMillis());
-      Map<String, StoreReplicaStatus> instanceStatusMap = new HashMap<>();
-      StoreReplicaStatus replicaStatus = new StoreReplicaStatus();
-      replicaStatus.status = executionStatus.getValue();
-      instanceStatusMap.put(instance.getUrl(true), replicaStatus);
-      updateBuilder.setEntriesToAddToMapField("storeReplicaStatuses", instanceStatusMap);
-      return updateBuilder.build();
-    });
-  }
-
-  /**
    * Write {@link com.linkedin.venice.meta.StoreConfig} equivalent to the meta system store. This is still only invoked
    * by child controllers only.
    */
@@ -294,33 +264,6 @@ public class MetaStoreWriter implements Closeable {
       StoreMetaValue value = new StoreMetaValue();
       value.storeClusterConfig = storeConfig.dataModel();
       return value;
-    });
-  }
-
-  /**
-   * This function should be invoked when Venice SN is dropping any partition replica.
-   */
-  public void deleteStoreReplicaStatus(
-      String clusterName,
-      String storeName,
-      int version,
-      int partitionId,
-      Instance instance) {
-    update(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {
-      {
-        put(KEY_STRING_STORE_NAME, storeName);
-        put(KEY_STRING_CLUSTER_NAME, clusterName);
-        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-      }
-    }, () -> {
-      // Construct an update WC record
-      UpdateBuilder updateBuilder = new UpdateBuilderImpl(this.derivedComputeSchema);
-      updateBuilder.setNewFieldValue("timestamp", System.currentTimeMillis());
-      List<String> deletedReplicas = new ArrayList<>();
-      deletedReplicas.add(instance.getUrl(true));
-      updateBuilder.setKeysToRemoveFromMapField("storeReplicaStatuses", deletedReplicas);
-      return updateBuilder.build();
     });
   }
 
