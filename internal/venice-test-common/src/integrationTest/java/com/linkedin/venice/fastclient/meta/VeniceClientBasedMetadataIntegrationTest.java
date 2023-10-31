@@ -16,12 +16,9 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -29,7 +26,6 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
-import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -45,7 +41,6 @@ public class VeniceClientBasedMetadataIntegrationTest {
   protected VeniceClusterWrapper veniceCluster;
   protected VeniceClientBasedMetadata veniceClientBasedMetadata;
 
-  private RecordSerializer<Object> keySerializer;
   private Client r2Client;
   private AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore = null;
 
@@ -91,8 +86,6 @@ public class VeniceClientBasedMetadataIntegrationTest {
                       .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName)))
               .get());
     });
-    keySerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
 
     // Populate required ClientConfig fields for initializing DaVinciClientBasedMetadata
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
@@ -121,8 +114,8 @@ public class VeniceClientBasedMetadataIntegrationTest {
     assertEquals(veniceClientBasedMetadata.getValueSchemaId(latestValueSchema.getSchema()), latestValueSchema.getId());
   }
 
-  @Test(timeOut = TIME_OUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testMetaSystemStoreVersionBump(boolean useThinClientBasedMetadata) {
+  @Test(timeOut = TIME_OUT)
+  public void testMetaSystemStoreVersionBump() {
     // Bump the underlying system store version twice and make sure DaVinciClientBasedMetadata is still subscribed to
     // the correct meta system store version.
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);

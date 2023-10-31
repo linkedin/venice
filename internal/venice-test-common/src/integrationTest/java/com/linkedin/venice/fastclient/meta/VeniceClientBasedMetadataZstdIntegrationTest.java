@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -39,9 +40,4 @@ public class VeniceClientBasedMetadataZstdIntegrationTest extends VeniceClientBa
     assertEquals(current_version.size(), 1, "Unexpected statistic size");
     assertEquals(current_version.get(0), 1.0, "Unexpected version number");
   }
-
-  public void testMetadata() {
-    // Empty implementation to force superclass test not to run. Superclass test versions don't use dictionary.
-  }
-
 }
