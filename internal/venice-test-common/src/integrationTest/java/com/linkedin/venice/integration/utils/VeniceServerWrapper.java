@@ -198,8 +198,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
       boolean isGrpcEnabled = Boolean.parseBoolean(featureProperties.getProperty(ENABLE_GRPC_READ_SERVER, "false"));
       boolean isPlainTableEnabled =
-          Boolean.parseBoolean(configProperties.getProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false"))
-              && Boolean.parseBoolean(featureProperties.getProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false"));
+          Boolean.parseBoolean(featureProperties.getProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false"));
       int numGrpcWorkerThreads = Integer.parseInt(
           featureProperties.getProperty(
               GRPC_SERVER_WORKER_THREAD_COUNT,
@@ -251,8 +250,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(
               PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
               pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory().getClass().getName())
-          .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000)
-          .put(configProperties);
+          .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
@@ -280,6 +278,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         serverPropsBuilder.putIfAbsent(entry.getKey(), entry.getValue());
       }
 
+      // Adds integration test config override at the end.
+      serverPropsBuilder.put(configProperties);
       VeniceProperties serverProps = serverPropsBuilder.build();
 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
