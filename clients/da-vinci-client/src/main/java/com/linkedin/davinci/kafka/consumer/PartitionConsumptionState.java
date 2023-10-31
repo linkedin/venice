@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -440,6 +441,10 @@ public class PartitionConsumptionState {
    */
   public void maybeUpdateExpectedChecksum(byte[] key, Put put) {
     if (this.expectedSSTFileChecksum == null) {
+      return;
+    }
+    // Checksum calculation should skip RMD chunk.
+    if (put.schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion() && put.putValue.remaining() == 0) {
       return;
     }
     this.expectedSSTFileChecksum.update(key);
