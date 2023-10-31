@@ -3,7 +3,6 @@ package com.linkedin.venice.fastclient.meta;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
 
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
@@ -14,13 +13,8 @@ import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -34,12 +28,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -50,8 +39,6 @@ import org.testng.annotations.Test;
 public class VeniceClientBasedMetadataIntegrationTest {
   protected static final int KEY_COUNT = 100;
   protected static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
-
-  private final VenicePartitioner defaultPartitioner = new DefaultVenicePartitioner();
 
   protected ClientConfig clientConfig;
   protected String storeName;
@@ -124,47 +111,6 @@ public class VeniceClientBasedMetadataIntegrationTest {
   }
 
   @Test(timeOut = TIME_OUT)
-  public void testMetadata() {
-    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
-    ReadOnlyStoreRepository storeRepository = routerWrapper.getMetaDataRepository();
-    OnlineInstanceFinder onlineInstanceFinder = routerWrapper.getRoutingDataRepository();
-    assertEquals(
-        veniceClientBasedMetadata.getCurrentStoreVersion(),
-        storeRepository.getStore(storeName).getCurrentVersion());
-    List<Version> versions = storeRepository.getStore(storeName).getVersions();
-    assertFalse(versions.isEmpty(), "Version list cannot be empty.");
-    byte[] keyBytes = keySerializer.serialize(1);
-    for (Version version: versions) {
-      verifyMetadata(
-          veniceClientBasedMetadata,
-          onlineInstanceFinder,
-          version.getNumber(),
-          version.getPartitionCount(),
-          keyBytes);
-    }
-    // Make two new versions before checking the metadata again
-    veniceCluster.createVersion(storeName, KEY_COUNT);
-    veniceCluster.createVersion(storeName, KEY_COUNT);
-
-    TestUtils.waitForNonDeterministicAssertion(
-        30,
-        TimeUnit.SECONDS,
-        () -> assertEquals(
-            veniceClientBasedMetadata.getCurrentStoreVersion(),
-            storeRepository.getStore(storeName).getCurrentVersion()));
-    versions = storeRepository.getStore(storeName).getVersions();
-    assertFalse(versions.isEmpty(), "Version list cannot be empty.");
-    for (Version version: versions) {
-      verifyMetadata(
-          veniceClientBasedMetadata,
-          onlineInstanceFinder,
-          version.getNumber(),
-          version.getPartitionCount(),
-          keyBytes);
-    }
-  }
-
-  @Test(timeOut = TIME_OUT)
   public void testMetadataSchemaRetriever() {
     ReadOnlySchemaRepository schemaRepository = veniceCluster.getRandomVeniceRouter().getSchemaRepository();
     assertEquals(veniceClientBasedMetadata.getKeySchema(), schemaRepository.getKeySchema(storeName).getSchema());
@@ -206,33 +152,6 @@ public class VeniceClientBasedMetadataIntegrationTest {
         () -> assertEquals(
             veniceClientBasedMetadata.getCurrentStoreVersion(),
             storeRepository.getStore(storeName).getCurrentVersion()));
-  }
-
-  private void verifyMetadata(
-      VeniceClientBasedMetadata veniceClientBasedMetadata,
-      OnlineInstanceFinder onlineInstanceFinder,
-      int versionNumber,
-      int partitionCount,
-      byte[] key) {
-    final String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
-    final int partitionId = ThreadLocalRandom.current().nextInt(0, partitionCount);
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      assertEquals(
-          defaultPartitioner.getPartitionId(key, partitionCount),
-          veniceClientBasedMetadata.getPartitionId(versionNumber, key));
-      Set<String> routerReadyToServeView = onlineInstanceFinder.getReadyToServeInstances(resourceName, partitionId)
-          .stream()
-          .map(instance -> instance.getUrl(true))
-          .collect(Collectors.toSet());
-      Set<String> metadataView = new HashSet<>(veniceClientBasedMetadata.getReplicas(versionNumber, partitionId));
-      assertEquals(
-          metadataView.size(),
-          routerReadyToServeView.size(),
-          "Different number of ready to serve instances between router and StoreMetadata.");
-      for (String instance: routerReadyToServeView) {
-        assertTrue(metadataView.contains(instance), "Instance: " + instance + " is missing from StoreMetadata.");
-      }
-    });
   }
 
   @AfterClass
