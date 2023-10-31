@@ -198,7 +198,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
       boolean isGrpcEnabled = Boolean.parseBoolean(featureProperties.getProperty(ENABLE_GRPC_READ_SERVER, "false"));
       boolean isPlainTableEnabled =
-          Boolean.parseBoolean(featureProperties.getProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false"));
+          Boolean.parseBoolean(configProperties.getProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false"))
+              && Boolean.parseBoolean(featureProperties.getProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false"));
       int numGrpcWorkerThreads = Integer.parseInt(
           featureProperties.getProperty(
               GRPC_SERVER_WORKER_THREAD_COUNT,
