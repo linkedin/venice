@@ -113,6 +113,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -190,6 +191,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * or re-subscribing the partition.
    */
   private final List<PartitionExceptionInfo> partitionIngestionExceptionList = new SparseConcurrentList<>();
+  /**
+   * Do not remove partition from this set unless Helix explicitly sends an unsubscribe action for the partition to
+   * remove it from the node, or Helix sends a subscribe action for the partition to re-subscribe it to the node.
+   */
+  private final Set<Integer> failedPartitions = new ConcurrentSkipListSet<>();
 
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
   private Exception lastConsumerException = null;
@@ -508,12 +514,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  public synchronized void subscribePartition(
+      PubSubTopicPartition topicPartition,
+      Optional<LeaderFollowerStateType> leaderState) {
+    subscribePartition(topicPartition, leaderState, true);
+  }
+
   /**
    * Adds an asynchronous partition subscription request for the task.
    */
   public synchronized void subscribePartition(
       PubSubTopicPartition topicPartition,
-      Optional<LeaderFollowerStateType> leaderState) {
+      Optional<LeaderFollowerStateType> leaderState,
+      boolean isHelixTriggeredAction) {
     throwIfNotRunning();
     statusReportAdapter.initializePartitionReportStatus(topicPartition.getPartitionNumber());
     amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
@@ -524,14 +537,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               SUBSCRIBE,
               new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
               nextSeqNum(),
-              amplificationFactorAdapter.isLeaderSubPartition(subPartition) ? leaderState : Optional.empty()));
+              amplificationFactorAdapter.isLeaderSubPartition(subPartition) ? leaderState : Optional.empty(),
+              isHelixTriggeredAction));
     });
+  }
+
+  public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
+    return unSubscribePartition(topicPartition, true);
   }
 
   /**
    * Adds an asynchronous partition unsubscription request for the task.
    */
-  public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
+  public synchronized CompletableFuture<Void> unSubscribePartition(
+      PubSubTopicPartition topicPartition,
+      boolean isHelixTriggeredAction) {
     throwIfNotRunning();
     List<CompletableFuture<Void>> futures = new ArrayList<>();
     amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
@@ -540,7 +560,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ConsumerAction consumerAction = new ConsumerAction(
           UNSUBSCRIBE,
           new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-          nextSeqNum());
+          nextSeqNum(),
+          isHelixTriggeredAction);
 
       consumerActionsQueue.add(consumerAction);
       futures.add(consumerAction.getFuture());
@@ -565,7 +586,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new ConsumerAction(
               RESET_OFFSET,
               new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-              nextSeqNum()));
+              nextSeqNum(),
+              false));
     });
   }
 
@@ -1101,6 +1123,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return this.partitionIngestionExceptionList;
   }
 
+  // For testing purpose
+  Set<Integer> getFailedPartitions() {
+    return this.failedPartitions;
+  }
+
   private void processIngestionException() {
     partitionIngestionExceptionList.forEach(partitionExceptionInfo -> {
       int exceptionPartition = partitionExceptionInfo.getPartitionId();
@@ -1140,7 +1167,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               pubSubTopicPartition.getPartitionNumber());
           runnableForKillIngestionTasksForNonCurrentVersions.run();
           if (storageEngine.hasMemorySpaceLeft()) {
-            unSubscribePartition(pubSubTopicPartition);
+            unSubscribePartition(pubSubTopicPartition, false);
             /**
              * DaVinci ingestion hits memory limit and we would like to retry it in the following way:
              * 1. Kill the ingestion tasks for non-current versions.
@@ -1155,7 +1182,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 exceptionPartition);
             storageEngine.reopenStoragePartition(exceptionPartition);
             // DaVinci is always a follower.
-            subscribePartition(pubSubTopicPartition, Optional.empty());
+            subscribePartition(pubSubTopicPartition, Optional.empty(), false);
           }
         } else {
           if (!partitionConsumptionState.isCompletionReported()) {
@@ -1171,7 +1198,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
           // Unsubscribe the partition to avoid more damages.
           if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
-            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, exceptionPartition));
+            // This is not an unsubscribe action from Helix
+            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, exceptionPartition), false);
           }
         }
       }
@@ -1657,16 +1685,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected void processCommonConsumerAction(
-      ConsumerActionType operation,
-      PubSubTopicPartition topicPartition,
-      LeaderFollowerStateType leaderState) throws InterruptedException {
+  protected void processCommonConsumerAction(ConsumerAction consumerAction) throws InterruptedException {
+    PubSubTopicPartition topicPartition = consumerAction.getTopicPartition();
+    LeaderFollowerStateType leaderState = consumerAction.getLeaderState();
     int partition = topicPartition.getPartitionNumber();
     String topic = topicPartition.getPubSubTopic().getName();
+    ConsumerActionType operation = consumerAction.getType();
     switch (operation) {
       case SUBSCRIBE:
         // Clear the error partition tracking
         partitionIngestionExceptionList.set(partition, null);
+        // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
+        // to start or retry the ingestion.
+        failedPartitions.remove(partition);
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
@@ -1778,6 +1809,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           LOGGER.info("{} Unsubscribed to: {}", consumerTaskId, topicPartition);
         }
+        // Only remove the partition from the maintained set if it's triggered by Helix.
+        // Otherwise, keep it in the set since it is used for alerts; alerts should be sent out if unsubscription
+        // happens due to internal errors.
+        if (consumerAction.isHelixTriggeredAction()) {
+          failedPartitions.remove(partition);
+        }
         break;
       case RESET_OFFSET:
         resetOffset(partition, topicPartition, false);
@@ -1828,6 +1865,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       storageUtilizationManager.initPartition(partition);
       // Reset the error partition tracking
       partitionIngestionExceptionList.set(partition, null);
+      failedPartitions.remove(partition);
     } else {
       LOGGER.info(
           "{} No need to reset offset by Kafka consumer, since the consumer is not subscribing: {}",
@@ -1916,6 +1954,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
     return false;
+  }
+
+  public int getFailedIngestionPartitionCount() {
+    return failedPartitions.size();
   }
 
   /**
@@ -2257,6 +2299,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       replicaCompleted = true;
     }
     partitionIngestionExceptionList.set(partitionId, new PartitionExceptionInfo(e, partitionId, replicaCompleted));
+    failedPartitions.add(partitionId);
   }
 
   public void setLastConsumerException(Exception e) {

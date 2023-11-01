@@ -316,7 +316,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               STANDBY_TO_LEADER,
               new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
               nextSeqNum(),
-              checker));
+              checker,
+              true));
     });
   }
 
@@ -333,7 +334,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               LEADER_TO_STANDBY,
               new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
               nextSeqNum(),
-              checker));
+              checker,
+              true));
     });
   }
 
@@ -461,7 +463,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         endSegment(partition);
         break;
       default:
-        processCommonConsumerAction(operation, message.getTopicPartition(), message.getLeaderState());
+        processCommonConsumerAction(message);
     }
   }
 
