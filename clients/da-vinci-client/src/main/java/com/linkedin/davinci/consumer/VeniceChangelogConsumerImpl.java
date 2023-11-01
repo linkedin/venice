@@ -205,6 +205,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
 
         for (PubSubTopicPartition topicPartition: topicPartitionList) {
+          // TODO: we do this because we don't populate the compressor into the change capture view topic, so we
+          // take this opportunity to populate it. This could be worth revisiting by either populating the compressor
+          // into view topics and consuming, or, expanding the interface to this function to have a compressor provider
+          // (and thereby let other view implementations figure out what would be right).
           if (!topicPartition.getPubSubTopic().getName().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
             compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
           }
@@ -317,9 +321,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
+    return internalSeekToTail(partitions, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+  }
+
+  public CompletableFuture<Void> internalSeekToTail(Set<Integer> partitions, String topicSuffix) {
     // Get the latest change capture topic
-    PubSubTopic topic =
-        pubSubTopicRepository.getTopic(getCurrentServingVersionTopic() + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+    PubSubTopic topic = pubSubTopicRepository.getTopic(getCurrentServingVersionTopic() + topicSuffix);
     return internalSeek(partitions, topic, p -> {
       Long partitionEndOffset = pubSubConsumer.endOffset(p);
       pubSubConsumerSeek(p, partitionEndOffset);
@@ -377,12 +384,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
+    return internalSeekToTimestamps(timestamps, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+  }
+
+  public CompletableFuture<Void> internalSeekToTimestamps(Map<Integer, Long> timestamps, String topicSuffix) {
     // Get the latest change capture topic
     storeRepository.refresh();
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
-    String topicName =
-        Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    String topicName = Version.composeKafkaTopic(storeName, currentVersion) + topicSuffix;
     PubSubTopic topic = pubSubTopicRepository.getTopic(topicName);
     Map<PubSubTopicPartition, Long> topicPartitionLongMap = new HashMap<>();
     for (Map.Entry<Integer, Long> timestampPair: timestamps.entrySet()) {
@@ -532,25 +542,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           Version.parseVersionFromKafkaTopicName(pubSubTopicPartition.getPubSubTopic().getName()),
           storeName);
       // Jump to next topic
-      // TODO: Today we don't publish the version swap message to the version topic. This necessitates relying on the
-      // change capture topic in order to navigate version pushes. We should pass the topicSuffix argument here once
-      // that
-      // support lands.
-      switchToNewTopic(
-          pubSubTopicPartition.getPubSubTopic(),
-          ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX,
-          pubSubTopicPartition.getPartitionNumber());
+      switchToNewTopic(pubSubTopicPartition.getPubSubTopic(), topicSuffix, pubSubTopicPartition.getPartitionNumber());
       return true;
     }
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      // TODO: Today we don't publish the version swap message to the version topic. This necessitates relying on the
-      // change capture topic in order to navigate version pushes. We should pass the topicSuffix argument here once
-      // that
-      // support lands.
-      return handleVersionSwapControlMessage(
-          controlMessage,
-          pubSubTopicPartition,
-          ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+      return handleVersionSwapControlMessage(controlMessage, pubSubTopicPartition, topicSuffix);
     }
     return false;
   }
