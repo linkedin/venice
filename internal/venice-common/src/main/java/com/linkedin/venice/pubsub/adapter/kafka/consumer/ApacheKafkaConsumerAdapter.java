@@ -14,6 +14,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -98,22 +99,46 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     }
   }
 
+  /**
+   * Subscribe to a topic-partition if not already subscribed. If the topic-partition is already subscribed, this
+   * method is a no-op. This method requires the topic-partition to exist.
+   * @param pubSubTopicPartition the topic-partition to subscribe to
+   * @param lastReadOffset the last read offset for the topic-partition
+   * @throws IllegalArgumentException if the topic-partition is null or the partition number is negative
+   * @throws PubSubTopicDoesNotExistException if the topic does not exist
+   */
   @Override
   public void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
     String topic = pubSubTopicPartition.getPubSubTopic().getName();
     int partition = pubSubTopicPartition.getPartitionNumber();
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
-    if (!topicPartitionSet.contains(topicPartition)) {
-      List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
-      topicPartitionList.add(topicPartition);
-      kafkaConsumer.assign(topicPartitionList);
-      seekNextOffset(topicPartition, lastReadOffset);
-      assignments.put(topicPartition, pubSubTopicPartition);
-      LOGGER.info("Subscribed to Topic: {} Partition: {} Offset: {}", topic, partition, lastReadOffset);
-    } else {
+    if (topicPartitionSet.contains(topicPartition)) {
       LOGGER
           .warn("Already subscribed on Topic: {} Partition: {}, ignore the request of subscription.", topic, partition);
+    }
+
+    validateTopicPartition(pubSubTopicPartition);
+    List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
+    topicPartitionList.add(topicPartition);
+    kafkaConsumer.assign(topicPartitionList);
+    seekNextOffset(topicPartition, lastReadOffset);
+    assignments.put(topicPartition, pubSubTopicPartition);
+    LOGGER.info("Subscribed to Topic: {} Partition: {} Offset: {}", topic, partition, lastReadOffset);
+  }
+
+  private void validateTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
+    if (pubSubTopicPartition == null) {
+      throw new IllegalArgumentException("PubSubTopicPartition cannot be null");
+    }
+    if (pubSubTopicPartition.getPartitionNumber() < 0) {
+      throw new IllegalArgumentException("Partition number cannot be negative");
+    }
+
+    List<PubSubTopicPartitionInfo> topicPartitionInfos = partitionsFor(pubSubTopicPartition.getPubSubTopic());
+    if (topicPartitionInfos == null || topicPartitionInfos.isEmpty()
+        || topicPartitionInfos.size() <= pubSubTopicPartition.getPartitionNumber()) {
+      throw new PubSubTopicDoesNotExistException("Topic " + pubSubTopicPartition.getPubSubTopic() + " does not exist");
     }
   }
 
@@ -413,6 +438,13 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     }
   }
 
+  /**
+   * Retrieves the list of partitions associated with a given Pub-Sub topic.
+   *
+   * @param topic The Pub-Sub topic for which partition information is requested.
+   * @return A list of {@link PubSubTopicPartitionInfo} representing the partitions of the topic,
+   *         or {@code null} if the topic does not exist.
+   */
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     List<PartitionInfo> partitionInfos = this.kafkaConsumer.partitionsFor(topic.getName());

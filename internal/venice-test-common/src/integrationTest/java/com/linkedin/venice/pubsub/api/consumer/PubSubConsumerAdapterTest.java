@@ -25,6 +25,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.utils.PubSubHelper;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -518,13 +519,116 @@ public class PubSubConsumerAdapterTest {
     assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "OffsetForTime should not block");
   }
 
-  // Test: Subscribe to non-existent topic should throw PubSubOpTimeoutException
+  // Test: Subscribe to non-existent topic should throw PubSubTopicDoesNotExistException
   @Test
   public void testSubscribeForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
 
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
-    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.subscribe(partition, 0));
+    long startTime = System.currentTimeMillis();
+    assertThrows(PubSubTopicDoesNotExistException.class, () -> pubSubConsumerAdapter.subscribe(partition, 0));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout; add variance of 3 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
+        "Timeout should be less than the default timeout");
+  }
+
+  // Test: Subscribe to an existing topic with a non-existent partition should throw PubSubTopicDoesNotExistException
+  @Test
+  public void testSubscribeForExistingTopicWithNonExistentPartition() {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    int numPartitions = 1;
+
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+    assertEquals(
+        pubSubConsumerAdapter.partitionsFor(existingPubSubTopic).size(),
+        1,
+        "Topic should have only 1 partition");
+
+    PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 2);
+    long startTime = System.currentTimeMillis();
+    assertThrows(PubSubTopicDoesNotExistException.class, () -> pubSubConsumerAdapter.subscribe(invalidPartition, 0));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout; add variance of 3 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
+        "Timeout should be less than the default timeout");
+  }
+
+  // Test: Subscribe to an existing topic with an existing partition should not take longer than the default timeout
+  @Test
+  public void testSubscribeForExistingTopicWithExistingPartition() {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    int numPartitions = 1;
+
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+    assertEquals(
+        pubSubConsumerAdapter.partitionsFor(existingPubSubTopic).size(),
+        1,
+        "Topic should have only 1 partition");
+
+    long startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.subscribe(partition, 0);
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout; add variance of 3 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
+        "Timeout should be less than the default timeout");
+
+    // re-subscribe to the same topic and partition; this should not take longer than the default timeout
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.subscribe(partition, 0);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout; add variance of 3 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
+        "Timeout should be less than the default timeout");
+  }
+
+  // Test: Unsubscribe to an existing topic and a non-existent topic should not take longer than the default timeout
+  @Test
+  public void testUnsubscribeForExistingAndNonExistentTopic() {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
+
+    int numPartitions = 1;
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+    assertEquals(
+        pubSubConsumerAdapter.partitionsFor(existingPubSubTopic).size(),
+        1,
+        "Topic should have only 1 partition");
+
+    // subscribe to an existing topic and partition
+    pubSubConsumerAdapter.subscribe(partition, 0);
+
+    // unsubscribe from an existing topic and partition
+    long startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.unSubscribe(partition);
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout; add variance of 3 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
+        "Timeout should be less than the default timeout");
+
+    // unsubscribe from a non-existent topic and partition
+    PubSubTopicPartition nonExistentPartition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.unSubscribe(nonExistentPartition);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout; add variance of 3 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
+        "Timeout should be less than the default timeout");
   }
 }
