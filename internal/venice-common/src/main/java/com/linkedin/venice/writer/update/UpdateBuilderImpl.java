@@ -20,6 +20,7 @@ import org.apache.commons.lang3.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+
 @NotThreadsafe
 @Experimental
 public class UpdateBuilderImpl implements UpdateBuilder {
@@ -29,7 +30,6 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   private final Set<String> collectionMergeFieldNameSet;
 
   private static final Logger LOGGER = LogManager.getLogger(UpdateBuilderImpl.class);
-
 
   /**
    * @param updateSchema Update schema that is derived from the value Record schema.
@@ -136,11 +136,11 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     try {
       serializer.serialize(updateRecord);
     } catch (UnresolvedUnionException serializationException) {
-        Object unresolvedDatum = serializationException.getUnresolvedDatum();
-        LOGGER.error("Unresolved datum encountered: {}", unresolvedDatum, serializationException);
-        return serializationException;
+      Object unresolvedDatum = serializationException.getUnresolvedDatum();
+      LOGGER.error("Unresolved datum encountered: {}", unresolvedDatum, serializationException);
+      return serializationException;
     } catch (Exception serializationException) {
-        return serializationException;
+      return serializationException;
     }
     return null;
   }
