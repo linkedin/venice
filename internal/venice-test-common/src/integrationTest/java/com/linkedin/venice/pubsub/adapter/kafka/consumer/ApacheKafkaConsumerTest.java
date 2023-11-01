@@ -1,7 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
-import static org.mockito.Mockito.mock;
-
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -10,12 +9,11 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -23,19 +21,19 @@ import org.testng.annotations.Test;
 
 
 public class ApacheKafkaConsumerTest {
-  ApacheKafkaConsumerAdapter consumer;
-  PubSubBrokerWrapper kafkaBroker;
-
+  private ApacheKafkaConsumerAdapter consumer;
+  private PubSubBrokerWrapper kafkaBroker;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod
   public void setUp() {
     kafkaBroker = ServiceFactory.getPubSubBroker();
     Properties properties = new Properties();
-    properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    properties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBroker.getAddress());
-    consumer = new ApacheKafkaConsumerAdapter(properties, false, mock(PubSubMessageDeserializer.class));
+    properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBroker.getAddress());
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
+        new ApacheKafkaConsumerConfig(new VeniceProperties(properties), "testConsumer");
+    consumer =
+        new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, PubSubMessageDeserializer.getInstance(), false);
   }
 
   @AfterMethod

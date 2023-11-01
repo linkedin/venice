@@ -51,10 +51,6 @@ public class ConfigKeys {
   public static final String KAFKA_FETCH_MAX_WAIT_MS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
   public static final String KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG =
       ApacheKafkaConsumerConfig.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
-  public static final String KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG =
-      ApacheKafkaConsumerConfig.KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG;
-  public static final String KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG =
-      ApacheKafkaConsumerConfig.KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
 
   public static final String KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC =
       "kafka.admin.get.topic.config.max.retry.sec";

@@ -15,7 +15,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -24,7 +23,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -42,63 +41,43 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is not thread safe because of the internal {@link KafkaConsumer} being used.
- * backoff
+ * This class is not thread safe because of the internal {@link KafkaConsumer} is not thread safe.
+ * It is the responsibility of the caller to ensure that the methods are called in a thread safe manner.
  */
 @NotThreadsafe
 public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumerAdapter.class);
 
-  public static final String CONSUMER_POLL_RETRY_TIMES_CONFIG = "consumer.poll.retry.times";
-  public static final String CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG = "consumer.poll.retry.backoff.ms";
-  private static final int CONSUMER_POLL_RETRY_TIMES_DEFAULT = 3;
-  private static final int CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT = 0;
-
-  private final int consumerPollRetryTimes;
-  private final int consumerPollRetryBackoffMs;
-
   private final Consumer<byte[], byte[]> kafkaConsumer;
   private final TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
   private final Map<TopicPartition, PubSubTopicPartition> assignments = new HashMap<>();
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
+  private final ApacheKafkaConsumerConfig config;
 
-  public ApacheKafkaConsumerAdapter(
-      Properties props,
-      boolean isKafkaConsumerOffsetCollectionEnabled,
-      PubSubMessageDeserializer pubSubMessageDeserializer) {
+  ApacheKafkaConsumerAdapter(
+      ApacheKafkaConsumerConfig config,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      boolean isKafkaConsumerOffsetCollectionEnabled) {
     this(
-        new KafkaConsumer<>(props),
-        new VeniceProperties(props),
-        isKafkaConsumerOffsetCollectionEnabled,
-        pubSubMessageDeserializer);
-  }
-
-  public ApacheKafkaConsumerAdapter(
-      Consumer<byte[], byte[]> consumer,
-      VeniceProperties props,
-      boolean isKafkaConsumerOffsetCollectionEnabled,
-      PubSubMessageDeserializer pubSubMessageDeserializer) {
-    this(
-        consumer,
-        props,
+        new KafkaConsumer<>(config.getConsumerProperties()),
+        config,
         pubSubMessageDeserializer,
         isKafkaConsumerOffsetCollectionEnabled ? new TopicPartitionsOffsetsTracker() : null);
   }
 
-  protected ApacheKafkaConsumerAdapter(
+  ApacheKafkaConsumerAdapter(
       Consumer<byte[], byte[]> consumer,
-      VeniceProperties props,
+      ApacheKafkaConsumerConfig apacheKafkaConsumerConfig,
       PubSubMessageDeserializer pubSubMessageDeserializer,
       TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker) {
-    this.kafkaConsumer = consumer;
-    this.consumerPollRetryTimes = props.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
-    this.consumerPollRetryBackoffMs =
-        props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
+    this.kafkaConsumer = Objects.requireNonNull(consumer, "Kafka consumer cannot be null");
+    this.config = Objects.requireNonNull(apacheKafkaConsumerConfig, "ApacheKafkaConsumerConfig cannot be null");
     this.topicPartitionsOffsetsTracker = topicPartitionsOffsetsTracker;
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
-    LOGGER.info("Consumer poll retry times: {}", this.consumerPollRetryTimes);
-    LOGGER.info("Consumer poll retry back off in ms: {}", this.consumerPollRetryBackoffMs);
-    LOGGER.info("Consumer offset collection enabled: {}", topicPartitionsOffsetsTracker != null);
+    LOGGER.info(
+        "Created ApacheKafkaConsumerAdapter with config: {} - isMetricsBasedOffsetCachingEnabled: {}",
+        apacheKafkaConsumerConfig,
+        topicPartitionsOffsetsTracker != null);
   }
 
   private void seekNextOffset(TopicPartition topicPartition, long lastReadOffset) {
@@ -197,7 +176,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages =
         new HashMap<>();
-    while (attemptCount <= consumerPollRetryTimes && !Thread.currentThread().isInterrupted()) {
+    while (attemptCount <= config.getConsumerPollRetryTimes() && !Thread.currentThread().isInterrupted()) {
       try {
         records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
         for (TopicPartition topicPartition: records.partitions()) {
@@ -217,14 +196,14 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         LOGGER.warn(
             "Retriable exception thrown when attempting to consume records from kafka, attempt {}/{}",
             attemptCount,
-            consumerPollRetryTimes,
+            config.getConsumerPollRetryTimes(),
             e);
-        if (attemptCount == consumerPollRetryTimes) {
+        if (attemptCount == config.getConsumerPollRetryTimes()) {
           throw e;
         }
         try {
-          if (consumerPollRetryBackoffMs > 0) {
-            Thread.sleep(consumerPollRetryBackoffMs);
+          if (config.getConsumerPollRetryBackoffMs() > 0) {
+            Thread.sleep(config.getConsumerPollRetryBackoffMs());
           }
         } catch (InterruptedException ie) {
           Thread.currentThread().interrupt();
@@ -318,20 +297,34 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getEndOffset(topic, partition) : -1;
   }
 
+  /**
+   * @return get the offset of the first message with timestamp greater than or equal to the target timestamp.
+   *          {@code null} will be returned for the partition if there is no such message.
+   */
   @Override
   public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    TopicPartition topicPartition =
-        new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
-    Map<TopicPartition, OffsetAndTimestamp> topicPartitionOffsetMap =
-        this.kafkaConsumer.offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), timeout);
-    if (topicPartitionOffsetMap.isEmpty()) {
-      return -1L;
+    try {
+      TopicPartition topicPartition =
+          new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber());
+      Map<TopicPartition, OffsetAndTimestamp> topicPartitionOffsetMap =
+          this.kafkaConsumer.offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), timeout);
+      if (topicPartitionOffsetMap.isEmpty()) {
+        return -1L;
+      }
+      OffsetAndTimestamp offsetAndTimestamp = topicPartitionOffsetMap.get(topicPartition);
+      if (offsetAndTimestamp == null) {
+        return null;
+      }
+      return offsetAndTimestamp.offset();
+    } catch (TimeoutException e) {
+      throw new PubSubOpTimeoutException(
+          "Timed out while getting offset for time: " + timestamp + " for: " + pubSubTopicPartition,
+          e);
+    } catch (Exception e) {
+      throw new PubSubClientException(
+          "Failed to fetch offset for time: " + timestamp + " for: " + pubSubTopicPartition,
+          e);
     }
-    OffsetAndTimestamp offsetAndTimestamp = topicPartitionOffsetMap.get(topicPartition);
-    if (offsetAndTimestamp == null) {
-      return null;
-    }
-    return offsetAndTimestamp.offset();
   }
 
   @Override

@@ -5,7 +5,6 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 
 
 public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterFactory<PubSubConsumerAdapter> {
@@ -19,10 +18,9 @@ public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterF
       String consumerName) {
     ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(veniceProperties, consumerName);
     return new ApacheKafkaConsumerAdapter(
-        new KafkaConsumer<>(apacheKafkaConsumerConfig.getConsumerProperties()),
-        veniceProperties,
-        isKafkaConsumerOffsetCollectionEnabled,
-        pubSubMessageDeserializer);
+        apacheKafkaConsumerConfig,
+        pubSubMessageDeserializer,
+        isKafkaConsumerOffsetCollectionEnabled);
   }
 
   @Override

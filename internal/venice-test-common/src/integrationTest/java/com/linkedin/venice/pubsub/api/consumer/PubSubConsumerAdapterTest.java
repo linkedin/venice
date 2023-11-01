@@ -446,14 +446,14 @@ public class PubSubConsumerAdapterTest {
     assertNotNull(offset, "Offset should not be null for an existing topic with messages");
     assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
 
-    // check one month before the first message timestamp
+    // check one month before the first message timestamp; this should return the first offset
     long oneMonthBeforeFirstMessageTimestamp = timestamps.get(0) - Duration.ofDays(30).toMillis();
     offset = pubSubConsumerAdapter
         .offsetForTime(partitionWitMessages, oneMonthBeforeFirstMessageTimestamp, PUBSUB_OP_TIMEOUT);
     assertNotNull(offset, "Offset should not be null for an existing topic with messages");
     assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
 
-    // check for a timestamp that is after the last message
+    // check for a timestamp that is after the last message; this should return null
     long currentTimestamp = System.currentTimeMillis();
     assertTrue(
         currentTimestamp > timestamps.get(numMessages - 1),
@@ -461,10 +461,24 @@ public class PubSubConsumerAdapterTest {
     offset = pubSubConsumerAdapter.offsetForTime(partitionWitMessages, currentTimestamp, PUBSUB_OP_TIMEOUT);
     assertNull(offset, "Offset should be null for an existing topic with out of range timestamp");
 
-    // check one month from the last message timestamp
+    // check one month from the last message timestamp; this should return null
     long oneMonthFromLastMessageTimestamp = timestamps.get(numMessages - 1) + Duration.ofDays(30).toMillis();
     offset =
         pubSubConsumerAdapter.offsetForTime(partitionWitMessages, oneMonthFromLastMessageTimestamp, PUBSUB_OP_TIMEOUT);
     assertNull(offset, "Offset should be null for an existing topic with out of range timestamp");
+  }
+
+  // Test: When offsetForTime (without explicit timeout) is called on a non-existent topic,
+  // it should throw PubSubOpTimeoutException
+  @Test
+  public void testOffsetForTimeWithoutExplicitTimeoutForNonExistentTopic() {
+    PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
+
+    assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
+    long startTime = System.currentTimeMillis();
+    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.offsetForTime(partition, 0));
+    long endTime = System.currentTimeMillis();
+    assertTrue(endTime - startTime >= PUBSUB_OP_TIMEOUT.toMillis(), "Operation should have timed out");
   }
 }
