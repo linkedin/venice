@@ -98,7 +98,7 @@ public abstract class DataWriterComputeJob implements ComputeJob {
     LOGGER.warn("Data writer compute job needs additional configs to be configured.");
   }
 
-  public abstract PushJobSetting getPushJobSetting();
+  protected abstract PushJobSetting getPushJobSetting();
 
   public abstract void configure(VeniceProperties props, PushJobSetting pushJobSetting);
 

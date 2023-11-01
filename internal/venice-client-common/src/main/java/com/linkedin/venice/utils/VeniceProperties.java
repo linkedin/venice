@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -19,7 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 
-public class VeniceProperties {
+public class VeniceProperties implements Serializable {
+  private static final long serialVersionUID = 1L;
   private static final VeniceProperties EMPTY = new VeniceProperties();
 
   private final Map<String, String> props;

@@ -124,9 +124,6 @@ public class DataWriterMRJob extends DataWriterComputeJob {
         pushJobSetting);
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(pushJobSetting.batchNumBytes));
     conf.set(TOPIC_PROP, pushJobSetting.topic);
-    // We need the two configs with bootstrap servers since VeniceWriterFactory requires kafka.bootstrap.servers while
-    // the Kafka consumer requires bootstrap.servers.
-    conf.set(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaUrl);
     conf.set(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaUrl);
     conf.set(PARTITIONER_CLASS, pushJobSetting.partitionerClass);
     // flatten partitionerParams since JobConf class does not support set an object

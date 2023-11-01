@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop.mapreduce.common;
 
-import static com.linkedin.venice.hadoop.InputDataInfoProvider.LOGGER;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -21,9 +20,13 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public final class JobUtils {
+  private static final Logger LOGGER = LogManager.getLogger(JobUtils.class);
+
   private JobUtils() {
   }
 

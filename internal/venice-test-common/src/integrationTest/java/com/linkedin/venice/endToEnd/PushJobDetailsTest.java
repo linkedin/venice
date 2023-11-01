@@ -3,7 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.START_MAP_REDUCE_JOB;
+import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.START_DATA_WRITER_JOB;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
@@ -256,7 +256,7 @@ public class PushJobDetailsTest {
       PushJobDetails value = client.get(key).get();
       assertEquals(
           value.pushJobLatestCheckpoint.intValue(),
-          START_MAP_REDUCE_JOB.getValue(),
+          START_DATA_WRITER_JOB.getValue(),
           "Unexpected latest push job checkpoint reported");
       assertFalse(value.failureDetails.toString().isEmpty());
     }

@@ -10,11 +10,11 @@ import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProv
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.utils.IteratorUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.io.IOException;
 import java.util.Iterator;
-import java.util.function.Function;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.JobClient;
@@ -67,7 +67,10 @@ public class VeniceReducer extends AbstractPartitionWriter
     } else {
       dataWriterTaskTracker = getDataWriterTaskTracker();
     }
-    processValuesForKey(key.copyBytes(), mapIterator(values, BytesWritable::copyBytes), dataWriterTaskTracker);
+    processValuesForKey(
+        key.copyBytes(),
+        IteratorUtils.mapIterator(values, BytesWritable::copyBytes),
+        dataWriterTaskTracker);
   }
 
   private boolean updatePreviousReporter(Reporter reporter) {
@@ -170,19 +173,5 @@ public class VeniceReducer extends AbstractPartitionWriter
   // Visible for testing
   protected void setHadoopJobClientProvider(HadoopJobClientProvider hadoopJobClientProvider) {
     this.hadoopJobClientProvider = hadoopJobClientProvider;
-  }
-
-  private <T, O> Iterator<O> mapIterator(Iterator<T> iterator, Function<T, O> mapper) {
-    return new Iterator<O>() {
-      @Override
-      public boolean hasNext() {
-        return iterator.hasNext();
-      }
-
-      @Override
-      public O next() {
-        return mapper.apply(iterator.next());
-      }
-    };
   }
 }

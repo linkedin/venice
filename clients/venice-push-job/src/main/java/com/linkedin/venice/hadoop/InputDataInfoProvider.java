@@ -16,7 +16,6 @@ public interface InputDataInfoProvider extends Closeable {
   /**
    * A POJO that contains input data information (schema information and input data file size)
    */
-  Logger LOGGER = LogManager.getLogger(InputDataInfoProvider.class);
 
   class InputDataInfo {
     private long inputFileDataSizeInBytes;
@@ -24,11 +23,15 @@ public interface InputDataInfoProvider extends Closeable {
     private final boolean hasRecords;
     private final long inputModificationTime;
 
-    InputDataInfo(long inputFileDataSizeInBytes, int numInputFiles, boolean hasRecords, long inputModificationTime) {
+    public InputDataInfo(
+        long inputFileDataSizeInBytes,
+        int numInputFiles,
+        boolean hasRecords,
+        long inputModificationTime) {
       this(inputFileDataSizeInBytes, numInputFiles, hasRecords, inputModificationTime, true);
     }
 
-    InputDataInfo(
+    public InputDataInfo(
         long inputFileDataSizeInBytes,
         int numInputFiles,
         boolean hasRecords,
@@ -78,6 +81,9 @@ public interface InputDataInfoProvider extends Closeable {
    * @param recordIterator The data accessor of input records.
    */
   static void loadZstdTrainingSamples(VeniceRecordIterator recordIterator, PushJobZstdConfig pushJobZstdConfig) {
+    // It's preferable to make this as "private static final" in the class-level, but it's not possible due to
+    // "InputDataInfoProvider" being an interface.
+    final Logger logger = LogManager.getLogger(InputDataInfo.class);
     int fileSampleSize = 0;
     while (recordIterator.next()) {
       if (recordIterator.getCurrentKey() == null) {
@@ -93,7 +99,7 @@ public interface InputDataInfoProvider extends Closeable {
       // At least 1 sample per file should be added until the max sample size is reached
       if (fileSampleSize > 0) {
         if (fileSampleSize + value.length > pushJobZstdConfig.getMaxBytesPerFile()) {
-          LOGGER.debug(
+          logger.debug(
               "Read {} to build dictionary. Reached limit per file of {}.",
               ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
               ByteUtils.generateHumanReadableByteCountString(pushJobZstdConfig.getMaxBytesPerFile()));
@@ -103,7 +109,7 @@ public interface InputDataInfoProvider extends Closeable {
 
       // addSample returns false when the data read no longer fits in the 'sample' buffer limit
       if (!pushJobZstdConfig.getZstdDictTrainer().addSample(value)) {
-        LOGGER.debug(
+        logger.debug(
             "Read {} to build dictionary. Reached sample limit of {}.",
             ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
             ByteUtils.generateHumanReadableByteCountString(pushJobZstdConfig.getMaxSampleSize()));
@@ -114,7 +120,7 @@ public interface InputDataInfoProvider extends Closeable {
       pushJobZstdConfig.incrCollectedNumberOfSamples();
     }
 
-    LOGGER.debug(
+    logger.debug(
         "Read {} to build dictionary. Reached EOF.",
         ByteUtils.generateHumanReadableByteCountString(fileSampleSize));
   }

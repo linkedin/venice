@@ -204,7 +204,7 @@ public class TestVenicePushJobCheckpoints {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
@@ -230,7 +230,7 @@ public class TestVenicePushJobCheckpoints {
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
@@ -250,7 +250,7 @@ public class TestVenicePushJobCheckpoints {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
@@ -278,7 +278,7 @@ public class TestVenicePushJobCheckpoints {
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
@@ -310,7 +310,7 @@ public class TestVenicePushJobCheckpoints {
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
@@ -343,7 +343,7 @@ public class TestVenicePushJobCheckpoints {
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
@@ -407,7 +407,7 @@ public class TestVenicePushJobCheckpoints {
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
@@ -502,7 +502,7 @@ public class TestVenicePushJobCheckpoints {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.START_MAP_REDUCE_JOB),
+            VenicePushJob.PushJobCheckpoints.START_DATA_WRITER_JOB),
         10L, // Non-empty input data file
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
@@ -527,7 +527,7 @@ public class TestVenicePushJobCheckpoints {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.START_MAP_REDUCE_JOB),
+            VenicePushJob.PushJobCheckpoints.START_DATA_WRITER_JOB),
         10L, // Non-empty input data file
         1,
         true,
@@ -552,7 +552,7 @@ public class TestVenicePushJobCheckpoints {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED // Expect the job to finish successfully
         ),
         10L,
@@ -593,7 +593,7 @@ public class TestVenicePushJobCheckpoints {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.START_MAP_REDUCE_JOB),
+            VenicePushJob.PushJobCheckpoints.START_DATA_WRITER_JOB),
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
@@ -618,7 +618,7 @@ public class TestVenicePushJobCheckpoints {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
@@ -641,7 +641,7 @@ public class TestVenicePushJobCheckpoints {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
             VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
         properties -> {
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
