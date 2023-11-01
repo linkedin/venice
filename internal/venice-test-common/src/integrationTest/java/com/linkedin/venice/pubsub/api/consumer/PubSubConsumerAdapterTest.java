@@ -491,4 +491,40 @@ public class PubSubConsumerAdapterTest {
             && elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
         "Timeout should be greater than the default timeout but not too much greater");
   }
+
+  // Test: When offsetForTime (without explicit timeout) is called on an existing topic with a valid partition but no
+  // messages, it should return null
+  @Test
+  public void testOffsetForTimeWithoutExplicitTimeoutForExistingTopicWithValidPartitionsButNoMessages() {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    int numPartitions = 2;
+
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+
+    long startTime = System.currentTimeMillis();
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    assertNull(offset, "Offset should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "OffsetForTime should not block");
+
+    partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
+    startTime = System.currentTimeMillis();
+    offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
+    elapsedTime = System.currentTimeMillis() - startTime;
+    assertNull(offset, "Offset should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "OffsetForTime should not block");
+  }
+
+  // Test: Subscribe to non-existent topic should throw PubSubOpTimeoutException
+  @Test
+  public void testSubscribeForNonExistentTopic() {
+    PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
+
+    assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
+    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.subscribe(partition, 0));
+  }
 }
