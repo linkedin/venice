@@ -159,7 +159,13 @@ public class PubSubConsumerAdapterTest {
     partitions.add(new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 1));
 
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
+    long startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Timeout should be around the specified timeout but not too much greater");
   }
 
   // Test: When endOffsets is called on an existing topic, it should return a map of partition to end offset
@@ -175,11 +181,17 @@ public class PubSubConsumerAdapterTest {
     List<PubSubTopicPartition> partitions = new ArrayList<>(2);
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 0));
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 1));
+    long startTime = System.currentTimeMillis();
     Map<PubSubTopicPartition, Long> endOffsets = pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT);
+    long elapsedTime = System.currentTimeMillis() - startTime;
     assertNotNull(endOffsets, "End offsets should not be null for an existing topic");
     assertFalse(endOffsets.isEmpty(), "End offsets should not be empty for an existing topic");
     assertEquals(endOffsets.size(), partitions.size(), "Number of end offsets does not match");
     assertTrue(endOffsets.values().stream().allMatch(offset -> offset == 0), "End offsets should be 0 for a new topic");
+    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Timeout should be around the specified timeout but not too much greater");
   }
 
   // Test: When endOffsets is called for a non-existent and existing topic in the same API call,
@@ -198,7 +210,14 @@ public class PubSubConsumerAdapterTest {
     List<PubSubTopicPartition> partitions = new ArrayList<>(2);
     partitions.add(new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0));
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 1));
+
+    long startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Timeout should be around the specified timeout but not too much greater");
   }
 
   // Test: When endOffsets is called on an existing topic with a non-existent partition, it should throw
@@ -219,7 +238,14 @@ public class PubSubConsumerAdapterTest {
     List<PubSubTopicPartition> partitions = new ArrayList<>(2);
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 0));
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 1));
+
+    long startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Timeout should be around the specified timeout but not too much greater");
   }
 
   // Test: When endOffset (without explicit timeout) is called on a non-existent partition,
@@ -253,10 +279,8 @@ public class PubSubConsumerAdapterTest {
     startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffset(partitions.get(1)));
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertTrue(
-        elapsedTime >= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS
-            && elapsedTime <= 2 * PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
-        "endOffset should block for the default timeout");
+    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater
+    assertTrue(elapsedTime <= 2 * PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "endOffset should not block");
   }
 
   // Test: When beginningOffset is called on a non-existent topic, it should throw PubSubOpTimeoutException
@@ -266,9 +290,15 @@ public class PubSubConsumerAdapterTest {
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
 
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
+    long startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
         () -> pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Timeout should be around the specified timeout but not too much greater");
   }
 
   // Test: When beginningOffset is called on an existing topic, it should return an offset
@@ -282,16 +312,25 @@ public class PubSubConsumerAdapterTest {
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    long startTime = System.currentTimeMillis();
     long beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
+    long elapsedTime = System.currentTimeMillis() - startTime;
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "beginningOffset should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
+    startTime = System.currentTimeMillis();
     beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
+    elapsedTime = System.currentTimeMillis() - startTime;
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "beginningOffset should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 2);
+    startTime = System.currentTimeMillis();
     beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
+    elapsedTime = System.currentTimeMillis() - startTime;
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "beginningOffset should not block");
   }
 
   // Test: When beginningOffset is called on an existing topic with a non-existent partition, it should throw
@@ -314,9 +353,15 @@ public class PubSubConsumerAdapterTest {
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
 
     PubSubTopicPartition nonExistentPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
+    long startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
         () -> pubSubConsumerAdapter.beginningOffset(nonExistentPartition, PUBSUB_OP_TIMEOUT));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Timeout should be around the specified timeout but not too much greater");
   }
 
   // Test: When offsetForTime is called on a non-existent topic, it should throw PubSubOpTimeoutException
@@ -326,9 +371,15 @@ public class PubSubConsumerAdapterTest {
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
 
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
+    long startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
         () -> pubSubConsumerAdapter.offsetForTime(partition, 0, PUBSUB_OP_TIMEOUT));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Timeout should be around the specified timeout but not too much greater");
   }
 
   // Test: When offsetForTime is called on an existing topic with a valid partition but no messages, it should return
@@ -343,12 +394,18 @@ public class PubSubConsumerAdapterTest {
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    long startTime = System.currentTimeMillis();
     Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
+    long elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
+    startTime = System.currentTimeMillis();
     offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
+    elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
   }
 
   // Test: When offsetForTime is called on an existing topic with invalid partition, it should throw
@@ -367,13 +424,22 @@ public class PubSubConsumerAdapterTest {
         "Topic should have only 1 partition");
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    long startTime = System.currentTimeMillis();
     Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
+    long elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
 
     PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
+    startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
         () -> pubSubConsumerAdapter.offsetForTime(invalidPartition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT));
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Timeout should be around the specified timeout but not too much greater");
   }
 
   // Test: When offsetForTime is called on an existing topic with a valid partition and messages, it should return an
@@ -413,25 +479,36 @@ public class PubSubConsumerAdapterTest {
       Thread.sleep(1);
     }
 
+    long startTime;
+    long elapsedTime;
     PubSubTopicPartition partitionWitMessages = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
     // iterate over the messages and verify the offset for each timestamp
     for (int i = 0; i < numMessages; i++) {
+      startTime = System.currentTimeMillis();
       Long offset = pubSubConsumerAdapter.offsetForTime(partitionWitMessages, timestamps.get(i), PUBSUB_OP_TIMEOUT);
+      elapsedTime = System.currentTimeMillis() - startTime;
       assertNotNull(offset, "Offset should not be null for an existing topic with messages");
       assertEquals(offset, offsets.get(i), "Offset should match for an existing topic with messages");
+      assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
     }
 
     // try 0 as timestamp; this should return the first offset
+    startTime = System.currentTimeMillis();
     Long offset = pubSubConsumerAdapter.offsetForTime(partitionWitMessages, 0, PUBSUB_OP_TIMEOUT);
+    elapsedTime = System.currentTimeMillis() - startTime;
     assertNotNull(offset, "Offset should not be null for an existing topic with messages");
     assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
 
     // check one month before the first message timestamp; this should return the first offset
     long oneMonthBeforeFirstMessageTimestamp = timestamps.get(0) - Duration.ofDays(30).toMillis();
+    startTime = System.currentTimeMillis();
     offset = pubSubConsumerAdapter
         .offsetForTime(partitionWitMessages, oneMonthBeforeFirstMessageTimestamp, PUBSUB_OP_TIMEOUT);
+    elapsedTime = System.currentTimeMillis() - startTime;
     assertNotNull(offset, "Offset should not be null for an existing topic with messages");
     assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
 
     // check for a timestamp that is after the last message; this should return null
     long currentTimestamp = System.currentTimeMillis();
@@ -443,9 +520,12 @@ public class PubSubConsumerAdapterTest {
 
     // check one month from the last message timestamp; this should return null
     long oneMonthFromLastMessageTimestamp = timestamps.get(numMessages - 1) + Duration.ofDays(30).toMillis();
+    startTime = System.currentTimeMillis();
     offset =
         pubSubConsumerAdapter.offsetForTime(partitionWitMessages, oneMonthFromLastMessageTimestamp, PUBSUB_OP_TIMEOUT);
+    elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with out of range timestamp");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
   }
 
   // Test: When offsetForTime (without explicit timeout) is called on a non-existent topic,
