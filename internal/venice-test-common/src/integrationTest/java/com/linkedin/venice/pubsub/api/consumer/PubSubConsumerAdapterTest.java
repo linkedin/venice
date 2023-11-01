@@ -32,11 +32,14 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -533,6 +536,8 @@ public class PubSubConsumerAdapterTest {
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
         "Timeout should be less than the default timeout");
+    assertFalse(pubSubConsumerAdapter.hasAnySubscription(), "Should not be subscribed to any topic");
+    assertFalse(pubSubConsumerAdapter.hasSubscription(partition), "Should not be subscribed to any topic");
   }
 
   // Test: Subscribe to an existing topic with a non-existent partition should throw PubSubTopicDoesNotExistException
@@ -590,6 +595,23 @@ public class PubSubConsumerAdapterTest {
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
         "Timeout should be less than the default timeout");
+
+    // check subscription status
+    startTime = System.currentTimeMillis();
+    assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
+        "Timeout should be less than the default timeout");
+
+    startTime = System.currentTimeMillis();
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partition), "Should be subscribed to the topic and partition");
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
+        "Timeout should be less than the default timeout");
   }
 
   // Test: Unsubscribe to an existing topic and a non-existent topic should not take longer than the default timeout
@@ -630,5 +652,51 @@ public class PubSubConsumerAdapterTest {
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
         "Timeout should be less than the default timeout");
+  }
+
+  // Test: Batch unsubscribe to an existing topic and a non-existent topic should not take longer than the default
+  // timeout
+  @Test
+  public void testBatchUnsubscribeForExistingAndNonExistentTopic() {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
+
+    int numPartitions = 1;
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+
+    PubSubTopicPartition validPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+    assertEquals(
+        pubSubConsumerAdapter.partitionsFor(existingPubSubTopic).size(),
+        1,
+        "Topic should have only 1 partition");
+    // check non-existent topic does not exist
+
+    PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
+    assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
+    assertFalse(pubSubConsumerAdapter.hasAnySubscription(), "Should not be subscribed to any topic");
+
+    // subscribe to an existing topic and partition
+    pubSubConsumerAdapter.subscribe(validPartition, 0);
+    assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
+    assertTrue(
+        pubSubConsumerAdapter.hasSubscription(validPartition),
+        "Should be subscribed to the topic and partition");
+
+    Set<PubSubTopicPartition> partitions = new HashSet<>(Arrays.asList(validPartition, invalidPartition));
+    // batch unsubscribe from an existing topic and partition
+    long startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.batchUnsubscribe(partitions);
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
+        "Timeout should be less than the default timeout");
+
+    // verify that the subscription is removed
+    assertFalse(pubSubConsumerAdapter.hasAnySubscription(), "Should not be subscribed to any topic");
+    assertFalse(pubSubConsumerAdapter.hasSubscription(validPartition), "Should not be subscribed to any topic");
+    assertFalse(pubSubConsumerAdapter.hasSubscription(invalidPartition), "Should not be subscribed to any topic");
   }
 }

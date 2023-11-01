@@ -81,24 +81,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         topicPartitionsOffsetsTracker != null);
   }
 
-  private void seekNextOffset(TopicPartition topicPartition, long lastReadOffset) {
-    // Kafka Consumer controls the default offset to start by the property
-    // "auto.offset.reset" , it is set to "earliest" to start from the
-    // beginning.
-
-    // Venice would prefer to start from the beginning and using seekToBeginning
-    // would have made it clearer. But that call always fail and can be used
-    // only after the offsets are remembered for a partition in 0.9.0.2
-    // TODO: Kafka has been upgraded to 0.11.*; we might be able to simply this function.
-    if (lastReadOffset != OffsetRecord.LOWEST_OFFSET) {
-      long nextReadOffset = lastReadOffset + 1;
-      kafkaConsumer.seek(topicPartition, nextReadOffset);
-    } else {
-      // Considering the offset of the same consumer group could be persisted by some other consumer in Kafka.
-      kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
-    }
-  }
-
   /**
    * Subscribe to a topic-partition if not already subscribed. If the topic-partition is already subscribed, this
    * method is a no-op. This method requires the topic-partition to exist.
@@ -116,15 +98,26 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     if (topicPartitionSet.contains(topicPartition)) {
       LOGGER
           .warn("Already subscribed on Topic: {} Partition: {}, ignore the request of subscription.", topic, partition);
+      return;
     }
 
-    validateTopicPartition(pubSubTopicPartition);
+    validateTopicPartition(pubSubTopicPartition); // check if the topic-partition exists
+
     List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
     topicPartitionList.add(topicPartition);
-    kafkaConsumer.assign(topicPartitionList);
-    seekNextOffset(topicPartition, lastReadOffset);
+    kafkaConsumer.assign(topicPartitionList); // add the topic-partition to the subscription
+    // Use the last read offset to seek to the next offset to read.
+    long consumptionStartOffset = lastReadOffset == OffsetRecord.LOWEST_OFFSET ? 0 : lastReadOffset + 1;
+    if (lastReadOffset == OffsetRecord.LOWEST_OFFSET) {
+      kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
+    } else {
+      kafkaConsumer.seek(topicPartition, consumptionStartOffset);
+    }
     assignments.put(topicPartition, pubSubTopicPartition);
-    LOGGER.info("Subscribed to Topic: {} Partition: {} Offset: {}", topic, partition, lastReadOffset);
+    LOGGER.info(
+        "Subscribed to topic-partition: {} with consumptionStartOffset: {}",
+        pubSubTopicPartition,
+        lastReadOffset);
   }
 
   private void validateTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
@@ -148,7 +141,8 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     int partition = pubSubTopicPartition.getPartitionNumber();
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
-    if (topicPartitionSet.contains(topicPartition)) {
+    boolean isSubscribed = topicPartitionSet.contains(topicPartition);
+    if (isSubscribed) {
       List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
       if (topicPartitionList.remove(topicPartition)) {
         kafkaConsumer.assign(topicPartitionList);
@@ -158,6 +152,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     if (topicPartitionsOffsetsTracker != null) {
       topicPartitionsOffsetsTracker.removeTrackedOffsets(topicPartition);
     }
+    LOGGER.info("Topic-partition: {} {} unsubscribed", pubSubTopicPartition, isSubscribed ? "is" : "was already");
   }
 
   @Override
@@ -179,6 +174,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     Collection<TopicPartition> currentAssignments = new HashSet<>(kafkaConsumer.assignment());
     currentAssignments.removeAll(topicPartitionsToUnsubscribe);
     kafkaConsumer.assign(currentAssignments);
+    LOGGER.info("Topic-partitions: {} unsubscribed", topicPartitionsToUnsubscribe);
   }
 
   @Override
@@ -190,6 +186,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     }
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
+    LOGGER.info("Reset offset to beginning for topic-partition: {}", pubSubTopicPartition);
   }
 
   @Override
