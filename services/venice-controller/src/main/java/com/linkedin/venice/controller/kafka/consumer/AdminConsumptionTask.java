@@ -55,7 +55,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -646,7 +645,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   /**
    * This method groups {@link AdminOperation}s by their corresponding store.
-   * @param record The {@link ConsumerRecord} containing the {@link AdminOperation}.
+   * @param record The {@link PubSubMessage} containing the {@link AdminOperation}.
    * @return corresponding executionId if applicable.
    */
   private long delegateMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
