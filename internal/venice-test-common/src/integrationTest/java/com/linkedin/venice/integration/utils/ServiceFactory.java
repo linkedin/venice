@@ -66,7 +66,7 @@ public class ServiceFactory {
    */
   static {
     TestUtils.preventSystemExit();
-
+    Utils.thisIsLocalhost();
     StringBuilder sb;
     try {
       String[] cmd = { "/bin/bash", "-c", "ulimit -a" };
