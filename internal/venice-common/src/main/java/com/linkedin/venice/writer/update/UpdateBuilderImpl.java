@@ -13,9 +13,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.avro.Schema;
+import org.apache.avro.UnresolvedUnionException;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 @NotThreadsafe
 @Experimental
@@ -132,12 +135,12 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   private Exception validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
     try {
       serializer.serialize(updateRecord);
-    } catch (Exception serializationException) {
-      if (serializationException instanceof AvroRuntimeException || serializationException instanceof UnresolvedUnionException) {
+    } catch (UnresolvedUnionException serializationException) {
         Object unresolvedDatum = serializationException.getUnresolvedDatum();
         LOGGER.error("Unresolved datum encountered: {}", unresolvedDatum, serializationException);
-      }
-      return serializationException;
+        return serializationException;
+    } catch (Exception serializationException) {
+        return serializationException;
     }
     return null;
   }
