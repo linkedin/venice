@@ -5,6 +5,7 @@ import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProdu
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.time.Duration;
 import java.util.Properties;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -38,6 +39,7 @@ public class ApacheKafkaConsumerConfig {
   private final boolean isSslEnabled;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
+  private final Duration defaultApiTimeout;
 
   ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
     this.consumerProperties =
@@ -59,11 +61,12 @@ public class ApacheKafkaConsumerConfig {
 
     // Timeout for consumer APIs which do not have explicit timeout parameter AND have potential to get blocked;
     // When this is not specified, Kafka consumer will use default value of 1 minute.
-    consumerProperties.put(
-        ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG,
-        veniceProperties.getInt(
-            PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
-            PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE));
+
+    int defaultApiTimeoutInMs = veniceProperties.getInt(
+        PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
+        PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE);
+    defaultApiTimeout = Duration.ofMillis(defaultApiTimeoutInMs);
+    consumerProperties.put(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, defaultApiTimeoutInMs);
 
     // Number of times to retry poll() upon failure
     consumerPollRetryTimes = veniceProperties.getInt(
@@ -99,6 +102,10 @@ public class ApacheKafkaConsumerConfig {
 
   int getConsumerPollRetryBackoffMs() {
     return consumerPollRetryBackoffMs;
+  }
+
+  Duration getDefaultApiTimeout() {
+    return defaultApiTimeout;
   }
 
   public static Properties getValidConsumerProperties(Properties extractedProperties) {

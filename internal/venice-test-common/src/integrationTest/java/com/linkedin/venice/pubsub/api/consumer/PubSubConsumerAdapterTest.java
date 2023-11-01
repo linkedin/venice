@@ -12,6 +12,7 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -49,7 +50,18 @@ import org.testng.annotations.Test;
  * Tests to verify the contract of {@link PubSubConsumerAdapter}
  */
 public class PubSubConsumerAdapterTest {
-  public static final Duration PUBSUB_OP_TIMEOUT = Duration.ofSeconds(15);
+  private static final Duration PUBSUB_OP_TIMEOUT = Duration.ofSeconds(15);
+  private static final int PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS = 10_000;
+  private static final int REPLICATION_FACTOR = 1;
+  private static final boolean IS_LOG_COMPACTED = false;
+  private static final long RETENTION_IN_MS = Duration.ofDays(2).toMillis();
+  private static final int MIN_IN_SYNC_REPLICAS = 1;
+  private static final long MIN_LOG_COMPACTION_LAG_MS = Duration.ofDays(1).toMillis();
+  private static final PubSubTopicConfiguration TOPIC_CONFIGURATION = new PubSubTopicConfiguration(
+      Optional.of(RETENTION_IN_MS),
+      IS_LOG_COMPACTED,
+      Optional.of(MIN_IN_SYNC_REPLICAS),
+      MIN_LOG_COMPACTION_LAG_MS);
 
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   private PubSubConsumerAdapter pubSubConsumerAdapter;
@@ -77,6 +89,9 @@ public class PubSubConsumerAdapterTest {
     String clientId = Utils.getUniqueString("test-consumer-");
     Properties properties = new Properties();
     properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+    properties.setProperty(
+        PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
+        String.valueOf(PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS));
     properties.putAll(pubSubBrokerWrapper.getAdditionalConfig());
     properties.putAll(pubSubBrokerWrapper.getMergeableConfigs());
     VeniceProperties veniceProperties = new VeniceProperties(properties);
@@ -105,8 +120,11 @@ public class PubSubConsumerAdapterTest {
   public void testPartitionsForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
+    long start = System.currentTimeMillis();
     List<PubSubTopicPartitionInfo> partitions = pubSubConsumerAdapter.partitionsFor(nonExistentPubSubTopic);
+    long elapsed = System.currentTimeMillis() - start;
     assertNull(partitions, "Partitions should be null for a non-existent topic");
+    assertTrue(elapsed <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "PartitionsFor should not block");
   }
 
   // Test: When partitionsFor is called on an existing topic, it should return a list of partitions
@@ -114,24 +132,18 @@ public class PubSubConsumerAdapterTest {
   public void testPartitionsForExistingTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
-    int replicationFactor = 1;
-    long retentionInMs = Duration.ofDays(2).toMillis();
-    boolean isLogCompacted = true;
-    int minInSyncReplicas = 1;
-    long minLogCompactionLagMs = Duration.ofDays(1).toMillis();
 
-    PubSubTopicConfiguration topicConfiguration = new PubSubTopicConfiguration(
-        Optional.of(retentionInMs),
-        isLogCompacted,
-        Optional.of(minInSyncReplicas),
-        minLogCompactionLagMs);
-    pubSubAdminAdapterLazy.get().createTopic(existingPubSubTopic, numPartitions, replicationFactor, topicConfiguration);
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
+    long startTime = System.currentTimeMillis();
     List<PubSubTopicPartitionInfo> partitions = pubSubConsumerAdapter.partitionsFor(existingPubSubTopic);
+    long elapsedTime = System.currentTimeMillis() - startTime;
     assertNotNull(partitions, "Partitions should not be null for an existing topic");
     assertFalse(partitions.isEmpty(), "Partitions should not be empty for an existing topic");
     assertEquals(partitions.size(), numPartitions, "Number of partitions does not match");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "PartitionsFor should not block");
   }
 
   // Test: When endOffsets is called on a non-existent topic, it should throw PubSubOpTimeoutException
@@ -151,18 +163,9 @@ public class PubSubConsumerAdapterTest {
   public void testEndOffsetsForExistingTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
-    int replicationFactor = 1;
-    long retentionInMs = Duration.ofDays(2).toMillis();
-    boolean isLogCompacted = true;
-    int minInSyncReplicas = 1;
-    long minLogCompactionLagMs = Duration.ofDays(1).toMillis();
 
-    PubSubTopicConfiguration topicConfiguration = new PubSubTopicConfiguration(
-        Optional.of(retentionInMs),
-        isLogCompacted,
-        Optional.of(minInSyncReplicas),
-        minLogCompactionLagMs);
-    pubSubAdminAdapterLazy.get().createTopic(existingPubSubTopic, numPartitions, replicationFactor, topicConfiguration);
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
     List<PubSubTopicPartition> partitions = new ArrayList<>(2);
@@ -182,18 +185,9 @@ public class PubSubConsumerAdapterTest {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
-    int replicationFactor = 1;
-    long retentionInMs = Duration.ofDays(2).toMillis();
-    boolean isLogCompacted = true;
-    int minInSyncReplicas = 1;
-    long minLogCompactionLagMs = Duration.ofDays(1).toMillis();
 
-    PubSubTopicConfiguration topicConfiguration = new PubSubTopicConfiguration(
-        Optional.of(retentionInMs),
-        isLogCompacted,
-        Optional.of(minInSyncReplicas),
-        minLogCompactionLagMs);
-    pubSubAdminAdapterLazy.get().createTopic(existingPubSubTopic, numPartitions, replicationFactor, topicConfiguration);
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
 
@@ -209,18 +203,9 @@ public class PubSubConsumerAdapterTest {
   public void testEndOffsetsForExistingTopicWithNonExistentPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
-    int replicationFactor = 1;
-    long retentionInMs = Duration.ofDays(2).toMillis();
-    boolean isLogCompacted = true;
-    int minInSyncReplicas = 1;
-    long minLogCompactionLagMs = Duration.ofDays(1).toMillis();
 
-    PubSubTopicConfiguration topicConfiguration = new PubSubTopicConfiguration(
-        Optional.of(retentionInMs),
-        isLogCompacted,
-        Optional.of(minInSyncReplicas),
-        minLogCompactionLagMs);
-    pubSubAdminAdapterLazy.get().createTopic(existingPubSubTopic, numPartitions, replicationFactor, topicConfiguration);
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
     assertEquals(
         pubSubConsumerAdapter.partitionsFor(existingPubSubTopic).size(),
@@ -231,6 +216,43 @@ public class PubSubConsumerAdapterTest {
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 0));
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 1));
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
+  }
+
+  // Test: When endOffset (without explicit timeout) is called on a non-existent partition,
+  // it should throw PubSubOpTimeoutException after the default API timeout.
+  @Test
+  public void testEndOffsetWithoutExplicitTimeoutForNonExistentPartition() {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    int numPartitions = 1;
+
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+    assertEquals(
+        pubSubConsumerAdapter.partitionsFor(existingPubSubTopic).size(),
+        1,
+        "Topic should have only 1 partition");
+
+    List<PubSubTopicPartition> partitions = new ArrayList<>(2);
+    partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 0));
+    partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 1));
+
+    // try to get the end offset for an existing topic with a valid partition but no messages
+    long startTime = System.currentTimeMillis();
+    Long endOffset = pubSubConsumerAdapter.endOffset(partitions.get(0));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    assertNotNull(endOffset, "End offset should not be null for an existing topic partition");
+    assertEquals(endOffset, Long.valueOf(0), "End offset should be 0 for an existing topic partition");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "endOffset should not block");
+
+    // try to get the end offset for a non-existent topic partition
+    startTime = System.currentTimeMillis();
+    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffset(partitions.get(1)));
+    elapsedTime = System.currentTimeMillis() - startTime;
+    assertTrue(
+        elapsedTime >= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS
+            && elapsedTime <= 2 * PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
+        "endOffset should block for the default timeout");
   }
 
   // Test: When beginningOffset is called on a non-existent topic, it should throw PubSubOpTimeoutException
@@ -250,18 +272,9 @@ public class PubSubConsumerAdapterTest {
   public void testBeginningOffsetForExistingTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
-    int replicationFactor = 1;
-    long retentionInMs = Duration.ofDays(2).toMillis();
-    boolean isLogCompacted = true;
-    int minInSyncReplicas = 1;
-    long minLogCompactionLagMs = Duration.ofDays(1).toMillis();
 
-    PubSubTopicConfiguration topicConfiguration = new PubSubTopicConfiguration(
-        Optional.of(retentionInMs),
-        isLogCompacted,
-        Optional.of(minInSyncReplicas),
-        minLogCompactionLagMs);
-    pubSubAdminAdapterLazy.get().createTopic(existingPubSubTopic, numPartitions, replicationFactor, topicConfiguration);
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
@@ -283,18 +296,9 @@ public class PubSubConsumerAdapterTest {
   public void testBeginningOffsetForExistingTopicWithNonExistentPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
-    int replicationFactor = 1;
-    long retentionInMs = Duration.ofDays(2).toMillis();
-    boolean isLogCompacted = true;
-    int minInSyncReplicas = 1;
-    long minLogCompactionLagMs = Duration.ofDays(1).toMillis();
 
-    PubSubTopicConfiguration topicConfiguration = new PubSubTopicConfiguration(
-        Optional.of(retentionInMs),
-        isLogCompacted,
-        Optional.of(minInSyncReplicas),
-        minLogCompactionLagMs);
-    pubSubAdminAdapterLazy.get().createTopic(existingPubSubTopic, numPartitions, replicationFactor, topicConfiguration);
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
     assertEquals(
         pubSubConsumerAdapter.partitionsFor(existingPubSubTopic).size(),
@@ -329,18 +333,9 @@ public class PubSubConsumerAdapterTest {
   public void testOffsetForTimeForExistingTopicWithValidPartitionsButNoMessages() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
-    int replicationFactor = 1;
-    long retentionInMs = Duration.ofDays(2).toMillis();
-    boolean isLogCompacted = true;
-    int minInSyncReplicas = 1;
-    long minLogCompactionLagMs = Duration.ofDays(1).toMillis();
 
-    PubSubTopicConfiguration topicConfiguration = new PubSubTopicConfiguration(
-        Optional.of(retentionInMs),
-        isLogCompacted,
-        Optional.of(minInSyncReplicas),
-        minLogCompactionLagMs);
-    pubSubAdminAdapterLazy.get().createTopic(existingPubSubTopic, numPartitions, replicationFactor, topicConfiguration);
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
@@ -358,18 +353,9 @@ public class PubSubConsumerAdapterTest {
   public void testOffsetForTimeForExistingTopicWithInvalidPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
-    int replicationFactor = 1;
-    long retentionInMs = Duration.ofDays(2).toMillis();
-    boolean isLogCompacted = true;
-    int minInSyncReplicas = 1;
-    long minLogCompactionLagMs = Duration.ofDays(1).toMillis();
 
-    PubSubTopicConfiguration topicConfiguration = new PubSubTopicConfiguration(
-        Optional.of(retentionInMs),
-        isLogCompacted,
-        Optional.of(minInSyncReplicas),
-        minLogCompactionLagMs);
-    pubSubAdminAdapterLazy.get().createTopic(existingPubSubTopic, numPartitions, replicationFactor, topicConfiguration);
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
     assertEquals(
         pubSubConsumerAdapter.partitionsFor(existingPubSubTopic).size(),
@@ -393,20 +379,10 @@ public class PubSubConsumerAdapterTest {
       throws ExecutionException, InterruptedException, TimeoutException {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
-    int replicationFactor = 1;
-    long retentionInMs = Duration.ofDays(2).toMillis();
-    boolean isLogCompacted = false;
-    int minInSyncReplicas = 1;
-    long minLogCompactionLagMs = Duration.ofDays(1).toMillis();
     int numMessages = 10;
 
-    PubSubTopicConfiguration topicConfiguration = new PubSubTopicConfiguration(
-        Optional.of(retentionInMs),
-        isLogCompacted,
-        Optional.of(minInSyncReplicas),
-        minLogCompactionLagMs);
-
-    pubSubAdminAdapterLazy.get().createTopic(existingPubSubTopic, numPartitions, replicationFactor, topicConfiguration);
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
     Map<Integer, Long> timestamps = new HashMap<>(10);
@@ -478,7 +454,41 @@ public class PubSubConsumerAdapterTest {
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
     long startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.offsetForTime(partition, 0));
-    long endTime = System.currentTimeMillis();
-    assertTrue(endTime - startTime >= PUBSUB_OP_TIMEOUT.toMillis(), "Operation should have timed out");
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be greater than the default timeout but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime >= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS
+            && elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
+        "Timeout should be greater than the default timeout but not too much greater");
+  }
+
+  // Test: When offsetForTime (without explicit timeout) is called on an existing topic with invalid partition,
+  // it should throw PubSubOpTimeoutException
+  @Test
+  public void testOffsetForTimeWithoutExplicitTimeoutForExistingTopicWithInvalidPartition() {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    int numPartitions = 1;
+
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+    assertEquals(
+        pubSubConsumerAdapter.partitionsFor(existingPubSubTopic).size(),
+        1,
+        "Topic should have only 1 partition");
+
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
+    assertNull(offset, "Offset should be null for an existing topic with no messages");
+
+    PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
+    long startTime = System.currentTimeMillis();
+    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.offsetForTime(invalidPartition, 0));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be greater than the default timeout but not too much greater; so add variance of 5 seconds
+    assertTrue(
+        elapsedTime >= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS
+            && elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
+        "Timeout should be greater than the default timeout but not too much greater");
   }
 }

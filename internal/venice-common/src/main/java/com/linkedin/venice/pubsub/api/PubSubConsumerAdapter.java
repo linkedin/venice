@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import java.io.Closeable;
@@ -12,6 +13,12 @@ import java.util.Map;
 import java.util.Set;
 
 
+/**
+ * An adapter for consuming messages from a Pub-Sub topic.
+ * Implementations of this interface are not expected to be thread safe. However, they are expected
+ * to guarantee non-blocking behavior for methods that do not have an explicit timeout parameter.
+ * The default timeout should be set using {@link PubSubConstants#PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS}.
+ */
 public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset);
 

@@ -318,6 +318,35 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       return offsetAndTimestamp.offset();
     } catch (TimeoutException e) {
       throw new PubSubOpTimeoutException(
+          "Timed out while getting offset for time: " + timestamp + " for: " + pubSubTopicPartition + " with timeout: "
+              + timeout,
+          e);
+    } catch (Exception e) {
+      throw new PubSubClientException(
+          "Failed to fetch offset for time: " + timestamp + " for: " + pubSubTopicPartition + " with timeout: "
+              + timeout,
+          e);
+    }
+  }
+
+  @Override
+  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    try {
+      TopicPartition topicPartition = new TopicPartition(
+          pubSubTopicPartition.getPubSubTopic().getName(),
+          pubSubTopicPartition.getPartitionNumber());
+      Map<TopicPartition, OffsetAndTimestamp> topicPartitionOffsetMap =
+          this.kafkaConsumer.offsetsForTimes(Collections.singletonMap(topicPartition, timestamp));
+      if (topicPartitionOffsetMap.isEmpty()) {
+        return -1L;
+      }
+      OffsetAndTimestamp offsetAndTimestamp = topicPartitionOffsetMap.get(topicPartition);
+      if (offsetAndTimestamp == null) {
+        return null;
+      }
+      return offsetAndTimestamp.offset();
+    } catch (TimeoutException e) {
+      throw new PubSubOpTimeoutException(
           "Timed out while getting offset for time: " + timestamp + " for: " + pubSubTopicPartition,
           e);
     } catch (Exception e) {
@@ -325,22 +354,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
           "Failed to fetch offset for time: " + timestamp + " for: " + pubSubTopicPartition,
           e);
     }
-  }
-
-  @Override
-  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    TopicPartition topicPartition =
-        new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
-    Map<TopicPartition, OffsetAndTimestamp> topicPartitionOffsetMap =
-        this.kafkaConsumer.offsetsForTimes(Collections.singletonMap(topicPartition, timestamp));
-    if (topicPartitionOffsetMap.isEmpty()) {
-      return -1L;
-    }
-    OffsetAndTimestamp offsetAndTimestamp = topicPartitionOffsetMap.get(topicPartition);
-    if (offsetAndTimestamp == null) {
-      return null;
-    }
-    return offsetAndTimestamp.offset();
   }
 
   @Override
@@ -383,11 +396,21 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   @Override
   public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
-    TopicPartition topicPartition =
-        new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
-    Map<TopicPartition, Long> topicPartitionOffsetMap =
-        this.kafkaConsumer.endOffsets(Collections.singleton(topicPartition));
-    return topicPartitionOffsetMap.get(topicPartition);
+    try {
+      TopicPartition topicPartition = new TopicPartition(
+          pubSubTopicPartition.getPubSubTopic().getName(),
+          pubSubTopicPartition.getPartitionNumber());
+      // Note: when timeout is not specified, the default request timeout is used, which is 30 seconds. For all
+      // other apis, the default request timeout is api timeout, which is 60 seconds. To be consistent with other apis,
+      // use api timeout here.
+      Map<TopicPartition, Long> topicPartitionOffsetMap =
+          this.kafkaConsumer.endOffsets(Collections.singleton(topicPartition), config.getDefaultApiTimeout());
+      return topicPartitionOffsetMap.get(topicPartition);
+    } catch (TimeoutException e) {
+      throw new PubSubOpTimeoutException("Timed out while fetching end offset for " + pubSubTopicPartition, e);
+    } catch (Exception e) {
+      throw new PubSubClientException("Failed to fetch end offset for " + pubSubTopicPartition, e);
+    }
   }
 
   @Override
