@@ -8,14 +8,14 @@ import javax.annotation.Nullable;
  * This class is used to keep track of store storage quota and storage overhead ratio and check whether the total
  * input data size exceeds the quota
  */
-class InputStorageQuotaTracker {
+public class InputStorageQuotaTracker {
   private final Long storeStorageQuota;
 
-  InputStorageQuotaTracker(Long storeStorageQuota) {
+  public InputStorageQuotaTracker(Long storeStorageQuota) {
     this.storeStorageQuota = storeStorageQuota;
   }
 
-  boolean exceedQuota(long totalInputStorageSizeInBytes) {
+  public boolean exceedQuota(long totalInputStorageSizeInBytes) {
     if (storeStorageQuota == null || storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
       return false;
     }
@@ -23,7 +23,7 @@ class InputStorageQuotaTracker {
   }
 
   @Nullable
-  Long getStoreStorageQuota() {
+  public Long getStoreStorageQuota() {
     return storeStorageQuota;
   }
 }

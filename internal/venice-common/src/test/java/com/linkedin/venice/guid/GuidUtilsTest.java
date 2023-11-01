@@ -1,10 +1,16 @@
 package com.linkedin.venice.guid;
 
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_COMPUTE_JOB_ID;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_COMPUTE_TASK_ID;
+import static com.linkedin.venice.guid.GuidUtils.GUID_GENERATOR_IMPLEMENTATION;
+
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.utils.ByteArray;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -67,4 +73,53 @@ public class GuidUtilsTest {
         "A GUID converted into a CharSequence and back should be the same as previously!");
   }
 
+  @Test
+  public void testDeterministicGuidGenerator() {
+    // When no job ID and compute task id is provided, a default value will be used
+    Properties properties1 = new Properties();
+    properties1.put(GUID_GENERATOR_IMPLEMENTATION, DeterministicGuidGenerator.class.getName());
+    VeniceProperties props1 = new VeniceProperties(properties1);
+    GUID guid1 = GuidUtils.getGUID(props1);
+    Assert.assertEquals(
+        guid1,
+        GuidUtils.getGUID(props1),
+        "Two different GUIDs generated with the same properties should be equal when using DeterministicGuidGenerator!");
+
+    // When a job id is provided but no compute task id is provided, a default compute task id will be used
+    Properties properties2 = new Properties();
+    properties2.put(GUID_GENERATOR_IMPLEMENTATION, DeterministicGuidGenerator.class.getName());
+    properties2.put(PUSH_JOB_COMPUTE_JOB_ID, "Test_JOB_ID_2");
+    VeniceProperties props2 = new VeniceProperties(properties2);
+    GUID guid2 = GuidUtils.getGUID(props2);
+    Assert.assertEquals(
+        guid2,
+        GuidUtils.getGUID(props2),
+        "Two different GUIDs generated with the same properties should be equal when using DeterministicGuidGenerator!");
+
+    // When job id and compute task id are provided, they will be used to generate the guid
+    Properties properties3 = new Properties();
+    properties3.put(GUID_GENERATOR_IMPLEMENTATION, DeterministicGuidGenerator.class.getName());
+    properties3.put(PUSH_JOB_COMPUTE_JOB_ID, "Test_JOB_ID_3");
+    properties3.put(PUSH_JOB_COMPUTE_TASK_ID, "100");
+    VeniceProperties props3 = new VeniceProperties(properties3);
+    GUID guid3 = GuidUtils.getGUID(props3);
+    Assert.assertEquals(
+        guid3,
+        GuidUtils.getGUID(props3),
+        "Two different GUIDs generated with the same properties should be equal when using DeterministicGuidGenerator!");
+
+    // Ensure GUIDs using different job id and task ids are different
+    Assert.assertNotEquals(
+        guid1,
+        guid2,
+        "GUIDs generated with different job ids should be different when using DeterministicGuidGenerator!");
+    Assert.assertNotEquals(
+        guid2,
+        guid3,
+        "GUIDs generated with different job ids should be different when using DeterministicGuidGenerator!");
+    Assert.assertNotEquals(
+        guid3,
+        guid1,
+        "GUIDs generated with different job ids should be different when using DeterministicGuidGenerator!");
+  }
 }

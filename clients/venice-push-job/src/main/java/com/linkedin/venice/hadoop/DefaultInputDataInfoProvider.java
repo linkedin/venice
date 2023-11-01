@@ -1,14 +1,20 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
 
-import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
+import com.linkedin.venice.hadoop.recordreader.AbstractVeniceRecordReader;
+import com.linkedin.venice.hadoop.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.hadoop.recordreader.vson.VeniceVsonRecordReader;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
@@ -29,59 +35,28 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.PathFilter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   private static final Logger LOGGER = LogManager.getLogger(DefaultInputDataInfoProvider.class);
-  /**
-   * ignore hdfs files with prefix "_" and "."
-   */
-  public static final PathFilter PATH_FILTER = p -> !p.getName().startsWith("_") && !p.getName().startsWith(".");
-  // Vson input configs
-  // Vson files store key/value schema on file header. key / value fields are optional
-  // and should be specified only when key / value schema is the partial of the files.
-  public static final String FILE_KEY_SCHEMA = "key.schema";
-  public static final String FILE_VALUE_SCHEMA = "value.schema";
-  public static final String KEY_FIELD_PROP = "key.field";
-  public static final String VALUE_FIELD_PROP = "value.field";
-
-  /** Sample size to collect for building dictionary: Can be assigned a max of 2GB as {@link ZstdDictTrainer} in ZSTD library takes in sample size as int */
-  public static final String COMPRESSION_DICTIONARY_SAMPLE_SIZE = "compression.dictionary.sample.size";
-  public static final int DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE = 200 * BYTES_PER_MB; // 200MB
-  /** Maximum final dictionary size TODO add more details about the current limits */
-  public static final String COMPRESSION_DICTIONARY_SIZE_LIMIT = "compression.dictionary.size.limit";
 
   /**
    * Config to control the thread pool size for HDFS operations.
    */
   public static final String HDFS_OPERATIONS_PARALLEL_THREAD_NUM = "hdfs.operations.parallel.thread.num";
-  /**
-   * Since the job is calculating the raw data file size, which is not accurate because of compression,
-   * key/value schema and backend storage overhead, we are applying this factor to provide a more
-   * reasonable estimation.
-   *
-   * TODO: for map-reduce job, we could come up with more accurate estimation.
-   */
-  public static final long INPUT_DATA_SIZE_FACTOR = 2;
 
-  protected final VenicePushJob.StoreSetting storeSetting;
-  protected final VenicePushJob.PushJobSetting pushJobSetting;
+  protected final PushJobSetting pushJobSetting;
   protected PushJobZstdConfig pushJobZstdConfig;
   protected final VeniceProperties props;
   /**
    * Thread pool for Hadoop File System operations: Lazy initialization as this
-   * is not needed when {@link VenicePushJob.PushJobSetting#useMapperToBuildDict} is true
+   * is not needed when {@link PushJobSetting#useMapperToBuildDict} is true
    */
-  protected final Lazy<ExecutorService> hdfsExecutorService;
+  private final Lazy<ExecutorService> hdfsExecutorService;
 
-  DefaultInputDataInfoProvider(
-      VenicePushJob.StoreSetting storeSetting,
-      VenicePushJob.PushJobSetting pushJobSetting,
-      VeniceProperties props) {
-    this.storeSetting = storeSetting;
+  DefaultInputDataInfoProvider(PushJobSetting pushJobSetting, VeniceProperties props) {
     this.pushJobSetting = pushJobSetting;
     this.props = props;
     this.hdfsExecutorService =
@@ -109,19 +84,20 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     }
 
     if (!pushJobSetting.isIncrementalPush && !pushJobSetting.useMapperToBuildDict) {
-      if (this.storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+      if (this.pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         LOGGER.info("Zstd compression enabled for {}", pushJobSetting.storeName);
         initZstdConfig(fileStatuses.length);
       }
     }
 
-    PushJobSchemaInfo pushJobSchemaInfo = new PushJobSchemaInfo();
     // try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
     Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath(), false);
     if (fileMetadata.containsKey(FILE_KEY_SCHEMA) && fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
-      pushJobSchemaInfo.setAvro(false);
-      pushJobSchemaInfo.setVsonFileKeySchema(fileMetadata.get(FILE_KEY_SCHEMA));
-      pushJobSchemaInfo.setVsonFileValueSchema(fileMetadata.get(FILE_VALUE_SCHEMA));
+      pushJobSetting.isAvro = false;
+      pushJobSetting.vsonFileKeySchemaString = fileMetadata.get(FILE_KEY_SCHEMA);
+      pushJobSetting.vsonFileKeySchema = VsonSchema.parse(pushJobSetting.vsonFileKeySchemaString);
+      pushJobSetting.vsonFileValueSchemaString = fileMetadata.get(FILE_VALUE_SCHEMA);
+      pushJobSetting.vsonFileValueSchema = VsonSchema.parse(pushJobSetting.vsonFileValueSchemaString);
     }
     // Check the first file type prior to check schema consistency to make sure a schema can be obtained from it.
     if (fileStatuses[0].isDirectory()) {
@@ -131,53 +107,55 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     }
 
     final AtomicLong inputFileDataSize = new AtomicLong(0);
-    if (pushJobSchemaInfo.isAvro()) {
+    if (pushJobSetting.isAvro) {
       LOGGER.info("Detected Avro input format.");
-      pushJobSchemaInfo.setKeyField(props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP));
-      pushJobSchemaInfo.setValueField(props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP));
+      pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
+      pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
 
+      Pair<Schema, Schema> fileAndStoreSchema;
       if (!pushJobSetting.useMapperToBuildDict) {
-        pushJobSchemaInfo.setAvroSchema(checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize));
+        fileAndStoreSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
       } else {
-        pushJobSchemaInfo.setAvroSchema(getAvroFileHeader(fs, fileStatuses[0].getPath(), false));
+        fileAndStoreSchema = getAvroFileHeader(fs, fileStatuses[0].getPath(), false);
       }
 
-      Schema fileSchema = pushJobSchemaInfo.getAvroSchema().getFirst();
-      Schema storeSchema = pushJobSchemaInfo.getAvroSchema().getSecond();
+      pushJobSetting.fileSchema = fileAndStoreSchema.getFirst();
+      pushJobSetting.fileStoreSchema = fileAndStoreSchema.getSecond();
 
-      pushJobSchemaInfo.setFileSchemaString(fileSchema.toString());
-      pushJobSchemaInfo
-          .setKeySchemaString(extractAvroSubSchema(storeSchema, pushJobSchemaInfo.getKeyField()).toString());
-      pushJobSchemaInfo
-          .setValueSchemaString(extractAvroSubSchema(storeSchema, pushJobSchemaInfo.getValueField()).toString());
+      pushJobSetting.fileSchemaString = pushJobSetting.fileSchema.toString();
+      pushJobSetting.fileKeySchema = extractAvroSubSchema(pushJobSetting.fileStoreSchema, pushJobSetting.keyField);
+      pushJobSetting.fileValueSchema = extractAvroSubSchema(pushJobSetting.fileStoreSchema, pushJobSetting.valueField);
     } else {
       LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
       // key / value fields are optional for Vson input
-      pushJobSchemaInfo.setKeyField(props.getString(KEY_FIELD_PROP, ""));
-      pushJobSchemaInfo.setValueField(props.getString(VALUE_FIELD_PROP, ""));
+      pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, "");
+      pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, "");
 
+      Pair<VsonSchema, VsonSchema> vsonSchema;
       if (!pushJobSetting.useMapperToBuildDict) {
-        pushJobSchemaInfo.setVsonSchema(checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize));
+        vsonSchema = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
       } else {
-        pushJobSchemaInfo.setVsonSchema(getVsonFileHeader(fs, fileStatuses[0].getPath(), false));
+        vsonSchema = getVsonFileHeader(fs, fileStatuses[0].getPath(), false);
       }
 
-      VsonSchema vsonKeySchema = StringUtils.isEmpty(pushJobSchemaInfo.getKeyField())
-          ? pushJobSchemaInfo.getVsonSchema().getFirst()
-          : pushJobSchemaInfo.getVsonSchema().getFirst().recordSubtype(pushJobSchemaInfo.getKeyField());
-      VsonSchema vsonValueSchema = StringUtils.isEmpty(pushJobSchemaInfo.getValueField())
-          ? pushJobSchemaInfo.getVsonSchema().getSecond()
-          : pushJobSchemaInfo.getVsonSchema().getSecond().recordSubtype(pushJobSchemaInfo.getValueField());
+      VsonSchema vsonKeySchema = StringUtils.isEmpty(pushJobSetting.keyField)
+          ? vsonSchema.getFirst()
+          : vsonSchema.getFirst().recordSubtype(pushJobSetting.keyField);
+      VsonSchema vsonValueSchema = StringUtils.isEmpty(pushJobSetting.valueField)
+          ? vsonSchema.getSecond()
+          : vsonSchema.getSecond().recordSubtype(pushJobSetting.valueField);
 
-      pushJobSchemaInfo.setKeySchemaString(VsonAvroSchemaAdapter.parse(vsonKeySchema.toString()).toString());
-      pushJobSchemaInfo.setValueSchemaString(VsonAvroSchemaAdapter.parse(vsonValueSchema.toString()).toString());
+      pushJobSetting.fileKeySchema = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString());
+      pushJobSetting.fileValueSchema = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString());
     }
 
+    pushJobSetting.keySchemaString = pushJobSetting.fileKeySchema.toString();
+    pushJobSetting.valueSchemaString = pushJobSetting.fileValueSchema.toString();
+
     return new InputDataInfo(
-        pushJobSchemaInfo,
-        inputFileDataSize.get() * INPUT_DATA_SIZE_FACTOR,
+        inputFileDataSize.get(),
         fileStatuses.length,
-        hasRecords(pushJobSchemaInfo.isAvro(), fs, fileStatuses),
+        hasRecords(pushJobSetting.isAvro, fs, fileStatuses),
         inputModificationTime,
         !pushJobSetting.useMapperToBuildDict);
   }
@@ -286,7 +264,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       if (!pushJobSetting.isIncrementalPush) {
         if (!pushJobSetting.useMapperToBuildDict) {
           /** If dictionary compression is enabled for version, read the records to get training samples */
-          if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+          if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
             InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
           }
         } else {
@@ -370,7 +348,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       if (!pushJobSetting.isIncrementalPush) {
         if (!pushJobSetting.useMapperToBuildDict) {
           /** If dictionary compression is enabled for version, read the records to get training samples */
-          if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+          if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
             InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
           }
         } else {

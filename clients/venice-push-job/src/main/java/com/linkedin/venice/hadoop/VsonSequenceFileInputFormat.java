@@ -11,8 +11,6 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.SequenceFileInputFormat;
 import org.apache.hadoop.util.StringUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -20,8 +18,6 @@ import org.apache.logging.log4j.Logger;
  * https://github.com/voldemort/voldemort/blob/master/contrib/hadoop-store-builder/src/java/voldemort/store/readonly/mr/serialization/JsonSequenceFileInputFormat.java
  */
 public class VsonSequenceFileInputFormat extends SequenceFileInputFormat<BytesWritable, BytesWritable> {
-  private static final Logger LOGGER = LogManager.getLogger(VsonSequenceFileInputFormat.class);
-
   @Override
   protected FileStatus[] listStatus(JobConf job) throws IOException {
     String dirs = job.get("mapred.input.dir", "");

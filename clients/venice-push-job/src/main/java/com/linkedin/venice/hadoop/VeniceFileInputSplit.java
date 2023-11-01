@@ -7,7 +7,7 @@ import org.apache.hadoop.mapred.InputSplit;
 
 
 /**
- * Custom Input Split with the following specs to be used for the feature {@link VenicePushJob.PushJobSetting#useMapperToBuildDict} with
+ * Custom Input Split with the following specs to be used for the feature {@link PushJobSetting#useMapperToBuildDict} with
  * {@link ValidateSchemaAndBuildDictMapper}
  * 1. Holds an input directory
  * 2. {@link ValidateSchemaAndBuildDictMapper} is a map only MR supporting only 1 mapper, so only 1 split is created in total.

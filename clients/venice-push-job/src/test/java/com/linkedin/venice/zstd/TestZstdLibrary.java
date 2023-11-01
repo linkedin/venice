@@ -1,8 +1,8 @@
 package com.linkedin.venice.zstd;
 
-import static com.linkedin.venice.hadoop.DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
-import static com.linkedin.venice.hadoop.DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SIZE_LIMIT;
-import static com.linkedin.venice.hadoop.DefaultInputDataInfoProvider.PATH_FILTER;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
@@ -12,7 +12,8 @@ import com.github.luben.zstd.ZstdException;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.hadoop.InputDataInfoProvider;
 import com.linkedin.venice.hadoop.PushJobZstdConfig;
-import com.linkedin.venice.hadoop.VeniceAvroRecordReader;
+import com.linkedin.venice.hadoop.VenicePushJobConstants;
+import com.linkedin.venice.hadoop.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -75,7 +76,7 @@ public class TestZstdLibrary {
 
   /**
    * Number of samples: 0 to 6 => ZstdException ("Src size is incorrect")
-   * Known issue for the below crashes: check {@link PushJobZstdConfig#MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY}
+   * Known issue for the below crashes: check {@link VenicePushJobConstants#MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY}
    * Number of samples: 7 to 9 => SIGSEGV
    * Number of samples: 10 => SIGFPE
    * It should not fail for other cases

@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.hadoop.recordreader.AbstractVeniceRecordReader;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import java.io.Closeable;
@@ -20,23 +21,16 @@ public interface InputDataInfoProvider extends Closeable {
   Logger LOGGER = LogManager.getLogger(InputDataInfoProvider.class);
 
   class InputDataInfo {
-    private final PushJobSchemaInfo pushJobSchemaInfo;
-    private final long inputFileDataSizeInBytes;
+    private long inputFileDataSizeInBytes;
     private final int numInputFiles;
     private final boolean hasRecords;
     private final long inputModificationTime;
 
-    InputDataInfo(
-        PushJobSchemaInfo pushJobSchemaInfo,
-        long inputFileDataSizeInBytes,
-        int numInputFiles,
-        boolean hasRecords,
-        long inputModificationTime) {
-      this(pushJobSchemaInfo, inputFileDataSizeInBytes, numInputFiles, hasRecords, inputModificationTime, true);
+    InputDataInfo(long inputFileDataSizeInBytes, int numInputFiles, boolean hasRecords, long inputModificationTime) {
+      this(inputFileDataSizeInBytes, numInputFiles, hasRecords, inputModificationTime, true);
     }
 
     InputDataInfo(
-        PushJobSchemaInfo pushJobSchemaInfo,
         long inputFileDataSizeInBytes,
         int numInputFiles,
         boolean hasRecords,
@@ -50,19 +44,18 @@ public interface InputDataInfoProvider extends Closeable {
         throw new IllegalArgumentException(
             "The Number of Input files is expected to be positive. Got: " + numInputFiles);
       }
-      this.pushJobSchemaInfo = pushJobSchemaInfo;
       this.inputFileDataSizeInBytes = inputFileDataSizeInBytes;
       this.numInputFiles = numInputFiles;
       this.hasRecords = hasRecords;
       this.inputModificationTime = inputModificationTime;
     }
 
-    public PushJobSchemaInfo getSchemaInfo() {
-      return pushJobSchemaInfo;
-    }
-
     public long getInputFileDataSizeInBytes() {
       return inputFileDataSizeInBytes;
+    }
+
+    public void setInputFileDataSizeInBytes(long inputFileDataSizeInBytes) {
+      this.inputFileDataSizeInBytes = inputFileDataSizeInBytes;
     }
 
     public int getNumInputFiles() {

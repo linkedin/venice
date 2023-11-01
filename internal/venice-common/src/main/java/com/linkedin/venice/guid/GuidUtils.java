@@ -27,13 +27,21 @@ public class GuidUtils {
 
   private static GuidGenerator getGuidGenerator(VeniceProperties properties) {
     String implName = properties.getString(GUID_GENERATOR_IMPLEMENTATION, DEFAULT_GUID_GENERATOR_IMPLEMENTATION);
-    GuidGenerator guidGenerator = null;
+    GuidGenerator guidGenerator;
     if (implName.equals(JavaUtilGuidV4Generator.class.getName())) {
       guidGenerator = new JavaUtilGuidV4Generator();
     } else if (implName.equals(DeterministicGuidGenerator.class.getName())) {
+      String jobId = properties.getString(ConfigKeys.PUSH_JOB_COMPUTE_JOB_ID, (String) null);
+      long guidGeneratorPrefix;
+      if (jobId == null) {
+        guidGeneratorPrefix = 0;
+      } else {
+        guidGeneratorPrefix = jobId.hashCode();
+      }
+
       guidGenerator = new DeterministicGuidGenerator(
-          properties.getLong(ConfigKeys.PUSH_JOB_MAP_REDUCE_JT_ID, 0L),
-          properties.getLong(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, 0L));
+          guidGeneratorPrefix,
+          properties.getLong(ConfigKeys.PUSH_JOB_COMPUTE_TASK_ID, 0L));
     } else {
       Class<? extends GuidGenerator> implClass = ReflectUtils.loadClass(implName);
       guidGenerator = ReflectUtils.callConstructor(implClass, new Class[0], new Object[0]);

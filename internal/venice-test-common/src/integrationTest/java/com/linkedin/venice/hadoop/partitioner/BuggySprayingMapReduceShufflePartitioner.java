@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.partitioner;
 
-import com.linkedin.venice.hadoop.VeniceMRPartitioner;
-import com.linkedin.venice.hadoop.VeniceReducer;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartitioner;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer;
 import org.apache.hadoop.io.BytesWritable;
 
 

@@ -1,22 +1,29 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.LEGACY_AVRO_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.LEGACY_AVRO_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.MULTI_REGION;
-import static com.linkedin.venice.hadoop.VenicePushJob.PARENT_CONTROLLER_REGION_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJob.POST_VALIDATION_CONSUMPTION_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_ETL;
-import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJob.SYSTEM_SCHEMA_READER_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_LIST;
-import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_ETL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
@@ -26,6 +33,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -59,7 +67,9 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -99,6 +109,15 @@ public class VenicePushJobTest {
   private static final String PUSH_JOB_ID = "push_job_number_101";
   private static final String DISCOVERY_URL = "d2://d2Clusters/venice-discovery";
   private static final String PARENT_REGION_NAME = "dc-parent";
+
+  private static final String KEY_SCHEMA_STR = "\"string\"";
+  private static final String VALUE_SCHEMA_STR = "\"string\"";
+
+  private static final String SIMPLE_FILE_SCHEMA_STR = "{\n" + "    \"namespace\": \"example.avro\",\n"
+      + "    \"type\": \"record\",\n" + "    \"name\": \"User\",\n" + "    \"fields\": [\n"
+      + "      { \"name\": \"id\", \"type\": \"string\" },\n" + "      { \"name\": \"name\", \"type\": \"string\" },\n"
+      + "      { \"name\": \"age\", \"type\": \"int\" },\n" + "      { \"name\": \"company\", \"type\": \"string\" }\n"
+      + "    ]\n" + "  }";
 
   @Test
   public void testVPJcheckInputUpdateSchema() {
@@ -144,14 +163,14 @@ public class VenicePushJobTest {
       storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
     });
     try (VenicePushJob pushJob = getSpyVenicePushJobWithD2Routing(new Properties(), client)) {
-      VenicePushJob.PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.d2Routing);
       Assert.assertEquals(pushJobSetting.controllerD2ServiceName, TEST_CHILD_CONTROLLER_D2_SERVICE);
       Assert.assertEquals(pushJobSetting.childControllerRegionD2ZkHosts, TEST_ZK_ADDRESS);
     }
 
     try (VenicePushJob multiRegionPushJob = getSpyVenicePushJobWithMultiRegionD2Routing(new Properties(), client)) {
-      VenicePushJob.PushJobSetting multiRegionPushJobSetting = multiRegionPushJob.getPushJobSetting();
+      PushJobSetting multiRegionPushJobSetting = multiRegionPushJob.getPushJobSetting();
       Assert.assertTrue(multiRegionPushJobSetting.d2Routing);
       Assert.assertEquals(multiRegionPushJobSetting.controllerD2ServiceName, TEST_PARENT_CONTROLLER_D2_SERVICE);
       Assert.assertEquals(multiRegionPushJobSetting.parentControllerRegionD2ZkHosts, TEST_PARENT_ZK_ADDRESS);
@@ -169,7 +188,7 @@ public class VenicePushJobTest {
       storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
     });
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
-      VenicePushJob.PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
     }
   }
@@ -183,21 +202,19 @@ public class VenicePushJobTest {
     doReturn("UNKNOWN").when(response).getStatus();
     doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null));
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
-      VenicePushJob.PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       pushJobSetting.jobStatusInUnknownStateTimeoutMs = 10;
       Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
-      VenicePushJob.TopicInfo topicInfo = new VenicePushJob.TopicInfo();
-      topicInfo.version = 1;
-      topicInfo.topic = "abc";
-      pushJob.storeSetting = new VenicePushJob.StoreSetting();
-      pushJob.storeSetting.storeResponse = new StoreResponse();
-      pushJob.storeSetting.storeResponse.setName("abc");
+      pushJobSetting.version = 1;
+      pushJobSetting.topic = "abc";
+      pushJobSetting.storeResponse = new StoreResponse();
+      pushJobSetting.storeResponse.setName("abc");
       StoreInfo storeInfo = new StoreInfo();
       storeInfo.setBootstrapToOnlineTimeoutInHours(0);
-      pushJob.storeSetting.storeResponse.setStore(storeInfo);
+      pushJobSetting.storeResponse.setStore(storeInfo);
       VeniceException exception = Assert.expectThrows(
           VeniceException.class,
-          () -> pushJob.pollStatusUntilComplete(Optional.empty(), client, pushJobSetting, topicInfo, null, false));
+          () -> pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false));
       Assert
           .assertEquals(exception.getMessage(), "Failing push-job for store abc which is still running after 0 hours.");
     }
@@ -206,10 +223,10 @@ public class VenicePushJobTest {
   private Properties getRepushReadyProps() {
     Properties repushProps = new Properties();
     repushProps.setProperty(REPUSH_TTL_ENABLE, "true");
-    repushProps.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
-    repushProps.setProperty(VenicePushJob.KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
-    repushProps.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, "localhost");
-    repushProps.setProperty(VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    repushProps.setProperty(SOURCE_KAFKA, "true");
+    repushProps.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
+    repushProps.setProperty(KAFKA_INPUT_BROKER_URL, "localhost");
+    repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     return repushProps;
   }
 
@@ -247,7 +264,7 @@ public class VenicePushJobTest {
       Properties props,
       ControllerClient client) {
     // for mocked tests, only attempt once.
-    baseVPJProps.put(VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
+    baseVPJProps.put(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     baseVPJProps.putAll(props);
     ControllerClient mockClient = client == null ? getClient() : client;
     VenicePushJob pushJob = spy(new VenicePushJob(TEST_PUSH, baseVPJProps));
@@ -274,6 +291,8 @@ public class VenicePushJobTest {
 
     // mock value schema
     SchemaResponse schemaResponse = new SchemaResponse();
+    schemaResponse.setId(1);
+    schemaResponse.setSchemaStr(VALUE_SCHEMA_STR);
     doReturn(schemaResponse).when(client).getValueSchema(anyString(), anyInt());
 
     // mock storeinfo response
@@ -297,7 +316,7 @@ public class VenicePushJobTest {
     // mock key schema
     SchemaResponse keySchemaResponse = new SchemaResponse();
     keySchemaResponse.setId(1);
-    keySchemaResponse.setSchemaStr(Schema.create(Schema.Type.STRING).toString());
+    keySchemaResponse.setSchemaStr(KEY_SCHEMA_STR);
     doReturn(keySchemaResponse).when(client).getKeySchema(TEST_STORE);
 
     // mock version creation
@@ -349,11 +368,9 @@ public class VenicePushJobTest {
 
   private InputDataInfoProvider getMockInputDataInfoProvider() throws Exception {
     InputDataInfoProvider provider = mock(InputDataInfoProvider.class);
-    PushJobSchemaInfo pushJobSchemaInfo = new PushJobSchemaInfo();
-    pushJobSchemaInfo.setAvro(false); // skip the validation for the sake of unit testing
     // Input file size cannot be zero.
     InputDataInfoProvider.InputDataInfo info =
-        new InputDataInfoProvider.InputDataInfo(pushJobSchemaInfo, 10L, 1, false, System.currentTimeMillis());
+        new InputDataInfoProvider.InputDataInfo(10L, 1, false, System.currentTimeMillis());
     doReturn(info).when(provider).validateInputAndGetInfo(anyString());
     return provider;
   }
@@ -380,6 +397,7 @@ public class VenicePushJobTest {
 
   private Properties getVpjRequiredProperties() {
     Properties props = new Properties();
+    props.put(INPUT_PATH_PROP, TEST_PATH);
     props.put(VENICE_DISCOVER_URL_PROP, DISCOVERY_URL);
     props.put(MULTI_REGION, true);
     props.put(PARENT_CONTROLLER_REGION_NAME, PARENT_REGION_NAME);
@@ -392,7 +410,7 @@ public class VenicePushJobTest {
   public void testVenicePushJobCanHandleLegacyFieldsThrowsExceptionIfDuplicateKeysButValuesDiffer() {
     Properties props = getVpjRequiredProperties();
     props.put(LEGACY_AVRO_KEY_FIELD_PROP, "id");
-    props.put(KEY_FIELD_PROP, "message");
+    props.put(KEY_FIELD_PROP, "name");
     new VenicePushJob(PUSH_JOB_ID, props);
   }
 
@@ -400,12 +418,12 @@ public class VenicePushJobTest {
   public void testVenicePushJobCanHandleLegacyFields() {
     Properties props = getVpjRequiredProperties();
     props.put(LEGACY_AVRO_KEY_FIELD_PROP, "id");
-    props.put(LEGACY_AVRO_VALUE_FIELD_PROP, "message");
+    props.put(LEGACY_AVRO_VALUE_FIELD_PROP, "name");
     try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
-      VeniceProperties veniceProperties = vpj.getVeniceProperties();
+      VeniceProperties veniceProperties = vpj.getJobProperties();
       assertNotNull(veniceProperties);
       assertEquals(veniceProperties.getString(KEY_FIELD_PROP), "id");
-      assertEquals(veniceProperties.getString(VALUE_FIELD_PROP), "message");
+      assertEquals(veniceProperties.getString(VALUE_FIELD_PROP), "name");
     }
   }
 
@@ -413,7 +431,7 @@ public class VenicePushJobTest {
   public void testGetPushJobSetting() {
     Properties props = getVpjRequiredProperties();
     try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
-      VenicePushJob.PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
       assertNotNull(pushJobSetting);
       assertTrue(pushJobSetting.d2Routing);
     }
@@ -424,7 +442,7 @@ public class VenicePushJobTest {
     Properties props = getVpjRequiredProperties();
     props.put(VENICE_DISCOVER_URL_PROP, "http://venice.db:9898");
     try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
-      VenicePushJob.PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
       assertNotNull(pushJobSetting);
       assertFalse(pushJobSetting.d2Routing);
     }
@@ -452,34 +470,29 @@ public class VenicePushJobTest {
       boolean isSourceKafka,
       boolean isIncrementalPush,
       boolean inputFileHasRecords) {
-    VenicePushJob.PushJobSetting pushJobSetting = new VenicePushJob.PushJobSetting();
-    VenicePushJob.StoreSetting storeSetting = new VenicePushJob.StoreSetting();
+    PushJobSetting pushJobSetting = new PushJobSetting();
     pushJobSetting.compressionMetricCollectionEnabled = compressionMetricCollectionEnabled;
     pushJobSetting.isSourceKafka = isSourceKafka;
     pushJobSetting.isIncrementalPush = isIncrementalPush;
 
     for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
-      storeSetting.compressionStrategy = compressionStrategy;
+      pushJobSetting.storeCompressionStrategy = compressionStrategy;
 
       if (isSourceKafka || isIncrementalPush) {
-        assertFalse(
-            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
+        assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, inputFileHasRecords));
       } else if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        assertTrue(
-            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
+        assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, inputFileHasRecords));
       } else if (compressionMetricCollectionEnabled && inputFileHasRecords) {
-        assertTrue(
-            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
+        assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, inputFileHasRecords));
       } else {
-        assertFalse(
-            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
+        assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, inputFileHasRecords));
       }
     }
   }
 
   @Test
   public void testEvaluateCompressionMetricCollectionEnabled() {
-    VenicePushJob.PushJobSetting pushJobSetting = new VenicePushJob.PushJobSetting();
+    PushJobSetting pushJobSetting = new PushJobSetting();
 
     // Test with compressionMetricCollectionEnabled == false
     pushJobSetting.compressionMetricCollectionEnabled = false;
@@ -533,6 +546,8 @@ public class VenicePushJobTest {
   @Test
   public void testTargetedRegionPushConfigOverride() throws Exception {
     Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
     props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
     // when targeted region push is enabled, but store doesn't have source fabric set.
@@ -561,13 +576,15 @@ public class VenicePushJobTest {
       doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
       skipVPJValidation(pushJob);
       pushJob.run();
-      Assert.assertEquals(pushJob.pushJobSetting.targetedRegions, "dc-0, dc-1");
+      Assert.assertEquals(pushJob.getPushJobSetting().targetedRegions, "dc-0, dc-1");
     }
   }
 
   @Test
   public void testTargetedRegionPushReporting() throws Exception {
     Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
     props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
     props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
@@ -597,6 +614,8 @@ public class VenicePushJobTest {
   @Test
   public void testTargetedRegionPushPostValidationConsumptionForBatchStore() throws Exception {
     Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
     props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     ControllerClient client = getClient();
@@ -643,6 +662,8 @@ public class VenicePushJobTest {
   @Test
   public void testTargetedRegionPushPostValidationConsumptionForHybridStore() throws Exception {
     Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
     props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     ControllerClient client = getClient(storeInfo -> {
@@ -665,6 +686,8 @@ public class VenicePushJobTest {
   @Test
   public void testTargetedRegionPushPostValidationFailedForValidation() throws Exception {
     Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
     props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     ControllerClient client = getClient();
@@ -720,7 +743,7 @@ public class VenicePushJobTest {
     versionCreationResponse.setEnableSSL(false);
     versionCreationResponse.setCompressionStrategy(CompressionStrategy.NO_OP);
     versionCreationResponse.setDaVinciPushStatusStoreEnabled(false);
-    versionCreationResponse.setPartitionerClass("PartitionerClass");
+    versionCreationResponse.setPartitionerClass(DefaultVenicePartitioner.class.getCanonicalName());
     versionCreationResponse.setPartitionerParams(Collections.emptyMap());
 
     if (client != null) {
@@ -746,10 +769,31 @@ public class VenicePushJobTest {
   }
 
   private void skipVPJValidation(VenicePushJob pushJob) throws Exception {
-    doReturn(getMockInputDataInfoProvider()).when(pushJob).getInputDataInfoProvider();
-    doNothing().when(pushJob).validateKeySchema(any(), any(), any(), any());
-    doNothing().when(pushJob).validateValueSchema(any(), any(), any(), anyBoolean());
-    doNothing().when(pushJob).setupMRConf(any(), any(), any(), any(), any(), any(), anyString(), anyString());
+    doAnswer(invocation -> {
+      VeniceProperties properties = pushJob.getJobProperties();
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+
+      if (!pushJobSetting.isSourceKafka) {
+        Schema schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(SIMPLE_FILE_SCHEMA_STR);
+        pushJobSetting.keyField = properties.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
+        pushJobSetting.valueField = properties.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
+
+        pushJobSetting.fileSchema = schema;
+        pushJobSetting.fileStoreSchema = schema;
+
+        pushJobSetting.fileSchemaString = SIMPLE_FILE_SCHEMA_STR;
+        pushJobSetting.fileKeySchema = pushJobSetting.fileStoreSchema.getField(pushJobSetting.keyField).schema();
+        pushJobSetting.fileValueSchema = pushJobSetting.fileStoreSchema.getField(pushJobSetting.valueField).schema();
+
+        pushJobSetting.keySchemaString = pushJobSetting.fileKeySchema.toString();
+        pushJobSetting.valueSchemaString = pushJobSetting.fileValueSchema.toString();
+      }
+
+      return getMockInputDataInfoProvider();
+    }).when(pushJob).getInputDataInfoProvider();
+
+    doNothing().when(pushJob).validateKeySchema(any());
+    doNothing().when(pushJob).validateValueSchema(any(), any(), anyBoolean());
     doNothing().when(pushJob).runJobAndUpdateStatus();
   }
 }

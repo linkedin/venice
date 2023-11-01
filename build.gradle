@@ -73,6 +73,9 @@ ext.libraries = [
     d2: "com.linkedin.pegasus:d2:${pegasusVersion}",
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
+    grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
+    grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
+    grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     helix: 'org.apache.helix:helix-core:1.1.0',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
@@ -112,21 +115,19 @@ ext.libraries = [
     slf4jApi: 'org.slf4j:slf4j-api:1.7.36',
     slf4jSimple: 'org.slf4j:slf4j-simple:1.7.36',
     snappy: 'org.iq80.snappy:snappy:0.4',
-    spark: 'com.sparkjava:spark-core:2.9.4',
+    spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
     tehuti: 'io.tehuti:tehuti:0.11.3',
     testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
-    // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
+    tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
+    // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation
+    // or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
     xalan: 'xalan:xalan:2.7.1',
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.5.9',
     zstd: 'com.github.luben:zstd-jni:1.5.2-3',
-    grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
-    grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
-    grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
-    tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
 ]
 
 group = 'com.linkedin.venice'

@@ -1,11 +1,11 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.AbstractMapReduceTask;
-import com.linkedin.venice.hadoop.VeniceMRPartitioner;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartitioner;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.task.AbstractMapReduceTask;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -15,7 +15,6 @@ import java.util.Iterator;
 import java.util.Optional;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.hadoop.io.BytesWritable;
-import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
@@ -82,7 +81,7 @@ public class KafkaInputFormatCombiner extends AbstractMapReduceTask
   }
 
   @Override
-  protected void configureTask(VeniceProperties props, JobConf job) {
+  protected void configureTask(VeniceProperties props) {
   }
 
   /**

@@ -11,9 +11,12 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -40,32 +43,28 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
       LOGGER.info("Start setting up the ssl properties.");
       try {
         // Setup keystore certification
-        byte[] keyStoreCert = getCertification(
-            userCredentials,
-            new Text(properties.getProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME)));
+        byte[] keyStoreCert =
+            getCertification(userCredentials, new Text(properties.getProperty(SSL_KEY_STORE_PROPERTY_NAME)));
         LOGGER.info("Found key store cert from credentials.");
         String keyStoreLocation = writeToTempFile(keyStoreCert);
         LOGGER.info("Write key store cert to file: {}", keyStoreLocation);
         properties.put(SSL_KEYSTORE_LOCATION, keyStoreLocation);
         // Setup truststore certification
-        byte[] truestStoreCert = getCertification(
-            userCredentials,
-            new Text(properties.getProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME)));
+        byte[] truestStoreCert =
+            getCertification(userCredentials, new Text(properties.getProperty(SSL_TRUST_STORE_PROPERTY_NAME)));
         LOGGER.info("Found trust store cert from credentials.");
         String trustStoreLocation = writeToTempFile(truestStoreCert);
         LOGGER.info("Write trust store cert to file: {}", trustStoreLocation);
         properties.put(SSL_TRUSTSTORE_LOCATION, trustStoreLocation);
 
         // Setup keystore password.
-        String keyStorePassword = getPassword(
-            userCredentials,
-            new Text(properties.getProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME)));
+        String keyStorePassword =
+            getPassword(userCredentials, new Text(properties.getProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME)));
         properties.put(SSL_KEYSTORE_PASSWORD, keyStorePassword);
 
         // Setup key password.
-        String keyPassword = getPassword(
-            userCredentials,
-            new Text(properties.getProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME)));
+        String keyPassword =
+            getPassword(userCredentials, new Text(properties.getProperty(SSL_KEY_PASSWORD_PROPERTY_NAME)));
         properties.put(SSL_KEY_PASSWORD, keyPassword);
         if (!properties.containsKey(SSL_KEYSTORE_TYPE)) {
           properties.put(SSL_KEYSTORE_TYPE, "pkcs12");
