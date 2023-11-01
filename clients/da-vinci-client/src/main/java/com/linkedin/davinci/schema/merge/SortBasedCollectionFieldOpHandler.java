@@ -59,6 +59,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       collectionFieldRmd.setPutOnlyPartLength(toPutList.size());
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
+    /**
+     * LinkedList is more efficient for the following add/remove operations.
+     */
+    if (!toPutList.isEmpty() && !(toPutList instanceof LinkedList)) {
+      toPutList = new LinkedList<>((toPutList));
+    }
     // The current list is NOT in the put-only state. So we need to de-dup the incoming list.
     deDupListFromEnd(toPutList);
 

@@ -17,7 +17,7 @@ import org.apache.avro.specific.SpecificRecord;
  */
 public class SerializerDeserializerFactory {
   // Class works as the key of caching map for SerializerDeserializerFactory
-  protected static class SchemaPairAndClassContainer {
+  public static class SchemaPairAndClassContainer {
     public Schema writer;
     public Schema reader;
     public Class c;
