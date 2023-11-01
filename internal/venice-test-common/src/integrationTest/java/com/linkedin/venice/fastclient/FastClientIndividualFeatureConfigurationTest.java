@@ -10,7 +10,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -34,10 +33,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(false);
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(
-        clientConfigBuilder,
-        new MetricsRepository(),
-        StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository());
     // Update the read quota to 1000 and make 500 requests, all requests should be allowed.
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils
@@ -145,10 +142,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(false);
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(
-        clientConfigBuilder,
-        new MetricsRepository(),
-        StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository());
 
     String key = keyPrefix + 0;
 

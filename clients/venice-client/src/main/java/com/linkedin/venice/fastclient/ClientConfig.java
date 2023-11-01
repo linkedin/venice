@@ -440,7 +440,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private int longTailRetryThresholdForComputeInMicroSeconds = 10000; // 10ms.
 
     private boolean isVsonStore = false;
-    private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA;
+    private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.SERVER_BASED_METADATA;
     private D2Client d2Client;
     private String clusterDiscoveryD2Service;
     private boolean useStreamingBatchGetAsDefault = false;

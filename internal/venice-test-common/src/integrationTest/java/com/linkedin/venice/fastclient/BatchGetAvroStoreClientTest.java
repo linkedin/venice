@@ -12,11 +12,11 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
-import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -119,11 +119,8 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   /**
    * Creates a batchget request which uses scatter gather to fetch all keys from different replicas.
    */
-  @Test(dataProvider = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
-  public void testBatchGetGenericClient(
-      boolean useStreamingBatchGetAsDefault,
-      boolean retryEnabled,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "FastClient-Two-Boolean", timeOut = TIME_OUT)
+  public void testBatchGetGenericClient(boolean useStreamingBatchGetAsDefault, boolean retryEnabled) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -143,7 +140,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, metricsRepository, storeMetadataFetchMode);
+        getGenericFastClient(clientConfigBuilder, metricsRepository);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -165,10 +162,8 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     printAllStats();
   }
 
-  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
-  public void testBatchGetSpecificClient(
-      boolean useStreamingBatchGetAsDefault,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIME_OUT)
+  public void testBatchGetSpecificClient(boolean useStreamingBatchGetAsDefault) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -181,7 +176,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
-        getSpecificFastClient(clientConfigBuilder, metricsRepository, TestValueSchema.class, storeMetadataFetchMode);
+        getSpecificFastClient(clientConfigBuilder, metricsRepository, TestValueSchema.class);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -201,9 +196,8 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     printAllStats();
   }
 
-  @Test(dataProvider = "Boolean-And-StoreMetadataFetchModes", timeOut = TIME_OUT)
-  public void testStreamingBatchGetGenericClient(boolean retryEnabled, StoreMetadataFetchMode storeMetadataFetchMode)
-      throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIME_OUT)
+  public void testStreamingBatchGetGenericClient(boolean retryEnabled) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -219,7 +213,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, metricsRepository, storeMetadataFetchMode);
+        getGenericFastClient(clientConfigBuilder, metricsRepository);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -258,10 +252,8 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     validateBatchGetMetrics(metricsRepository, true, true, recordCnt + 1, recordCnt, false);
   }
 
-  @Test(dataProvider = "Boolean-And-StoreMetadataFetchModes", timeOut = TIME_OUT)
-  public void testStreamingBatchGetWithCallbackGenericClient(
-      boolean retryEnabled,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIME_OUT)
+  public void testStreamingBatchGetWithCallbackGenericClient(boolean retryEnabled) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -277,7 +269,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, metricsRepository, storeMetadataFetchMode);
+        getGenericFastClient(clientConfigBuilder, metricsRepository);
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
       keys.add(keyPrefix + i);

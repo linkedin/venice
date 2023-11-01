@@ -9,7 +9,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
@@ -53,23 +52,18 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       Consumer<MetricsRepository> fastClientStatsValidation,
       Consumer<MetricsRepository> thinClientStatsValidation,
       MetricsRepository thinClientMetricsRepository,
-      Optional<AvroGenericStoreClient> vsonThinClient,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+      Optional<AvroGenericStoreClient> vsonThinClient) throws Exception {
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     boolean compute = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
     try {
-      genericFastClient =
-          getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, storeMetadataFetchMode);
+      genericFastClient = getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient);
 
       // Construct a Vson store client
-      genericFastVsonClient = getGenericFastVsonClient(
-          clientConfigBuilder.clone(),
-          new MetricsRepository(),
-          vsonThinClient,
-          storeMetadataFetchMode);
+      genericFastVsonClient =
+          getGenericFastVsonClient(clientConfigBuilder.clone(), new MetricsRepository(), vsonThinClient);
 
       if (batchGet) {
         // test batch get of size 2 (current default max)
@@ -194,11 +188,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     // Test specific store client
     MetricsRepository metricsRepositoryForSpecificClient = new MetricsRepository();
     ClientConfig.ClientConfigBuilder specificClientConfigBuilder = clientConfigBuilder.clone();
-    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = getSpecificFastClient(
-        specificClientConfigBuilder,
-        metricsRepositoryForSpecificClient,
-        TestValueSchema.class,
-        storeMetadataFetchMode);
+    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
+        getSpecificFastClient(specificClientConfigBuilder, metricsRepositoryForSpecificClient, TestValueSchema.class);
     try {
       if (batchGet) {
         // test batch get of size 2 (default)
@@ -288,8 +279,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       boolean enableGrpc,
       boolean retryEnabled,
       int batchGetKeySize,
-      RequestType requestType,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+      RequestType requestType) throws Exception {
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     boolean compute = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;
 
@@ -380,8 +370,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           fastClientStatsValidation,
           thinClientStatsValidation,
           thinClientMetricsRepository,
-          dualRead ? Optional.of(genericVsonThinClient) : Optional.empty(),
-          storeMetadataFetchMode);
+          dualRead ? Optional.of(genericVsonThinClient) : Optional.empty());
 
     } finally {
       if (genericThinClient != null) {
@@ -396,10 +385,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "fastClientHTTPVariantsAndStoreMetadataFetchModes", timeOut = 2 * TIME_OUT)
-  public void testFastClientGetWithDifferentHTTPVariants(
-      ClientTestUtils.FastClientHTTPVariant fastClientHTTPVariant,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "fastClientHTTPVariants", timeOut = 2 * TIME_OUT)
+  public void testFastClientGetWithDifferentHTTPVariants(ClientTestUtils.FastClientHTTPVariant fastClientHTTPVariant)
+      throws Exception {
     Client r2Client = ClientTestUtils.getR2Client(fastClientHTTPVariant);
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -418,8 +406,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         fastClientStatsValidation,
         m -> {},
         null,
-        Optional.empty(),
-        storeMetadataFetchMode);
+        Optional.empty());
 
     // batch get
     fastClientStatsValidation = metricsRepository -> validateBatchGetMetrics(
@@ -436,8 +423,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         fastClientStatsValidation,
         m -> {},
         null,
-        Optional.empty(),
-        storeMetadataFetchMode);
+        Optional.empty());
 
     // compute
     fastClientStatsValidation =
@@ -449,8 +435,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         fastClientStatsValidation,
         m -> {},
         null,
-        Optional.empty(),
-        storeMetadataFetchMode);
+        Optional.empty());
   }
 
   @Test(dataProvider = "FastClient-Request-Types-Small", timeOut = TIME_OUT)
@@ -484,14 +469,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
       fastClientStatsValidation = metricsRepository -> validateSingleGetMetrics(metricsRepository, true);
     }
-    runTest(
-        clientConfigBuilder,
-        requestType,
-        recordCnt,
-        fastClientStatsValidation,
-        m -> {},
-        null,
-        Optional.empty(),
-        StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    runTest(clientConfigBuilder, requestType, recordCnt, fastClientStatsValidation, m -> {}, null, Optional.empty());
   }
 }

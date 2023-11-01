@@ -1,7 +1,6 @@
 package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES_SMALL;
-import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -58,12 +57,11 @@ public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest
         DataProviderUtils.BOOLEAN, // enableGrpc
         DataProviderUtils.BOOLEAN, // retryEnabled
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
-        REQUEST_TYPES_SMALL, // requestType
-        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
+        REQUEST_TYPES_SMALL); // requestType
   }
 
   @Override
-  protected void prepareData() throws Exception {
+  protected void prepareData() {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 

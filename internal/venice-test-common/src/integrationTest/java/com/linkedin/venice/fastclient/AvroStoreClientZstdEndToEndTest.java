@@ -1,7 +1,6 @@
 package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES_SMALL;
-import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
@@ -62,8 +61,7 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
         DataProviderUtils.BOOLEAN, // enableGrpc
         DataProviderUtils.BOOLEAN, // retryEnabled
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
-        REQUEST_TYPES_SMALL, // requestType
-        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
+        REQUEST_TYPES_SMALL); // requestType
   }
 
   @Override

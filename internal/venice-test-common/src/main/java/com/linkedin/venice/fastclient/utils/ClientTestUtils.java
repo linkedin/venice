@@ -7,7 +7,6 @@ import com.linkedin.r2.transport.http.client.HttpClientFactory;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.transport.HttpClient5BasedR2Client;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.security.SSLFactory;
@@ -29,9 +28,6 @@ public class ClientTestUtils {
   // Small => No explicit "_STREAMING" RequestTypes
   public static final Object[] REQUEST_TYPES_SMALL =
       { RequestType.SINGLE_GET, RequestType.MULTI_GET, RequestType.COMPUTE };
-
-  public static final Object[] STORE_METADATA_FETCH_MODES =
-      { StoreMetadataFetchMode.SERVER_BASED_METADATA, StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA };
 
   private static Client setupTransportClientFactory(FastClientHTTPVariant fastClientHTTPVariant) {
     /**

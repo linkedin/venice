@@ -10,7 +10,6 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
-import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
@@ -36,11 +35,8 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
             .setLongTailRetryEnabledForSingleGet(true)
             .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
 
-    AvroSpecificStoreClient<String, TestValueSchema> fastClient = getSpecificFastClient(
-        clientConfigBuilder,
-        new MetricsRepository(),
-        TestValueSchema.class,
-        StoreMetadataFetchMode.THIN_CLIENT_BASED_METADATA);
+    AvroSpecificStoreClient<String, TestValueSchema> fastClient =
+        getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), TestValueSchema.class);
     Assert.assertNotNull(fastClient.get("key_1").get());
     try (DaVinciClient<String, TestValueSchema> daVinciClient = setupDaVinciClient(storeName)) {
       daVinciClient.subscribeAll().get();
@@ -65,17 +61,11 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
     try (DaVinciClient<String, TestValueSchema> daVinciClient = setupDaVinciClient(storeName)) {
       daVinciClient.subscribeAll().get();
       Assert.assertNotNull(daVinciClient.get("key_1").get());
-      AvroSpecificStoreClient<String, TestValueSchema> fastClient = getSpecificFastClient(
-          clientConfigBuilder,
-          new MetricsRepository(),
-          TestValueSchema.class,
-          StoreMetadataFetchMode.THIN_CLIENT_BASED_METADATA);
+      AvroSpecificStoreClient<String, TestValueSchema> fastClient =
+          getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), TestValueSchema.class);
       Assert.assertNotNull(fastClient.get("key_1").get());
-      AvroSpecificStoreClient<String, TestValueSchema> fastClient2 = getSpecificFastClient(
-          clientConfigBuilder,
-          new MetricsRepository(),
-          TestValueSchema.class,
-          StoreMetadataFetchMode.THIN_CLIENT_BASED_METADATA);
+      AvroSpecificStoreClient<String, TestValueSchema> fastClient2 =
+          getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), TestValueSchema.class);
       Assert.assertNotNull(fastClient2.get("key_1").get());
     }
   }
@@ -90,14 +80,10 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
             .setSpeculativeQueryEnabled(false)
             .setLongTailRetryEnabledForSingleGet(true)
             .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
-    AvroSpecificStoreClient<String, TestValueSchema> fastClient = getSpecificFastClient(
-        clientConfigBuilder,
-        new MetricsRepository(),
-        TestValueSchema.class,
-        StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA);
+    AvroSpecificStoreClient<String, TestValueSchema> fastClient =
+        getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), TestValueSchema.class);
     Assert.assertNotNull(fastClient.get("key_1").get());
     fastClient.close();
-    cleanupDaVinciClientForMetaStore();
     try (DaVinciClient<String, TestValueSchema> daVinciClient = setupDaVinciClient(storeName)) {
       daVinciClient.subscribeAll().get();
       Assert.assertNotNull(daVinciClient.get("key_1").get());
