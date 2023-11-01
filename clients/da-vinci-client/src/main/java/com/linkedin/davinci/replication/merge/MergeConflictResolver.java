@@ -26,7 +26,6 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.collections.BiIntKeyCache;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -62,7 +61,7 @@ public class MergeConflictResolver {
 
   private final SparseConcurrentList<RecordSerializer<GenericRecord>> serializerIndexedByValueSchemaId;
   private final BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCacheForFullValue;
-  private final Map<String, RecordDeserializer<GenericRecord>> deserializerCacheForUpdateValue;
+  private final BiIntKeyCache<SparseConcurrentList<RecordDeserializer<GenericRecord>>> deserializerCacheForUpdateValue;
 
   MergeConflictResolver(
       StringAnnotatedStoreSchemaCache storeSchemaCache,
@@ -92,7 +91,8 @@ public class MergeConflictResolver {
           ? MapOrderPreservingFastSerDeFactory.getDeserializer(writerSchema, readerSchema)
           : MapOrderPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
     });
-    this.deserializerCacheForUpdateValue = new VeniceConcurrentHashMap<>();
+    this.deserializerCacheForUpdateValue =
+        new BiIntKeyCache<>((writerSchemaId, readerSchemaId) -> new SparseConcurrentList<>());
   }
 
   /**
@@ -601,20 +601,16 @@ public class MergeConflictResolver {
       int readerValueSchemaId,
       int updateProtocolVersion,
       ByteBuffer updateBytes) {
-    String combinedKey = new StringBuilder().append(writerValueSchemaId)
-        .append("-")
-        .append(readerValueSchemaId)
-        .append("-")
-        .append(updateProtocolVersion)
-        .toString();
     RecordDeserializer<GenericRecord> deserializer =
-        deserializerCacheForUpdateValue.computeIfAbsent(combinedKey, ignored -> {
-          Schema writerSchema = getWriteComputeSchema(writerValueSchemaId, updateProtocolVersion);
-          Schema readerSchema = getWriteComputeSchema(readerValueSchemaId, updateProtocolVersion);
-          return this.fastAvroEnabled
-              ? MapOrderPreservingFastSerDeFactory.getDeserializer(writerSchema, readerSchema)
-              : MapOrderPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
-        });
+        deserializerCacheForUpdateValue.get(writerValueSchemaId, readerValueSchemaId)
+            .computeIfAbsent(updateProtocolVersion, ignored -> {
+              Schema writerSchema = getWriteComputeSchema(writerValueSchemaId, updateProtocolVersion);
+              Schema readerSchema = getWriteComputeSchema(readerValueSchemaId, updateProtocolVersion);
+              return this.fastAvroEnabled
+                  ? MapOrderPreservingFastSerDeFactory.getDeserializer(writerSchema, readerSchema)
+                  : MapOrderPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
+            });
+
     return deserializer.deserialize(updateBytes);
   }
 
