@@ -1112,10 +1112,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         String.valueOf(serverConfig.getKafkaFetchPartitionMaxSizePerSecond()));
     kafkaConsumerProperties.setProperty(
         PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_TIMES,
-        String.valueOf(serverConfig.getKafkaPollRetryTimes()));
+        String.valueOf(serverConfig.getPubSubConsumerPollRetryTimes()));
     kafkaConsumerProperties.setProperty(
         PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS,
-        String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
+        String.valueOf(serverConfig.getPubSubConsumerPollRetryBackoffMs()));
 
     return kafkaConsumerProperties;
   }

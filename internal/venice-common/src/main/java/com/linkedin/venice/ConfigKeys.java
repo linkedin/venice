@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -507,15 +508,17 @@ public class ConfigKeys {
   public static final String SERVER_KAFKA_MAX_POLL_RECORDS = "server.kafka.max.poll.records";
 
   /**
-   * This config is used to control how many times Kafka consumer would retry polling during ingestion
+   * This config is used to control how many times PubSub consumer would retry polling during ingestion
    * when RetriableException happens.
    */
-  public static final String SERVER_KAFKA_POLL_RETRY_TIMES = "server.kafka.poll.retry.times";
+  public static final String SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES =
+      "server." + PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_TIMES;
 
   /**
-   * This config is used to control the backoff time between Kafka consumer poll retries.
+   * This config is used to control the backoff time between PubSub consumer poll retries.
    */
-  public static final String SERVER_KAFKA_POLL_RETRY_BACKOFF_MS = "server.kafka.poll.backoff.ms";
+  public static final String SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS =
+      "server." + PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
 
   /**
    * This config decides the frequency of the disk health check; the disk health check service writes

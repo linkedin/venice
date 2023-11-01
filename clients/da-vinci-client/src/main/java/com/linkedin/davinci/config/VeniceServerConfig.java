@@ -74,8 +74,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_POLL_RETRY_BACKOFF_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_POLL_RETRY_TIMES;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
@@ -92,6 +90,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_SERVICE_SC
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
@@ -294,9 +294,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int kafkaMaxPollRecords;
 
-  private final int kafkaPollRetryTimes;
+  private final int pubSubConsumerPollRetryTimes;
 
-  private final int kafkaPollRetryBackoffMs;
+  private final int pubSubConsumerPollRetryBackoffMs;
 
   /**
    * The number of threads being used to serve compute request.
@@ -520,8 +520,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     nodeCapacityInRcu = serverProperties.getLong(SERVER_NODE_CAPACITY_RCU, 100000);
     kafkaMaxPollRecords = serverProperties.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
-    kafkaPollRetryTimes = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_TIMES, 100);
-    kafkaPollRetryBackoffMs = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_BACKOFF_MS, 0);
+    pubSubConsumerPollRetryTimes = serverProperties.getInt(SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES, 100);
+    pubSubConsumerPollRetryBackoffMs = serverProperties.getInt(SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS, 0);
     diskHealthCheckIntervalInMS =
         TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10));
     diskHealthCheckTimeoutInMs =
@@ -941,12 +941,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return kafkaMaxPollRecords;
   }
 
-  public int getKafkaPollRetryTimes() {
-    return kafkaPollRetryTimes;
+  public int getPubSubConsumerPollRetryTimes() {
+    return pubSubConsumerPollRetryTimes;
   }
 
-  public int getKafkaPollRetryBackoffMs() {
-    return kafkaPollRetryBackoffMs;
+  public int getPubSubConsumerPollRetryBackoffMs() {
+    return pubSubConsumerPollRetryBackoffMs;
   }
 
   public long getDiskHealthCheckIntervalInMS() {
