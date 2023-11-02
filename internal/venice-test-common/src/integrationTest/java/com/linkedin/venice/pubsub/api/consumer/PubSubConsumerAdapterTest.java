@@ -125,7 +125,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: When partitionsFor is called on a non-existent topic, it should return null
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testPartitionsForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
@@ -137,7 +137,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: When partitionsFor is called on an existing topic, it should return a list of partitions
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testPartitionsForExistingTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
@@ -156,7 +156,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: When endOffsets is called on a non-existent topic, it should throw PubSubOpTimeoutException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testEndOffsetsForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     List<PubSubTopicPartition> partitions = new ArrayList<>(2);
@@ -174,7 +174,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: When endOffsets is called on an existing topic, it should return a map of partition to end offset
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testEndOffsetsForExistingTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
@@ -201,7 +201,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When endOffsets is called for a non-existent and existing topic in the same API call,
   // it should throw a PubSubOpTimeoutException.
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testEndOffsetsForNonExistentAndExistingTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
@@ -227,7 +227,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When endOffsets is called on an existing topic with a non-existent partition, it should throw
   // PubSubOpTimeoutException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testEndOffsetsForExistingTopicWithNonExistentPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
@@ -255,7 +255,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When endOffset (without explicit timeout) is called on a non-existent partition,
   // it should throw PubSubOpTimeoutException after the default API timeout.
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testEndOffsetWithoutExplicitTimeoutForNonExistentPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
@@ -289,7 +289,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: When beginningOffset is called on a non-existent topic, it should throw PubSubOpTimeoutException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testBeginningOffsetForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
@@ -307,7 +307,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: When beginningOffset is called on an existing topic, it should return an offset
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testBeginningOffsetForExistingTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
@@ -340,7 +340,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When beginningOffset is called on an existing topic with a non-existent partition, it should throw
   // PubSubOpTimeoutException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testBeginningOffsetForExistingTopicWithNonExistentPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
@@ -370,7 +370,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: When offsetForTime is called on a non-existent topic, it should throw PubSubOpTimeoutException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testOffsetForTimeForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
@@ -389,7 +389,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When offsetForTime is called on an existing topic with a valid partition but no messages, it should return
   // null
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testOffsetForTimeForExistingTopicWithValidPartitionsButNoMessages() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
@@ -415,7 +415,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When offsetForTime is called on an existing topic with invalid partition, it should throw
   // PubSubOpTimeoutException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testOffsetForTimeForExistingTopicWithInvalidPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
@@ -449,7 +449,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When offsetForTime is called on an existing topic with a valid partition and messages, it should return an
   // offset
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testOffsetForTimeForExistingTopicWithValidPartitionsAndMessages()
       throws ExecutionException, InterruptedException, TimeoutException {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
@@ -535,7 +535,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When offsetForTime (without explicit timeout) is called on a non-existent topic,
   // it should throw PubSubOpTimeoutException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testOffsetForTimeWithoutExplicitTimeoutForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
@@ -553,7 +553,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When offsetForTime (without explicit timeout) is called on an existing topic with invalid partition,
   // it should throw PubSubOpTimeoutException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testOffsetForTimeWithoutExplicitTimeoutForExistingTopicWithInvalidPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
@@ -583,7 +583,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When offsetForTime (without explicit timeout) is called on an existing topic with a valid partition but no
   // messages, it should return null
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testOffsetForTimeWithoutExplicitTimeoutForExistingTopicWithValidPartitionsButNoMessages() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
@@ -608,7 +608,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: Subscribe to non-existent topic should throw PubSubTopicDoesNotExistException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testSubscribeForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
@@ -626,7 +626,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: Subscribe to an existing topic with a non-existent partition should throw PubSubTopicDoesNotExistException
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testSubscribeForExistingTopicWithNonExistentPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
@@ -650,7 +650,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: Subscribe to an existing topic with an existing partition should not take longer than the default timeout
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testSubscribeForExistingTopicWithExistingPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
@@ -700,7 +700,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   // Test: Unsubscribe to an existing topic and a non-existent topic should not take longer than the default timeout
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testUnsubscribeForExistingAndNonExistentTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
@@ -741,7 +741,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: Batch unsubscribe to an existing topic and a non-existent topic should not take longer than the default
   // timeout
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testBatchUnsubscribeForExistingAndNonExistentTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
@@ -787,7 +787,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: resetOffset should not take longer than the default timeout when called on an existing topic with a valid
   // partition and subscription
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testResetOffsetForExistingTopicWithValidPartitionAndSubscription()
       throws ExecutionException, InterruptedException, TimeoutException {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
@@ -861,7 +861,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: resetOffset should throw PubSubUnsubscribedTopicPartitionException when called on an existing topic with a
   // valid partition but no subscription
-  @Test
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testResetOffsetForExistingTopicWithValidPartitionButNoSubscription() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
@@ -889,7 +889,7 @@ public class PubSubConsumerAdapterTest {
   // Test: poll works as expected when called on an existing topic with a valid partition and subscription.
   // poll should not block for longer than the specified timeout even consumer is subscribed to multiple
   // topic-partitions and some topic-partitions do not exist.
-  @Test(timeOut = 10 * Time.MS_PER_MINUTE)
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testPollPauseResume() throws ExecutionException, InterruptedException, TimeoutException {
     PubSubTopic topicA = pubSubTopicRepository.getTopic(Utils.getUniqueString("timeless-treasure-"));
     PubSubTopic topicB = pubSubTopicRepository.getTopic(Utils.getUniqueString("diminishing-delight-"));
@@ -1228,7 +1228,7 @@ public class PubSubConsumerAdapterTest {
   // If we rely on the consumer to keep polling data when the topic is recreated, we may observe different behaviors
   // with different PubSub implementations. This should be avoided at all costs.
   // The purpose of the test is to examine how the consumer behaves when a topic is deleted
-  @Test(timeOut = 10 * Time.MS_PER_MINUTE)
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testResetOffsetDeleteTopicRecreateTopic()
       throws ExecutionException, InterruptedException, TimeoutException {
     PubSubTopic topicA = pubSubTopicRepository.getTopic(Utils.getUniqueString("timeless-treasure-"));
