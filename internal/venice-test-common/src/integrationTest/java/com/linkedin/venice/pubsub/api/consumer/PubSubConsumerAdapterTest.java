@@ -28,6 +28,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.utils.PubSubHelper;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -855,5 +856,32 @@ public class PubSubConsumerAdapterTest {
     }
     // verify that the offset of the first consumed message is 0
     assertEquals(offsetOfFirstConsumedMessage, 0, "Offset of first consumed message should be 0 after resetOffset");
+  }
+
+  // Test: resetOffset should throw PubSubUnsubscribedTopicPartitionException when called on an existing topic with a
+  // valid partition but no subscription
+  @Test
+  public void testResetOffsetForExistingTopicWithValidPartitionButNoSubscription() {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    int numPartitions = 2;
+
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+
+    // verify that there is no subscription
+    assertFalse(pubSubConsumerAdapter.hasAnySubscription(), "Should not be subscribed to any topic");
+    assertFalse(pubSubConsumerAdapter.hasSubscription(partition), "Should not be subscribed to any topic");
+
+    // reset offset to the beginning
+    long startTime = System.currentTimeMillis();
+    assertThrows(PubSubUnsubscribedTopicPartitionException.class, () -> pubSubConsumerAdapter.resetOffset(partition));
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
+        "Timeout should be less than the default timeout");
   }
 }
