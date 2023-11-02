@@ -973,8 +973,10 @@ public class PubSubConsumerAdapterTest {
       assertTrue(elapsedTime <= pollTimeout + 3000, "Poll should not block for longer than the timeout");
       assertNotNull(messages, "Messages should not be null");
 
-      for (PubSubTopicPartition partition: messages.keySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+          .entrySet()) {
+        PubSubTopicPartition partition = entry.getKey();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
@@ -1041,8 +1043,10 @@ public class PubSubConsumerAdapterTest {
       assertNull(messages.get(partitionB0), "Messages should be null for paused topic-partition: B0");
 
       // Update A1 and B1
-      for (PubSubTopicPartition partition: messages.keySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+          .entrySet()) {
+        PubSubTopicPartition partition = entry.getKey();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
@@ -1097,8 +1101,10 @@ public class PubSubConsumerAdapterTest {
       assertTrue(elapsedTime <= pollTimeout + 3000, "Poll should not block for longer than the timeout");
       assertNotNull(messages, "Messages should not be null");
 
-      for (PubSubTopicPartition partition: messages.keySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+          .entrySet()) {
+        PubSubTopicPartition partition = entry.getKey();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
@@ -1173,8 +1179,10 @@ public class PubSubConsumerAdapterTest {
       assertNull(messages.get(partitionB1), "Messages should be null for deleted topic-partition: B1");
 
       // Update A0 and A1
-      for (PubSubTopicPartition partition: messages.keySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+          .entrySet()) {
+        PubSubTopicPartition partition = entry.getKey();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
@@ -1300,8 +1308,10 @@ public class PubSubConsumerAdapterTest {
       assertTrue(elapsedTime <= 1000 + 3000, "Poll should not block for longer than the timeout");
       assertNotNull(messages, "Messages should not be null");
 
-      for (PubSubTopicPartition partition: messages.keySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+          .entrySet()) {
+        PubSubTopicPartition partition = entry.getKey();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
@@ -1342,8 +1352,10 @@ public class PubSubConsumerAdapterTest {
       assertNull(messages.get(partitionB1), "Messages should be null for deleted topic-partition: B1");
       assertNull(messages.get(partitionA1), "Messages should be null for deleted topic-partition: A1");
 
-      for (PubSubTopicPartition partition: messages.keySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+          .entrySet()) {
+        PubSubTopicPartition partition = entry.getKey();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
@@ -1400,8 +1412,10 @@ public class PubSubConsumerAdapterTest {
       assertNull(messages.get(partitionB1), "Messages should be null for topic-partition: B1");
 
       // Update B0
-      for (PubSubTopicPartition partition: messages.keySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+          .entrySet()) {
+        PubSubTopicPartition partition = entry.getKey();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
