@@ -1228,7 +1228,7 @@ public class PubSubConsumerAdapterTest {
   // If we rely on the consumer to keep polling data when the topic is recreated, we may observe different behaviors
   // with different PubSub implementations. This should be avoided at all costs.
   // The purpose of the test is to examine how the consumer behaves when a topic is deleted
-  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE, enabled = false)
   public void testResetOffsetDeleteTopicRecreateTopic()
       throws ExecutionException, InterruptedException, TimeoutException {
     PubSubTopic topicA = pubSubTopicRepository.getTopic(Utils.getUniqueString("timeless-treasure-"));

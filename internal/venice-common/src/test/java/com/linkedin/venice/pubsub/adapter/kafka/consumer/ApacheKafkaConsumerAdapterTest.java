@@ -39,6 +39,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -52,6 +53,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -185,16 +187,21 @@ public class ApacheKafkaConsumerAdapterTest {
     KafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();
     ConsumerRecord<byte[], byte[]> record = new ConsumerRecord<>(
         "test",
-        42,
+        0,
         75,
         keySerializer.serialize("test", key),
         valueSerializer.serialize("test", value));
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
-        Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
+        Collections.singletonMap(new TopicPartition("test", 0), Collections.singletonList(record)));
     doReturn(records).when(internalKafkaConsumer).poll(any());
 
-    PubSubTopicPartition pubSubTopicPartition =
-        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 42);
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+
+    Node[] nodes = new Node[1];
+    List<PartitionInfo> partitionInfoList = new ArrayList<>();
+    partitionInfoList.add(new PartitionInfo(pubSubTopicPartition.getTopicName(), 0, nodes[0], nodes, nodes));
+    when(internalKafkaConsumer.partitionsFor(pubSubTopicPartition.getTopicName())).thenReturn(partitionInfoList);
+
     // add partition to assignments
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, -1);
     // poll
@@ -249,6 +256,16 @@ public class ApacheKafkaConsumerAdapterTest {
         PubSubUnsubscribedTopicPartitionException.class,
         () -> kafkaConsumerAdapter.resetOffset(pubSubTopicPartition));
 
+    List<PartitionInfo> partitionInfos = Arrays.asList(Mockito.mock(PartitionInfo.class));
+    when(internalKafkaConsumer.partitionsFor(pubSubTopicPartition.getTopicName())).thenReturn(partitionInfos);
+
+    Node[] nodes = new Node[1];
+    List<PartitionInfo> partitionInfoList = new ArrayList<>();
+    for (int i = 0; i < 5; i++) {
+      partitionInfoList.add(new PartitionInfo(testTopic.getName(), i, nodes[0], nodes, nodes));
+    }
+    when(internalKafkaConsumer.partitionsFor(testTopic.getName())).thenReturn(partitionInfoList);
+
     // Test subscribe
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
     verify(internalKafkaConsumer).assign(Collections.singletonList(topicPartition));
@@ -284,7 +301,6 @@ public class ApacheKafkaConsumerAdapterTest {
     Set<TopicPartition> topicPartitionsLeft = new HashSet<>();
     Set<PubSubTopicPartition> allPubSubTopicPartitions = new HashSet<>();
     Set<TopicPartition> allTopicPartitions = new HashSet<>();
-    PubSubTopic testTopicV2 = pubSubTopicRepository.getTopic("test_topic_v2");
     for (int i = 0; i < 5; i++) {
       PubSubTopicPartition pubSubTopicPartitionToSub = new PubSubTopicPartitionImpl(testTopic, i);
       pubSubTopicPartitionsToUnSub.add(pubSubTopicPartitionToSub);
@@ -292,6 +308,15 @@ public class ApacheKafkaConsumerAdapterTest {
       allPubSubTopicPartitions.add(pubSubTopicPartitionToSub);
       kafkaConsumerAdapter.subscribe(pubSubTopicPartitionToSub, -1);
     }
+
+    PubSubTopic testTopicV2 = pubSubTopicRepository.getTopic("test_topic_v2");
+
+    partitionInfoList = new ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      partitionInfoList.add(new PartitionInfo(testTopicV2.getName(), i, nodes[0], nodes, nodes));
+    }
+    when(internalKafkaConsumer.partitionsFor(testTopicV2.getName())).thenReturn(partitionInfoList);
+
     for (int i = 0; i < 3; i++) {
       PubSubTopicPartition pubSubTopicPartitionToUnSub = new PubSubTopicPartitionImpl(testTopicV2, i);
       TopicPartition topicPartitionLeft = new TopicPartition(testTopicV2.getName(), i);

@@ -101,7 +101,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       return;
     }
 
-    validateTopicPartition(pubSubTopicPartition); // check if the topic-partition exists
+    isValidTopicPartition(pubSubTopicPartition); // check if the topic-partition exists
 
     List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
     topicPartitionList.add(topicPartition);
@@ -120,7 +120,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         lastReadOffset);
   }
 
-  private void validateTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
+  private void isValidTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
     if (pubSubTopicPartition == null) {
       throw new IllegalArgumentException("PubSubTopicPartition cannot be null");
     }
@@ -128,11 +128,25 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       throw new IllegalArgumentException("Partition number cannot be negative");
     }
 
-    List<PubSubTopicPartitionInfo> topicPartitionInfos = partitionsFor(pubSubTopicPartition.getPubSubTopic());
-    if (topicPartitionInfos == null || topicPartitionInfos.isEmpty()
-        || topicPartitionInfos.size() <= pubSubTopicPartition.getPartitionNumber()) {
-      throw new PubSubTopicDoesNotExistException("Topic " + pubSubTopicPartition.getPubSubTopic() + " does not exist");
+    List<PubSubTopicPartitionInfo> topicPartitionInfos;
+
+    int retries = 3;
+    int attempt = 0;
+    while (attempt++ < retries) {
+      topicPartitionInfos = partitionsFor(pubSubTopicPartition.getPubSubTopic());
+      if (topicPartitionInfos != null && !topicPartitionInfos.isEmpty()
+          && pubSubTopicPartition.getPartitionNumber() < topicPartitionInfos.size()) {
+        return;
+      }
+      try {
+        Thread.sleep(1000);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new PubSubClientException("Interrupted while waiting for topic-partition to be created", e);
+      }
     }
+    throw new PubSubTopicDoesNotExistException(
+        "Topic: " + pubSubTopicPartition.getPubSubTopic().getName() + " does not exist");
   }
 
   @Override
