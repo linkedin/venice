@@ -30,6 +30,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.utils.PubSubHelper;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -883,5 +884,554 @@ public class PubSubConsumerAdapterTest {
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
         "Timeout should be less than the default timeout");
+  }
+
+  // Test: poll works as expected when called on an existing topic with a valid partition and subscription.
+  // poll should not block for longer than the specified timeout even consumer is subscribed to multiple
+  // topic-partitions and some topic-partitions do not exist.
+  @Test(timeOut = 10 * Time.MS_PER_MINUTE)
+  public void testPollPauseResume() throws ExecutionException, InterruptedException, TimeoutException {
+    PubSubTopic topicA = pubSubTopicRepository.getTopic(Utils.getUniqueString("timeless-treasure-"));
+    PubSubTopic topicB = pubSubTopicRepository.getTopic(Utils.getUniqueString("diminishing-delight-"));
+    int numPartitions = 2;
+    int numMessages = 2048;
+
+    pubSubAdminAdapterLazy.get().createTopic(topicA, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    pubSubAdminAdapterLazy.get().createTopic(topicB, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+
+    PubSubTopicPartition partitionA0 = new PubSubTopicPartitionImpl(topicA, 0);
+    PubSubTopicPartition partitionA1 = new PubSubTopicPartitionImpl(topicA, 1);
+    PubSubTopicPartition partitionB0 = new PubSubTopicPartitionImpl(topicB, 0);
+    PubSubTopicPartition partitionB1 = new PubSubTopicPartitionImpl(topicB, 1);
+
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(topicA), "Topic should exist");
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(topicB), "Topic should exist");
+
+    // subscribe to the topic and partition
+    pubSubConsumerAdapter.subscribe(partitionA0, -1);
+    pubSubConsumerAdapter.subscribe(partitionA1, -1);
+    pubSubConsumerAdapter.subscribe(partitionB0, -1);
+    pubSubConsumerAdapter.subscribe(partitionB1, -1);
+    assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA0), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA1), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB0), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB1), "Should be subscribed to the topic and partition");
+
+    // produce messages to the topic
+    PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
+    Map<PubSubTopicPartition, CompletableFuture<PubSubProduceResult>> lastMessageFutures = new HashMap<>(numPartitions);
+    for (int i = 0; i < numMessages; i++) {
+      lastMessageFutures.put(
+          partitionA0,
+          pubSubProducerAdapter
+              .sendMessage(topicA.getName(), 0, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+      lastMessageFutures.put(
+          partitionA1,
+          pubSubProducerAdapter
+              .sendMessage(topicA.getName(), 1, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+      lastMessageFutures.put(
+          partitionB0,
+          pubSubProducerAdapter
+              .sendMessage(topicB.getName(), 0, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+      lastMessageFutures.put(
+          partitionB1,
+          pubSubProducerAdapter
+              .sendMessage(topicB.getName(), 1, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+    }
+
+    CompletableFuture.allOf(lastMessageFutures.values().toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);
+    // check end offsets
+    long startTime = System.currentTimeMillis();
+    Map<PubSubTopicPartition, Long> endOffsets = pubSubConsumerAdapter.endOffsets(
+        new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB0, partitionB1)),
+        PUBSUB_OP_TIMEOUT);
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "endOffsets should not block");
+
+    assertEquals(endOffsets.get(partitionA0), Long.valueOf(numMessages), "End offset should match");
+    assertEquals(endOffsets.get(partitionA1), Long.valueOf(numMessages), "End offset should match");
+    assertEquals(endOffsets.get(partitionB0), Long.valueOf(numMessages), "End offset should match");
+    assertEquals(endOffsets.get(partitionB1), Long.valueOf(numMessages), "End offset should match");
+
+    // poll at lest "minRecordsToConsume" messages per topic-partition; since poll does not guarantee even distribution
+    // of messages across topic-partitions, we poll until we get at least "minRecordsToConsume" messages per
+    // topic-partition
+    int minRecordsToConsume = 2;
+    long pollTimeout = 1;
+    int consumptionBarMetCount = 0;
+    // keep track of the last consumed offset for each topic-partition
+    Map<PubSubTopicPartition, Long> lastConsumedOffsetMap = new HashMap<>(4);
+    // keep track of the number of messages consumed for each topic-partition
+    Map<PubSubTopicPartition, Integer> numMessagesConsumedMap = new HashMap<>(4);
+    // first consumed message offset map
+    Map<PubSubTopicPartition, Long> firstConsumedOffsetMap = new HashMap<>(4);
+
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages = null;
+    Set<PubSubTopicPartition> consumptionBarMet = new HashSet<>();
+    while (consumptionBarMet.size() != 4) {
+      startTime = System.currentTimeMillis();
+      messages = pubSubConsumerAdapter.poll(pollTimeout);
+      elapsedTime = System.currentTimeMillis() - startTime;
+      // check that poll did not block for longer than the timeout; add variance of 3 seconds
+      assertTrue(elapsedTime <= pollTimeout + 3000, "Poll should not block for longer than the timeout");
+      assertNotNull(messages, "Messages should not be null");
+
+      for (PubSubTopicPartition partition: messages.keySet()) {
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+        if (partitionMessages == null || partitionMessages.isEmpty()) {
+          continue;
+        }
+        // update first consumed offset
+        Long oldVal = firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getOffset());
+        if (oldVal == null) {
+          // assert offset is zero since this is the first time we are consuming from this topic-partition and
+          // and we started consuming from the beginning (-1 last consumed offset)
+          assertEquals(firstConsumedOffsetMap.get(partition), Long.valueOf(0), "First consumed offset should be 0");
+        }
+        // update last consumed offset
+        lastConsumedOffsetMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset());
+        // update number of messages consumed so far
+        numMessagesConsumedMap
+            .compute(partition, (k, v) -> v == null ? partitionMessages.size() : v + partitionMessages.size());
+        long consumedCountSoFar = numMessagesConsumedMap.get(partition);
+        // verify lastConsumedOffset matches records consumed so far
+        assertEquals(
+            lastConsumedOffsetMap.get(partition),
+            Long.valueOf(consumedCountSoFar - 1),
+            "Last consumed offset should match records consumed so far");
+        if (consumedCountSoFar >= minRecordsToConsume) {
+          consumptionBarMet.add(partition);
+        }
+      }
+    }
+
+    // pause subscription to A0, B0
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.pause(partitionA0);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // check that pause did not block for longer than the timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Pause should not block for longer than the timeout");
+
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.pause(partitionB0);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // check that pause did not block for longer than the timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Pause should not block for longer than the timeout");
+
+    // subscription should still be active for all
+    assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA0), "Should be subscribed to the topic-partition: A0");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA1), "Should be subscribed to the topic-partition: A1");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB0), "Should be subscribed to the topic-partition: B0");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB1), "Should be subscribed to the topic-partition: B1");
+
+    // consume all messages for A1; and check that no messages are consumed for A0, B0, and B1
+    long endOffsetOfA1 = endOffsets.get(partitionA1);
+    while (lastConsumedOffsetMap.get(partitionA1) != (endOffsetOfA1 - 1)) {
+      System.out.println(lastConsumedOffsetMap);
+      startTime = System.currentTimeMillis();
+      messages = pubSubConsumerAdapter.poll(pollTimeout);
+      elapsedTime = System.currentTimeMillis() - startTime;
+      // check that poll did not block for longer than the timeout; add variance of 3 seconds
+      assertTrue(elapsedTime <= pollTimeout + 3000, "Poll should not block for longer than the timeout");
+      assertNotNull(messages, "Messages should not be null");
+      // verify that no messages are consumed for A0, B0
+      assertNull(messages.get(partitionA0), "Messages should be null for paused topic-partition: A0");
+      assertNull(messages.get(partitionB0), "Messages should be null for paused topic-partition: B0");
+
+      // Update A1 and B1
+      for (PubSubTopicPartition partition: messages.keySet()) {
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+        if (partitionMessages == null || partitionMessages.isEmpty()) {
+          continue;
+        }
+        // update last consumed offset
+        lastConsumedOffsetMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset());
+        int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
+        // verify lastConsumedOffset matches records consumed so far
+        assertEquals(
+            lastConsumedOffsetMap.get(partition),
+            Long.valueOf(consumedCountSoFar - 1),
+            "Last consumed offset should match records consumed so far");
+
+        numMessagesConsumedMap.put(partition, consumedCountSoFar);
+      }
+    }
+
+    // check A1's last consumed offset and consumed count
+    assertEquals(
+        lastConsumedOffsetMap.get(partitionA1),
+        Long.valueOf(numMessages - 1),
+        "Last consumed offset should match number of messages");
+    lastConsumedOffsetMap.remove(partitionA1);
+    numMessagesConsumedMap.remove(partitionA1);
+    firstConsumedOffsetMap.remove(partitionA1);
+    pubSubConsumerAdapter.resetOffset(partitionA1);
+
+    // resume subscription to A0
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.resume(partitionA0);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // check that resume did not block for longer than the timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Resume should not block for longer than the timeout");
+
+    // resume subscription to B0
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.resume(partitionB0);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // check that resume did not block for longer than the timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Resume should not block for longer than the timeout");
+
+    consumptionBarMet.clear(); // reset consumption bar
+
+    while (consumptionBarMet.size() != 4) {
+      startTime = System.currentTimeMillis();
+      messages = pubSubConsumerAdapter.poll(pollTimeout);
+      elapsedTime = System.currentTimeMillis() - startTime;
+      // check that poll did not block for longer than the timeout; add variance of 3 seconds
+      assertTrue(elapsedTime <= pollTimeout + 3000, "Poll should not block for longer than the timeout");
+      assertNotNull(messages, "Messages should not be null");
+
+      for (PubSubTopicPartition partition: messages.keySet()) {
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+        if (partitionMessages == null || partitionMessages.isEmpty()) {
+          continue;
+        }
+        // check A1 starts from 0
+        Long oldVal = firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getOffset());
+        if (oldVal == null) {
+          // we reset the offset for A1 to beginning; so the first consumed offset should be 0
+          assertEquals(firstConsumedOffsetMap.get(partition), Long.valueOf(0), "First consumed offset should be 0");
+        }
+
+        // update last consumed offset
+        lastConsumedOffsetMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset());
+        int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
+        // verify lastConsumedOffset matches records consumed so far
+        assertEquals(
+            lastConsumedOffsetMap.get(partition),
+            Long.valueOf(consumedCountSoFar - 1),
+            "Last consumed offset should match records consumed so far");
+        numMessagesConsumedMap.put(partition, consumedCountSoFar);
+      }
+
+      // loop through all topic-partitions and check if consumption bar is met
+      for (PubSubTopicPartition partition: lastConsumedOffsetMap.keySet()) {
+        if (numMessagesConsumedMap.get(partition) >= numMessages) {
+          consumptionBarMet.add(partition);
+        }
+      }
+    }
+
+    firstConsumedOffsetMap.clear();
+    lastConsumedOffsetMap.clear();
+    numMessagesConsumedMap.clear();
+    consumptionBarMet.clear();
+
+    // we will reset the offset for A0, A1, and B0 to beginning; then delete topic B; reset offset for B1 to
+    // the 10th message and then finish consuming A0 and A1. We will unpause B0 and B1.
+
+    // reset offset for A0 to beginning
+    pubSubConsumerAdapter.resetOffset(partitionA0);
+    // reset offset for A1 to beginning
+    pubSubConsumerAdapter.resetOffset(partitionA1);
+    // reset offset for B0 to beginning
+    pubSubConsumerAdapter.resetOffset(partitionB0);
+    // delete topic B
+    pubSubAdminAdapterLazy.get().deleteTopic(topicB, Duration.ofMinutes(3)); // poison pill
+    // check that topic B is deleted
+    assertFalse(pubSubAdminAdapterLazy.get().containsTopic(topicB), "Topic should not exist");
+    // check B0 and B1 are still subscribed
+    assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB0), "Should be subscribed to the topic-partition: B0");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB1), "Should be subscribed to the topic-partition: B1");
+
+    // reset offset for B1
+    pubSubConsumerAdapter.resetOffset(partitionB1);
+
+    // consume all messages for A0 and A1; and check that no messages are consumed for B0 and B1
+    numMessagesConsumedMap.put(partitionA0, 0);
+    numMessagesConsumedMap.put(partitionA1, 0);
+    numMessagesConsumedMap.put(partitionB0, 0);
+    numMessagesConsumedMap.put(partitionB1, 0);
+
+    while (numMessagesConsumedMap.get(partitionA0) != numMessages
+        || numMessagesConsumedMap.get(partitionA1) != numMessages) {
+      startTime = System.currentTimeMillis();
+      messages = pubSubConsumerAdapter.poll(pollTimeout);
+      elapsedTime = System.currentTimeMillis() - startTime;
+      // check that poll did not block for longer than the timeout; add variance of 3 seconds
+      assertTrue(elapsedTime <= pollTimeout + 3000, "Poll should not block for longer than the timeout");
+      assertNotNull(messages, "Messages should not be null");
+      // verify that no messages are consumed for B0, B1
+      assertNull(messages.get(partitionB0), "Messages should be null for deleted topic-partition: B0");
+      assertNull(messages.get(partitionB1), "Messages should be null for deleted topic-partition: B1");
+
+      // Update A0 and A1
+      for (PubSubTopicPartition partition: messages.keySet()) {
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+        if (partitionMessages == null || partitionMessages.isEmpty()) {
+          continue;
+        }
+        // update last consumed offset
+        lastConsumedOffsetMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset());
+        int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
+        // verify lastConsumedOffset matches records consumed so far
+        assertEquals(
+            lastConsumedOffsetMap.get(partition),
+            Long.valueOf(consumedCountSoFar - 1),
+            "Last consumed offset should match records consumed so far");
+
+        numMessagesConsumedMap.put(partition, consumedCountSoFar);
+      }
+    }
+
+    // unsubscribe B0
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.unSubscribe(partitionB0);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // check that unsubscribe did not block for longer than the timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Unsubscribe should not block for longer than the timeout");
+
+    // check that B0 is unsubscribed
+    assertFalse(
+        pubSubConsumerAdapter.hasSubscription(partitionB0),
+        "Should not be subscribed to the topic-partition: B0");
+    // check that B1 is still subscribed
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB1), "Should be subscribed to the topic-partition: B1");
+
+    // batch unsubscribe A0, A1, and B1
+    Set<PubSubTopicPartition> partitions = new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB1));
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.batchUnsubscribe(partitions);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // check that batch unsubscribe did not block for longer than the timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Batch unsubscribe should not block for longer than the timeout");
+  }
+
+  // Note: The following test may not work for non-Kafka PubSub implementations.
+  // Therefore, it is in Venice's best interest to unsubscribe from a topic-partition before deleting it,
+  // and then subscribe again after recreating the topic.
+  // If we rely on the consumer to keep polling data when the topic is recreated, we may observe different behaviors
+  // with different PubSub implementations. This should be avoided at all costs.
+  // The purpose of the test is to examine how the consumer behaves when a topic is deleted
+  @Test(timeOut = 10 * Time.MS_PER_MINUTE)
+  public void testResetOffsetDeleteTopicRecreateTopic()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    PubSubTopic topicA = pubSubTopicRepository.getTopic(Utils.getUniqueString("timeless-treasure-"));
+    PubSubTopic topicB = pubSubTopicRepository.getTopic(Utils.getUniqueString("diminishing-delight-"));
+    int numPartitions = 2;
+    int numMessages = 1000;
+
+    pubSubAdminAdapterLazy.get().createTopic(topicA, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    pubSubAdminAdapterLazy.get().createTopic(topicB, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+
+    PubSubTopicPartition partitionA0 = new PubSubTopicPartitionImpl(topicA, 0);
+    PubSubTopicPartition partitionA1 = new PubSubTopicPartitionImpl(topicA, 1);
+    PubSubTopicPartition partitionB0 = new PubSubTopicPartitionImpl(topicB, 0);
+    PubSubTopicPartition partitionB1 = new PubSubTopicPartitionImpl(topicB, 1);
+
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(topicA), "Topic should exist");
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(topicB), "Topic should exist");
+
+    // subscribe to the topic and partition
+    pubSubConsumerAdapter.subscribe(partitionA0, -1);
+    pubSubConsumerAdapter.subscribe(partitionA1, -1);
+    pubSubConsumerAdapter.subscribe(partitionB0, -1);
+    pubSubConsumerAdapter.subscribe(partitionB1, -1);
+    assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA0), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA1), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB0), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB1), "Should be subscribed to the topic and partition");
+
+    // produce messages to the topic
+    PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
+    Map<PubSubTopicPartition, CompletableFuture<PubSubProduceResult>> lastMessageFutures = new HashMap<>(numPartitions);
+    for (int i = 0; i < numMessages; i++) {
+      lastMessageFutures.put(
+          partitionA0,
+          pubSubProducerAdapter
+              .sendMessage(topicA.getName(), 0, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+      lastMessageFutures.put(
+          partitionA1,
+          pubSubProducerAdapter
+              .sendMessage(topicA.getName(), 1, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+      lastMessageFutures.put(
+          partitionB0,
+          pubSubProducerAdapter
+              .sendMessage(topicB.getName(), 0, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+      lastMessageFutures.put(
+          partitionB1,
+          pubSubProducerAdapter
+              .sendMessage(topicB.getName(), 1, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+    }
+
+    CompletableFuture.allOf(lastMessageFutures.values().toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);
+    // check end offsets
+    long startTime = System.currentTimeMillis();
+    Map<PubSubTopicPartition, Long> endOffsets = pubSubConsumerAdapter.endOffsets(
+        new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB0, partitionB1)),
+        PUBSUB_OP_TIMEOUT);
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "endOffsets should not block");
+
+    assertEquals(endOffsets.get(partitionA0), Long.valueOf(numMessages), "End offset should match");
+    assertEquals(endOffsets.get(partitionA1), Long.valueOf(numMessages), "End offset should match");
+    assertEquals(endOffsets.get(partitionB0), Long.valueOf(numMessages), "End offset should match");
+    assertEquals(endOffsets.get(partitionB1), Long.valueOf(numMessages), "End offset should match");
+
+    Set<PubSubTopicPartition> consumptionBarMet = new HashSet<>();
+    while (consumptionBarMet.size() != 4) {
+      startTime = System.currentTimeMillis();
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+          pubSubConsumerAdapter.poll(1);
+      elapsedTime = System.currentTimeMillis() - startTime;
+      // check that poll did not block for longer than the timeout; add variance of 3 seconds
+      assertTrue(elapsedTime <= 1000 + 3000, "Poll should not block for longer than the timeout");
+      assertNotNull(messages, "Messages should not be null");
+
+      for (PubSubTopicPartition partition: messages.keySet()) {
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+        if (partitionMessages == null || partitionMessages.isEmpty()) {
+          continue;
+        }
+        // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
+        if (partitionMessages.get(partitionMessages.size() - 1).getOffset() == endOffsets.get(partition) - 1) {
+          consumptionBarMet.add(partition);
+        }
+      }
+    }
+
+    // reset offset for A0 to beginning
+    pubSubConsumerAdapter.resetOffset(partitionA0);
+    // reset offset for B0 to beginning
+    pubSubConsumerAdapter.resetOffset(partitionB0);
+    // delete topic B
+    pubSubAdminAdapterLazy.get().deleteTopic(topicB, Duration.ofMinutes(3)); // poison pill
+    // check that topic B is deleted
+    assertFalse(pubSubAdminAdapterLazy.get().containsTopic(topicB), "Topic should not exist");
+    // check B0 and B1 are still subscribed
+    assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB0), "Should be subscribed to the topic-partition: B0");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB1), "Should be subscribed to the topic-partition: B1");
+
+    consumptionBarMet.remove(partitionA0); // reset consumption bar for A0
+    consumptionBarMet.remove(partitionB0); // reset consumption bar for B0
+    consumptionBarMet.remove(partitionB1); // reset consumption bar for B1
+
+    while (consumptionBarMet.size() != 2) {
+      startTime = System.currentTimeMillis();
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+          pubSubConsumerAdapter.poll(1);
+      elapsedTime = System.currentTimeMillis() - startTime;
+      // check that poll did not block for longer than the timeout; add variance of 3 seconds
+      assertTrue(elapsedTime <= 1000 + 3000, "Poll should not block for longer than the timeout");
+      assertNotNull(messages, "Messages should not be null");
+      // check that no messages are consumed for B0, B1, and A1
+      assertNull(messages.get(partitionB0), "Messages should be null for deleted topic-partition: B0");
+      assertNull(messages.get(partitionB1), "Messages should be null for deleted topic-partition: B1");
+      assertNull(messages.get(partitionA1), "Messages should be null for deleted topic-partition: A1");
+
+      for (PubSubTopicPartition partition: messages.keySet()) {
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+        if (partitionMessages == null || partitionMessages.isEmpty()) {
+          continue;
+        }
+        // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
+        if (partitionMessages.get(partitionMessages.size() - 1).getOffset() == endOffsets.get(partition) - 1) {
+          consumptionBarMet.add(partition);
+        }
+      }
+    }
+
+    // recreate topic B
+    pubSubAdminAdapterLazy.get().createTopic(topicB, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    // check that topic B is created
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(topicB), "Topic should exist");
+    // produce messages to the B
+    for (int i = 0; i < numMessages; i++) {
+      lastMessageFutures.put(
+          partitionB0,
+          pubSubProducerAdapter
+              .sendMessage(topicB.getName(), 0, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+      lastMessageFutures.put(
+          partitionB1,
+          pubSubProducerAdapter
+              .sendMessage(topicB.getName(), 1, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null));
+    }
+
+    CompletableFuture.allOf(lastMessageFutures.values().toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);
+    // check end offsets
+    startTime = System.currentTimeMillis();
+    endOffsets = pubSubConsumerAdapter.endOffsets(
+        new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB0, partitionB1)),
+        PUBSUB_OP_TIMEOUT);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "endOffsets should not block");
+
+    assertEquals(endOffsets.get(partitionA0), Long.valueOf(numMessages), "End offset should match");
+    assertEquals(endOffsets.get(partitionA1), Long.valueOf(numMessages), "End offset should match");
+    assertEquals(endOffsets.get(partitionB0), Long.valueOf(numMessages), "End offset should match");
+    assertEquals(endOffsets.get(partitionB1), Long.valueOf(numMessages), "End offset should match");
+
+    // only messages for B0 should be consumed as B1 reached end offset before deletion and recreation; A0 and A1
+    // should not consume any messages as they already consumed all messages
+    while (consumptionBarMet.size() != 3) {
+      startTime = System.currentTimeMillis();
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+          pubSubConsumerAdapter.poll(1);
+      elapsedTime = System.currentTimeMillis() - startTime;
+      // check that poll did not block for longer than the timeout; add variance of 3 seconds
+      assertTrue(elapsedTime <= 1000 + 3000, "Poll should not block for longer than the timeout");
+      assertNotNull(messages, "Messages should not be null");
+      // check that no messages are consumed for A0, A1, B1
+      assertNull(messages.get(partitionA0), "Messages should be null for topic-partition: A0");
+      assertNull(messages.get(partitionA1), "Messages should be null for topic-partition: A1");
+      assertNull(messages.get(partitionB1), "Messages should be null for topic-partition: B1");
+
+      // Update B0
+      for (PubSubTopicPartition partition: messages.keySet()) {
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+        if (partitionMessages == null || partitionMessages.isEmpty()) {
+          continue;
+        }
+        // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
+        if (partitionMessages.get(partitionMessages.size() - 1).getOffset() == endOffsets.get(partition) - 1) {
+          consumptionBarMet.add(partition);
+        }
+      }
+    }
+
+    // unsubscribe B0
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.unSubscribe(partitionB0);
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // check that unsubscribe did not block for longer than the timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Unsubscribe should not block for longer than the timeout");
+
+    // batch unsubscribe A0, A1, and B1
+    startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.batchUnsubscribe(new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB1)));
+    elapsedTime = System.currentTimeMillis() - startTime;
+    // check that unsubscribe did not block for longer than the timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        "Unsubscribe should not block for longer than the timeout");
   }
 }
