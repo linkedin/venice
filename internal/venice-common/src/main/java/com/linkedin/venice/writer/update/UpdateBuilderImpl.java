@@ -14,11 +14,10 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.UnresolvedUnionException;
+import org.apache.avro.generic.GenericContainer;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 @NotThreadsafe
@@ -28,8 +27,6 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   private final RecordSerializer<GenericRecord> serializer;
   private final Set<String> updateFieldNameSet;
   private final Set<String> collectionMergeFieldNameSet;
-
-  private static final Logger LOGGER = LogManager.getLogger(UpdateBuilderImpl.class);
 
   /**
    * @param updateSchema Update schema that is derived from the value Record schema.
@@ -137,8 +134,12 @@ public class UpdateBuilderImpl implements UpdateBuilder {
       serializer.serialize(updateRecord);
     } catch (UnresolvedUnionException serializationException) {
       Object unresolvedDatum = serializationException.getUnresolvedDatum();
-      LOGGER.error("Unresolved datum encountered: {}", unresolvedDatum, serializationException);
-      return serializationException;
+      String unresolvedDatumType = unresolvedDatum instanceof GenericContainer
+          ? ((GenericContainer) unresolvedDatum).getSchema().toString()
+          : unresolvedDatum.getClass().getSimpleName();
+      return new VeniceException(
+          "The following type does not conform to any branch of the union: " + unresolvedDatumType,
+          serializationException);
     } catch (Exception serializationException) {
       return serializationException;
     }
