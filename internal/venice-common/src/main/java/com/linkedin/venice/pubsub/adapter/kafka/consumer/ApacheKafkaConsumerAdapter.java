@@ -101,7 +101,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       return;
     }
 
-    isValidTopicPartition(pubSubTopicPartition); // check if the topic-partition exists
+    // Check if the topic-partition exists
+    if (!isValidTopicPartition(pubSubTopicPartition)) {
+      LOGGER.error("Cannot subscribe to topic-partition: {} because it does not exist", pubSubTopicPartition);
+      throw new PubSubTopicDoesNotExistException(pubSubTopicPartition.getPubSubTopic());
+    }
 
     List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
     topicPartitionList.add(topicPartition);
@@ -120,7 +124,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         lastReadOffset);
   }
 
-  private void isValidTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
+  private boolean isValidTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
     if (pubSubTopicPartition == null) {
       throw new IllegalArgumentException("PubSubTopicPartition cannot be null");
     }
@@ -130,13 +134,13 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
     List<PubSubTopicPartitionInfo> topicPartitionInfos;
 
-    int retries = 3;
+    int retries = 5;
     int attempt = 0;
     while (attempt++ < retries) {
       topicPartitionInfos = partitionsFor(pubSubTopicPartition.getPubSubTopic());
       if (topicPartitionInfos != null && !topicPartitionInfos.isEmpty()
           && pubSubTopicPartition.getPartitionNumber() < topicPartitionInfos.size()) {
-        return;
+        return true;
       }
       try {
         Thread.sleep(1000);
@@ -145,8 +149,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         throw new PubSubClientException("Interrupted while waiting for topic-partition to be created", e);
       }
     }
-    throw new PubSubTopicDoesNotExistException(
-        "Topic: " + pubSubTopicPartition.getPubSubTopic().getName() + " does not exist");
+    return false;
   }
 
   @Override
