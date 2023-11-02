@@ -11,6 +11,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
@@ -19,6 +20,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
@@ -40,6 +42,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -778,5 +781,79 @@ public class PubSubConsumerAdapterTest {
     assertFalse(pubSubConsumerAdapter.hasAnySubscription(), "Should not be subscribed to any topic");
     assertFalse(pubSubConsumerAdapter.hasSubscription(validPartition), "Should not be subscribed to any topic");
     assertFalse(pubSubConsumerAdapter.hasSubscription(invalidPartition), "Should not be subscribed to any topic");
+  }
+
+  // Test: resetOffset should not take longer than the default timeout when called on an existing topic with a valid
+  // partition and subscription
+  @Test
+  public void testResetOffsetForExistingTopicWithValidPartitionAndSubscription()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
+    int numPartitions = 2;
+    int numMessages = 10;
+
+    pubSubAdminAdapterLazy.get()
+        .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
+
+    PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
+    CompletableFuture<PubSubProduceResult> lastMessageFuture = null;
+    for (int i = 0; i < numMessages; i++) {
+      lastMessageFuture = pubSubProducerAdapter.sendMessage(
+          existingPubSubTopic.getName(),
+          0,
+          PubSubHelper.getDummyKey(),
+          PubSubHelper.getDummyValue(),
+          null,
+          null);
+    }
+
+    assertNotNull(lastMessageFuture, "Last message future should not be null");
+    lastMessageFuture.get(10, TimeUnit.SECONDS);
+
+    // subscribe to the topic and partition
+    pubSubConsumerAdapter.subscribe(partition, 0);
+    assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
+    assertTrue(pubSubConsumerAdapter.hasSubscription(partition), "Should be subscribed to the topic and partition");
+
+    // consume 5 messages
+    int minRecordsToConsume = 5;
+    long offsetOfLastConsumedMessage = -1;
+    while (minRecordsToConsume > 0) {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+          pubSubConsumerAdapter.poll(15);
+      assertNotNull(messages, "Messages should not be null");
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      if (partitionMessages != null && !partitionMessages.isEmpty()) {
+        minRecordsToConsume -= partitionMessages.size();
+        offsetOfLastConsumedMessage = partitionMessages.get(partitionMessages.size() - 1).getOffset();
+      }
+    }
+    assertTrue(offsetOfLastConsumedMessage > 0, "Offset of last consumed message should be greater than 0");
+
+    // reset offset to the beginning
+    long startTime = System.currentTimeMillis();
+    pubSubConsumerAdapter.resetOffset(partition);
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    // elapsed time should be less than the default timeout; add variance of 5 seconds
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
+        "Timeout should be less than the default timeout");
+
+    minRecordsToConsume = 1;
+    long offsetOfFirstConsumedMessage = -1L;
+    while (minRecordsToConsume > 0) {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+          pubSubConsumerAdapter.poll(15);
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      if (partitionMessages != null && !partitionMessages.isEmpty()) {
+        offsetOfFirstConsumedMessage = partitionMessages.get(0).getOffset();
+        minRecordsToConsume--;
+      }
+    }
+    // verify that the offset of the first consumed message is 0
+    assertEquals(offsetOfFirstConsumedMessage, 0, "Offset of first consumed message should be 0 after resetOffset");
   }
 }
