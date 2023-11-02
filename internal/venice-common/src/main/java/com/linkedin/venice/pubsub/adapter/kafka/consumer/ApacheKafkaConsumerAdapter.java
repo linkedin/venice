@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -96,8 +97,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
     if (topicPartitionSet.contains(topicPartition)) {
-      LOGGER
-          .warn("Already subscribed on Topic: {} Partition: {}, ignore the request of subscription.", topic, partition);
+      LOGGER.warn("Already subscribed on topic-partition:{}, ignoring subscription request", pubSubTopicPartition);
       return;
     }
 
@@ -191,7 +191,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     Collection<TopicPartition> currentAssignments = new HashSet<>(kafkaConsumer.assignment());
     currentAssignments.removeAll(topicPartitionsToUnsubscribe);
     kafkaConsumer.assign(currentAssignments);
-    LOGGER.info("Topic-partitions: {} unsubscribed", topicPartitionsToUnsubscribe);
+    LOGGER.info("Topic-partitions: {} unsubscribed", pubSubTopicPartitionsToUnsubscribe);
   }
 
   @Override
@@ -238,7 +238,10 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
             config.getConsumerPollRetryTimes(),
             e);
         if (attemptCount == config.getConsumerPollRetryTimes()) {
-          throw e;
+          throw new PubSubClientRetriableException(
+              "Retriable exception thrown when attempting to consume records from kafka, attempt " + attemptCount + "/"
+                  + config.getConsumerPollRetryTimes(),
+              e);
         }
         try {
           if (config.getConsumerPollRetryBackoffMs() > 0) {
@@ -440,9 +443,10 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       TopicPartition topicPartition = new TopicPartition(
           pubSubTopicPartition.getPubSubTopic().getName(),
           pubSubTopicPartition.getPartitionNumber());
-      // Note: when timeout is not specified, the default request timeout is used, which is 30 seconds. For all
-      // other apis, the default request timeout is api timeout, which is 60 seconds. To be consistent with other apis,
-      // use api timeout here.
+      // Note: when timeout is not specified, the default request timeout ("request.timeout.ms")
+      // is used, which is 30 seconds. For all other apis, the default request timeout is api
+      // timeout ("default.api.timeout.ms"), which is 60 seconds.
+      // To be consistent with other apis, use api timeout here.
       Map<TopicPartition, Long> topicPartitionOffsetMap =
           this.kafkaConsumer.endOffsets(Collections.singleton(topicPartition), config.getDefaultApiTimeout());
       return topicPartitionOffsetMap.get(topicPartition);
