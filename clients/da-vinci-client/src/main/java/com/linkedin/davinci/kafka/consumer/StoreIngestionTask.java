@@ -154,6 +154,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
+  /**
+   * Speed up DaVinci shutdown by closing partitions concurrently.
+   */
+  private static final ExecutorService SHUTDOWN_EXECUTOR_FOR_DVC =
+      Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
+
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
   protected final AbstractStorageEngine storageEngine;
@@ -1299,6 +1305,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         maybeSendIngestionHeartbeat();
       }
 
+      List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
       for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
         /**
@@ -1314,20 +1321,42 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * hasn't been applied yet, when checkpointing happens in current thread.
          */
 
-        int partition = entry.getKey();
-        PartitionConsumptionState partitionConsumptionState = entry.getValue();
-        consumerUnSubscribeAllTopics(partitionConsumptionState);
+        Runnable shutdownRunnable = () -> {
+          int partition = entry.getKey();
+          PartitionConsumptionState partitionConsumptionState = entry.getValue();
+          consumerUnSubscribeAllTopics(partitionConsumptionState);
 
-        if (ingestionCheckpointDuringGracefulShutdownEnabled) {
-          waitForAllMessageToBeProcessedFromTopicPartition(
-              new PubSubTopicPartitionImpl(versionTopic, partitionConsumptionState.getPartition()),
-              partitionConsumptionState);
+          if (ingestionCheckpointDuringGracefulShutdownEnabled) {
+            try {
+              waitForAllMessageToBeProcessedFromTopicPartition(
+                  new PubSubTopicPartitionImpl(versionTopic, partitionConsumptionState.getPartition()),
+                  partitionConsumptionState);
+            } catch (InterruptedException e) {
+              throw new VeniceException(e);
+            }
 
-          this.kafkaDataIntegrityValidator
-              .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
-          updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
-          syncOffset(kafkaVersionTopic, partitionConsumptionState);
+            this.kafkaDataIntegrityValidator
+                .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
+            updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
+            syncOffset(kafkaVersionTopic, partitionConsumptionState);
+          }
+        };
+
+        if (isDaVinciClient) {
+          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, SHUTDOWN_EXECUTOR_FOR_DVC));
+        } else {
+          /**
+           * TODO: evaluate whether we need to apply concurrent shutdown in Venice Server or not.
+           */
+          shutdownRunnable.run();
         }
+      }
+      if (isDaVinciClient) {
+        /**
+         * DaVinci shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
+         * to avoid infinite wait in case there is some regression.
+         */
+        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
       }
     } catch (VeniceIngestionTaskKilledException e) {
       LOGGER.info("{} has been killed.", consumerTaskId);
@@ -1456,9 +1485,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     close();
+
     synchronized (this) {
       notifyAll();
     }
+
     LOGGER.info("Store ingestion task for store: {} is closed", kafkaVersionTopic);
   }
 
