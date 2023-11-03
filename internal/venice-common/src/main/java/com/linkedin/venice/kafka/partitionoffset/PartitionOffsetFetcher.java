@@ -15,8 +15,6 @@ public interface PartitionOffsetFetcher extends Closeable {
 
   long getPartitionLatestOffsetAndRetry(PubSubTopicPartition pubSubTopicPartition, int retries);
 
-  long getPartitionEarliestOffsetAndRetry(PubSubTopicPartition pubSubTopicPartition, int retries);
-
   long getPartitionOffsetByTime(PubSubTopicPartition pubSubTopicPartition, long timestamp);
 
   /**
