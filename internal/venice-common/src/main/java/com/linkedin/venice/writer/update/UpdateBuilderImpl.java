@@ -129,7 +129,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     return updateRecord;
   }
 
-  private Exception validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
+  Exception validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
     try {
       serializer.serialize(updateRecord);
     } catch (UnresolvedUnionException serializationException) {
