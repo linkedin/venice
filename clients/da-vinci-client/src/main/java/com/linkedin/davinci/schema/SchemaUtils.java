@@ -5,14 +5,17 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_E
 import static org.apache.avro.Schema.Type.ARRAY;
 import static org.apache.avro.Schema.Type.LONG;
 import static org.apache.avro.Schema.Type.MAP;
+import static org.apache.avro.Schema.Type.NULL;
 import static org.apache.avro.Schema.Type.RECORD;
 import static org.apache.avro.Schema.Type.STRING;
+import static org.apache.avro.Schema.Type.UNION;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import java.util.List;
 import org.apache.avro.Schema;
 
 
@@ -164,29 +167,34 @@ public class SchemaUtils {
     }
   }
 
-  public static boolean isMapField(Schema fieldSchema) {
-    return isSimpleMapSchema(fieldSchema) || isNullableMapSchema(fieldSchema);
-  }
-
-  public static boolean isArrayField(Schema fieldSchema) {
-    return isSimpleArraySchema(fieldSchema) || isNullableArraySchema(fieldSchema);
-  }
-
-  private static boolean isSimpleMapSchema(Schema schema) {
-    return schema.getType().equals(MAP);
-  }
-
-  private static boolean isSimpleArraySchema(Schema schema) {
-    return schema.getType().equals(ARRAY);
-  }
-
-  private static boolean isNullableMapSchema(Schema schema) {
-    // TODO: Check whether this should be expanded to check union branch index 0 as well
-    return schema.isNullable() && isSimpleMapSchema(schema.getTypes().get(1));
-  }
-
-  private static boolean isNullableArraySchema(Schema schema) {
-    // TODO: Check whether this should be expanded to check union branch index 0 as well
-    return schema.isNullable() && isSimpleArraySchema(schema.getTypes().get(1));
+  /**
+   * This function returns the type of the field if and only if it has a single non-null type. In cases where the field
+   * is a union, it will return the type of the non-null branch as long as there is at most one such branch, otherwise
+   * it will return {@link Schema.Type#UNION}.
+   */
+  public static Schema.Type unwrapOptionalUnion(Schema fieldSchema) {
+    switch (fieldSchema.getType()) {
+      case UNION:
+        List<Schema> unionBranches = fieldSchema.getTypes();
+        switch (unionBranches.size()) {
+          case 2:
+            Schema.Type first = unionBranches.get(0).getType();
+            Schema.Type second = unionBranches.get(1).getType();
+            if (first == NULL) {
+              return second;
+            } else if (second == NULL) {
+              return first;
+            } else {
+              return UNION;
+            }
+          case 1:
+            // It's not very clean to have a single branch union, but it could happen...
+            return unionBranches.get(0).getType();
+          default:
+            return UNION;
+        }
+      default:
+        return fieldSchema.getType();
+    }
   }
 }
