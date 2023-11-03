@@ -183,4 +183,21 @@ public class UtilsTest {
   public void testSanitizingStringForLogger() {
     Assert.assertEquals(Utils.getSanitizedStringForLogger(".abc.123."), "_abc_123_");
   }
+
+  @Test
+  public void testParseCommaSeparatedStringMapFromString() {
+    try {
+      Utils.parseCommaSeparatedStringMapFromString(
+          "{\"changeCaptureView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\": {}}}",
+          "someField"); // Method that should not throw an exception
+    } catch (Exception e) {
+      fail("Expected no exception to be thrown, but got: " + e.getMessage());
+    }
+
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> Utils.parseCommaSeparatedStringMapFromString(
+            "{\"changeCaptureView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\":",
+            "someField"));
+  }
 }
