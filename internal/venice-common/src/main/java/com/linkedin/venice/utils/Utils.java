@@ -2,6 +2,8 @@ package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.HttpConstants.LOCALHOST;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -313,11 +315,28 @@ public class Utils {
     try {
       Map<String, String> map = new HashMap<>();
       if (!value.isEmpty()) {
-        Arrays.stream(value.split(",")).map(s -> s.split("=")).forEach(strings -> map.put(strings[0], strings[1]));
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode rootNode = objectMapper.readTree(value);
+
+        rootNode.fieldNames().forEachRemaining(key -> {
+          JsonNode childNode = rootNode.get(key);
+          if (childNode.isObject()) {
+            map.put(key, childNode.toString());
+          } else {
+            map.put(key, childNode.asText());
+          }
+        });
       }
       return map;
-    } catch (Exception e) {
-      throw new VeniceException(fieldName + " must be key value pairs separated by comma, but value: " + value);
+    } catch (IOException jsonException) {
+      try {
+        Map<String, String> map = new HashMap<>();
+        Arrays.stream(value.split(",")).map(s -> s.split("=")).forEach(strings -> map.put(strings[0], strings[1]));
+        return map;
+      } catch (Exception kvException) {
+        throw new VeniceException(
+            fieldName + " must be a valid JSON object or key-value pairs separated by comma, but value: " + value);
+      }
     }
   }
 
