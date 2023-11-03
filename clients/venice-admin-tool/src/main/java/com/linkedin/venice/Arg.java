@@ -236,6 +236,9 @@ public enum Arg {
   NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
   MIN_COMPACTION_LAG_SECONDS(
       "min-compaction-lag-seconds", "mcls", true, "Min compaction lag seconds for version topic of hybrid stores"
+  ),
+  MAX_COMPACTION_LAG_SECONDS(
+      "max-compaction-lag-seconds", "mxcls", true, "Max compaction lag seconds for version topic of hybrid stores"
   ), PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(
       "interval", "itv", true,

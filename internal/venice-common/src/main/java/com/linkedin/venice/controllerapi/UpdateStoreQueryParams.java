@@ -25,6 +25,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
@@ -652,6 +653,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public UpdateStoreQueryParams setDisableStoreView() {
     return (UpdateStoreQueryParams) add(DISABLE_STORE_VIEW, true);
+  }
+
+  public UpdateStoreQueryParams setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
+    return putLong(MAX_COMPACTION_LAG_SECONDS, maxCompactionLagSeconds);
+  }
+
+  public Optional<Long> getMaxCompactionLagSeconds() {
+    return getLong(MAX_COMPACTION_LAG_SECONDS);
   }
 
   // ***************** above this line are getters and setters *****************

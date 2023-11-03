@@ -84,7 +84,8 @@ public class ApacheKafkaAdminAdapterTest {
         Optional.of(Duration.ofDays(3).toMillis()),
         true,
         Optional.of(2),
-        Duration.ofDays(1).toMillis());
+        Duration.ofDays(1).toMillis(),
+        Optional.empty());
     sampleConfig = new Config(
         Arrays.asList(
             new ConfigEntry("retention.ms", "259200000"),
@@ -361,7 +362,7 @@ public class ApacheKafkaAdminAdapterTest {
   @Test
   public void testSetTopicConfig() {
     PubSubTopicConfiguration topicConfiguration =
-        new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L);
+        new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L, Optional.empty());
     AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
     KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
 
@@ -390,7 +391,7 @@ public class ApacheKafkaAdminAdapterTest {
   @Test
   public void testSetTopicConfigThrowsException() throws ExecutionException, InterruptedException {
     PubSubTopicConfiguration topicConfiguration =
-        new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L);
+        new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L, Optional.empty());
     AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
     KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
 
