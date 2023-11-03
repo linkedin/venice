@@ -30,4 +30,8 @@ public class PubSubConstants {
   public static final String PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_INTERVAL_MS =
       "pubsub.consumer.topic.query.retry.interval.ms";
   public static final int PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_INTERVAL_MS_DEFAULT_VALUE = 1000;
+
+  // PubSub admin APIs default timeout
+  public static final String PUBSUB_ADMIN_API_DEFAULT_TIMEOUT_MS = "pubsub.admin.api.default.timeout.ms";
+  public static final int PUBSUB_ADMIN_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE = 120_000; // 2 minutes
 }

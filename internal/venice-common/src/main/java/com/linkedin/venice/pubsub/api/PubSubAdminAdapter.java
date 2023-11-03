@@ -20,6 +20,9 @@ import java.util.Set;
 
 /**
  * An adapter for PubSubAdmin to create/delete/list/update topics.
+ *
+ * For APIs that do not have a timeout parameter, the default timeout is specified by
+ * {@link PubSubConstants#PUBSUB_ADMIN_API_DEFAULT_TIMEOUT_MS}.
  */
 public interface PubSubAdminAdapter extends Closeable {
   /**
