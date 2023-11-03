@@ -10,6 +10,10 @@ public class NodeRemovableResult {
 
   }
 
+  private NodeRemovableResult(String details) {
+    this.details = details;
+  }
+
   public boolean isRemovable() {
     return isRemovable;
   }
@@ -26,8 +30,8 @@ public class NodeRemovableResult {
     return details;
   }
 
-  public static NodeRemovableResult removableResult() {
-    return new NodeRemovableResult();
+  public static NodeRemovableResult removableResult(String blockingReason) {
+    return new NodeRemovableResult(blockingReason);
   }
 
   /**
