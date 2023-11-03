@@ -1280,8 +1280,8 @@ public class PubSubConsumerAdapterTest {
       Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
           pubSubConsumerAdapter.poll(1);
       elapsedTime = System.currentTimeMillis() - startTime;
-      // check that poll did not block for longer than the timeout; add variance of 3 seconds
-      assertTrue(elapsedTime <= 1000 + 3000, "Poll should not block for longer than the timeout");
+      // roughly pollTimeout * retries + (retries - 1) * backoff. Let's use 5 seconds as the upper bound
+      assertTrue(elapsedTime <= 5000, "Poll should not block for longer than the timeout");
       assertNotNull(messages, "Messages should not be null");
 
       for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
