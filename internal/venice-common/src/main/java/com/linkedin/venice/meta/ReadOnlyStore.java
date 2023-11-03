@@ -1309,6 +1309,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public long getMaxCompactionLagSeconds() {
+    return this.delegate.getMaxCompactionLagSeconds();
+  }
+
+  @Override
+  public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }

@@ -3302,7 +3302,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       long minCompactionLagSeconds = store.getMinCompactionLagSeconds();
       long expectedMinCompactionLagMs =
           minCompactionLagSeconds > 0 ? minCompactionLagSeconds * Time.MS_PER_SECOND : minCompactionLagSeconds;
-      getTopicManager().updateTopicCompactionPolicy(versionTopic, true, expectedMinCompactionLagMs);
+      long maxCompactionLagSeconds = store.getMaxCompactionLagSeconds();
+      long expectedMaxCompactionLagMs =
+          maxCompactionLagSeconds > 0 ? maxCompactionLagSeconds * Time.MS_PER_SECOND : maxCompactionLagSeconds;
+      getTopicManager().updateTopicCompactionPolicy(
+          versionTopic,
+          true,
+          expectedMinCompactionLagMs,
+          expectedMaxCompactionLagMs > 0 ? Optional.of(expectedMaxCompactionLagMs) : Optional.empty());
     }
   }
 
@@ -4236,6 +4243,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
+    Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4486,6 +4494,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (minCompactionLagSeconds.isPresent()) {
         storeMetadataUpdate(clusterName, storeName, store -> {
           store.setMinCompactionLagSeconds(minCompactionLagSeconds.get());
+          return store;
+        });
+      }
+      if (maxCompactionLagSeconds.isPresent()) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+          store.setMaxCompactionLagSeconds(maxCompactionLagSeconds.get());
           return store;
         });
       }
