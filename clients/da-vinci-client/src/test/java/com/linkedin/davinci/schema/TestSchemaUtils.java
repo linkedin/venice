@@ -177,6 +177,26 @@ public class TestSchemaUtils {
     assertTrue(SchemaUtils.unwrapOptionalUnion(nullAndTypeAndOtherTypeUnion) == UNION);
   }
 
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "All-Avro-Schemas-Except-Null-And-Union")
+  public void testValidateFieldSchemaType(Schema type) {
+    Schema nullAndTypeUnion = Schema.createUnion(Schema.create(NULL), type);
+    SchemaUtils.validateFieldSchemaType("field", nullAndTypeUnion, type.getType());
+
+    Schema typeAndNullUnion = Schema.createUnion(type, Schema.create(NULL));
+    SchemaUtils.validateFieldSchemaType("field", typeAndNullUnion, type.getType());
+
+    Schema singleTypeOnlyUnion = Schema.createUnion(type);
+    SchemaUtils.validateFieldSchemaType("field", singleTypeOnlyUnion, type.getType());
+
+    Schema other = Schema.create(type.getType() == INT ? LONG : INT);
+    Schema typeAndOtherTypeUnion = Schema.createUnion(type, other);
+    Assert.assertThrows(() -> SchemaUtils.validateFieldSchemaType("field", typeAndOtherTypeUnion, type.getType()));
+
+    Schema nullAndTypeAndOtherTypeUnion = Schema.createUnion(Schema.create(NULL), type, other);
+    Assert
+        .assertThrows(() -> SchemaUtils.validateFieldSchemaType("field", nullAndTypeAndOtherTypeUnion, type.getType()));
+  }
+
   protected RecordSerializer<GenericRecord> getSerializer(Schema writerSchema) {
     return MapOrderPreservingSerDeFactory.getAvroGenericSerializer(writerSchema);
   }
