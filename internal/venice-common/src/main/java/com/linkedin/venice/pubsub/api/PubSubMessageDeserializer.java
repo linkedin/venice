@@ -7,6 +7,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.utils.pools.ObjectPool;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -110,5 +111,12 @@ public class PubSubMessageDeserializer {
   // For testing only.
   public KafkaValueSerializer getValueSerializer() {
     return valueSerializer;
+  }
+
+  public static PubSubMessageDeserializer getInstance() {
+    return new PubSubMessageDeserializer(
+        new KafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
   }
 }

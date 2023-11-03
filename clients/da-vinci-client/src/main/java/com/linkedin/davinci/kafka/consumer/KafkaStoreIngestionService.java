@@ -4,8 +4,6 @@ import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_
 import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
@@ -1112,11 +1110,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     kafkaConsumerProperties.setProperty(
         KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG,
         String.valueOf(serverConfig.getKafkaFetchPartitionMaxSizePerSecond()));
-    kafkaConsumerProperties
-        .setProperty(KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG, String.valueOf(serverConfig.getKafkaPollRetryTimes()));
     kafkaConsumerProperties.setProperty(
-        KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
-        String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
+        PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_TIMES,
+        String.valueOf(serverConfig.getPubSubConsumerPollRetryTimes()));
+    kafkaConsumerProperties.setProperty(
+        PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS,
+        String.valueOf(serverConfig.getPubSubConsumerPollRetryBackoffMs()));
 
     return kafkaConsumerProperties;
   }
