@@ -68,7 +68,7 @@ public class InstanceStatusDecider {
       // If instance is not alive, it's removable.
       if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getHelixManager())) {
         return NodeRemovableResult
-            .removableResult("Instance " + instanceId + " not found, either dead or wrong instance ID");
+            .removableResult("Instance " + instanceId + " not found in liveinstance set of cluster " + clusterName);
       }
 
       RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
