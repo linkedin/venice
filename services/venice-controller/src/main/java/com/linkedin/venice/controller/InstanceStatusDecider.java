@@ -112,7 +112,7 @@ public class InstanceStatusDecider {
                   resourceName,
                   clusterName,
                   result.getSecond());
-              return NodeRemovableResult.nonremoveableResult(
+              return NodeRemovableResult.nonRemovableResult(
                   resourceName,
                   NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA,
                   result.getSecond());
@@ -138,7 +138,7 @@ public class InstanceStatusDecider {
                   resourceName,
                   clusterName,
                   result.getSecond());
-              return NodeRemovableResult.nonremoveableResult(
+              return NodeRemovableResult.nonRemovableResult(
                   resourceName,
                   NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE,
                   result.getSecond());
