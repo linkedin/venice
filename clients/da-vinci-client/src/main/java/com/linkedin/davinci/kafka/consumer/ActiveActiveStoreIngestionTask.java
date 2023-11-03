@@ -495,7 +495,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // only extension of IngestionTask which does a read from disk before applying the record. This makes the
       // following function
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
-      int valueSchemaId = mergeConflictResult.getValueSchemaId();
+      int valueSchemaId = rmdWithValueSchemaID != null
+          ? rmdWithValueSchemaID.getValueSchemaId()
+          : mergeConflictResult.getValueSchemaId();
 
       // Write to views
       if (this.viewWriters.size() > 0) {
@@ -518,7 +520,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               oldValueProvider.get(),
               keyBytes,
               versionNumber,
-              incomingValueSchemaId,
+              mergeConflictResult.getValueSchemaId(),
               valueSchemaId,
               mergeConflictResult.getRmdRecord());
         }
