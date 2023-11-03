@@ -1,6 +1,6 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
@@ -67,7 +67,6 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -871,13 +870,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     } catch (InterruptedException | ExecutionException e) {
       throw new VeniceException("Subscribe to new topic:" + mergedTopicName + " is not successful, error: " + e);
     }
-  }
-
-  protected PubSubTopicPartition getPubSubTopicPartitionFromConsumerRecord(
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
-    return new PubSubTopicPartitionImpl(
-        pubSubTopicRepository.getTopic(consumerRecord.topic()),
-        consumerRecord.partition());
   }
 
   @Override
