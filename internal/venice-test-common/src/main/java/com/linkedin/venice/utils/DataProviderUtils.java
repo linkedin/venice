@@ -4,6 +4,7 @@ import static com.linkedin.venice.compression.CompressionStrategy.GZIP;
 import static com.linkedin.venice.compression.CompressionStrategy.NO_OP;
 import static com.linkedin.venice.compression.CompressionStrategy.ZSTD_WITH_DICT;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.meta.IngestionMode;
@@ -11,6 +12,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
+import org.apache.avro.Schema;
 import org.apache.commons.lang.ArrayUtils;
 import org.testng.annotations.DataProvider;
 import org.testng.collections.Lists;
@@ -112,6 +114,37 @@ public class DataProviderUtils {
   @DataProvider(name = "Boolean-Boolean-Compression")
   public static Object[][] booleanBooleanCompression() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, COMPRESSION_STRATEGIES);
+  }
+
+  @DataProvider(name = "All-Avro-Schemas-Except-Null-And-Union")
+  public static Object[][] allAvroTypesExceptNullAndUnion() {
+    List<Object[]> resultingArray = Lists.newArrayList();
+
+    List<Schema> simpleTypes = Arrays.asList(
+        Schema.create(Schema.Type.BOOLEAN),
+        Schema.create(Schema.Type.BYTES),
+        Schema.create(Schema.Type.DOUBLE),
+        Schema.createEnum(
+            "MyColorEnum",
+            "Who needs anything else than RGB?",
+            "my.namespace",
+            Arrays.asList("Red", "Green", "Blue")),
+        Schema.createFixed("MyFixed", "", "", 16),
+        Schema.create(Schema.Type.FLOAT),
+        Schema.create(Schema.Type.INT),
+        Schema.create(Schema.Type.LONG),
+        Schema.create(Schema.Type.STRING));
+
+    for (Schema schema: simpleTypes) {
+      resultingArray.add(new Object[] { schema });
+      resultingArray.add(new Object[] { Schema.createArray(schema) });
+      resultingArray.add(new Object[] { Schema.createMap(schema) });
+      List<Schema.Field> recordFields =
+          Arrays.asList(AvroCompatibilityHelper.createSchemaField("MyField", schema, "", null));
+      resultingArray.add(new Object[] { Schema.createRecord("MyRecord", "", "", false, recordFields) });
+    }
+
+    return resultingArray.toArray(new Object[resultingArray.size()][]);
   }
 
   /**
