@@ -2446,6 +2446,7 @@ public abstract class StoreIngestionTaskTest {
       assertNull(
           storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO),
           "Exception for the errored partition should be cleared after unsubscription");
+      assertEquals(storeIngestionTaskUnderTest.getFailedPartitions().size(), 1, "Only one partition should be failed");
     }, isActiveActiveReplicationEnabled);
     for (int i = 0; i < 10000; ++i) {
       storeIngestionTaskUnderTest
