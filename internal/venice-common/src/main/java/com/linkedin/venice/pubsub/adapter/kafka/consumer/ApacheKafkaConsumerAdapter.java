@@ -74,8 +74,9 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker) {
     this.kafkaConsumer = Objects.requireNonNull(consumer, "Kafka consumer cannot be null");
     this.config = Objects.requireNonNull(apacheKafkaConsumerConfig, "ApacheKafkaConsumerConfig cannot be null");
+    this.pubSubMessageDeserializer =
+        Objects.requireNonNull(pubSubMessageDeserializer, "PubSubMessageDeserializer cannot be null");
     this.topicPartitionsOffsetsTracker = topicPartitionsOffsetsTracker;
-    this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     LOGGER.info(
         "Created ApacheKafkaConsumerAdapter with config: {} - isMetricsBasedOffsetCachingEnabled: {}",
         apacheKafkaConsumerConfig,
@@ -97,7 +98,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
     if (topicPartitionSet.contains(topicPartition)) {
-      LOGGER.warn("Already subscribed on topic-partition:{}, ignoring subscription request", pubSubTopicPartition);
+      LOGGER.warn("Already subscribed to topic-partition:{}, ignoring subscription request", pubSubTopicPartition);
       return;
     }
 
@@ -146,7 +147,9 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         Thread.sleep(1000);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
-        throw new PubSubClientException("Interrupted while waiting for topic-partition to be created", e);
+        throw new PubSubClientException(
+            "Interrupted while waiting for validation of topic-partition: " + pubSubTopicPartition,
+            e);
       }
     }
     return false;

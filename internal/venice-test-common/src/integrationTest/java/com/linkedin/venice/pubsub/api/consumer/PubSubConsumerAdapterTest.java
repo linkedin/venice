@@ -59,8 +59,15 @@ import org.testng.annotations.Test;
  * Tests to verify the contract of {@link PubSubConsumerAdapter}
  */
 public class PubSubConsumerAdapterTest {
+  // timeout for pub-sub operations
   private static final Duration PUBSUB_OP_TIMEOUT = Duration.ofSeconds(15);
+  // add a variance of 5 seconds to the timeout to account for fluctuations in the test environment
+  private static final long PUBSUB_OP_TIMEOUT_WITH_VARIANCE = PUBSUB_OP_TIMEOUT.toMillis() + 5000;
+  // timeout for pub-sub consumer APIs which do not have a timeout parameter
   private static final int PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS = 10_000;
+  // add a variance of 5 seconds to the timeout to account for fluctuations in the test environment
+  private static final long PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE =
+      PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000;
   private static final int REPLICATION_FACTOR = 1;
   private static final boolean IS_LOG_COMPACTED = false;
   private static final long RETENTION_IN_MS = Duration.ofDays(2).toMillis();
@@ -133,7 +140,7 @@ public class PubSubConsumerAdapterTest {
     List<PubSubTopicPartitionInfo> partitions = pubSubConsumerAdapter.partitionsFor(nonExistentPubSubTopic);
     long elapsed = System.currentTimeMillis() - start;
     assertNull(partitions, "Partitions should be null for a non-existent topic");
-    assertTrue(elapsed <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "PartitionsFor should not block");
+    assertTrue(elapsed <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "PartitionsFor should not block");
   }
 
   // Test: When partitionsFor is called on an existing topic, it should return a list of partitions
@@ -152,7 +159,7 @@ public class PubSubConsumerAdapterTest {
     assertNotNull(partitions, "Partitions should not be null for an existing topic");
     assertFalse(partitions.isEmpty(), "Partitions should not be empty for an existing topic");
     assertEquals(partitions.size(), numPartitions, "Number of partitions does not match");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "PartitionsFor should not block");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "PartitionsFor should not block");
   }
 
   // Test: When endOffsets is called on a non-existent topic, it should throw PubSubOpTimeoutException
@@ -167,9 +174,8 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
@@ -193,9 +199,8 @@ public class PubSubConsumerAdapterTest {
     assertFalse(endOffsets.isEmpty(), "End offsets should not be empty for an existing topic");
     assertEquals(endOffsets.size(), partitions.size(), "Number of end offsets does not match");
     assertTrue(endOffsets.values().stream().allMatch(offset -> offset == 0), "End offsets should be 0 for a new topic");
-    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
@@ -219,9 +224,8 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
@@ -247,9 +251,8 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
@@ -278,14 +281,14 @@ public class PubSubConsumerAdapterTest {
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertNotNull(endOffset, "End offset should not be null for an existing topic partition");
     assertEquals(endOffset, Long.valueOf(0), "End offset should be 0 for an existing topic partition");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "endOffset should not block");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "endOffset should not block");
 
     // try to get the end offset for a non-existent topic partition
     startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffset(partitions.get(1)));
     elapsedTime = System.currentTimeMillis() - startTime;
     // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater
-    assertTrue(elapsedTime <= 2 * PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "endOffset should not block");
+    assertTrue(elapsedTime <= 2 * PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "endOffset should not block");
   }
 
   // Test: When beginningOffset is called on a non-existent topic, it should throw PubSubOpTimeoutException
@@ -300,9 +303,8 @@ public class PubSubConsumerAdapterTest {
         PubSubOpTimeoutException.class,
         () -> pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
@@ -321,21 +323,21 @@ public class PubSubConsumerAdapterTest {
     long beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "beginningOffset should not block");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "beginningOffset should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
     beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "beginningOffset should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "beginningOffset should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 2);
     startTime = System.currentTimeMillis();
     beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "beginningOffset should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "beginningOffset should not block");
   }
 
   // Test: When beginningOffset is called on an existing topic with a non-existent partition, it should throw
@@ -363,9 +365,8 @@ public class PubSubConsumerAdapterTest {
         PubSubOpTimeoutException.class,
         () -> pubSubConsumerAdapter.beginningOffset(nonExistentPartition, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
@@ -381,9 +382,8 @@ public class PubSubConsumerAdapterTest {
         PubSubOpTimeoutException.class,
         () -> pubSubConsumerAdapter.offsetForTime(partition, 0, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
@@ -403,14 +403,14 @@ public class PubSubConsumerAdapterTest {
     Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
     offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
   }
 
   // Test: When offsetForTime is called on an existing topic with invalid partition, it should throw
@@ -433,7 +433,7 @@ public class PubSubConsumerAdapterTest {
     Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
 
     PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
@@ -441,9 +441,8 @@ public class PubSubConsumerAdapterTest {
         PubSubOpTimeoutException.class,
         () -> pubSubConsumerAdapter.offsetForTime(invalidPartition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT));
     elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
@@ -494,7 +493,7 @@ public class PubSubConsumerAdapterTest {
       elapsedTime = System.currentTimeMillis() - startTime;
       assertNotNull(offset, "Offset should not be null for an existing topic with messages");
       assertEquals(offset, offsets.get(i), "Offset should match for an existing topic with messages");
-      assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
+      assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
     }
 
     // try 0 as timestamp; this should return the first offset
@@ -503,7 +502,7 @@ public class PubSubConsumerAdapterTest {
     elapsedTime = System.currentTimeMillis() - startTime;
     assertNotNull(offset, "Offset should not be null for an existing topic with messages");
     assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
 
     // check one month before the first message timestamp; this should return the first offset
     long oneMonthBeforeFirstMessageTimestamp = timestamps.get(0) - Duration.ofDays(30).toMillis();
@@ -513,7 +512,7 @@ public class PubSubConsumerAdapterTest {
     elapsedTime = System.currentTimeMillis() - startTime;
     assertNotNull(offset, "Offset should not be null for an existing topic with messages");
     assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
 
     // check for a timestamp that is after the last message; this should return null
     long currentTimestamp = System.currentTimeMillis();
@@ -530,7 +529,7 @@ public class PubSubConsumerAdapterTest {
         pubSubConsumerAdapter.offsetForTime(partitionWitMessages, oneMonthFromLastMessageTimestamp, PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with out of range timestamp");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "offsetForTime should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
   }
 
   // Test: When offsetForTime (without explicit timeout) is called on a non-existent topic,
@@ -544,11 +543,9 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.offsetForTime(partition, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be greater than the default timeout but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime >= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS
-            && elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
-        "Timeout should be greater than the default timeout but not too much greater");
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
+        "Timeout should be around the default timeout but not too much greater");
   }
 
   // Test: When offsetForTime (without explicit timeout) is called on an existing topic with invalid partition,
@@ -574,11 +571,9 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.offsetForTime(invalidPartition, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be greater than the default timeout but not too much greater; so add variance of 5 seconds
     assertTrue(
-        elapsedTime >= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS
-            && elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
-        "Timeout should be greater than the default timeout but not too much greater");
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
+        "Timeout should be around the default timeout but not too much greater");
   }
 
   // Test: When offsetForTime (without explicit timeout) is called on an existing topic with a valid partition but no
@@ -597,14 +592,14 @@ public class PubSubConsumerAdapterTest {
     Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "OffsetForTime should not block");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "offsetForTime should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
     offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
     elapsedTime = System.currentTimeMillis() - startTime;
     assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, "OffsetForTime should not block");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "OffsetForTime should not block");
   }
 
   // Test: Subscribe to non-existent topic should throw PubSubTopicDoesNotExistException
@@ -618,7 +613,7 @@ public class PubSubConsumerAdapterTest {
     assertThrows(PubSubTopicDoesNotExistException.class, () -> pubSubConsumerAdapter.subscribe(partition, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 60000,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
     assertFalse(pubSubConsumerAdapter.hasAnySubscription(), "Should not be subscribed to any topic");
     assertFalse(pubSubConsumerAdapter.hasSubscription(partition), "Should not be subscribed to any topic");
@@ -643,7 +638,7 @@ public class PubSubConsumerAdapterTest {
     assertThrows(PubSubTopicDoesNotExistException.class, () -> pubSubConsumerAdapter.subscribe(invalidPartition, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 60000,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
   }
 
@@ -666,7 +661,7 @@ public class PubSubConsumerAdapterTest {
     pubSubConsumerAdapter.subscribe(partition, 0);
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 60000,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
 
     // re-subscribe to the same topic and partition; this should not take longer than the default timeout
@@ -674,16 +669,15 @@ public class PubSubConsumerAdapterTest {
     pubSubConsumerAdapter.subscribe(partition, 0);
     elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 60000,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
 
     // check subscription status
     startTime = System.currentTimeMillis();
     assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
     elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be less than the default timeout
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
 
     startTime = System.currentTimeMillis();
@@ -691,7 +685,7 @@ public class PubSubConsumerAdapterTest {
     elapsedTime = System.currentTimeMillis() - startTime;
     // elapsed time should be less than the default timeout
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
   }
 
@@ -719,9 +713,8 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.unSubscribe(partition);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be less than the default timeout; add variance of 3 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
 
     // unsubscribe from a non-existent topic and partition
@@ -729,9 +722,8 @@ public class PubSubConsumerAdapterTest {
     startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.unSubscribe(nonExistentPartition);
     elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be less than the default timeout; add variance of 3 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 3000,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
   }
 
@@ -770,9 +762,8 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.batchUnsubscribe(partitions);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be less than the default timeout; add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
 
     // verify that the subscription is removed
@@ -835,9 +826,8 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.resetOffset(partition);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be less than the default timeout; add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
 
     minRecordsToConsume = 1;
@@ -876,9 +866,8 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(PubSubUnsubscribedTopicPartitionException.class, () -> pubSubConsumerAdapter.resetOffset(partition));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // elapsed time should be less than the default timeout; add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000,
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be less than the default timeout");
   }
 
@@ -943,7 +932,7 @@ public class PubSubConsumerAdapterTest {
         new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB0, partitionB1)),
         PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "endOffsets should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "endOffsets should not block");
 
     assertEquals(endOffsets.get(partitionA0), Long.valueOf(numMessages), "End offset should match");
     assertEquals(endOffsets.get(partitionA1), Long.valueOf(numMessages), "End offset should match");
@@ -955,7 +944,7 @@ public class PubSubConsumerAdapterTest {
     // topic-partition
     int minRecordsToConsume = 2;
     long pollTimeout = 1;
-    int consumptionBarMetCount = 0;
+    long pollTimeoutWithVariance = pollTimeout + 3000;
     // keep track of the last consumed offset for each topic-partition
     Map<PubSubTopicPartition, Long> lastConsumedOffsetMap = new HashMap<>(4);
     // keep track of the number of messages consumed for each topic-partition
@@ -970,7 +959,7 @@ public class PubSubConsumerAdapterTest {
       messages = pubSubConsumerAdapter.poll(pollTimeout);
       elapsedTime = System.currentTimeMillis() - startTime;
       // check that poll did not block for longer than the timeout; add variance of 3 seconds
-      assertTrue(elapsedTime <= pollTimeout + 3000, "Poll should not block for longer than the timeout");
+      assertTrue(elapsedTime <= pollTimeoutWithVariance, "Poll should not block for longer than the timeout");
       assertNotNull(messages, "Messages should not be null");
 
       for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
@@ -1008,18 +997,13 @@ public class PubSubConsumerAdapterTest {
     startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.pause(partitionA0);
     elapsedTime = System.currentTimeMillis() - startTime;
-    // check that pause did not block for longer than the timeout; add variance of 5 seconds
-    assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
-        "Pause should not block for longer than the timeout");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "Pause should not block for longer than the timeout");
 
     startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.pause(partitionB0);
     elapsedTime = System.currentTimeMillis() - startTime;
     // check that pause did not block for longer than the timeout; add variance of 5 seconds
-    assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
-        "Pause should not block for longer than the timeout");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "Pause should not block for longer than the timeout");
 
     // subscription should still be active for all
     assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
@@ -1077,19 +1061,13 @@ public class PubSubConsumerAdapterTest {
     startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.resume(partitionA0);
     elapsedTime = System.currentTimeMillis() - startTime;
-    // check that resume did not block for longer than the timeout; add variance of 5 seconds
-    assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
-        "Resume should not block for longer than the timeout");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "Resume should not block for longer than the timeout");
 
     // resume subscription to B0
     startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.resume(partitionB0);
     elapsedTime = System.currentTimeMillis() - startTime;
-    // check that resume did not block for longer than the timeout; add variance of 5 seconds
-    assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
-        "Resume should not block for longer than the timeout");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "Resume should not block for longer than the timeout");
 
     consumptionBarMet.clear(); // reset consumption bar
 
@@ -1203,9 +1181,8 @@ public class PubSubConsumerAdapterTest {
     startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.unSubscribe(partitionB0);
     elapsedTime = System.currentTimeMillis() - startTime;
-    // check that unsubscribe did not block for longer than the timeout; add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Unsubscribe should not block for longer than the timeout");
 
     // check that B0 is unsubscribed
@@ -1220,9 +1197,8 @@ public class PubSubConsumerAdapterTest {
     startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.batchUnsubscribe(partitions);
     elapsedTime = System.currentTimeMillis() - startTime;
-    // check that batch unsubscribe did not block for longer than the timeout; add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Batch unsubscribe should not block for longer than the timeout");
   }
 
@@ -1291,7 +1267,7 @@ public class PubSubConsumerAdapterTest {
         new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB0, partitionB1)),
         PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "endOffsets should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "endOffsets should not block");
 
     assertEquals(endOffsets.get(partitionA0), Long.valueOf(numMessages), "End offset should match");
     assertEquals(endOffsets.get(partitionA1), Long.valueOf(numMessages), "End offset should match");
@@ -1389,7 +1365,7 @@ public class PubSubConsumerAdapterTest {
         new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB0, partitionB1)),
         PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis(), "endOffsets should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "endOffsets should not block");
 
     assertEquals(endOffsets.get(partitionA0), Long.valueOf(numMessages), "End offset should match");
     assertEquals(endOffsets.get(partitionA1), Long.valueOf(numMessages), "End offset should match");
@@ -1430,18 +1406,16 @@ public class PubSubConsumerAdapterTest {
     startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.unSubscribe(partitionB0);
     elapsedTime = System.currentTimeMillis() - startTime;
-    // check that unsubscribe did not block for longer than the timeout; add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Unsubscribe should not block for longer than the timeout");
 
     // batch unsubscribe A0, A1, and B1
     startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.batchUnsubscribe(new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB1)));
     elapsedTime = System.currentTimeMillis() - startTime;
-    // check that unsubscribe did not block for longer than the timeout; add variance of 5 seconds
     assertTrue(
-        elapsedTime <= PUBSUB_OP_TIMEOUT.toMillis() + 5000,
+        elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Unsubscribe should not block for longer than the timeout");
   }
 }
