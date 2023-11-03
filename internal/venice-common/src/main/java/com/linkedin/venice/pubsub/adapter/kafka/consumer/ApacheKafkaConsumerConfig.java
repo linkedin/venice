@@ -39,6 +39,8 @@ public class ApacheKafkaConsumerConfig {
   private final boolean isSslEnabled;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
+  private final int topicQueryRetryTimes;
+  private final int topicQueryRetryIntervalMs;
   private final Duration defaultApiTimeout;
 
   ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
@@ -78,6 +80,14 @@ public class ApacheKafkaConsumerConfig {
         PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS,
         PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT_VALUE);
 
+    topicQueryRetryTimes = veniceProperties.getInt(
+        PubSubConstants.PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_TIMES,
+        PubSubConstants.PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_TIMES_DEFAULT_VALUE);
+
+    topicQueryRetryIntervalMs = veniceProperties.getInt(
+        PubSubConstants.PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_INTERVAL_MS,
+        PubSubConstants.PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_INTERVAL_MS_DEFAULT_VALUE);
+
     LOGGER.debug("Created ApacheKafkaConsumerConfig: {} - consumerProperties: {}", this, consumerProperties);
   }
 
@@ -106,6 +116,14 @@ public class ApacheKafkaConsumerConfig {
 
   Duration getDefaultApiTimeout() {
     return defaultApiTimeout;
+  }
+
+  int getTopicQueryRetryTimes() {
+    return topicQueryRetryTimes;
+  }
+
+  int getTopicQueryRetryIntervalMs() {
+    return topicQueryRetryIntervalMs;
   }
 
   public static Properties getValidConsumerProperties(Properties extractedProperties) {

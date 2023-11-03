@@ -32,7 +32,7 @@ public class ApacheKafkaConsumerTest {
   private PubSubBrokerWrapper kafkaBroker;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private static final PubSubTopicConfiguration TOPIC_CONFIGURATION =
-      new PubSubTopicConfiguration(Optional.of(70000000L), false, Optional.of(1), 700000L);
+      new PubSubTopicConfiguration(Optional.of(70000000L), false, Optional.of(1), 700000L, Optional.empty());
 
   @BeforeMethod
   public void setUp() {

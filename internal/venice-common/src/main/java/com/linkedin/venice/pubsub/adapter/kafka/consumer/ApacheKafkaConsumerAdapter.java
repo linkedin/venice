@@ -134,8 +134,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     }
 
     List<PubSubTopicPartitionInfo> topicPartitionInfos;
-
-    int retries = 5;
+    int retries = config.getTopicQueryRetryTimes();
     int attempt = 0;
     while (attempt++ < retries) {
       topicPartitionInfos = partitionsFor(pubSubTopicPartition.getPubSubTopic());
@@ -144,7 +143,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         return true;
       }
       try {
-        Thread.sleep(1000);
+        Thread.sleep(Math.max(1, config.getTopicQueryRetryIntervalMs()));
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new PubSubClientException(
