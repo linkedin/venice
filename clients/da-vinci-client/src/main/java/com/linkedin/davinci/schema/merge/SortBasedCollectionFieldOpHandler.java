@@ -2,6 +2,7 @@ package com.linkedin.davinci.schema.merge;
 
 import com.linkedin.avro.api.PrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
+import com.linkedin.davinci.schema.SchemaUtils;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
@@ -39,7 +40,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecordField, Schema.Type.ARRAY, true);
+    SchemaUtils.validateFieldSchemaType(currValueRecordField.name(), currValueRecordField.schema(), Schema.Type.ARRAY);
 
     // Current list will be updated.
     final long currTopLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
@@ -170,44 +171,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     deDupSet.clear(); // Try to be more GC friendly.
   }
 
-  private void validateFieldSchemaType(
-      Schema.Field currValueRecordField,
-      Schema.Type expectType,
-      boolean nullableAllowed) {
-    final Schema fieldSchema = currValueRecordField.schema();
-    final Schema.Type fieldSchemaType = fieldSchema.getType();
-    if (nullableAllowed && fieldSchemaType == Schema.Type.UNION) {
-      validateFieldSchemaIsNullableType(fieldSchema, expectType);
-      return;
-    }
-    if (fieldSchemaType != expectType) {
-      throw new IllegalStateException(
-          String.format(
-              "Expect field %s to be of type %s. But got: %s",
-              currValueRecordField.name(),
-              expectType,
-              fieldSchemaType));
-    }
-  }
-
-  private void validateFieldSchemaIsNullableType(Schema fieldSchema, Schema.Type expectType) {
-    // // Expect a nullable type. Expect a union of [null, expected type]
-    if (fieldSchema.getType() != Schema.Type.UNION) {
-      throw new IllegalStateException("Expect a union. Got field schema: " + fieldSchema);
-    }
-    if (fieldSchema.getTypes().size() != 2) {
-      throw new IllegalStateException("Expect a union of size 2. Got field schema: " + fieldSchema);
-    }
-    if (fieldSchema.getTypes().get(0).getType() != Schema.Type.NULL) {
-      throw new IllegalStateException(
-          "Expect the first element in the union to be null. Got field schema: " + fieldSchema);
-    }
-    if (fieldSchema.getTypes().get(1).getType() != expectType) {
-      throw new IllegalStateException(
-          "Expect the second element in the union to be the expected type. Got field schema: " + fieldSchema);
-    }
-  }
-
   @Override
   public UpdateResultStatus handlePutMap(
       final long putTimestamp,
@@ -219,7 +182,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecordField, Schema.Type.MAP, true);
+    SchemaUtils.validateFieldSchemaType(currValueRecordField.name(), currValueRecordField.schema(), Schema.Type.MAP);
     collectionFieldRmd.setTopLevelFieldTimestamp(putTimestamp);
     collectionFieldRmd.setTopLevelColoID(coloID);
     IndexedHashMap<String, Object> toPutMap;
@@ -318,7 +281,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecordField, Schema.Type.ARRAY, true);
+    SchemaUtils.validateFieldSchemaType(currValueRecordField.name(), currValueRecordField.schema(), Schema.Type.ARRAY);
     // Current list will be deleted (partially or completely).
     final int currPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     collectionFieldRmd.setTopLevelFieldTimestamp(deleteTimestamp);
@@ -367,7 +330,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecordField, Schema.Type.MAP, true);
+    SchemaUtils.validateFieldSchemaType(currValueRecordField.name(), currValueRecordField.schema(), Schema.Type.MAP);
     // Handle Delete on a map that is in the collection-merge mode.
     final int originalPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     final long originalTopLevelFieldTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
@@ -419,7 +382,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecordField, Schema.Type.ARRAY, true);
+    SchemaUtils.validateFieldSchemaType(currValueRecordField.name(), currValueRecordField.schema(), Schema.Type.ARRAY);
     Set<Object> toAddElementSet = new HashSet<>(toAddElements);
     Set<Object> toRemoveElementSet = new HashSet<>(toRemoveElements);
     removeIntersectionElements(toAddElementSet, toRemoveElementSet);
@@ -751,7 +714,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecordField, Schema.Type.MAP, true);
+    SchemaUtils.validateFieldSchemaType(currValueRecordField.name(), currValueRecordField.schema(), Schema.Type.MAP);
     if (toRemoveKeys.isEmpty() && newEntries.isEmpty()) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }

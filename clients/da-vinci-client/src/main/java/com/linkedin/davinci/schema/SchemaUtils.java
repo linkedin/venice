@@ -197,4 +197,17 @@ public class SchemaUtils {
         return fieldSchema.getType();
     }
   }
+
+  /**
+   * This method checks if the field contains expected type. It relies on {@link SchemaUtils#unwrapOptionalUnion(Schema)}
+   * to retrieve the type from the field if incoming field is union.
+   * If it could not find expected type, or the incoming union is not valid for processing, it will throw {@link IllegalStateException}
+   */
+  public static void validateFieldSchemaType(String fieldName, Schema fieldSchema, Schema.Type expectedType) {
+    final Schema.Type fieldSchemaType = SchemaUtils.unwrapOptionalUnion(fieldSchema);
+    if (fieldSchemaType != expectedType) {
+      throw new IllegalStateException(
+          String.format("Expect field %s to be of type %s. But got: %s", fieldName, expectedType, fieldSchemaType));
+    }
+  }
 }
