@@ -85,6 +85,8 @@ public class LeaderProducerCallbackTest {
       }
 
       // Message should be logged only three time as there are just 3 unique Topic-Partition
+      // N.B. That assertion seems to be flaky... it sometimes get 4 logs instead of 3.
+      // TODO: Figure out why it's flaky... and maybe remove the assertion entirely if it's expected...
       List<String> logs = inMemoryLogAppender.getLogs();
       long matchedLogs = logs.stream()
           .filter(log -> log.contains("Leader failed to send out message to version topic when consuming "))
