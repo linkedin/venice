@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.avro.Schema;
+import org.apache.avro.UnresolvedUnionException;
+import org.apache.avro.generic.GenericContainer;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
@@ -127,9 +129,17 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     return updateRecord;
   }
 
-  private Exception validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
+  Exception validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
     try {
       serializer.serialize(updateRecord);
+    } catch (UnresolvedUnionException serializationException) {
+      Object unresolvedDatum = serializationException.getUnresolvedDatum();
+      String unresolvedDatumType = unresolvedDatum instanceof GenericContainer
+          ? ((GenericContainer) unresolvedDatum).getSchema().toString()
+          : unresolvedDatum.getClass().getSimpleName();
+      return new VeniceException(
+          "The following type does not conform to any branch of the union: " + unresolvedDatumType,
+          serializationException);
     } catch (Exception serializationException) {
       return serializationException;
     }
