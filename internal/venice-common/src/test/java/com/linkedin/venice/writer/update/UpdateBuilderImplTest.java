@@ -346,6 +346,19 @@ public class UpdateBuilderImplTest {
     Assert.assertThrows(VeniceException.class, () -> builder2.setNewFieldValue("name", null));
   }
 
+  /**
+   * Should return a VeniceException with more information on the unresolved datum type when field is of type union
+   * and the value doesn't match one of the union branches.
+   */
+  @Test
+  public void testValidateUpdateRecordIsSerializable() {
+    GenericRecord record = new GenericData.Record(UPDATE_SCHEMA);
+    UpdateBuilderImpl builder = new UpdateBuilderImpl(UPDATE_SCHEMA);
+    record.put("name", true);
+    Exception e = builder.validateUpdateRecordIsSerializable(record);
+    Assert.assertTrue(e instanceof VeniceException);
+  }
+
   private GenericRecord createRecordForListField(int number) {
     Schema recordSchema = VALUE_SCHEMA.getField("recordArray").schema().getElementType();
     GenericRecord record = new GenericData.Record(recordSchema);
