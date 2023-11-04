@@ -248,7 +248,6 @@ public class ChunkingUtils {
       AbstractStorageEngine store,
       int partition,
       ByteBuffer keyBuffer,
-      ReadResponse response,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
       int readerSchemaID,
@@ -256,7 +255,6 @@ public class ChunkingUtils {
       VeniceCompressor compressor,
       boolean isRmdValue,
       ChunkedValueManifestContainer manifestContainer) {
-    long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
     byte[] value =
         isRmdValue ? store.getReplicationMetadata(partition, keyBuffer.array()) : store.get(partition, keyBuffer);
     int writerSchemaId = value == null ? 0 : ValueRecord.parseSchemaId(value);
@@ -264,11 +262,11 @@ public class ChunkingUtils {
         getFromStorage(
             value,
             (value == null ? 0 : value.length),
-            databaseLookupStartTimeInNS,
+            0,
             adapter,
             store,
             partition,
-            response,
+            null,
             reusedValue,
             reusedDecoder,
             readerSchemaID,

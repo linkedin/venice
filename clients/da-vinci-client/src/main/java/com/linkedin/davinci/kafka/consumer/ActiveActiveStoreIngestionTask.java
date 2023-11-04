@@ -436,7 +436,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(
-            Lazy.of(() -> oldValueProvider.get().getValue()),
+            Lazy.of(() -> oldValueProvider.get().value()),
             rmdWithValueSchemaID,
             ((Put) kafkaValue.payloadUnion).putValue,
             writeTimestamp,
@@ -451,7 +451,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       case DELETE:
         mergeConflictResult = mergeConflictResolver.delete(
-            Lazy.of(() -> oldValueProvider.get().getValue()),
+            Lazy.of(() -> oldValueProvider.get().value()),
             rmdWithValueSchemaID,
             writeTimestamp,
             sourceOffset,
@@ -461,7 +461,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       case UPDATE:
         mergeConflictResult = mergeConflictResolver.update(
-            Lazy.of(() -> oldValueProvider.get().getValue()),
+            Lazy.of(() -> oldValueProvider.get().value()),
             rmdWithValueSchemaID,
             ((Update) kafkaValue.payloadUnion).updateValue,
             incomingValueSchemaId,
@@ -515,11 +515,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         for (VeniceViewWriter writer: viewWriters.values()) {
           viewWriterFutures[index++] = writer.processRecord(
               mergeConflictResult.getNewValue(),
-              oldValueProvider.get().getValue(),
+              oldValueProvider.get().value(),
               keyBytes,
               versionNumber,
               mergeConflictResult.getValueSchemaId(),
-              oldValueProvider.get().getWriterSchemaId(),
+              oldValueProvider.get().writerSchemaId(),
               mergeConflictResult.getRmdRecord());
         }
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
@@ -637,7 +637,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           isChunked,
           reusedRawValue,
           binaryDecoder,
-          null,
           schemaRepository.getSupersetOrLatestValueSchema(storeName).getId(),
           RawBytesStoreDeserializerCache.getInstance(),
           compressor.get(),
