@@ -1,8 +1,5 @@
 package com.linkedin.davinci.store.record;
 
-import java.util.Objects;
-
-
 /**
  * This class encapsulates a value from venice storage accompanied by the schema
  * id that was used to serialize the value.
@@ -28,11 +25,6 @@ public final class ByteBufferValueRecord<T> {
 
   public int writerSchemaId() {
     return writerSchemaId;
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(value, writerSchemaId);
   }
 
   @Override
