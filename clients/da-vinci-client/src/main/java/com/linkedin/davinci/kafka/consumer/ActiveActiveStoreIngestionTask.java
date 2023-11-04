@@ -637,7 +637,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           isChunked,
           reusedRawValue,
           binaryDecoder,
-          schemaRepository.getSupersetOrLatestValueSchema(storeName).getId(),
           RawBytesStoreDeserializerCache.getInstance(),
           compressor.get(),
           valueManifestContainer);

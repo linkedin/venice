@@ -135,7 +135,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean isChunked,
       T reusedValue,
       BinaryDecoder reusedDecoder,
-      int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor,
       ChunkedValueManifestContainer manifestContainer) {
@@ -149,7 +148,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         key,
         reusedValue,
         reusedDecoder,
-        readerSchemaId,
         storeDeserializerCache,
         compressor,
         false,
