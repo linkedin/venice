@@ -3,6 +3,7 @@ package com.linkedin.davinci.storage.chunking;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -240,6 +241,42 @@ public class ChunkingUtils {
         compressor,
         isRmdValue,
         manifestContainer);
+  }
+
+  static <VALUE, CHUNKS_CONTAINER> ByteBufferValueRecord<VALUE> getValueAndSchemaIdFromStorage(
+      ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
+      AbstractStorageEngine store,
+      int partition,
+      ByteBuffer keyBuffer,
+      ReadResponse response,
+      VALUE reusedValue,
+      BinaryDecoder reusedDecoder,
+      int readerSchemaID,
+      StoreDeserializerCache<VALUE> storeDeserializerCache,
+      VeniceCompressor compressor,
+      boolean isRmdValue,
+      ChunkedValueManifestContainer manifestContainer) {
+    long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
+    byte[] value =
+        isRmdValue ? store.getReplicationMetadata(partition, keyBuffer.array()) : store.get(partition, keyBuffer);
+    int writerSchemaId = value == null ? 0 : ValueRecord.parseSchemaId(value);
+    return new ByteBufferValueRecord<>(
+        getFromStorage(
+            value,
+            (value == null ? 0 : value.length),
+            databaseLookupStartTimeInNS,
+            adapter,
+            store,
+            partition,
+            response,
+            reusedValue,
+            reusedDecoder,
+            readerSchemaID,
+            storeDeserializerCache,
+            compressor,
+            isRmdValue,
+            manifestContainer),
+        writerSchemaId);
   }
 
   public static ChunkedValueManifest getChunkValueManifestFromStorage(

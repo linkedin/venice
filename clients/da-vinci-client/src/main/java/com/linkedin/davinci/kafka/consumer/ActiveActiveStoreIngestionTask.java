@@ -18,6 +18,7 @@ import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
@@ -409,7 +410,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    Lazy<ByteBuffer> oldValueProvider = Lazy.of(
+    Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
         () -> getValueBytesForKey(
             partitionConsumptionState,
             keyBytes,
@@ -435,7 +436,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(
-            oldValueProvider,
+            Lazy.of(() -> oldValueProvider.get().getValue()),
             rmdWithValueSchemaID,
             ((Put) kafkaValue.payloadUnion).putValue,
             writeTimestamp,
@@ -450,7 +451,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       case DELETE:
         mergeConflictResult = mergeConflictResolver.delete(
-            oldValueProvider,
+            Lazy.of(() -> oldValueProvider.get().getValue()),
             rmdWithValueSchemaID,
             writeTimestamp,
             sourceOffset,
@@ -460,7 +461,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       case UPDATE:
         mergeConflictResult = mergeConflictResolver.update(
-            oldValueProvider,
+            Lazy.of(() -> oldValueProvider.get().getValue()),
             rmdWithValueSchemaID,
             ((Update) kafkaValue.payloadUnion).updateValue,
             incomingValueSchemaId,
@@ -495,9 +496,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // only extension of IngestionTask which does a read from disk before applying the record. This makes the
       // following function
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
-      int valueSchemaId = rmdWithValueSchemaID != null
-          ? rmdWithValueSchemaID.getValueSchemaId()
-          : mergeConflictResult.getValueSchemaId();
 
       // Write to views
       if (this.viewWriters.size() > 0) {
@@ -517,11 +515,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         for (VeniceViewWriter writer: viewWriters.values()) {
           viewWriterFutures[index++] = writer.processRecord(
               mergeConflictResult.getNewValue(),
-              oldValueProvider.get(),
+              oldValueProvider.get().getValue(),
               keyBytes,
               versionNumber,
               mergeConflictResult.getValueSchemaId(),
-              valueSchemaId,
+              oldValueProvider.get().getWriterSchemaId(),
               mergeConflictResult.getRmdRecord());
         }
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
@@ -617,13 +615,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param topicPartition The {@link PubSubTopicPartition} from which the incoming record was consumed
    * @return
    */
-  private ByteBuffer getValueBytesForKey(
+  private ByteBufferValueRecord<ByteBuffer> getValueBytesForKey(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer valueManifestContainer,
       long currentTimeForMetricsMs) {
-    ByteBuffer originalValue = null;
+    ByteBufferValueRecord<ByteBuffer> originalValue = null;
     // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
     // get it from DB.
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
@@ -632,8 +630,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
       BinaryDecoder binaryDecoder = reusableObjects.binaryDecoder;
-
-      originalValue = RawBytesChunkingAdapter.INSTANCE.get(
+      originalValue = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
           storageEngine,
           getSubPartitionId(key, topicPartition),
           ByteBuffer.wrap(key),
@@ -655,7 +652,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         if (valueManifestContainer != null) {
           valueManifestContainer.setManifest(transientRecord.getValueManifest());
         }
-        originalValue = getCurrentValueFromTransientRecord(transientRecord);
+        originalValue = new ByteBufferValueRecord<>(
+            getCurrentValueFromTransientRecord(transientRecord),
+            transientRecord.getValueSchemaId());
       }
     }
     return originalValue;
