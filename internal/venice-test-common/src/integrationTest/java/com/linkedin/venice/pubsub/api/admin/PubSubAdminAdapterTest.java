@@ -141,11 +141,8 @@ public class PubSubAdminAdapterTest {
 
     PubSubTopic pubSubTopicB = pubSubTopicRepository.getTopic(Utils.getUniqueString("diminishing-delight-"));
     assertFalse(pubSubAdminAdapter.containsTopic(pubSubTopicB));
-    try {
-      pubSubBrokerWrapper.close();
-    } catch (Exception e) {
-      // ignore
-    }
+
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper); // stop the broker
 
     assertFalse(pubSubBrokerWrapper.isRunning());
     startTime = System.currentTimeMillis();
@@ -189,11 +186,7 @@ public class PubSubAdminAdapterTest {
         "deleteTopic should finish within the timeout");
 
     // deleteTopic should fail and should be completed within the timeout if the broker is not running
-    try {
-      pubSubBrokerWrapper.close();
-    } catch (Exception e) {
-      // ignore
-    }
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper); // stop the broker
 
     // deleteTopic should fail and should be completed within the timeout if the broker is not running
     // When explicitly specifying a timeout, the explicit timeout should be honored over the default timeout
@@ -236,11 +229,7 @@ public class PubSubAdminAdapterTest {
         "getTopicConfig should finish within the timeout");
 
     // getTopicConfig should fail and should be completed within the timeout if the broker is not running
-    try {
-      pubSubBrokerWrapper.close();
-    } catch (Exception e) {
-      // ignore
-    }
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper); // stop the broker
 
     // getTopicConfig should fail and should be completed within the timeout if the broker is not running
     // When explicitly specifying a timeout, the explicit timeout should be honored over the default timeout
@@ -284,11 +273,7 @@ public class PubSubAdminAdapterTest {
         "setTopicConfig should finish within the timeout");
 
     // setTopicConfig should fail and should be completed within the timeout if the broker is not running
-    try {
-      pubSubBrokerWrapper.close();
-    } catch (Exception e) {
-      // ignore
-    }
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper); // stop the broker
 
     // setTopicConfig should fail and should be completed within the timeout if the broker is not running
     // When explicitly specifying a timeout, the explicit timeout should be honored over the default timeout
@@ -333,11 +318,7 @@ public class PubSubAdminAdapterTest {
         "containsTopic should finish within the timeout");
 
     // containsTopic should fail and should be completed within the timeout if the broker is not running
-    try {
-      pubSubBrokerWrapper.close();
-    } catch (Exception e) {
-      // ignore
-    }
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper); // stop the broker
 
     // containsTopic should fail and should be completed within the timeout if the broker is not running
     // When explicitly specifying a timeout, the explicit timeout should be honored over the default timeout
@@ -396,11 +377,7 @@ public class PubSubAdminAdapterTest {
 
     // containsTopicWithPartitionCheck should fail and should be completed within the timeout if the broker is not
     // running
-    try {
-      pubSubBrokerWrapper.close();
-    } catch (Exception e) {
-      // ignore
-    }
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper); // stop the broker
 
     // containsTopicWithPartitionCheck should fail and should be completed within the timeout if the broker is not
     // running
@@ -442,11 +419,7 @@ public class PubSubAdminAdapterTest {
         "listAllTopics should finish within the timeout");
 
     // listAllTopics should fail and should be completed within the timeout if the broker is not running
-    try {
-      pubSubBrokerWrapper.close();
-    } catch (Exception e) {
-      // ignore
-    }
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper); // stop the broker
 
     // listAllTopics should fail and should be completed within the timeout if the broker is not running
     // When explicitly specifying a timeout, the explicit timeout should be honored over the default timeout
@@ -485,11 +458,7 @@ public class PubSubAdminAdapterTest {
         "getAllTopicRetentions should finish within the timeout");
 
     // getAllTopicRetentions should fail and should be completed within the timeout if the broker is not running
-    try {
-      pubSubBrokerWrapper.close();
-    } catch (Exception e) {
-      // ignore
-    }
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper); // stop the broker
 
     assertFalse(pubSubBrokerWrapper.isRunning());
     startTime = System.currentTimeMillis();
@@ -529,11 +498,7 @@ public class PubSubAdminAdapterTest {
         "getSomeTopicConfigs should finish within the timeout");
 
     // getSomeTopicConfigs should fail and should be completed within the timeout if the broker is not running
-    try {
-      pubSubBrokerWrapper.close();
-    } catch (Exception e) {
-      // ignore
-    }
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper); // stop the broker
 
     assertFalse(pubSubBrokerWrapper.isRunning());
     startTime = System.currentTimeMillis();
