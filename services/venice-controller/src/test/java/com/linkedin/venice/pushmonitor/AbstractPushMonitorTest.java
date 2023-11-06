@@ -43,6 +43,8 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -70,6 +72,8 @@ public abstract class AbstractPushMonitorTest {
 
   protected VeniceControllerConfig mockControllerConfig;
 
+  protected MetricsRepository mockMetricRepo;
+
   private final static String clusterName = Utils.getUniqueString("test_cluster");
   private final static String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
   private String storeName;
@@ -94,10 +98,12 @@ public abstract class AbstractPushMonitorTest {
     mockAccessor = mock(OfflinePushAccessor.class);
     mockStoreCleaner = mock(StoreCleaner.class);
     mockStoreRepo = mock(ReadWriteStoreRepository.class);
+    mockMetricRepo = mock(MetricsRepository.class);
     mockRoutingDataRepo = mock(RoutingDataRepository.class);
     mockPushHealthStats = mock(AggPushHealthStats.class);
     clusterLockManager = new ClusterLockManager(clusterName);
     mockControllerConfig = mock(VeniceControllerConfig.class);
+    when(mockMetricRepo.sensor(anyString(), any())).thenReturn(mock(Sensor.class));
     when(mockControllerConfig.isErrorLeaderReplicaFailOverEnabled()).thenReturn(true);
     when(mockControllerConfig.isDaVinciPushStatusEnabled()).thenReturn(true);
     when(mockControllerConfig.getDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);

@@ -10,7 +10,7 @@ import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_N
 
 import com.linkedin.venice.controller.HelixAdminClient;
 import com.linkedin.venice.controller.VeniceControllerConfig;
-import com.linkedin.venice.controller.stats.ErrorPartitionStats;
+import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -84,7 +84,7 @@ public abstract class AbstractPushMonitor
   private final long offlineJobResourceAssignmentWaitTimeInMilliseconds;
 
   private final PushStatusCollector pushStatusCollector;
-  private final ErrorPartitionStats errorPartitionStats;
+  private final DisabledPartitionStats disabledPartitionStats;
 
   private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
 
@@ -114,7 +114,7 @@ public abstract class AbstractPushMonitor
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
     this.helixAdminClient = helixAdminClient;
-    this.errorPartitionStats = new ErrorPartitionStats(metricsRepository, clusterName);
+    this.disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
 
     this.disableErrorLeaderReplica = controllerConfig.isErrorLeaderReplicaFailOverEnabled();
     this.helixClientThrottler =
@@ -761,7 +761,7 @@ public abstract class AbstractPushMonitor
             kafkaTopic,
             Collections.singletonList(HelixUtils.getPartitionName(kafkaTopic, partitionId)));
         disabledReplicaMap.computeIfAbsent(instance, k -> new HashSet<>()).add(partitionId);
-        errorPartitionStats.recordDisabledPartition();
+        disabledPartitionStats.recordDisabledPartition();
       }
 
       @Override
