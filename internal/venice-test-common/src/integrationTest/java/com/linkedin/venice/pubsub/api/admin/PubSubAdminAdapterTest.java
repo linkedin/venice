@@ -4,8 +4,10 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -21,15 +23,26 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
@@ -507,5 +520,47 @@ public class PubSubAdminAdapterTest {
     assertTrue(
         elapsedTime - startTime <= (numTopics * PUBSUB_ADMIN_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE),
         "getSomeTopicConfigs should finish within the timeout");
+  }
+
+  // Test: multithreaded access to PubSubAdminAdapter
+  @Test(timeOut = 5 * TEST_TIMEOUT_MS)
+  public void testMultithreadedAccess() {
+    int numThreads = 10;
+    ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
+    CyclicBarrier cyclicBarrier = new CyclicBarrier(numThreads);
+    List<CompletableFuture<Void>> futures = new ArrayList<>(numThreads);
+
+    for (int i = 0; i < numThreads; i++) {
+      futures.add(CompletableFuture.runAsync(() -> {
+        try {
+          cyclicBarrier.await();
+        } catch (InterruptedException | BrokenBarrierException e) {
+          throw new VeniceException("Error while waiting for barrier", e);
+        }
+        for (int j = 0; j < 20; j++) {
+          PubSubTopic pubSubTopic = pubSubTopicRepository
+              .getTopic(Utils.getUniqueString("topic-" + Thread.currentThread().getName()) + "-" + j);
+          pubSubAdminAdapter.createTopic(pubSubTopic, PARTITION_COUNT, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+          assertTrue(pubSubAdminAdapter.containsTopic(pubSubTopic));
+          // getTopicConfig
+          pubSubAdminAdapter.getTopicConfig(pubSubTopic);
+          // setTopicConfig
+          pubSubAdminAdapter.setTopicConfig(pubSubTopic, TOPIC_CONFIGURATION);
+          pubSubAdminAdapter.deleteTopic(pubSubTopic, PUBSUB_OP_TIMEOUT);
+          assertFalse(pubSubAdminAdapter.containsTopic(pubSubTopic));
+        }
+      }, executorService));
+    }
+    CompletableFuture<Void> allFutures = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+    try {
+      allFutures.get(5, TimeUnit.MINUTES);
+    } catch (ExecutionException e) {
+      if (!ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)
+          && !ExceptionUtils.recursiveClassEquals(e, BrokenBarrierException.class)) {
+        fail("Error while executing futures", e);
+      }
+    } catch (InterruptedException | TimeoutException e) {
+      throw new VeniceException("Error while waiting for futures to complete", e);
+    }
   }
 }
