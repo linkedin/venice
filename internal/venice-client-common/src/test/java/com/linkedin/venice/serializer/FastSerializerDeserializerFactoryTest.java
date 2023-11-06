@@ -1,5 +1,6 @@
 package com.linkedin.venice.serializer;
 
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.ExecutorService;
@@ -36,5 +37,11 @@ public class FastSerializerDeserializerFactoryTest {
     } finally {
       TestUtils.shutdownExecutor(executor);
     }
+  }
+
+  @Test
+  public void checkFastDeserializerGeneration() {
+    FastSerializerDeserializerFactory
+        .cacheFastAvroGenericDeserializer(KafkaMessageEnvelope.SCHEMA$, KafkaMessageEnvelope.SCHEMA$, 10000);
   }
 }

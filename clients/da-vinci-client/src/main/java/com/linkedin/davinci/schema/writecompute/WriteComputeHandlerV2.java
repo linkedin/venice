@@ -1,10 +1,9 @@
 package com.linkedin.davinci.schema.writecompute;
 
-import static com.linkedin.davinci.schema.SchemaUtils.isArrayField;
-import static com.linkedin.davinci.schema.SchemaUtils.isMapField;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
+import com.linkedin.davinci.schema.SchemaUtils;
 import com.linkedin.davinci.schema.merge.AvroCollectionElementComparator;
 import com.linkedin.davinci.schema.merge.CollectionFieldOperationHandler;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
@@ -129,41 +128,41 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
       long modifyTimestamp,
       GenericRecord currValueRecord,
       Schema.Field currentValueField) {
-    if (isArrayField(currentValueField.schema())) {
-      return collectionFieldOperationHandler.handleModifyList(
-          modifyTimestamp,
-          new CollectionRmdTimestamp(fieldTimestampRecord),
-          currValueRecord,
-          currentValueField,
-          (List<Object>) fieldWriteComputeRecord.get(WriteComputeConstants.SET_UNION),
-          (List<Object>) fieldWriteComputeRecord.get(WriteComputeConstants.SET_DIFF));
-
-    } else if (isMapField(currentValueField.schema())) {
-      Object fieldValue = currValueRecord.get(currentValueField.pos());
-      if (fieldValue != null && !(fieldValue instanceof IndexedHashMap)) {
-        // if the current map field is not of IndexedHashMap type and is empty then replace this field with an empty
-        // IndexedHashMap
-        if (((Map) fieldValue).isEmpty()) {
-          currValueRecord.put(currentValueField.pos(), new IndexedHashMap<>());
-        } else {
-          throw new IllegalStateException(
-              "Expect value of field " + currentValueField.name() + " to be an IndexedHashMap. Got: "
-                  + fieldValue.getClass());
+    switch (SchemaUtils.unwrapOptionalUnion(currentValueField.schema())) {
+      case ARRAY:
+        return collectionFieldOperationHandler.handleModifyList(
+            modifyTimestamp,
+            new CollectionRmdTimestamp(fieldTimestampRecord),
+            currValueRecord,
+            currentValueField,
+            (List<Object>) fieldWriteComputeRecord.get(WriteComputeConstants.SET_UNION),
+            (List<Object>) fieldWriteComputeRecord.get(WriteComputeConstants.SET_DIFF));
+      case MAP:
+        Object fieldValue = currValueRecord.get(currentValueField.pos());
+        if (fieldValue != null && !(fieldValue instanceof IndexedHashMap)) {
+          // if the current map field is not of IndexedHashMap type and is empty then replace this field with an empty
+          // IndexedHashMap
+          if (((Map) fieldValue).isEmpty()) {
+            currValueRecord.put(currentValueField.pos(), new IndexedHashMap<>());
+          } else {
+            throw new IllegalStateException(
+                "Expect value of field " + currentValueField.name() + " to be an IndexedHashMap. Got: "
+                    + fieldValue.getClass());
+          }
         }
-      }
-      return collectionFieldOperationHandler.handleModifyMap(
-          modifyTimestamp,
-          new CollectionRmdTimestamp(fieldTimestampRecord),
-          currValueRecord,
-          currentValueField,
-          (Map<String, Object>) fieldWriteComputeRecord.get(WriteComputeConstants.MAP_UNION),
-          (List<String>) fieldWriteComputeRecord.get(WriteComputeConstants.MAP_DIFF));
-    } else {
-      throw new IllegalArgumentException(
-          String.format(
-              "Expect value field %s to be either a List or a Map. Got value record: %s",
-              currentValueField.name(),
-              currValueRecord));
+        return collectionFieldOperationHandler.handleModifyMap(
+            modifyTimestamp,
+            new CollectionRmdTimestamp(fieldTimestampRecord),
+            currValueRecord,
+            currentValueField,
+            (Map<String, Object>) fieldWriteComputeRecord.get(WriteComputeConstants.MAP_UNION),
+            (List<String>) fieldWriteComputeRecord.get(WriteComputeConstants.MAP_DIFF));
+      default:
+        throw new IllegalArgumentException(
+            String.format(
+                "Expect value field %s to be either a List or a Map. Got value record: %s",
+                currentValueField.name(),
+                currValueRecord));
     }
   }
 

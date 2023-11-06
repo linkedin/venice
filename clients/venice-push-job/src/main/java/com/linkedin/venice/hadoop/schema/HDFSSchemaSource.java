@@ -92,7 +92,7 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
       // Path for RMD schema is /<rmdSchemaDir>/<valueSchemaId>_<rmdSchemaId>
       // Path for Value schema is /<valueSchemaDir>/<valueSchemaId>
       String schemaFileName = isRmdSchema
-          ? rmdSchemaDir + SEPARATOR + schema.getId() + UNDERSCORE + schema.getRmdSchemaId()
+          ? rmdSchemaDir + SEPARATOR + schema.getRmdValueSchemaId() + UNDERSCORE + schema.getId()
           : valueSchemaDir + SEPARATOR + schema.getId();
       Path schemaPath = new Path(schemaFileName);
       if (!fs.exists(schemaPath)) {
@@ -107,7 +107,7 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
         }
         LOGGER.info(
             "Finished writing schema {} onto disk",
-            isRmdSchema ? schema.getId() + "-" + schema.getRmdSchemaId() : schema.getId());
+            isRmdSchema ? schema.getRmdValueSchemaId() + "-" + schema.getId() : schema.getId());
       } else {
         throw new IllegalStateException(String.format("The schema path %s already exists.", schemaPath));
       }

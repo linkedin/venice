@@ -1,9 +1,8 @@
-package com.linkedin.venice.kafka.consumer;
+package com.linkedin.venice.pubsub.adapter.kafka;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;

@@ -52,6 +52,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -423,8 +424,21 @@ public class DaVinciBackend implements Closeable {
     cacheBackend.ifPresent(
         objectCacheBackend -> storeRepository
             .unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
+    ExecutorService storeBackendCloseExecutor =
+        Executors.newCachedThreadPool(new DaemonThreadFactory("DaVinciBackend-StoreBackend-Close"));
     for (StoreBackend storeBackend: storeByNameMap.values()) {
-      storeBackend.close();
+      /**
+       * {@link StoreBackend#close()} is time-consuming since the internal {@link VersionBackend#close()} call triggers
+       * {@link KafkaStoreIngestionService#shutdownStoreIngestionTask}, which can take up to 10s to return.
+       * So here we use a thread pool to shut down all the subscribed stores concurrently.
+       */
+      storeBackendCloseExecutor.submit(() -> storeBackend.close());
+    }
+    storeBackendCloseExecutor.shutdown();
+    try {
+      storeBackendCloseExecutor.awaitTermination(60, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      currentThread().interrupt();
     }
     storeByNameMap.clear();
     versionByTopicMap.clear();

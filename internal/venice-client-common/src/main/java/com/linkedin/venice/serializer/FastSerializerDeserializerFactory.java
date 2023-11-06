@@ -93,7 +93,7 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
 
   private static void tryCacheFastGenericDeserializer(Schema writerSchema, Schema readerSchema) {
     FastDeserializer<?> fastDeserializer = cache.getFastGenericDeserializer(writerSchema, readerSchema);
-    if (fastDeserializer instanceof FastSerdeCache.FastDeserializerWithAvroGenericImpl) {
+    if (!fastDeserializer.hasDynamicClassGenerationDone()) {
       throw new VeniceException("Failed to generate fast generic de-serializer for Avro schema  " + writerSchema);
     }
   }

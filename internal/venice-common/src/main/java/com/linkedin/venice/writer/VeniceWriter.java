@@ -2,6 +2,7 @@ package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
+import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
@@ -10,6 +11,7 @@ import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
@@ -37,6 +39,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
@@ -56,6 +59,7 @@ import com.linkedin.venice.utils.VeniceResourceCloseResult;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,7 +75,6 @@ import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
-import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
@@ -262,6 +265,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private final boolean isRmdChunkingEnabled;
 
+  private final ControlMessage heartBeatMessage;
+
   public VeniceWriter(VeniceWriterOptions params, VeniceProperties props, PubSubProducerAdapter producerAdapter) {
     this(params, props, producerAdapter, KafkaMessageEnvelope.SCHEMA$);
   }
@@ -366,6 +371,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
       this.segments = new Segment[this.numberOfPartitions];
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
+
+      heartBeatMessage = new ControlMessage();
+      heartBeatMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
+      heartBeatMessage.debugInfo = Collections.emptyMap();
+      StartOfSegment sos = new StartOfSegment();
+      sos.checksumType = checkSumType.getValue();
+      sos.upcomingAggregates = new ArrayList<>();
+      heartBeatMessage.controlMessageUnion = sos;
     } catch (Exception e) {
       logger.error("VeniceWriter cannot be constructed with the props: {}", props);
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
@@ -1683,14 +1696,33 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
-  /**
-   * For control messages, the Key part of the {@link KafkaKey} includes the producer GUID, segment and sequence number.
-   *
-   * N.B.: This could be optimized further by defining an Avro record to hold this data, since Avro would use
-   * variable length encoding for the two integers, which would be smaller than their regular size.
-   */
-  private static final int CONTROL_MESSAGE_KAFKA_KEY_LENGTH =
-      GUID.class.getAnnotation(FixedSize.class).value() + Integer.BYTES * 2;
+  public void sendHeartbeat(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper) {
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = HeartbeatGuidV3Generator.getInstance().getGuid();
+    producerMetadata.segmentNumber = 0;
+    producerMetadata.messageSequenceNumber = 0;
+    producerMetadata.messageTimestamp = time.getMilliseconds();
+    producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
+    kafkaMessageEnvelope.producerMetadata = producerMetadata;
+    kafkaMessageEnvelope.leaderMetadataFooter = new LeaderMetadata();
+    kafkaMessageEnvelope.leaderMetadataFooter.hostName = writerId;
+    kafkaMessageEnvelope.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+    kafkaMessageEnvelope.leaderMetadataFooter.upstreamKafkaClusterId =
+        leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    kafkaMessageEnvelope.payloadUnion = heartBeatMessage;
+    producerAdapter.sendMessage(
+        topicPartition.getPubSubTopic().getName(),
+        topicPartition.getPartitionNumber(),
+        KafkaKey.HEART_BEAT,
+        kafkaMessageEnvelope,
+        protocolSchemaHeaders,
+        callback);
+  }
 
   /**
    * The Key part of the {@link KafkaKey} needs to be unique in order to avoid clobbering each other during

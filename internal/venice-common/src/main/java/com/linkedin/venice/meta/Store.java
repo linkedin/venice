@@ -297,4 +297,8 @@ public interface Store {
   long getMinCompactionLagSeconds();
 
   void setMinCompactionLagSeconds(long minCompactionLagSeconds);
+
+  long getMaxCompactionLagSeconds();
+
+  void setMaxCompactionLagSeconds(long maxCompactionLagSeconds);
 }

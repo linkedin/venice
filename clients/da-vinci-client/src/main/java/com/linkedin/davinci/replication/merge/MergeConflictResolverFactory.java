@@ -21,7 +21,8 @@ public class MergeConflictResolverFactory {
       StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository,
       RmdSerDe rmdSerDe,
       String storeName,
-      boolean rmdUseFieldLevelTs) {
+      boolean rmdUseFieldLevelTs,
+      boolean fastAvroEnabled) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
     return new MergeConflictResolver(
         annotatedReadOnlySchemaRepository,
@@ -31,13 +32,14 @@ public class MergeConflictResolverFactory {
         new MergeByteBuffer(),
         new MergeResultValueSchemaResolverImpl(annotatedReadOnlySchemaRepository, storeName),
         rmdSerDe,
-        rmdUseFieldLevelTs);
+        rmdUseFieldLevelTs,
+        fastAvroEnabled);
   }
 
   public MergeConflictResolver createMergeConflictResolver(
       StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository,
       RmdSerDe rmdSerDe,
       String storeName) {
-    return createMergeConflictResolver(annotatedReadOnlySchemaRepository, rmdSerDe, storeName, false);
+    return createMergeConflictResolver(annotatedReadOnlySchemaRepository, rmdSerDe, storeName, false, true);
   }
 }

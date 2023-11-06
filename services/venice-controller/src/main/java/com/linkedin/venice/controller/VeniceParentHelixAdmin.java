@@ -25,6 +25,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
@@ -1676,6 +1677,8 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
+    VeniceControllerConfig systemSchemaClusterConfig = multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
 
     if (fabricName.isPresent()) {
       StoreResponse response = controllerClients.get(fabricName.get()).getStore(storeName);
@@ -1686,7 +1689,9 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       return RepushInfo.createRepushInfo(
           response.getStore().getVersion(response.getStore().getCurrentVersion()).get(),
-          response.getStore().getKafkaBrokerUrl());
+          response.getStore().getKafkaBrokerUrl(),
+          systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName),
+          systemSchemaClusterConfig.getChildControllerD2ZkHost(fabricName.get()));
     }
     // fabricName not present, get the largest version info among the child colos.
     Map<String, Integer> currentVersionsMap =
@@ -1707,7 +1712,9 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     return RepushInfo.createRepushInfo(
         response.getStore().getVersion((response.getStore().getCurrentVersion())).get(),
-        response.getStore().getKafkaBrokerUrl());
+        response.getStore().getKafkaBrokerUrl(),
+        systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName),
+        systemSchemaClusterConfig.getChildControllerD2ZkHost(colo));
   }
 
   /**
@@ -2165,6 +2172,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> replicateAll = params.getReplicateAllConfigs();
       Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
       Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
+      Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
 
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();
@@ -2474,6 +2482,14 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.minCompactionLagSeconds =
           minCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
               .orElseGet(currStore::getMinCompactionLagSeconds);
+      setStore.maxCompactionLagSeconds =
+          maxCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigsList, MAX_COMPACTION_LAG_SECONDS))
+              .orElseGet(currStore::getMaxCompactionLagSeconds);
+      if (setStore.maxCompactionLagSeconds < setStore.minCompactionLagSeconds) {
+        throw new VeniceException(
+            "Store's max compaction lag seconds: " + setStore.maxCompactionLagSeconds + " shouldn't be smaller than "
+                + "store's min compaction lag seconds: " + setStore.minCompactionLagSeconds);
+      }
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();

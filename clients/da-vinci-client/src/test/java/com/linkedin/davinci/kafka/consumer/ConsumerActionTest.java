@@ -81,11 +81,11 @@ public class ConsumerActionTest {
   public void testEqualsAndHashCode() {
     PubSubTopicPartition pubSubTopicPartition1 =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("blah_rt"), 0);
-    ConsumerAction ca1 = new ConsumerAction(ConsumerActionType.RESUME, pubSubTopicPartition1, 0);
+    ConsumerAction ca1 = new ConsumerAction(ConsumerActionType.RESUME, pubSubTopicPartition1, 0, false);
 
     PubSubTopicPartition pubSubTopicPartition2 =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("blah_rt"), 1);
-    ConsumerAction ca2 = new ConsumerAction(ConsumerActionType.RESUME, pubSubTopicPartition2, 0);
+    ConsumerAction ca2 = new ConsumerAction(ConsumerActionType.RESUME, pubSubTopicPartition2, 0, false);
 
     assertNotEquals(ca1, ca2);
     assertNotEquals(ca1.hashCode(), ca2.hashCode());
@@ -93,21 +93,22 @@ public class ConsumerActionTest {
 
     PubSubTopicPartition pubSubTopicPartition3 =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("blah_rt"), 1);
-    ConsumerAction ca3 = new ConsumerAction(ConsumerActionType.RESUME, pubSubTopicPartition3, 0);
+    ConsumerAction ca3 = new ConsumerAction(ConsumerActionType.RESUME, pubSubTopicPartition3, 0, false);
 
     assertEquals(ca2, ca3);
     assertEquals(ca2.hashCode(), ca3.hashCode());
 
-    ConsumerAction ca4 = new ConsumerAction(ConsumerActionType.RESUME, pubSubTopicPartition3, 1);
+    ConsumerAction ca4 = new ConsumerAction(ConsumerActionType.RESUME, pubSubTopicPartition3, 1, false);
     assertNotEquals(ca2, ca4);
     assertNotEquals(ca3, ca4);
 
-    ConsumerAction ca5 = new ConsumerAction(ConsumerActionType.KILL, pubSubTopicPartition3, 0);
+    ConsumerAction ca5 = new ConsumerAction(ConsumerActionType.KILL, pubSubTopicPartition3, 0, false);
     assertNotEquals(ca2, ca5);
     assertNotEquals(ca3, ca5);
     assertNotEquals(ca4, ca5);
 
-    ConsumerAction ca6 = new ConsumerAction(ConsumerActionType.KILL, pubSubTopicPartition3, 0, Optional.of(LEADER));
+    ConsumerAction ca6 =
+        new ConsumerAction(ConsumerActionType.KILL, pubSubTopicPartition3, 0, Optional.of(LEADER), false);
     assertNotEquals(ca2, ca6);
     assertNotEquals(ca3, ca6);
     assertNotEquals(ca4, ca6);
@@ -122,7 +123,8 @@ public class ConsumerActionTest {
         return new ConsumerAction(
             actionTypes[index],
             new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition),
-            sequenceNumber);
+            sequenceNumber,
+            false);
       }
     }
   }

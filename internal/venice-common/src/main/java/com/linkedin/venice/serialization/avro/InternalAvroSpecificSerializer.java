@@ -179,7 +179,13 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
    */
   @Override
   public void close() {
-
+    if (schemaReader != null) {
+      try {
+        schemaReader.close();
+      } catch (IOException e) {
+        LOGGER.warn("Caught IOException while closing the schema reader", e);
+      }
+    }
   }
 
   public IntSet knownProtocols() {
@@ -449,10 +455,5 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   // For testing only.
   public void removeAllSchemas() {
     this.protocolVersionToReader.clear();
-  }
-
-  // For testing purpose only.
-  public int getProtocolVersionSize() {
-    return protocolVersionToReader.size();
   }
 }

@@ -9,7 +9,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.replication.merge.helper.utils.ValueAndDerivedSchemas;
-import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdConstants;
@@ -129,11 +129,11 @@ public class TestMergeConflictResolver {
   }
 
   protected RecordSerializer<GenericRecord> getSerializer(Schema writerSchema) {
-    return MapOrderingPreservingSerDeFactory.getSerializer(writerSchema);
+    return MapOrderPreservingSerDeFactory.getSerializer(writerSchema);
   }
 
   protected RecordDeserializer<GenericRecord> getDeserializer(Schema writerSchema, Schema readerSchema) {
-    return MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
+    return MapOrderPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
   }
 
   protected Utf8 toUtf8(String str) {

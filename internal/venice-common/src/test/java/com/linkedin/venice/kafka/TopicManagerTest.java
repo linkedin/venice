@@ -63,6 +63,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -460,17 +461,19 @@ public class TopicManagerTest {
         "topic: " + topic + " should be with compaction disabled");
     Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 0L);
 
-    topicManager.updateTopicCompactionPolicy(topic, true, 100);
+    topicManager.updateTopicCompactionPolicy(topic, true, 100, Optional.of(Long.valueOf(200l)));
     Assert.assertTrue(
         topicManager.isTopicCompactionEnabled(topic),
         "topic: " + topic + " should be with compaction enabled");
     Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 100L);
+    Assert.assertEquals(topicManager.getTopicMaxLogCompactionLagMs(topic).get(), Long.valueOf(200L));
 
-    topicManager.updateTopicCompactionPolicy(topic, true, 1000);
+    topicManager.updateTopicCompactionPolicy(topic, true, 1000, Optional.of(Long.valueOf(2000L)));
     Assert.assertTrue(
         topicManager.isTopicCompactionEnabled(topic),
         "topic: " + topic + " should be with compaction enabled");
     Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 1000L);
+    Assert.assertEquals(topicManager.getTopicMaxLogCompactionLagMs(topic).get(), Long.valueOf(2000L));
   }
 
   @Test

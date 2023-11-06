@@ -396,7 +396,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "fastClientHTTPVariantsAndStoreMetadataFetchModes", timeOut = TIME_OUT)
+  @Test(dataProvider = "fastClientHTTPVariantsAndStoreMetadataFetchModes", timeOut = 2 * TIME_OUT)
   public void testFastClientGetWithDifferentHTTPVariants(
       ClientTestUtils.FastClientHTTPVariant fastClientHTTPVariant,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {

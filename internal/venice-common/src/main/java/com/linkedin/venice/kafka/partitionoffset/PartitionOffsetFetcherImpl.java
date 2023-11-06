@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
@@ -116,18 +115,6 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   @Override
   public long getPartitionLatestOffsetAndRetry(PubSubTopicPartition pubSubTopicPartition, int retries) {
-    return getEndOffset(pubSubTopicPartition, retries, this::getLatestOffset);
-  }
-
-  @Override
-  public long getPartitionEarliestOffsetAndRetry(PubSubTopicPartition pubSubTopicPartition, int retries) {
-    return getEndOffset(pubSubTopicPartition, retries, this::getEarliestOffset);
-  }
-
-  private long getEndOffset(
-      PubSubTopicPartition pubSubTopicPartition,
-      int retries,
-      Function<PubSubTopicPartition, Long> offsetSupplier) {
     if (retries < 1) {
       throw new IllegalArgumentException("Invalid retries. Got: " + retries);
     }
@@ -135,7 +122,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     PubSubOpTimeoutException lastException = new PubSubOpTimeoutException("This exception should not be thrown");
     while (attempt < retries) {
       try {
-        return offsetSupplier.apply(pubSubTopicPartition);
+        return getLatestOffset(pubSubTopicPartition);
       } catch (PubSubOpTimeoutException e) { // topic and partition is listed in the exception object
         logger.warn("Failed to get offset. Retries remaining: {}", retries - attempt, e);
         lastException = e;

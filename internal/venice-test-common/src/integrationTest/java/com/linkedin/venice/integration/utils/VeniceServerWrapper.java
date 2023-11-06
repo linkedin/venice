@@ -20,8 +20,10 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -195,6 +197,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean ssl = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SSL, "false"));
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
       boolean isGrpcEnabled = Boolean.parseBoolean(featureProperties.getProperty(ENABLE_GRPC_READ_SERVER, "false"));
+      boolean isPlainTableEnabled =
+          Boolean.parseBoolean(featureProperties.getProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false"));
       int numGrpcWorkerThreads = Integer.parseInt(
           featureProperties.getProperty(
               GRPC_SERVER_WORKER_THREAD_COUNT,
@@ -223,8 +227,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100)
           .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(PERSISTENCE_TYPE, ROCKS_DB)
-          .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true)
-          .put(ROCKSDB_OPTIONS_USE_DIRECT_READS, false) // Required by PlainTable format
+          .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true)
           .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 0)
           .put(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 1000)
           .put(KAFKA_READ_CYCLE_DELAY_MS, 50)
@@ -247,7 +250,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(
               PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
               pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory().getClass().getName())
-          .put(configProperties);
+          .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
@@ -257,6 +260,11 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       if (isGrpcEnabled) {
         serverPropsBuilder.put(GRPC_READ_SERVER_PORT, TestUtils.getFreePort());
         serverPropsBuilder.put(GRPC_SERVER_WORKER_THREAD_COUNT, numGrpcWorkerThreads);
+      }
+
+      if (isPlainTableEnabled) {
+        serverPropsBuilder.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
+        serverPropsBuilder.put(ROCKSDB_OPTIONS_USE_DIRECT_READS, false); // Required by PlainTable format
       }
 
       // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
@@ -270,6 +278,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         serverPropsBuilder.putIfAbsent(entry.getKey(), entry.getValue());
       }
 
+      // Adds integration test config override at the end.
+      serverPropsBuilder.put(configProperties);
       VeniceProperties serverProps = serverPropsBuilder.build();
 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);

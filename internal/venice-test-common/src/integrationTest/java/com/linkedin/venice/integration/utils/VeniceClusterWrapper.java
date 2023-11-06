@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
@@ -259,6 +260,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         featureProperties.setProperty(ENABLE_GRPC_READ_SERVER, Boolean.toString(options.isGrpcEnabled()));
         // Half of servers on each mode, with 1 server clusters aligning with the default (true)
         featureProperties.setProperty(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, Boolean.toString(i % 2 == 0));
+        // Half of servers will in PT mode, with 1 server clusters aligning with the default (block based mode)
+        featureProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, Boolean.toString(i % 2 != 0));
 
         if (!veniceRouterWrappers.isEmpty()) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
@@ -630,13 +633,18 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
+    Properties mergedProperties = options.getExtraProperties();
+    mergedProperties.putAll(configProperties);
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
         options.getRegionName(),
         getClusterName(),
         pubSubBrokerWrapper,
         zkServerWrapper.getAddress(),
         featureProperties,
-        configProperties,
+        mergedProperties,
+        options.isForkServer(),
+        "",
+        options.getKafkaClusterMap(),
         clusterToServerD2.get(getClusterName()));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);

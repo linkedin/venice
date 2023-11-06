@@ -100,6 +100,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -112,6 +113,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -153,6 +155,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
+  /**
+   * Speed up DaVinci shutdown by closing partitions concurrently.
+   */
+  private static final ExecutorService SHUTDOWN_EXECUTOR_FOR_DVC =
+      Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
+
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
   protected final AbstractStorageEngine storageEngine;
@@ -189,6 +197,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * or re-subscribing the partition.
    */
   private final List<PartitionExceptionInfo> partitionIngestionExceptionList = new SparseConcurrentList<>();
+  /**
+   * Do not remove partition from this set unless Helix explicitly sends an unsubscribe action for the partition to
+   * remove it from the node, or Helix sends a subscribe action for the partition to re-subscribe it to the node.
+   */
+  private final Set<Integer> failedPartitions = new ConcurrentSkipListSet<>();
 
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
   private Exception lastConsumerException = null;
@@ -507,12 +520,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  public synchronized void subscribePartition(
+      PubSubTopicPartition topicPartition,
+      Optional<LeaderFollowerStateType> leaderState) {
+    subscribePartition(topicPartition, leaderState, true);
+  }
+
   /**
    * Adds an asynchronous partition subscription request for the task.
    */
   public synchronized void subscribePartition(
       PubSubTopicPartition topicPartition,
-      Optional<LeaderFollowerStateType> leaderState) {
+      Optional<LeaderFollowerStateType> leaderState,
+      boolean isHelixTriggeredAction) {
     throwIfNotRunning();
     statusReportAdapter.initializePartitionReportStatus(topicPartition.getPartitionNumber());
     amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
@@ -523,14 +543,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               SUBSCRIBE,
               new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
               nextSeqNum(),
-              amplificationFactorAdapter.isLeaderSubPartition(subPartition) ? leaderState : Optional.empty()));
+              amplificationFactorAdapter.isLeaderSubPartition(subPartition) ? leaderState : Optional.empty(),
+              isHelixTriggeredAction));
     });
+  }
+
+  public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
+    return unSubscribePartition(topicPartition, true);
   }
 
   /**
    * Adds an asynchronous partition unsubscription request for the task.
    */
-  public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
+  public synchronized CompletableFuture<Void> unSubscribePartition(
+      PubSubTopicPartition topicPartition,
+      boolean isHelixTriggeredAction) {
     throwIfNotRunning();
     List<CompletableFuture<Void>> futures = new ArrayList<>();
     amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
@@ -539,7 +566,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ConsumerAction consumerAction = new ConsumerAction(
           UNSUBSCRIBE,
           new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-          nextSeqNum());
+          nextSeqNum(),
+          isHelixTriggeredAction);
 
       consumerActionsQueue.add(consumerAction);
       futures.add(consumerAction.getFuture());
@@ -564,7 +592,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           new ConsumerAction(
               RESET_OFFSET,
               new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-              nextSeqNum()));
+              nextSeqNum(),
+              false));
     });
   }
 
@@ -1100,6 +1129,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return this.partitionIngestionExceptionList;
   }
 
+  // For testing purpose
+  Set<Integer> getFailedPartitions() {
+    return this.failedPartitions;
+  }
+
   private void processIngestionException() {
     partitionIngestionExceptionList.forEach(partitionExceptionInfo -> {
       int exceptionPartition = partitionExceptionInfo.getPartitionId();
@@ -1139,7 +1173,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               pubSubTopicPartition.getPartitionNumber());
           runnableForKillIngestionTasksForNonCurrentVersions.run();
           if (storageEngine.hasMemorySpaceLeft()) {
-            unSubscribePartition(pubSubTopicPartition);
+            unSubscribePartition(pubSubTopicPartition, false);
             /**
              * DaVinci ingestion hits memory limit and we would like to retry it in the following way:
              * 1. Kill the ingestion tasks for non-current versions.
@@ -1154,7 +1188,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 exceptionPartition);
             storageEngine.reopenStoragePartition(exceptionPartition);
             // DaVinci is always a follower.
-            subscribePartition(pubSubTopicPartition, Optional.empty());
+            subscribePartition(pubSubTopicPartition, Optional.empty(), false);
           }
         } else {
           if (!partitionConsumptionState.isCompletionReported()) {
@@ -1170,7 +1204,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
           // Unsubscribe the partition to avoid more damages.
           if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
-            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, exceptionPartition));
+            // This is not an unsubscribe action from Helix
+            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, exceptionPartition), false);
           }
         }
       }
@@ -1295,8 +1330,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
+        maybeSendIngestionHeartbeat();
       }
 
+      List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
       for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
         /**
@@ -1312,20 +1349,42 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * hasn't been applied yet, when checkpointing happens in current thread.
          */
 
-        int partition = entry.getKey();
-        PartitionConsumptionState partitionConsumptionState = entry.getValue();
-        consumerUnSubscribeAllTopics(partitionConsumptionState);
+        Runnable shutdownRunnable = () -> {
+          int partition = entry.getKey();
+          PartitionConsumptionState partitionConsumptionState = entry.getValue();
+          consumerUnSubscribeAllTopics(partitionConsumptionState);
 
-        if (ingestionCheckpointDuringGracefulShutdownEnabled) {
-          waitForAllMessageToBeProcessedFromTopicPartition(
-              new PubSubTopicPartitionImpl(versionTopic, partitionConsumptionState.getPartition()),
-              partitionConsumptionState);
+          if (ingestionCheckpointDuringGracefulShutdownEnabled) {
+            try {
+              waitForAllMessageToBeProcessedFromTopicPartition(
+                  new PubSubTopicPartitionImpl(versionTopic, partitionConsumptionState.getPartition()),
+                  partitionConsumptionState);
+            } catch (InterruptedException e) {
+              throw new VeniceException(e);
+            }
 
-          this.kafkaDataIntegrityValidator
-              .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
-          updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
-          syncOffset(kafkaVersionTopic, partitionConsumptionState);
+            this.kafkaDataIntegrityValidator
+                .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
+            updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
+            syncOffset(kafkaVersionTopic, partitionConsumptionState);
+          }
+        };
+
+        if (isDaVinciClient) {
+          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, SHUTDOWN_EXECUTOR_FOR_DVC));
+        } else {
+          /**
+           * TODO: evaluate whether we need to apply concurrent shutdown in Venice Server or not.
+           */
+          shutdownRunnable.run();
         }
+      }
+      if (isDaVinciClient) {
+        /**
+         * DaVinci shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
+         * to avoid infinite wait in case there is some regression.
+         */
+        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
       }
     } catch (VeniceIngestionTaskKilledException e) {
       LOGGER.info("{} has been killed.", consumerTaskId);
@@ -1454,9 +1513,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     close();
+
     synchronized (this) {
       notifyAll();
     }
+
     LOGGER.info("Store ingestion task for store: {} is closed", kafkaVersionTopic);
   }
 
@@ -1655,16 +1716,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected void processCommonConsumerAction(
-      ConsumerActionType operation,
-      PubSubTopicPartition topicPartition,
-      LeaderFollowerStateType leaderState) throws InterruptedException {
+  protected void processCommonConsumerAction(ConsumerAction consumerAction) throws InterruptedException {
+    PubSubTopicPartition topicPartition = consumerAction.getTopicPartition();
+    LeaderFollowerStateType leaderState = consumerAction.getLeaderState();
     int partition = topicPartition.getPartitionNumber();
     String topic = topicPartition.getPubSubTopic().getName();
+    ConsumerActionType operation = consumerAction.getType();
     switch (operation) {
       case SUBSCRIBE:
         // Clear the error partition tracking
         partitionIngestionExceptionList.set(partition, null);
+        // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
+        // to start or retry the ingestion.
+        failedPartitions.remove(partition);
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
@@ -1776,6 +1840,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           LOGGER.info("{} Unsubscribed to: {}", consumerTaskId, topicPartition);
         }
+        // Only remove the partition from the maintained set if it's triggered by Helix.
+        // Otherwise, keep it in the set since it is used for alerts; alerts should be sent out if unsubscription
+        // happens due to internal errors.
+        if (consumerAction.isHelixTriggeredAction()) {
+          failedPartitions.remove(partition);
+        }
         break;
       case RESET_OFFSET:
         resetOffset(partition, topicPartition, false);
@@ -1826,6 +1896,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       storageUtilizationManager.initPartition(partition);
       // Reset the error partition tracking
       partitionIngestionExceptionList.set(partition, null);
+      failedPartitions.remove(partition);
     } else {
       LOGGER.info(
           "{} No need to reset offset by Kafka consumer, since the consumer is not subscribing: {}",
@@ -1914,6 +1985,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
     return false;
+  }
+
+  public int getFailedIngestionPartitionCount() {
+    return failedPartitions.size();
   }
 
   /**
@@ -2255,6 +2330,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       replicaCompleted = true;
     }
     partitionIngestionExceptionList.set(partitionId, new PartitionExceptionInfo(e, partitionId, replicaCompleted));
+    failedPartitions.add(partitionId);
   }
 
   public void setLastConsumerException(Exception e) {
@@ -2742,6 +2818,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       PartitionConsumptionState partitionConsumptionState) {
+    KafkaKey key = consumerRecord.getKey();
+    if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
+      // Skip DIV for ingestion heartbeat records.
+      return;
+    }
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
       TopicManager topicManager = topicManagerRepository.getTopicManager();
       // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
@@ -3686,4 +3767,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
 
+  protected void maybeSendIngestionHeartbeat() {
+    // No op, heartbeat is only useful for L/F hybrid stores.
+  }
 }

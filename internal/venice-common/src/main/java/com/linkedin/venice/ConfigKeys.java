@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -51,10 +52,6 @@ public class ConfigKeys {
   public static final String KAFKA_FETCH_MAX_WAIT_MS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
   public static final String KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG =
       ApacheKafkaConsumerConfig.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
-  public static final String KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG =
-      ApacheKafkaConsumerConfig.KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG;
-  public static final String KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG =
-      ApacheKafkaConsumerConfig.KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
 
   public static final String KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC =
       "kafka.admin.get.topic.config.max.retry.sec";
@@ -511,15 +508,17 @@ public class ConfigKeys {
   public static final String SERVER_KAFKA_MAX_POLL_RECORDS = "server.kafka.max.poll.records";
 
   /**
-   * This config is used to control how many times Kafka consumer would retry polling during ingestion
+   * This config is used to control how many times PubSub consumer would retry polling during ingestion
    * when RetriableException happens.
    */
-  public static final String SERVER_KAFKA_POLL_RETRY_TIMES = "server.kafka.poll.retry.times";
+  public static final String SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES =
+      "server." + PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_TIMES;
 
   /**
-   * This config is used to control the backoff time between Kafka consumer poll retries.
+   * This config is used to control the backoff time between PubSub consumer poll retries.
    */
-  public static final String SERVER_KAFKA_POLL_RETRY_BACKOFF_MS = "server.kafka.poll.backoff.ms";
+  public static final String SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS =
+      "server." + PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
 
   /**
    * This config decides the frequency of the disk health check; the disk health check service writes
@@ -2009,4 +2008,11 @@ public class ConfigKeys {
    * Venice router's principal name used for ssl. Default should contain "venice-router".
    */
   public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
+
+  /**
+   * The time interval in milliseconds for leader replica to send heartbeat to RT topic for consumers
+   * (including the leader) to keep its latest processed upstream RT offset up-to-date in case when the RT topic ends
+   * with SOS, EOS or skipped records.
+   */
+  public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
 }

@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -440,6 +441,15 @@ public class PartitionConsumptionState {
    */
   public void maybeUpdateExpectedChecksum(byte[] key, Put put) {
     if (this.expectedSSTFileChecksum == null) {
+      return;
+    }
+    /**
+     * 1. For regular value and value chunk, we will take the value payload.
+     * 2. When A/A partial update is enabled, RMD chunking is turned on, we should skip the RMD chunk.
+     * 3. For chunk manifest, if RMD chunking is enabled, RMD manifest will be in the RMD payload. No matter it is RMD
+     * chunking or not, we should only take the value manifest part.
+     */
+    if (put.schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion() && put.putValue.remaining() == 0) {
       return;
     }
     this.expectedSSTFileChecksum.update(key);
