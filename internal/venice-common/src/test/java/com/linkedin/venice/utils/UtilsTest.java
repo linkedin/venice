@@ -167,15 +167,14 @@ public class UtilsTest {
 
   @Test
   public void testParseMap() {
-    assertEquals(Utils.parseCommaSeparatedStringMapFromString("", "test_field").size(), 0);
-    Map nonEmptyMap = Utils.parseCommaSeparatedStringMapFromString("a=b", "test_field");
+    assertEquals(Utils.parseJsonMapFromString("", "test_field").size(), 0);
+    Map nonEmptyMap = Utils.parseJsonMapFromString("a=b", "test_field");
     Map expectedMap = new HashMap<>();
     expectedMap.put("a", "b");
     assertEquals(nonEmptyMap, expectedMap);
 
-    VeniceException e = expectThrows(
-        VeniceException.class,
-        () -> Utils.parseCommaSeparatedStringMapFromString("invalid_value", "test_field"));
+    VeniceException e =
+        expectThrows(VeniceException.class, () -> Utils.parseJsonMapFromString("invalid_value", "test_field"));
     assertTrue(e.getMessage().contains("must be key value pairs separated by comma"));
   }
 
@@ -185,9 +184,9 @@ public class UtilsTest {
   }
 
   @Test
-  public void testParseCommaSeparatedStringMapFromString() {
+  public void testParseJsonMapFromString() {
     try {
-      Utils.parseCommaSeparatedStringMapFromString(
+      Utils.parseJsonMapFromString(
           "{\"changeCaptureView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\": {}}}",
           "someField"); // Method that should not throw an exception
     } catch (Exception e) {
@@ -196,7 +195,7 @@ public class UtilsTest {
 
     Assert.assertThrows(
         VeniceException.class,
-        () -> Utils.parseCommaSeparatedStringMapFromString(
+        () -> Utils.parseJsonMapFromString(
             "{\"changeCaptureView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\":",
             "someField"));
   }
