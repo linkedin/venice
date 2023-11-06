@@ -136,7 +136,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
       Object unresolvedDatum = serializationException.getUnresolvedDatum();
       String unresolvedDatumType = unresolvedDatum instanceof GenericContainer
           ? ((GenericContainer) unresolvedDatum).getSchema().toString()
-          : unresolvedDatum.getClass().getSimpleName();
+          : unresolvedDatum == null ? "null" : unresolvedDatum.getClass().getSimpleName();
       return new VeniceException(
           "The following type does not conform to any branch of the union: " + unresolvedDatumType,
           serializationException);
