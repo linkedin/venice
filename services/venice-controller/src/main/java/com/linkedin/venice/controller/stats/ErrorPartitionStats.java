@@ -15,6 +15,7 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
   private final Sensor currentVersionErrorPartitionRecoveredFromReset;
   private final Sensor currentVersionErrorPartitionUnrecoverableFromReset;
   private final Sensor errorPartitionProcessingTime;
+  private final Sensor disabledPartitionCount;
 
   public ErrorPartitionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -28,6 +29,7 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
     currentVersionErrorPartitionUnrecoverableFromReset =
         registerSensorIfAbsent("current_version_error_partition_unrecoverable_from_reset", new Total());
     errorPartitionProcessingTime = registerSensorIfAbsent("error_partition_processing_time", new Avg(), new Max());
+    disabledPartitionCount = registerSensorIfAbsent("disabled_partition_count", new Count());
   }
 
   public void recordErrorPartitionResetAttempt(double value) {
@@ -40,6 +42,10 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
 
   public void recordErrorPartitionRecoveredFromReset() {
     currentVersionErrorPartitionRecoveredFromReset.record();
+  }
+
+  public void recordDisabledPartition() {
+    disabledPartitionCount.record();
   }
 
   public void recordErrorPartitionUnrecoverableFromReset() {

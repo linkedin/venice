@@ -30,6 +30,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -61,6 +62,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         Collections.emptyList(),
         helixAdminClient,
         getMockControllerConfig(),
+        null,
         null);
   }
 
@@ -79,7 +81,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         Collections.emptyList(),
         mock(HelixAdminClient.class),
         getMockControllerConfig(),
-        null);
+        null,
+        mock(MetricsRepository.class));
   }
 
   @Test

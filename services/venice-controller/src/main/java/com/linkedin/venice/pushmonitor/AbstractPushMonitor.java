@@ -10,6 +10,7 @@ import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_N
 
 import com.linkedin.venice.controller.HelixAdminClient;
 import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.stats.ErrorPartitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -33,6 +34,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -82,6 +84,7 @@ public abstract class AbstractPushMonitor
   private final long offlineJobResourceAssignmentWaitTimeInMilliseconds;
 
   private final PushStatusCollector pushStatusCollector;
+  private final ErrorPartitionStats errorPartitionStats;
 
   private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
 
@@ -98,7 +101,8 @@ public abstract class AbstractPushMonitor
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
       VeniceControllerConfig controllerConfig,
-      PushStatusStoreReader pushStatusStoreReader) {
+      PushStatusStoreReader pushStatusStoreReader,
+      MetricsRepository metricsRepository) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -110,6 +114,8 @@ public abstract class AbstractPushMonitor
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
     this.helixAdminClient = helixAdminClient;
+    this.errorPartitionStats = new ErrorPartitionStats(metricsRepository, clusterName);
+
     this.disableErrorLeaderReplica = controllerConfig.isErrorLeaderReplicaFailOverEnabled();
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
@@ -755,6 +761,7 @@ public abstract class AbstractPushMonitor
             kafkaTopic,
             Collections.singletonList(HelixUtils.getPartitionName(kafkaTopic, partitionId)));
         disabledReplicaMap.computeIfAbsent(instance, k -> new HashSet<>()).add(partitionId);
+        errorPartitionStats.recordDisabledPartition();
       }
 
       @Override
