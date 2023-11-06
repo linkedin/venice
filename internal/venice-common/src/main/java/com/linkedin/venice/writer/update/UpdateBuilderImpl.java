@@ -133,12 +133,9 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     try {
       serializer.serialize(updateRecord);
     } catch (UnresolvedUnionException serializationException) {
-      Object unresolvedDatum = serializationException.getUnresolvedDatum();
-      String unresolvedDatumType = unresolvedDatum instanceof GenericContainer
-          ? ((GenericContainer) unresolvedDatum).getSchema().toString()
-          : unresolvedDatum == null ? "null" : unresolvedDatum.getClass().getSimpleName();
+      String datumDescription = datumDescription(serializationException.getUnresolvedDatum());
       return new VeniceException(
-          "The following type does not conform to any branch of the union: " + unresolvedDatumType,
+          "The following type does not conform to any branch of the union: " + datumDescription,
           serializationException);
     } catch (Exception serializationException) {
       return serializationException;
@@ -146,10 +143,20 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     return null;
   }
 
+  private String datumDescription(Object unresolvedDatum) {
+    if (unresolvedDatum instanceof GenericContainer) {
+      return ((GenericContainer) unresolvedDatum).getSchema().toString();
+    } else if (unresolvedDatum == null) {
+      return "null";
+    } else {
+      return unresolvedDatum.getClass().getSimpleName();
+    }
+  }
+
   /**
    * Given a field from the partial update schema and find the schema of its corresponding value field.
    *
-   * @param updateField A field from the partial update schema.
+   * @param updateFieldName A field from the partial update schema.
    * @return Schema of its corresponding value field.
    */
   private Schema getCorrespondingValueFieldSchema(String updateFieldName) {
