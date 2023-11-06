@@ -21,6 +21,7 @@ import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_HIT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_MISS;
 import static org.rocksdb.TickerType.BLOCK_CACHE_MISS;
 import static org.rocksdb.TickerType.BLOOM_FILTER_USEFUL;
+import static org.rocksdb.TickerType.COMPACTION_CANCELLED;
 import static org.rocksdb.TickerType.GET_HIT_L0;
 import static org.rocksdb.TickerType.GET_HIT_L1;
 import static org.rocksdb.TickerType.GET_HIT_L2_AND_UP;
@@ -72,6 +73,7 @@ public class RocksDBStats extends AbstractVeniceStats {
 
   // we'll need to enable read_amp_bytes_per_bit in rocksDB config
   private final Sensor readAmplificationFactor;
+  private final Sensor compactionCancelled;
 
   public RocksDBStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -107,6 +109,7 @@ public class RocksDBStats extends AbstractVeniceStats {
     this.getHitL0 = registerSensor("rocksdb_get_hit_l0", GET_HIT_L0);
     this.getHitL1 = registerSensor("rocksdb_get_hit_l1", GET_HIT_L1);
     this.getHitL2AndUp = registerSensor("rocksdb_get_hit_l2_and_up", GET_HIT_L2_AND_UP);
+    this.compactionCancelled = registerSensor("rocksdb_compaction_cancelled", COMPACTION_CANCELLED);
 
     this.blockCacheHitRatio = registerSensor("rocksdb_block_cache_hit_ratio", new Gauge(() -> {
       if (rocksDBStat != null) {
