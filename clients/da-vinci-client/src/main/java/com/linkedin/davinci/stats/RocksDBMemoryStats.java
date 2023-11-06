@@ -38,7 +38,6 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       "rocksdb.cur-size-all-mem-tables",
       "rocksdb.size-all-mem-tables",
       "rocksdb.num-entries-active-mem-table",
-      "rocksdb.compaction.cancelled",
       "rocksdb.num-entries-imm-mem-tables",
       "rocksdb.num-deletes-active-mem-table",
       "rocksdb.num-deletes-imm-mem-tables",
