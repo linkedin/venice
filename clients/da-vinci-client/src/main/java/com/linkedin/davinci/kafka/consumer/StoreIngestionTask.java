@@ -1694,7 +1694,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               amplificationFactorAdapter.executePartitionConsumptionState(
                   newPartitionConsumptionState.getUserPartition(),
                   PartitionConsumptionState::lagHasCaughtUp);
-              statusReportAdapter.reportCompleted(newPartitionConsumptionState, true);
+              reportCompletedAndSendHeartBeat(newPartitionConsumptionState, partition, true);
               isCompletedReport = true;
             }
             // Clear offset lag in metadata, it is only used in restart.
@@ -3473,9 +3473,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 partition,
                 partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
           } else {
-            statusReportAdapter.reportCompleted(partitionConsumptionState);
-            LOGGER.info("{} Partition {} is ready to serve", consumerTaskId, partition);
-
+            reportCompletedAndSendHeartBeat(partitionConsumptionState, partition);
             warmupSchemaCache(store);
           }
           if (suppressLiveUpdates) {
@@ -3494,6 +3492,34 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     };
   }
+
+  void reportCompletedAndSendHeartBeat(PartitionConsumptionState partitionConsumptionState, int partition) {
+    reportCompletedAndSendHeartBeat(partitionConsumptionState, partition, false);
+  }
+
+  /**
+   * Whenever a leader is marked to be completed, it should send a heartbeat SOS to VT
+   * check {@link StoreIngestionTask#sendInstantHeartBeat} for more details.
+   */
+  void reportCompletedAndSendHeartBeat(
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      boolean forceCompletion) {
+    statusReportAdapter.reportCompleted(partitionConsumptionState, forceCompletion);
+    LOGGER.info("{} Partition {} is ready to serve", consumerTaskId, partition);
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER)) {
+      // if leader is marked completed, immediately send a heart beat message
+      sendInstantHeartBeat(partitionConsumptionState, new PubSubTopicPartitionImpl(versionTopic, partition));
+    }
+  }
+
+  /**
+   * Once leader is marked completed, immediately send a heart beat message to the local VT such that
+   * followers don't have to wait till the periodic heartbeat to know that the leader is completed
+   */
+  protected abstract void sendInstantHeartBeat(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubTopicPartition pubSubTopicPartition);
 
   /**
    * Try to warm-up the schema repo cache before reporting completion as new value schema could cause latency degradation

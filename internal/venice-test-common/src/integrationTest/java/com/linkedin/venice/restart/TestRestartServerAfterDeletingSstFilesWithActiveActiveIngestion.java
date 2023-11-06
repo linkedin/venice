@@ -8,12 +8,14 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+import static com.linkedin.venice.pubsub.api.PubSubMessageDeserializer.VENICE_LEADER_COMPLETION_STATUS_HEADER;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
@@ -38,10 +40,19 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -53,6 +64,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.view.TestView;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -67,6 +79,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -117,13 +130,13 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        1,
+        2,
         1,
         1,
         1,
         numServers,
         1,
-        1,
+        2,
         Optional.empty(),
         Optional.empty(),
         Optional.of(serverProperties),
@@ -156,7 +169,8 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .setNativeReplicationEnabled(true)
         .setBackupVersionRetentionMs(1)
         .setIncrementalPushEnabled(true)
-        .setPartitionCount(1);
+        .setPartitionCount(1)
+        .setReplicationFactor(2);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
   }
 
@@ -345,6 +359,40 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
               .getOffLinePushStatus(clusterWrapper.getClusterName(), finalTopic1)
               .getExecutionStatus(),
           ExecutionStatus.COMPLETED);
+    });
+
+    // create a kafka consumer to check for the messages with leaderCompletedStatus
+    Properties properties = new Properties();
+    properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
+        new ApacheKafkaConsumerConfig(new VeniceProperties(properties), "testConsumer");
+    ApacheKafkaConsumerAdapter consumer =
+        new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, PubSubMessageDeserializer.getInstance(), false);
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> assertTrue(consumer.hasAnySubscription()));
+
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+          consumer.poll(10 * Time.MS_PER_SECOND);
+      Set<PubSubTopicPartition> pubSubTopicPartitions = messages.keySet();
+      boolean isLeaderCompletionHeaderFound = false;
+      for (PubSubTopicPartition pubSubTopicPartition: pubSubTopicPartitions) {
+        if (!pubSubTopicPartition.getPubSubTopic().isRealTime()) {
+          for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages.get(pubSubTopicPartition)) {
+            PubSubMessageHeaders pubSubMessageHeaders = message.getPubSubMessageHeaders();
+            for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+              if (header.key().equals(VENICE_LEADER_COMPLETION_STATUS_HEADER)) {
+                isLeaderCompletionHeaderFound = true;
+                break;
+              }
+            }
+          }
+        }
+        if (isLeaderCompletionHeaderFound) {
+          break;
+        }
+      }
+      assertTrue(isLeaderCompletionHeaderFound);
     });
 
     // Wait for storage node to finish consuming, and new version to be activated

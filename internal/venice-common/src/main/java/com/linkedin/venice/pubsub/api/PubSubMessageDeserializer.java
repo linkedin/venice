@@ -21,6 +21,8 @@ public class PubSubMessageDeserializer {
   private static final Logger LOGGER = LogManager.getLogger(PubSubMessageDeserializer.class);
 
   public static final String VENICE_TRANSPORT_PROTOCOL_HEADER = "vtp";
+  /** Header to denote whether the leader is completed or not */
+  public static final String VENICE_LEADER_COMPLETION_STATUS_HEADER = "lcs";
 
   private final KafkaKeySerializer keySerializer = new KafkaKeySerializer();
   private final KafkaValueSerializer valueSerializer;
@@ -85,7 +87,8 @@ public class PubSubMessageDeserializer {
         topicPartition,
         position,
         timestamp,
-        keyBytes.length + valueBytes.length);
+        keyBytes.length + valueBytes.length,
+        headers);
   }
 
   private KafkaMessageEnvelope getEnvelope(byte keyHeaderByte) {

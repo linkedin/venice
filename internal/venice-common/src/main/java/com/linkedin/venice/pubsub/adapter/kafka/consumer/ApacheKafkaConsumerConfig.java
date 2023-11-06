@@ -43,7 +43,7 @@ public class ApacheKafkaConsumerConfig {
   private final int topicQueryRetryIntervalMs;
   private final Duration defaultApiTimeout;
 
-  ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
+  public ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
     this.consumerProperties =
         getValidConsumerProperties(veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
     if (consumerName != null) {

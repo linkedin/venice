@@ -3,6 +3,7 @@ package com.linkedin.venice.writer;
 import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
+import static com.linkedin.venice.pubsub.api.PubSubMessageDeserializer.VENICE_LEADER_COMPLETION_STATUS_HEADER;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
@@ -35,6 +36,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
@@ -937,6 +939,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       int upstreamPartition,
       LeaderMetadataWrapper leaderMetadataWrapper) {
+    return put(kafkaKey, kafkaMessageEnvelope, callback, upstreamPartition, leaderMetadataWrapper, false, false);
+  }
+
+  @Deprecated
+  public Future<PubSubProduceResult> put(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
+      PubSubProducerCallback callback,
+      int upstreamPartition,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      boolean addLeaderCompletedStatus,
+      boolean isLeaderCompleted) {
     // Self-adjust the chunking setting in pass-through mode
     verifyChunkingSetting(kafkaMessageEnvelope);
 
@@ -949,7 +963,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
     }
 
-    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
+    return sendMessage(
+        producerMetadata -> kafkaKey,
+        kafkaMessageEnvelopeProvider,
+        upstreamPartition,
+        callback,
+        false,
+        addLeaderCompletedStatus,
+        isLeaderCompleted);
   }
 
   private KafkaMessageEnvelopeProvider getKafkaMessageEnvelopeProvider(
@@ -1297,6 +1318,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int partition,
       PubSubProducerCallback callback,
       boolean updateDIV) {
+    return sendMessage(keyProvider, valueProvider, partition, callback, updateDIV, false, false);
+  }
+
+  private CompletableFuture<PubSubProduceResult> sendMessage(
+      KeyProvider keyProvider,
+      KafkaMessageEnvelopeProvider valueProvider,
+      int partition,
+      PubSubProducerCallback callback,
+      boolean updateDIV,
+      boolean addLeaderCompletedStatus,
+      boolean isLeaderCompleted) {
     synchronized (this.partitionLocks[partition]) {
       KafkaMessageEnvelope kafkaValue = valueProvider.getKafkaMessageEnvelope();
       KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
@@ -1322,7 +1354,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             partition,
             key,
             kafkaValue,
-            getHeaders(kafkaValue.getProducerMetadata()),
+            getHeaders(kafkaValue.getProducerMetadata(), addLeaderCompletedStatus, isLeaderCompleted),
             messageCallback);
       } catch (Exception e) {
         if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
@@ -1339,10 +1371,30 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * We only include the protocol schema headers on this writer's first message to each partition.
    */
-  private PubSubMessageHeaders getHeaders(ProducerMetadata producerMetadata) {
-    return producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0
-        ? protocolSchemaHeaders
-        : EMPTY_MSG_HEADERS;
+  private PubSubMessageHeaders getHeaders(
+      ProducerMetadata producerMetadata,
+      boolean addLeaderCompletedStatus,
+      boolean isLeaderCompleted) {
+    PubSubMessageHeaders returnPubSubMessageHeaders;
+    PubSubMessageHeaders pubSubMessageHeaders =
+        producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0
+            ? protocolSchemaHeaders
+            : EMPTY_MSG_HEADERS;
+
+    if (addLeaderCompletedStatus) {
+      // copy protocolSchemaHeaders locally and add extra header for isLeaderCompleted
+      returnPubSubMessageHeaders = new PubSubMessageHeaders();
+      for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+        returnPubSubMessageHeaders.add(header);
+      }
+      // 1 byte holding 0/1 basd on isLeaderCompleted
+      byte[] val = new byte[1];
+      val[0] = (byte) (isLeaderCompleted ? 1 : 0);
+      returnPubSubMessageHeaders.add(new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATUS_HEADER, val));
+    } else {
+      returnPubSubMessageHeaders = pubSubMessageHeaders;
+    }
+    return returnPubSubMessageHeaders;
   }
 
   /**
@@ -1699,28 +1751,33 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public void sendHeartbeat(
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper) {
-    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
-    kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      boolean addLeaderCompletedStatus,
+      long originTimeStampMs,
+      boolean isLeaderCompleted) {
     ProducerMetadata producerMetadata = new ProducerMetadata();
     producerMetadata.producerGUID = HeartbeatGuidV3Generator.getInstance().getGuid();
     producerMetadata.segmentNumber = 0;
     producerMetadata.messageSequenceNumber = 0;
-    producerMetadata.messageTimestamp = time.getMilliseconds();
+    producerMetadata.messageTimestamp = originTimeStampMs > 0 ? originTimeStampMs : time.getMilliseconds();
     producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
+
+    LeaderMetadata leaderMetadataFooter = new LeaderMetadata();
+    leaderMetadataFooter.hostName = writerId;
+    leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+    leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
     kafkaMessageEnvelope.producerMetadata = producerMetadata;
-    kafkaMessageEnvelope.leaderMetadataFooter = new LeaderMetadata();
-    kafkaMessageEnvelope.leaderMetadataFooter.hostName = writerId;
-    kafkaMessageEnvelope.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
-    kafkaMessageEnvelope.leaderMetadataFooter.upstreamKafkaClusterId =
-        leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadataFooter;
     kafkaMessageEnvelope.payloadUnion = heartBeatMessage;
     producerAdapter.sendMessage(
         topicPartition.getPubSubTopic().getName(),
         topicPartition.getPartitionNumber(),
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        protocolSchemaHeaders,
+        getHeaders(producerMetadata, addLeaderCompletedStatus, isLeaderCompleted),
         callback);
   }
 

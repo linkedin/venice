@@ -43,4 +43,6 @@ public interface PubSubMessage<K, V, OFFSET> {
    * @return whether this message marks the end of bootstrap.
    */
   boolean isEndOfBootstrap();
+
+  PubSubMessageHeaders getPubSubMessageHeaders();
 }

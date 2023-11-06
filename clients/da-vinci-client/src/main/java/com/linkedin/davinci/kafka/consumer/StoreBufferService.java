@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -646,6 +647,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
     @Override
     public boolean isEndOfBootstrap() {
       return false;
+    }
+
+    @Override
+    public PubSubMessageHeaders getPubSubMessageHeaders() {
+      return null;
     }
   }
 }

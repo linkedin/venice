@@ -1676,7 +1676,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (isCurrentVersion.getAsBoolean()) {
           amplificationFactorAdapter
               .executePartitionConsumptionState(pcs.getUserPartition(), PartitionConsumptionState::lagHasCaughtUp);
-          statusReportAdapter.reportCompleted(pcs, true);
+          reportCompletedAndSendHeartBeat(pcs, partition, true);
         }
       }
     }
@@ -2075,19 +2075,47 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   kafkaClusterId,
                   beforeProcessingRecordTimestampNs);
             } else {
-              if (controlMessageType == START_OF_SEGMENT
-                  && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-                LeaderProducerCallback callback = createProducerCallback(
-                    consumerRecord,
-                    partitionConsumptionState,
-                    leaderProducedRecordContext,
-                    subPartition,
-                    kafkaUrl,
-                    beforeProcessingRecordTimestampNs);
-                LeaderMetadataWrapper leaderMetadataWrapper =
-                    new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
-                PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), subPartition);
-                veniceWriter.get().sendHeartbeat(topicPartition, callback, leaderMetadataWrapper);
+              if (controlMessageType == START_OF_SEGMENT) {
+                if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+                  LeaderProducerCallback callback = createProducerCallback(
+                      consumerRecord,
+                      partitionConsumptionState,
+                      leaderProducedRecordContext,
+                      subPartition,
+                      kafkaUrl,
+                      beforeProcessingRecordTimestampNs);
+                  LeaderMetadataWrapper leaderMetadataWrapper =
+                      new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
+                  PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), subPartition);
+                  // Leaders forward HB SOS message to local VT with updated isLeaderCompleted header
+                  veniceWriter.get()
+                      .sendHeartbeat(
+                          topicPartition,
+                          callback,
+                          leaderMetadataWrapper,
+                          true,
+                          consumerRecord.getValue().producerMetadata.messageTimestamp,
+                          partitionConsumptionState.isCompletionReported());
+                } else {
+                  // Leaders forward SOS message to local VT: add isLeaderCompleted Header
+                  produceToLocalKafka(
+                      consumerRecord,
+                      partitionConsumptionState,
+                      leaderProducedRecordContext,
+                      (callback, leaderMetadataWrapper) -> veniceWriter.get()
+                          .put(
+                              consumerRecord.getKey(),
+                              consumerRecord.getValue(),
+                              callback,
+                              consumerRecord.getTopicPartition().getPartitionNumber(),
+                              leaderMetadataWrapper,
+                              true,
+                              partitionConsumptionState.isCompletionReported()),
+                      subPartition,
+                      kafkaUrl,
+                      kafkaClusterId,
+                      beforeProcessingRecordTimestampNs);
+                }
               } else {
                 /**
                  * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -2567,6 +2595,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public long getRegionHybridOffsetLag(int regionId) {
     return StatsErrorCode.ACTIVE_ACTIVE_NOT_ENABLED.code;
+  }
+
+  @Override
+  protected void sendInstantHeartBeat(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubTopicPartition pubSubTopicPartition) {
+    veniceWriter.get()
+        .sendHeartbeat(
+            pubSubTopicPartition,
+            null,
+            DEFAULT_LEADER_METADATA_WRAPPER,
+            true,
+            0,
+            partitionConsumptionState.isCompletionReported());
   }
 
   /**
@@ -3182,7 +3224,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
         PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(leaderTopic, pcs.getPartition());
         try {
-          veniceWriter.get().sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER);
+          veniceWriter.get()
+              .sendHeartbeat(
+                  topicPartition,
+                  null,
+                  DEFAULT_LEADER_METADATA_WRAPPER,
+                  true,
+                  0,
+                  pcs.isCompletionReported());
         } catch (Exception e) {
           String errorMessage = String.format(
               "Failed to send ingestion heartbeat for topic: %s, partition: %s",

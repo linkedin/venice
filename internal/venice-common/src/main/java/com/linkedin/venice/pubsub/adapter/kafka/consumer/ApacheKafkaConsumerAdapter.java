@@ -56,7 +56,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final ApacheKafkaConsumerConfig config;
 
-  ApacheKafkaConsumerAdapter(
+  public ApacheKafkaConsumerAdapter(
       ApacheKafkaConsumerConfig config,
       PubSubMessageDeserializer pubSubMessageDeserializer,
       boolean isKafkaConsumerOffsetCollectionEnabled) {

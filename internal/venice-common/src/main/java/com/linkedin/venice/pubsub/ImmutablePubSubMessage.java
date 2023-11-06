@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Objects;
 
@@ -13,6 +14,8 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
   private final long timestamp;
   private final int payloadSize;
 
+  private final PubSubMessageHeaders pubSubMessageHeaders;
+
   public ImmutablePubSubMessage(
       K key,
       V value,
@@ -20,12 +23,24 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
       long offset,
       long timestamp,
       int payloadSize) {
+    this(key, value, topicPartition, offset, timestamp, payloadSize, null);
+  }
+
+  public ImmutablePubSubMessage(
+      K key,
+      V value,
+      PubSubTopicPartition topicPartition,
+      long offset,
+      long timestamp,
+      int payloadSize,
+      PubSubMessageHeaders pubSubMessageHeaders) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
     this.offset = offset;
     this.timestamp = timestamp;
     this.payloadSize = payloadSize;
+    this.pubSubMessageHeaders = pubSubMessageHeaders;
   }
 
   @Override
@@ -61,5 +76,10 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
   @Override
   public boolean isEndOfBootstrap() {
     return false;
+  }
+
+  @Override
+  public PubSubMessageHeaders getPubSubMessageHeaders() {
+    return pubSubMessageHeaders;
   }
 }

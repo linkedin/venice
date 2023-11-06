@@ -481,7 +481,7 @@ public class VeniceWriterUnitTest {
     when(topicPartition.getPubSubTopic()).thenReturn(topic);
     when(topicPartition.getPartitionNumber()).thenReturn(0);
     for (int i = 0; i < 10; i++) {
-      writer.sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER);
+      writer.sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER, false, 0, false);
     }
     ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
     ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
