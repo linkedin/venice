@@ -61,6 +61,8 @@ public class PubSubMessageDeserializer {
     KafkaMessageEnvelope value = null;
     if (key.isControlMessage()) {
       for (PubSubMessageHeader header: headers.toList()) {
+        // only process VENICE_TRANSPORT_PROTOCOL_HEADER here. Other headers will be stored in
+        // ImmutablePubSubMessage and used down the ingestion path later
         if (header.key().equals(VENICE_TRANSPORT_PROTOCOL_HEADER)) {
           try {
             Schema providedProtocolSchema = AvroCompatibilityHelper.parse(new String(header.value()));

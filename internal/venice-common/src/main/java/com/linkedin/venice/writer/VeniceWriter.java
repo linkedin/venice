@@ -210,7 +210,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER =
       new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID);
 
-  private static final PubSubMessageHeaders EMPTY_MSG_HEADERS = new PubSubMessageHeaders();
+  public static final PubSubMessageHeaders EMPTY_MSG_HEADERS = new PubSubMessageHeaders();
 
   // Immutable state
   private final PubSubMessageHeaders protocolSchemaHeaders;

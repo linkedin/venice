@@ -3572,7 +3572,7 @@ public abstract class StoreIngestionTaskTest {
     ingestionTask.maybeSendIngestionHeartbeat();
     // Second invocation should be skipped since it shouldn't be time for another heartbeat yet.
     ingestionTask.maybeSendIngestionHeartbeat();
-    verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any(), any(), any(), any());
+    verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any(), anyBoolean(), anyLong(), anyBoolean());
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

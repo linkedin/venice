@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.writer.VeniceWriter.EMPTY_MSG_HEADERS;
 import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
@@ -651,7 +652,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     @Override
     public PubSubMessageHeaders getPubSubMessageHeaders() {
-      return null;
+      return EMPTY_MSG_HEADERS;
     }
   }
 }
