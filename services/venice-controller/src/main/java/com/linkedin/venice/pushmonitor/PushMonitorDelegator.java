@@ -18,6 +18,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,7 +56,8 @@ public class PushMonitorDelegator implements PushMonitor {
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
       VeniceControllerConfig controllerConfig,
-      PushStatusStoreReader pushStatusStoreReader) {
+      PushStatusStoreReader pushStatusStoreReader,
+      MetricsRepository metricsRepository) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
 
@@ -72,7 +74,8 @@ public class PushMonitorDelegator implements PushMonitor {
         activeActiveRealTimeSourceKafkaURLs,
         helixAdminClient,
         controllerConfig,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();

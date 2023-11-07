@@ -61,7 +61,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         Collections.emptyList(),
         helixAdminClient,
         getMockControllerConfig(),
-        null);
+        null,
+        mockMetricRepo);
   }
 
   @Override
@@ -79,7 +80,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         Collections.emptyList(),
         mock(HelixAdminClient.class),
         getMockControllerConfig(),
-        null);
+        null,
+        mockMetricRepo);
   }
 
   @Test
