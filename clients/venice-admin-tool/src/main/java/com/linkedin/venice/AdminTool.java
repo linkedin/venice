@@ -992,7 +992,7 @@ public class AdminTool {
       Arg param,
       Consumer<Map<String, String>> setter,
       Set<Arg> argSet) {
-    genericParam(cmd, param, s -> Utils.parseCommaSeparatedStringMapFromString(s, param.toString()), setter, argSet);
+    genericParam(cmd, param, s -> Utils.parseJsonMapFromString(s, param.toString()), setter, argSet);
   }
 
   private static void stringSetParam(CommandLine cmd, Arg param, Consumer<Set<String>> setter, Set<Arg> argSet) {
