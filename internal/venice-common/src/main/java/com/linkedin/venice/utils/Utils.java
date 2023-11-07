@@ -321,8 +321,7 @@ public class Utils {
       }
       return map;
     } catch (IOException jsonException) {
-      throw new VeniceException(
-          fieldName + " must be a valid JSON object or key-value pairs separated by comma, but value: " + value);
+      throw new VeniceException(fieldName + " must be a valid JSON object, but value: " + value);
     }
   }
 

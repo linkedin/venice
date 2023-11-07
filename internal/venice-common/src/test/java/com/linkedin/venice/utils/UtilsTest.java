@@ -1,9 +1,6 @@
 package com.linkedin.venice.utils;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
-import static org.testng.Assert.fail;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.nio.file.Files;
@@ -167,36 +164,20 @@ public class UtilsTest {
 
   @Test
   public void testParseMap() {
-    assertEquals(Utils.parseJsonMapFromString("", "test_field").size(), 0);
-    Map nonEmptyMap = Utils.parseJsonMapFromString("a=b", "test_field");
     Map expectedMap = new HashMap<>();
     expectedMap.put("a", "b");
-    assertEquals(nonEmptyMap, expectedMap);
 
-    VeniceException e =
-        expectThrows(VeniceException.class, () -> Utils.parseJsonMapFromString("invalid_value", "test_field"));
-    assertTrue(e.getMessage().contains("must be key value pairs separated by comma"));
+    assertEquals(Utils.parseJsonMapFromString("", "test_field").size(), 0);
+    Map validMap = Utils.parseJsonMapFromString("{\"a\":\"b\"}", "test_field");
+    assertEquals(validMap, expectedMap);
+
+    VeniceException e = expectThrows(VeniceException.class, () -> Utils.parseJsonMapFromString("a=b", "test_field"));
+    assertTrue(e.getMessage().contains("must be a valid JSON object"));
+
   }
 
   @Test
   public void testSanitizingStringForLogger() {
     Assert.assertEquals(Utils.getSanitizedStringForLogger(".abc.123."), "_abc_123_");
-  }
-
-  @Test
-  public void testParseJsonMapFromString() {
-    try {
-      Utils.parseJsonMapFromString(
-          "{\"changeCaptureView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\": {}}}",
-          "someField"); // Method that should not throw an exception
-    } catch (Exception e) {
-      fail("Expected no exception to be thrown, but got: " + e.getMessage());
-    }
-
-    Assert.assertThrows(
-        VeniceException.class,
-        () -> Utils.parseJsonMapFromString(
-            "{\"changeCaptureView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\":",
-            "someField"));
   }
 }
