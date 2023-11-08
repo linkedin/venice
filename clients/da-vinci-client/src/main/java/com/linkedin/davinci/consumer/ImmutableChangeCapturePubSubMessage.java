@@ -1,10 +1,7 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.venice.writer.VeniceWriter.EMPTY_MSG_HEADERS;
-
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Objects;
 
@@ -71,10 +68,5 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   @Override
   public boolean isEndOfBootstrap() {
     return isEndOfBootstrap;
-  }
-
-  @Override
-  public PubSubMessageHeaders getPubSubMessageHeaders() {
-    return EMPTY_MSG_HEADERS;
   }
 }
