@@ -69,15 +69,12 @@ public class RequestBasedMetadataTestUtils {
       Schema storeValueSchema) {
     D2TransportClient d2TransportClient = mock(D2TransportClient.class);
 
-    Map<String, String> partitionerParams = new HashMap<>();
-    partitionerParams.put("entity.extractor", "StringKeyExtractor");
-
     VersionProperties versionProperties = new VersionProperties(
         CURRENT_VERSION,
         CompressionStrategy.ZSTD_WITH_DICT.getValue(),
         2,
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
-        Collections.unmodifiableMap(partitionerParams),
+        Collections.emptyMap(),
         1);
     Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
     routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
