@@ -69,16 +69,15 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         pubSubTopicRepository);
   }
 
-  // used for testing
   ApacheKafkaAdminAdapter(
       AdminClient internalKafkaAdminClient,
       ApacheKafkaAdminConfig apacheKafkaAdminConfig,
       PubSubTopicRepository pubSubTopicRepository) {
-    this.apacheKafkaAdminConfig = apacheKafkaAdminConfig;
+    this.apacheKafkaAdminConfig = Objects.requireNonNull(apacheKafkaAdminConfig, "Kafka admin config cannot be null!");
     this.internalKafkaAdminClient =
         Objects.requireNonNull(internalKafkaAdminClient, "Kafka admin client cannot be null!");
     this.pubSubTopicRepository = pubSubTopicRepository;
-    LOGGER.debug("Created KafkaAdminClient with properties: {}", apacheKafkaAdminConfig.getAdminProperties());
+    LOGGER.info("Created ApacheKafkaAdminAdapter with config: {}", apacheKafkaAdminConfig);
   }
 
   /**
@@ -108,13 +107,13 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     topicProperties.stringPropertyNames().forEach(key -> topicPropertiesMap.put(key, topicProperties.getProperty(key)));
     Collection<NewTopic> newTopics = Collections.singleton(
         new NewTopic(pubSubTopic.getName(), numPartitions, (short) replicationFactor).configs(topicPropertiesMap));
+    LOGGER.info(
+        "Creating kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
+        pubSubTopic.getName(),
+        numPartitions,
+        replicationFactor,
+        topicProperties);
     try {
-      LOGGER.debug(
-          "Creating kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
-          pubSubTopic.getName(),
-          numPartitions,
-          replicationFactor,
-          topicProperties);
       CreateTopicsResult createTopicsResult = internalKafkaAdminClient.createTopics(newTopics);
       KafkaFuture<Void> topicCreationFuture = createTopicsResult.all();
       topicCreationFuture.get(); // block until topic creation is complete
@@ -131,7 +130,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
                 numPartitions,
                 actualNumPartitions));
       }
-      LOGGER.debug(
+      LOGGER.info(
           "Successfully created kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
           pubSubTopic.getName(),
           actualNumPartitions,
