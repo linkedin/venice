@@ -652,7 +652,7 @@ public class TestActiveActiveIngestion {
 
       VeniceChangelogConsumer<Utf8, Utf8> versionTopicConsumer =
           veniceAfterImageConsumerClientFactory.getChangelogConsumer(storeName);
-      Assert.assertTrue(versionTopicConsumer instanceof VeniceAfterImageConsumerImpl<Utf8, Utf8>);
+      Assert.assertTrue(versionTopicConsumer instanceof VeniceAfterImageConsumerImpl);
       versionTopicConsumer.subscribeAll().get();
 
       // Let's consume those 100 records off of version 1
