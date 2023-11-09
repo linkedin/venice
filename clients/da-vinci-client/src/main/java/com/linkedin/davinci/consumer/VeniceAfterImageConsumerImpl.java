@@ -55,10 +55,14 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     super(changelogClientConfig, consumer);
     versionSwapDetectionThread = new VersionSwapDetectionThread();
     internalSeekConsumer = seekConsumer;
+    versionSwapDetectionIntervalTimeInMs = changelogClientConfig.getVersionSwapDetectionIntervalTimeInMs();
   }
 
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
+    if (!versionSwapDetectionThread.isAlive()) {
+      versionSwapDetectionThread.start();
+    }
     return internalPoll(timeoutInMs, "");
   }
 
@@ -85,7 +89,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
 
           // We need to get the internal consumer as we have to intercept the control messages that we would normally
           // filter out from the user
-          PubSubConsumerAdapter consumerAdapter = internalSeekConsumer.get().pubSubConsumer;
+          PubSubConsumerAdapter consumerAdapter = internalSeekConsumer.get().getPubSubConsumer();
 
           Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledResults;
           Map<Integer, Boolean> endOfPushConsumedPerPartitionMap = new HashMap<>();
@@ -129,8 +133,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               // We polled all EOP messages, stop polling!
               break;
             }
-            this.seekToCheckpoint(checkpoints).get();
           }
+          this.seekToCheckpoint(checkpoints).get();
         } catch (InterruptedException | ExecutionException e) {
           throw new VeniceException(
               "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions.toString(),
@@ -141,7 +145,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     });
   }
 
-  public CompletableFuture<Void> internalSeek(
+  @Override
+  protected CompletableFuture<Void> internalSeek(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
       SeekFunction seekAction) {
@@ -185,7 +190,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
 
         // Seek to end of push
         if (currentVersion != maxVersion) {
-          // get current subscriptions and seek to endOfPus
+          // get current subscriptions and seek to endOfPush
           Set<Integer> partitions = new HashSet<>();
           for (PubSubTopicPartition partitionSubscription: subscriptions) {
             partitions.add(partitionSubscription.getPartitionNumber());

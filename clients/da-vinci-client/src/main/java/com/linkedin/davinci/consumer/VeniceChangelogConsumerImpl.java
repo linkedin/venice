@@ -20,6 +20,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
@@ -419,7 +420,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return this.seekToTimestamps(partitionsToSeek);
   }
 
-  public CompletableFuture<Void> internalSeek(
+  protected CompletableFuture<Void> internalSeek(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
       SeekFunction seekAction) {
@@ -672,12 +673,31 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     byte[] keyBytes = message.getKey().getKey();
     MessageType messageType = MessageType.valueOf(message.getValue());
     RecordChangeEvent recordChangeEvent;
-    // Internal store ingestion tasks only persist PUT messages to either VT or view topics
+    Object assembledObject = null;
+    List<Long> replicationCheckpoint = null;
+    if (messageType.equals(MessageType.DELETE)) {
+      Delete delete = (Delete) message.getValue().payloadUnion;
+
+      // Deletes have a previous and current value of null. So just fill it in!
+      ChangeEvent<V> changeEvent = new ChangeEvent<>(null, null);
+      pubSubChangeEventMessage = Optional.of(
+          new ImmutableChangeCapturePubSubMessage<>(
+              keyDeserializer.deserialize(keyBytes),
+              changeEvent,
+              pubSubTopicPartition,
+              message.getOffset(),
+              message.getPubSubMessageTime(),
+              message.getPayloadSize(),
+              false));
+
+      replicationCheckpoint = extractOffsetVectorFromMessage(
+          delete.getReplicationMetadataVersionId(),
+          delete.getReplicationMetadataPayload());
+    }
     if (messageType.equals(MessageType.PUT)) {
       Put put = (Put) message.getValue().payloadUnion;
       // Select appropriate deserializers
       Lazy deserializerProvider;
-      Object assembledObject = null;
       AbstractAvroChunkingAdapter chunkingAdapter;
       int readerSchemaId;
       ReadOnlySchemaRepository schemaRepo;
@@ -711,14 +731,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         return Optional.empty();
       }
 
-      // Now that we've assembled the object, we need to extract the replication vector depending on if it's from VT
-      // or from the record change event. Records from VT 'typically' don't have an offset vector, but they will in
-      // repush scenarios (which we want to be opaque to the user and filter accordingly).
-      List<Long> replicationCheckpoint;
-      int payloadSize = message.getPayloadSize();
       if (assembledObject instanceof RecordChangeEvent) {
         recordChangeEvent = (RecordChangeEvent) assembledObject;
         replicationCheckpoint = recordChangeEvent.replicationCheckpointVector;
+      } else {
+        replicationCheckpoint =
+            extractOffsetVectorFromMessage(put.getReplicationMetadataVersionId(), put.getReplicationMetadataPayload());
+      }
+
+      // Now that we've assembled the object, we need to extract the replication vector depending on if it's from VT
+      // or from the record change event. Records from VT 'typically' don't have an offset vector, but they will in
+      // repush scenarios (which we want to be opaque to the user and filter accordingly).
+      int payloadSize = message.getPayloadSize();
+      if (assembledObject instanceof RecordChangeEvent) {
+        recordChangeEvent = (RecordChangeEvent) assembledObject;
         pubSubChangeEventMessage = Optional.of(
             convertChangeEventToPubSubMessage(
                 recordChangeEvent,
@@ -728,8 +754,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 message.getPubSubMessageTime(),
                 payloadSize));
       } else {
-        replicationCheckpoint =
-            extractOffsetVectorFromMessage(put.getReplicationMetadataVersionId(), put.getReplicationMetadataPayload());
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, (V) assembledObject);
         pubSubChangeEventMessage = Optional.of(
             new ImmutableChangeCapturePubSubMessage<>(
@@ -741,12 +765,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 payloadSize,
                 false));
       }
-
-      // Determine if the event should be filtered or not
-      if (filterRecordByVersionSwapHighWatermarks(replicationCheckpoint, pubSubTopicPartition)) {
-        pubSubChangeEventMessage = Optional.empty();
-      }
     }
+
+    // Determine if the event should be filtered or not
+    if (filterRecordByVersionSwapHighWatermarks(replicationCheckpoint, pubSubTopicPartition)) {
+      return Optional.empty();
+    }
+
     return pubSubChangeEventMessage;
   }
 
@@ -861,6 +886,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected void switchToNewTopic(PubSubTopic newTopic, String topicSuffix, Integer partition) {
     PubSubTopic mergedTopicName = pubSubTopicRepository.getTopic(newTopic.getName() + topicSuffix);
     Set<Integer> partitions = Collections.singleton(partition);
+    for (PubSubTopicPartition currentSubscribedPartition: pubSubConsumer.getAssignment()) {
+      if (partition.equals(currentSubscribedPartition.getPartitionNumber())) {
+        if (mergedTopicName.getName() == currentSubscribedPartition.getPubSubTopic().getName()) {
+          // We're being asked to switch to a topic that we're already subscribed to, NoOp this
+          return;
+        }
+      }
+    }
     unsubscribe(partitions);
     try {
       internalSubscribe(partitions, mergedTopicName).get();
@@ -918,5 +951,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
     }
     return topicPartition.get();
+  }
+
+  protected PubSubConsumerAdapter getPubSubConsumer() {
+    return pubSubConsumer;
   }
 }
