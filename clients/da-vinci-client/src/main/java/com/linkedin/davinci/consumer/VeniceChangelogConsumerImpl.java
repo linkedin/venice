@@ -888,7 +888,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     Set<Integer> partitions = Collections.singleton(partition);
     for (PubSubTopicPartition currentSubscribedPartition: pubSubConsumer.getAssignment()) {
       if (partition.equals(currentSubscribedPartition.getPartitionNumber())) {
-        if (mergedTopicName.getName() == currentSubscribedPartition.getPubSubTopic().getName()) {
+        if (mergedTopicName.getName().equals(currentSubscribedPartition.getPubSubTopic().getName())) {
           // We're being asked to switch to a topic that we're already subscribed to, NoOp this
           return;
         }
