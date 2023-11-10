@@ -3499,7 +3499,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Whenever a leader is marked to be completed, it should send a heartbeat SOS to VT
-   * check {@link StoreIngestionTask#sendInstantHeartBeat} for more details.
+   * check {@link StoreIngestionTask#sendInstantHeartBeatAndUpdateVeniceWriter} for more details.
    */
   void reportCompletedAndSendHeartBeat(
       PartitionConsumptionState partitionConsumptionState,
@@ -3508,16 +3508,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     statusReportAdapter.reportCompleted(partitionConsumptionState, forceCompletion);
     LOGGER.info("{} Partition {} is ready to serve", consumerTaskId, partition);
     if (partitionConsumptionState.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER)) {
-      // if leader is marked completed, immediately send a heart beat message
-      sendInstantHeartBeat(partitionConsumptionState, new PubSubTopicPartitionImpl(versionTopic, partition));
+      sendInstantHeartBeatAndUpdateVeniceWriter(
+          partitionConsumptionState,
+          new PubSubTopicPartitionImpl(versionTopic, partition));
     }
   }
 
-  /**
-   * Once leader is marked completed, immediately send a heart beat message to the local VT such that
-   * followers don't have to wait till the periodic heartbeat to know that the leader is completed
-   */
-  protected abstract void sendInstantHeartBeat(
+  protected abstract void sendInstantHeartBeatAndUpdateVeniceWriter(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopicPartition pubSubTopicPartition);
 

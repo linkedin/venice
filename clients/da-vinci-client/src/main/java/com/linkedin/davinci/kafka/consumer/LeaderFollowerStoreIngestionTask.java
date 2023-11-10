@@ -2075,47 +2075,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   kafkaClusterId,
                   beforeProcessingRecordTimestampNs);
             } else {
-              if (controlMessageType == START_OF_SEGMENT) {
-                if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-                  LeaderProducerCallback callback = createProducerCallback(
-                      consumerRecord,
-                      partitionConsumptionState,
-                      leaderProducedRecordContext,
-                      subPartition,
-                      kafkaUrl,
-                      beforeProcessingRecordTimestampNs);
-                  LeaderMetadataWrapper leaderMetadataWrapper =
-                      new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
-                  PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), subPartition);
-                  // Leaders forward HB SOS message to local VT with updated isLeaderCompleted header
-                  veniceWriter.get()
-                      .sendHeartbeat(
-                          topicPartition,
-                          callback,
-                          leaderMetadataWrapper,
-                          true,
-                          consumerRecord.getValue().producerMetadata.messageTimestamp,
-                          partitionConsumptionState.isCompletionReported());
-                } else {
-                  // Leaders forward SOS message to local VT: add isLeaderCompleted Header
-                  produceToLocalKafka(
-                      consumerRecord,
-                      partitionConsumptionState,
-                      leaderProducedRecordContext,
-                      (callback, leaderMetadataWrapper) -> veniceWriter.get()
-                          .put(
-                              consumerRecord.getKey(),
-                              consumerRecord.getValue(),
-                              callback,
-                              consumerRecord.getTopicPartition().getPartitionNumber(),
-                              leaderMetadataWrapper,
-                              true,
-                              partitionConsumptionState.isCompletionReported()),
-                      subPartition,
-                      kafkaUrl,
-                      kafkaClusterId,
-                      beforeProcessingRecordTimestampNs);
-                }
+              if (controlMessageType == START_OF_SEGMENT
+                  && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+                LeaderProducerCallback callback = createProducerCallback(
+                    consumerRecord,
+                    partitionConsumptionState,
+                    leaderProducedRecordContext,
+                    subPartition,
+                    kafkaUrl,
+                    beforeProcessingRecordTimestampNs);
+                LeaderMetadataWrapper leaderMetadataWrapper =
+                    new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
+                PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), subPartition);
+                // Leaders forward HB SOS message to local VT with updated isLeaderCompleted header
+                veniceWriter.get()
+                    .sendHeartbeat(
+                        topicPartition,
+                        callback,
+                        leaderMetadataWrapper,
+                        true,
+                        consumerRecord.getValue().producerMetadata.messageTimestamp, // original producers timestamp
+                        partitionConsumptionState.isCompletionReported());
               } else {
                 /**
                  * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -2597,18 +2577,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return StatsErrorCode.ACTIVE_ACTIVE_NOT_ENABLED.code;
   }
 
+  /**
+   * Once leader is marked completed, immediately send a heart beat message to the local VT such that
+   * followers don't have to wait till the periodic heartbeat to know that the leader is completed
+   *
+   * Also update veniceWriter of this status, such that the SOS messages sent from the leader to the
+   * followers can have this status.
+   */
   @Override
-  protected void sendInstantHeartBeat(
+  protected void sendInstantHeartBeatAndUpdateVeniceWriter(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopicPartition pubSubTopicPartition) {
+    boolean isLeaderCompleted = partitionConsumptionState.isCompletionReported();
     veniceWriter.get()
-        .sendHeartbeat(
-            pubSubTopicPartition,
-            null,
-            DEFAULT_LEADER_METADATA_WRAPPER,
-            true,
-            0,
-            partitionConsumptionState.isCompletionReported());
+        .sendHeartbeat(pubSubTopicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER, true, 0, isLeaderCompleted);
+    veniceWriter.get().setPartitionLeaderCompletionStatus(pubSubTopicPartition.getPartitionNumber(), isLeaderCompleted);
   }
 
   /**
@@ -3229,9 +3212,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   topicPartition,
                   null,
                   DEFAULT_LEADER_METADATA_WRAPPER,
-                  true,
+                  false, // Leaders will add this header when they forward HB to the followers
                   0,
-                  pcs.isCompletionReported());
+                  false);
         } catch (Exception e) {
           String errorMessage = String.format(
               "Failed to send ingestion heartbeat for topic: %s, partition: %s",

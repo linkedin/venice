@@ -8,7 +8,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-import static com.linkedin.venice.pubsub.api.PubSubMessageDeserializer.VENICE_LEADER_COMPLETION_STATUS_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATUS_HEADER;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
@@ -82,6 +82,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -405,50 +406,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       }
     });
 
-    if (!deleteSSTFiles && !deleteRMDSSTFiles) {
-      /** creating a {@link pubSubConsumer} to check for the messages with
-       * {@link VENICE_LEADER_COMPLETION_STATUS_HEADER} header. Testing this for just 1 case
-       * should be enough as deleting sst and restarting servers doesn't affect the below generic
-       * test as we are consuming from kafka to see if the new header is found or not. More specific
-       * tests can be added for those cases if needed.
-       */
-      Properties properties = new Properties();
-      properties.setProperty(
-          ConfigKeys.KAFKA_BOOTSTRAP_SERVERS,
-          clusterWrappers.get(NON_SOURCE_COLO).getPubSubBrokerWrapper().getAddress());
-      pubSubConsumer = pubSubBrokerWrapper.getPubSubClientsFactory()
-          .getConsumerAdapterFactory()
-          .create(new VeniceProperties(properties), false, PubSubMessageDeserializer.getInstance(), "testConsumer");
-      pubSubConsumer
-          .subscribe(new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic(topic), PARTITION_ID), 0);
-
-      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
-            pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
-        boolean isLeaderCompletionHeaderFound = false;
-        for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
-            .entrySet()) {
-          PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-          if (!pubSubTopicPartition.getPubSubTopic().isRealTime()) {
-            List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessages = entry.getValue();
-            for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: pubSubMessages) {
-              PubSubMessageHeaders pubSubMessageHeaders = message.getPubSubMessageHeaders();
-              for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
-                if (header.key().equals(VENICE_LEADER_COMPLETION_STATUS_HEADER)) {
-                  isLeaderCompletionHeaderFound = true;
-                  break;
-                }
-              }
-            }
-          }
-          if (isLeaderCompletionHeaderFound) {
-            break;
-          }
-        }
-        assertTrue(isLeaderCompletionHeaderFound);
-      });
-    }
-
     // Wait for storage node to finish consuming, and new version to be activated
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       for (int colo = 0; colo < NUMBER_OF_COLOS; colo++) {
@@ -596,6 +553,53 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         storeClient.close();
       }
     }
+
+    if (!deleteSSTFiles && !deleteRMDSSTFiles) {
+      /** creating a {@link pubSubConsumer} to check for the messages with
+       * {@link VENICE_LEADER_COMPLETION_STATUS_HEADER} header. Testing this for just 1 case
+       * should be enough as deleting sst and restarting servers doesn't affect the below generic
+       * test as we are consuming from kafka to see if the new header is found or not. More specific
+       * tests can be added for those cases if needed.
+       */
+      Properties properties = new Properties();
+      properties.setProperty(
+          ConfigKeys.KAFKA_BOOTSTRAP_SERVERS,
+          clusterWrappers.get(NON_SOURCE_COLO).getPubSubBrokerWrapper().getAddress());
+      pubSubConsumer = pubSubBrokerWrapper.getPubSubClientsFactory()
+          .getConsumerAdapterFactory()
+          .create(new VeniceProperties(properties), false, PubSubMessageDeserializer.getInstance(), "testConsumer");
+      pubSubConsumer
+          .subscribe(new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic(topic), PARTITION_ID), 0);
+
+      AtomicBoolean isLeaderCompletionHeaderFound = new AtomicBoolean(false);
+      AtomicBoolean isLeaderCompleted = new AtomicBoolean(false);
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+            pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
+        for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+            .entrySet()) {
+          List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessages = entry.getValue();
+          for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: pubSubMessages) {
+            PubSubMessageHeaders pubSubMessageHeaders = message.getPubSubMessageHeaders();
+            for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+              if (header.key().equals(VENICE_LEADER_COMPLETION_STATUS_HEADER)) {
+                isLeaderCompletionHeaderFound.set(true);
+                if (header.value()[0] == 1) {
+                  isLeaderCompleted.set(true);
+                  break;
+                }
+              }
+            }
+          }
+          if (isLeaderCompleted.get()) {
+            break;
+          }
+        }
+        assertTrue(isLeaderCompletionHeaderFound.get(), "isLeaderCompletionHeaderFound should be true");
+        assertTrue(isLeaderCompleted.get(), "isLeaderCompleted should be true");
+      });
+    }
+
     // to be used in the next run
     allNonIncPushKeysUntilLastVersion.addAll(currNonIncPushKeys);
   }

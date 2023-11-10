@@ -1,5 +1,7 @@
 package com.linkedin.venice.pubsub.api;
 
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -19,11 +21,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class PubSubMessageDeserializer {
   private static final Logger LOGGER = LogManager.getLogger(PubSubMessageDeserializer.class);
-
-  public static final String VENICE_TRANSPORT_PROTOCOL_HEADER = "vtp";
-  /** Header to denote whether the leader is completed or not */
-  public static final String VENICE_LEADER_COMPLETION_STATUS_HEADER = "lcs";
-
   private final KafkaKeySerializer keySerializer = new KafkaKeySerializer();
   private final KafkaValueSerializer valueSerializer;
   private final ObjectPool<KafkaMessageEnvelope> putEnvelopePool;

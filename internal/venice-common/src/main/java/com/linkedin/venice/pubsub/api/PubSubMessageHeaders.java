@@ -17,6 +17,10 @@ public class PubSubMessageHeaders {
   // from the beginning.
   private final Map<String, PubSubMessageHeader> headers = new LinkedHashMap<>();
 
+  public static final String VENICE_TRANSPORT_PROTOCOL_HEADER = "vtp";
+  /** Header to denote whether the leader is completed or not */
+  public static final String VENICE_LEADER_COMPLETION_STATUS_HEADER = "lcs";
+
   public PubSubMessageHeaders add(PubSubMessageHeader header) {
     headers.put(header.key(), header);
     return this;
