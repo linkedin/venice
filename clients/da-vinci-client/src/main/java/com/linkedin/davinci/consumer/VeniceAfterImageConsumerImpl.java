@@ -28,7 +28,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerImpl<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceAfterImageConsumerImpl.class);
   // 10 Minute default
-  protected long versionSwapDetectionIntervalTimeInMs = 600000L;
+  protected long versionSwapDetectionIntervalTimeInMs;
   // This consumer is used to find EOP messages without impacting consumption by other subscriptions. It's only used
   // in the context of seeking to EOP in the event of the user calling that seek or a version push.
   // TODO: We shouldn't use this in the long run. Once the EOP position is queryable from venice and version
