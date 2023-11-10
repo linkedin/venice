@@ -196,15 +196,19 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             partitions.add(partitionSubscription.getPartitionNumber());
           }
           try {
+            LOGGER.info(
+                "New Version detected!  Seeking consumer to version: " + currentVersion
+                    + " in VersionSwaDetectionThread: " + this.getId());
             seekToEndOfPush(partitions).get();
           } catch (InterruptedException | ExecutionException e) {
             LOGGER.error(
-                "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions + " will retry...",
+                "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions
+                    + " on VersionSwapDetectionThread: " + this.getId() + "will retry...",
                 e);
           }
         }
       }
-      LOGGER.info("VersionSwapDetectionThread thread interrupted!  Shutting down...");
+      LOGGER.info("VersionSwapDetectionThread thread #" + this.getId() + "interrupted!  Shutting down...");
     }
   }
 }

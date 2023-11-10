@@ -142,8 +142,6 @@ public class VeniceChangelogConsumerImplTest {
     verify(mockPubSubConsumer).subscribe(oldVersionTopicPartition, OffsetRecord.LOWEST_OFFSET);
 
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
-    // veniceChangelogConsumer.seekToEndOfPush();
-    // verify(mockPubSubConsumer, times(2)).subscribe(oldVersionTopicPartition, OffsetRecord.LOWEST_OFFSET);
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
