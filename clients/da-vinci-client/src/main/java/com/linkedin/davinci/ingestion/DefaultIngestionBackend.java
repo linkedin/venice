@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -156,6 +157,11 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   @Override
   public StorageService getStorageService() {
     return storageService;
+  }
+
+  @Override
+  public Map<String, Set<Integer>> getLoadedStoreAndUserPartitionsMapping() {
+    return storageService.getStoreAndUserPartitionsMapping();
   }
 
   @Override

@@ -1,0 +1,17 @@
+{
+  "name": "LoadedStoreUserPartitionMapping",
+  "namespace": "com.linkedin.venice.ingestion.protocol",
+  "type": "record",
+  "fields": [
+    {
+      "name": "storeUserPartitionMapping",
+      "type": {
+        "type": "map",
+        "values": {
+          "type": "array",
+          "items": "int"
+        }
+      }
+    }
+  ]
+}

@@ -231,7 +231,7 @@ public class HelixParticipationService extends AbstractVeniceService
     LOGGER.info("Attempting to stop HelixParticipation service.");
     ingestionBackend.prepareForShutdown();
     if (helixManager != null) {
-      resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger);
+      resetAllInstanceCVStates(partitionPushStatusAccessor, ingestionBackend, logger);
     } else {
       logger.error("Can't reset instance CV states since HelixManager is null");
     }
@@ -343,8 +343,8 @@ public class HelixParticipationService extends AbstractVeniceService
         // our
         // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
         checkBeforeJoinInCluster();
-        helixManager
-            .addPreConnectCallback(() -> resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger));
+        helixManager.addPreConnectCallback(
+            () -> resetAllInstanceCVStates(partitionPushStatusAccessor, ingestionBackend, logger));
         helixManager.connect();
         managerFuture.complete(helixManager);
       } catch (Exception e) {
@@ -371,11 +371,11 @@ public class HelixParticipationService extends AbstractVeniceService
 
   static void resetAllInstanceCVStates(
       HelixPartitionStatusAccessor accessor,
-      StorageService storageService,
+      VeniceIngestionBackend ingestionBackend,
       Logger currentLogger) {
     // Get all hosted stores
     currentLogger.info("Started resetting all instance CV states");
-    Map<String, Set<Integer>> storePartitionMapping = storageService.getStoreAndUserPartitionsMapping();
+    Map<String, Set<Integer>> storePartitionMapping = ingestionBackend.getLoadedStoreAndUserPartitionsMapping();
     storePartitionMapping.forEach((storeName, partitionIds) -> {
       partitionIds.forEach(partitionId -> {
         try {
