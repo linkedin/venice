@@ -7,6 +7,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.chunking.RawKeyBytesAndChunkedKeySuffix;
+import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.etl.VeniceKafkaDecodedRecord;
@@ -33,6 +34,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -106,9 +108,9 @@ public class KafkaTopicDumper implements AutoCloseable {
     this.consumer = consumer;
     this.maxConsumeAttempts = maxConsumeAttempts;
     String storeName;
-    if (Version.isVersionTopic(topic)) {
+    if (Version.isATopicThatIsVersioned(topic)) {
       storeName = Version.parseStoreFromKafkaTopicName(topic);
-      int version = Version.parseVersionFromVersionTopicName(topic);
+      int version = Version.parseVersionFromKafkaTopicName(topic);
       this.isChunkingEnabled =
           controllerClient.getStore(storeName).getStore().getVersion(version).get().isChunkingEnabled();
     } else {
@@ -135,6 +137,10 @@ public class KafkaTopicDumper implements AutoCloseable {
     if (logMetadataOnly) {
       this.latestValueSchemaStr = null;
       this.allValueSchemas = null;
+    } else if (topicName.contains(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+      this.latestValueSchemaStr = RecordChangeEvent.getClassSchema().toString();
+      this.allValueSchemas = new Schema[1];
+      this.allValueSchemas[0] = RecordChangeEvent.getClassSchema();
     } else {
       MultiSchemaResponse.Schema[] schemas = controllerClient.getAllValueSchema(storeName).getSchemas();
       LOGGER.info("Found {} value schemas for store {}", schemas.length, storeName);
