@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -620,5 +621,25 @@ public class StorageReadRequestHandlerTest {
         ArgumentCaptor.forClass(HttpShortcutResponse.class);
     verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
     Assert.assertTrue(shortcutResponseArgumentCaptor.getValue().isMisroutedStoreVersion());
+  }
+
+  @Test
+  public void testNoStorageEngineReturn503() throws Exception {
+    String storeName = "testStore";
+    RouterRequest request = mock(GetRouterRequest.class);
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(SINGLE_GET).when(request).getRequestType();
+    doReturn(Version.composeKafkaTopic(storeName, 1)).when(request).getResourceName();
+    doReturn(storeName).when(request).getStoreName();
+    Store store = mock(Store.class);
+    doReturn(Optional.empty()).when(store).getVersion(anyInt());
+    doReturn(store).when(storeRepository).getStore(storeName);
+    doReturn(null).when(storageEngineRepository).getLocalStorageEngine(any());
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+    ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
+        ArgumentCaptor.forClass(HttpShortcutResponse.class);
+    verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
+    Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), SERVICE_UNAVAILABLE);
   }
 }

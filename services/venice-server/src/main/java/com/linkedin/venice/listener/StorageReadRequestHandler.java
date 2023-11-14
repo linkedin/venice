@@ -265,10 +265,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
                           earlyTerminationException.getMessage(),
                           earlyTerminationException.getHttpResponseStatus()));
                 } else if (e instanceof VeniceNoStoreException) {
+                  // return SERVICE_UNAVAILABLE to kick off error retry in router
                   context.writeAndFlush(
                       new HttpShortcutResponse(
                           "No storage exists for: " + ((VeniceNoStoreException) e).getStoreName(),
-                          HttpResponseStatus.BAD_REQUEST));
+                          HttpResponseStatus.SERVICE_UNAVAILABLE));
                 } else {
                   LOGGER.error("Exception thrown in parallel batch get for {}", request.getResourceName(), e);
                   HttpShortcutResponse shortcutResponse =
@@ -313,8 +314,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           }
           context.writeAndFlush(response);
         } catch (VeniceNoStoreException e) {
+          // return SERVICE_UNAVAILABLE to kick off error retry in router
           context.writeAndFlush(
-              new HttpShortcutResponse("No storage exists for: " + e.getStoreName(), HttpResponseStatus.BAD_REQUEST));
+              new HttpShortcutResponse(
+                  "No storage exists for: " + e.getStoreName(),
+                  HttpResponseStatus.SERVICE_UNAVAILABLE));
         } catch (VeniceRequestEarlyTerminationException e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.REQUEST_TIMEOUT));
         } catch (OperationNotAllowedException e) {
