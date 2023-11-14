@@ -152,7 +152,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
       String incrementalPushVersion) {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
-    updateBuilder.setElementsToRemoveFromListField("instances", Collections.singletonList(incrementalPushVersion));
+    updateBuilder.setKeysToRemoveFromMapField("instances", Collections.singletonList(incrementalPushVersion));
     LOGGER.info(
         "Removing incremental push version: {} from ongoingIncrementalPushes of store: {} from instance: {}",
         incrementalPushVersion,
