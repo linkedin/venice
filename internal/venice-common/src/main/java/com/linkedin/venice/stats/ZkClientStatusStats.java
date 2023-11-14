@@ -4,6 +4,7 @@ import static org.apache.zookeeper.Watcher.Event.KeeperState;
 
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
@@ -41,7 +42,7 @@ public class ZkClientStatusStats extends AbstractVeniceStats implements IZkState
     zkClientSessionEstablishmentErrorSensor = registerSensor("zk_client_SessionEstablishmentError", new Count());
     zkClientReconnectionLatencySensor =
         registerSensor("zk_client_reconnection_latency", new Avg(), new Min(), new Max());
-    registerSensor("zk_client_status", new Gauge(() -> clientState.getIntValue()));
+    registerSensor(new AsyncGauge((c, t) -> clientState.getIntValue(), "zk_client_status"));
   }
 
   @Override

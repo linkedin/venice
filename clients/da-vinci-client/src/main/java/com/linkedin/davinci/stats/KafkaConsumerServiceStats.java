@@ -1,11 +1,12 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Total;
@@ -48,8 +49,9 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
      *  threads are stuck. No need to keep a class property for it since we never call record on it.
      */
     registerSensor(
-        "max_elapsed_time_since_last_successful_poll",
-        new Gauge(() -> getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong()));
+        new AsyncGauge(
+            (c, t) -> getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong(),
+            "max_elapsed_time_since_last_successful_poll"));
     // consumer record number per second returned by Kafka consumer poll.
     pollResultNumSensor = registerSensor("consumer_poll_result_num", new Avg(), new Total());
     pollNonZeroResultNumSensor = registerSensor("consumer_poll_non_zero_result_num", new Avg(), new Total());

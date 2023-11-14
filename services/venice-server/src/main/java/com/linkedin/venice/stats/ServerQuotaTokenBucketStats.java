@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.function.Supplier;
 
 
@@ -18,22 +19,22 @@ public class ServerQuotaTokenBucketStats extends AbstractVeniceStats {
       String name,
       Supplier<TokenBucket> tokenBucketSupplier) {
     super(metricsRepository, name);
-    quota = registerSensor("QuotaRcuPerSecondAllowed", new Gauge(() -> {
+    quota = registerSensor(new AsyncGauge((c, t) -> {
       TokenBucket bucket = tokenBucketSupplier.get();
       if (bucket == null) {
         return 0;
       } else {
         return bucket.getAmortizedRefillPerSecond();
       }
-    }));
-    tokensAvailable = registerSensor("QuotaRcuTokensRemaining", new Gauge(() -> {
+    }, "QuotaRcuPerSecondAllowed"));
+    tokensAvailable = registerSensor(new AsyncGauge((c, t) -> {
       TokenBucket bucket = tokenBucketSupplier.get();
       if (bucket == null) {
         return 0;
       } else {
         return bucket.getStaleTokenCount();
       }
-    }));
+    }, "QuotaRcuTokensRemaining"));
   }
 
 }

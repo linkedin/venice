@@ -7,12 +7,12 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
@@ -159,10 +159,10 @@ public class PubSubSharedProducerAdapter implements PubSubProducerAdapter {
       producerMetrics.keySet().forEach(metric -> {
         String metricName = "producer_" + id + "_" + metric;
         LOGGER.info("Registering metric: {}", metricName);
-        registerSensorIfAbsent(metricName, new Gauge(() -> {
+        registerSensorIfAbsent(new AsyncGauge((c, t) -> {
           mayBeCalculateAllProducerMetrics();
           return producerMetrics.get(metric);
-        }));
+        }, metricName));
       });
       producerSendLatencySensor = registerSensor("producer_" + id + "_send_latency", new Avg(), new Max());
     }

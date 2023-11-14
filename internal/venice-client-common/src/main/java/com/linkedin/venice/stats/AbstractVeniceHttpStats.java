@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.read.RequestType;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.NamedMeasurableStat;
 import io.tehuti.metrics.Sensor;
 
 
@@ -35,6 +36,12 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
 
   protected Sensor registerSensor(String sensorName, Sensor[] parents, MeasurableStat... stats) {
     return super.registerSensor(getFullMetricName(sensorName), parents, stats);
+  }
+
+  @Override
+  protected Sensor registerSensor(NamedMeasurableStat... stats) {
+    String sensorName = stats.length > 0 ? stats[0].getStatName() : "NO_NAME";
+    return super.registerSensor(getFullMetricName(sensorName), stats);
   }
 
   /**

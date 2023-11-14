@@ -2,9 +2,9 @@ package com.linkedin.davinci.store.cache.backend;
 
 import com.linkedin.davinci.store.cache.VeniceStoreCache;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 
 
 public class StoreCacheStats extends AbstractVeniceStats {
@@ -15,9 +15,9 @@ public class StoreCacheStats extends AbstractVeniceStats {
 
   public StoreCacheStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    cacheHitCount = registerSensor("cache_hit", new Gauge(this::getHitCount));
-    cacheMissCount = registerSensor("cache_miss", new Gauge(this::getMissCount));
-    cacheHitRate = registerSensor("cache_hit_rate", new Gauge(this::getHitRate));
+    cacheHitCount = registerSensor(new AsyncGauge((c, t) -> this.getHitCount(), "cache_hit"));
+    cacheMissCount = registerSensor(new AsyncGauge((c, t) -> this.getMissCount(), "cache_miss"));
+    cacheHitRate = registerSensor(new AsyncGauge((c, t) -> this.getHitRate(), "cache_hit_rate"));
   }
 
   public synchronized void registerServingCache(VeniceStoreCache cache) {

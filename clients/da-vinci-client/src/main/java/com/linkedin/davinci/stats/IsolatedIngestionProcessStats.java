@@ -1,9 +1,9 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -47,19 +47,20 @@ public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
            */
           String[] sensorAndAttributeName = getSensorAndAttributeName(originalMetricName);
           if (sensorAndAttributeName.length == 1) {
-            registerSensor(sensorAndAttributeName[0], new Gauge(() -> this.metricValueMap.get(originalMetricName)));
+            registerSensor(
+                new AsyncGauge((c, t) -> this.metricValueMap.get(originalMetricName), sensorAndAttributeName[0]));
           } else if (sensorAndAttributeName.length == 2) {
             registerSensorAttributeGauge(
                 sensorAndAttributeName[0],
                 sensorAndAttributeName[1],
-                new Gauge(() -> this.metricValueMap.get(originalMetricName)));
+                new AsyncGauge((c, t) -> this.metricValueMap.get(originalMetricName), sensorAndAttributeName[0]));
           } else {
             /**
              * In theory due to Tehuti metric naming pattern this won't happen, but we add it as defensive
              * coding to avoid potential metric errors.
              */
             String correctedMetricName = name.toString().replace('.', '_');
-            registerSensor(correctedMetricName, new Gauge(() -> this.metricValueMap.get(originalMetricName)));
+            registerSensor(new AsyncGauge((c, t) -> this.metricValueMap.get(originalMetricName), correctedMetricName));
           }
           newMetricNameSet.add(originalMetricName);
         }

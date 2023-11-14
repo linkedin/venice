@@ -3,8 +3,8 @@ package com.linkedin.davinci.stats;
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 
@@ -21,22 +21,30 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
 
   @Override
   protected void registerStats() {
-    registerSensor("duplicate_msg", new DIVStatsCounter(this, () -> (double) getStats().getDuplicateMsg()));
-    registerSensor("missing_msg", new DIVStatsCounter(this, () -> (double) getStats().getMissingMsg()));
-    registerSensor("corrupted_msg", new DIVStatsCounter(this, () -> (double) getStats().getCorruptedMsg()));
-    registerSensor("success_msg", new DIVStatsCounter(this, () -> (double) getStats().getSuccessMsg()));
+    registerSensor(new DIVStatsCounter("duplicate_msg", this, () -> (double) getStats().getDuplicateMsg()));
+    registerSensor(new DIVStatsCounter("missing_msg", this, () -> (double) getStats().getMissingMsg()));
+    registerSensor(new DIVStatsCounter("corrupted_msg", this, () -> (double) getStats().getCorruptedMsg()));
+    registerSensor(new DIVStatsCounter("success_msg", this, () -> (double) getStats().getSuccessMsg()));
     registerSensor(
-        "benign_leader_offset_rewind_count",
-        new DIVStatsCounter(this, () -> (double) getStats().getBenignLeaderOffsetRewindCount()));
+        new DIVStatsCounter(
+            "benign_leader_offset_rewind_count",
+            this,
+            () -> (double) getStats().getBenignLeaderOffsetRewindCount()));
     registerSensor(
-        "potentially_lossy_leader_offset_rewind_count",
-        new DIVStatsCounter(this, () -> (double) getStats().getPotentiallyLossyLeaderOffsetRewindCount()));
+        new DIVStatsCounter(
+            "potentially_lossy_leader_offset_rewind_count",
+            this,
+            () -> (double) getStats().getPotentiallyLossyLeaderOffsetRewindCount()));
     registerSensor(
-        "leader_producer_failure_count",
-        new DIVStatsCounter(this, () -> (double) getStats().getLeaderProducerFailure()));
+        new DIVStatsCounter(
+            "leader_producer_failure_count",
+            this,
+            () -> (double) getStats().getLeaderProducerFailure()));
     registerSensor(
-        "benign_leader_producer_failure_count",
-        new DIVStatsCounter(this, () -> (double) getStats().getBenignLeaderProducerFailure()));
+        new DIVStatsCounter(
+            "benign_leader_producer_failure_count",
+            this,
+            () -> (double) getStats().getBenignLeaderProducerFailure()));
 
     // This prevents user store system store to register latency related DIV metric sensors.
     if (!VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
@@ -54,16 +62,14 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
       String sensorBaseName,
       Function<DIVStats, WritePathLatencySensor> sensorFunction) {
     registerSensor(
-        sensorBaseName + "_latency_avg_ms",
-        new DIVStatsCounter(this, () -> sensorFunction.apply(getStats()).getAvg()));
+        new DIVStatsCounter(sensorBaseName + "_latency_avg_ms", this, () -> sensorFunction.apply(getStats()).getAvg()));
     registerSensor(
-        sensorBaseName + "_latency_max_ms",
-        new DIVStatsCounter(this, () -> sensorFunction.apply(getStats()).getMax()));
+        new DIVStatsCounter(sensorBaseName + "_latency_max_ms", this, () -> sensorFunction.apply(getStats()).getMax()));
   }
 
-  private static class DIVStatsCounter extends Gauge {
-    DIVStatsCounter(DIVStatsReporter reporter, DoubleSupplier supplier) {
-      super(() -> (reporter.getStats() == null) ? NULL_DIV_STATS.code : supplier.getAsDouble());
+  protected static class DIVStatsCounter extends AsyncGauge {
+    DIVStatsCounter(String metricName, DIVStatsReporter reporter, DoubleSupplier supplier) {
+      super((c, t) -> (reporter.getStats() == null) ? NULL_DIV_STATS.code : supplier.getAsDouble(), metricName);
     }
   }
 

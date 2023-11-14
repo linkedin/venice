@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import java.util.ArrayList;
@@ -53,32 +54,36 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
      * Check {@link PoolStats#getLeased()} to get more details.
      */
     registerSensor(
-        "total_active_connection_count",
-        new LambdaStat(() -> getAggStats(connectionManager -> connectionManager.getTotalStats().getLeased())));
+        new LambdaStat(
+            (c, t) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getLeased()),
+            "total_active_connection_count"));
     /**
      * Total idle connections
      *
      * Check {@link PoolStats#getAvailable()} to get more details.
      */
     registerSensor(
-        "total_idle_connection_count",
-        new LambdaStat(() -> getAggStats(connectionManager -> connectionManager.getTotalStats().getAvailable())));
+        new LambdaStat(
+            (c, t) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getAvailable()),
+            "total_idle_connection_count"));
     /**
      * Total max connections
      *
      * Check {@link PoolStats#getMax()} to get more details.
      */
     registerSensor(
-        "total_max_connection_count",
-        new LambdaStat(() -> getAggStats(connectionManager -> connectionManager.getTotalStats().getMax())));
+        new LambdaStat(
+            (c, t) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getMax()),
+            "total_max_connection_count"));
     /**
      * Total number of connection requests being blocked awaiting a free connection
      *
      * Check {@link PoolStats#getPending()} to get more details.
      */
     registerSensor(
-        "total_pending_connection_request_count",
-        new LambdaStat(() -> getAggStats(connectionManager -> connectionManager.getTotalStats().getPending())));
+        new LambdaStat(
+            (c, t) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getPending()),
+            "total_pending_connection_request_count"));
   }
 
   public void addConnectionPoolManager(PoolingNHttpClientConnectionManager connectionManager) {
@@ -150,20 +155,23 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
        *
        * Check {@link PoolStats#getLeased()} to get more details.
        */
-      registerSensor("active_connection_count", new Gauge(() -> getRouteAggStats(poolStats -> poolStats.getLeased())));
+      registerSensor(
+          new AsyncGauge((c, t) -> getRouteAggStats(poolStats -> poolStats.getLeased()), "active_connection_count"));
       /**
        * Total idle connections
        *
        * Check {@link PoolStats#getAvailable()} to get more details.
        */
-      registerSensor("idle_connection_count", new Gauge(() -> getRouteAggStats(poolStats -> poolStats.getAvailable())));
+      registerSensor(
+          new AsyncGauge((c, t) -> getRouteAggStats(poolStats -> poolStats.getAvailable()), "idle_connection_count"));
 
       /**
        * Total max connections
        *
        * Check {@link PoolStats#getMax()} to get more details.
        */
-      registerSensor("max_connection_count", new Gauge(() -> getRouteAggStats(poolStats -> poolStats.getMax())));
+      registerSensor(
+          new AsyncGauge((c, t) -> getRouteAggStats(poolStats -> poolStats.getMax()), "max_connection_count"));
 
       /**
        * Total number of connection requests being blocked awaiting a free connection
@@ -171,8 +179,9 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
        * Check {@link PoolStats#getPending()} to get more details.
        */
       registerSensor(
-          "pending_connection_request_count",
-          new Gauge(() -> getRouteAggStats(poolStats -> poolStats.getPending())));
+          new AsyncGauge(
+              (c, t) -> getRouteAggStats(poolStats -> poolStats.getPending()),
+              "pending_connection_request_count"));
     }
 
     /**

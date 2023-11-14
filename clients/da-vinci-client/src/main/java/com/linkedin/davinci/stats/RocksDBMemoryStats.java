@@ -3,8 +3,8 @@ package com.linkedin.davinci.stats;
 import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -80,7 +80,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       if (plainTableEnabled && BLOCK_CACHE_METRICS.contains(metric)) {
         continue;
       }
-      registerSensor(metric, new Gauge(() -> {
+      registerSensor(new AsyncGauge((c, t) -> {
         Long total = 0L;
         // Lock down the list of RocksDB interfaces while the collection is ongoing
         synchronized (hostedRocksDBPartitions) {
@@ -98,15 +98,15 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
           }
         }
         return total;
-      }));
+      }, metric));
     }
-    registerSensor("memory_limit", new Gauge(() -> memoryLimit));
-    registerSensor("memory_usage", new Gauge(() -> {
+    registerSensor(new AsyncGauge((c, t) -> memoryLimit, "memory_limit"));
+    registerSensor(new AsyncGauge((c, t) -> {
       if (memoryLimit > 0 && sstFileManager != null) {
         return sstFileManager.getTotalSize();
       }
       return -1;
-    }));
+    }, "memory_usage"));
   }
 
   public void setMemoryLimit(long memoryLimit) {

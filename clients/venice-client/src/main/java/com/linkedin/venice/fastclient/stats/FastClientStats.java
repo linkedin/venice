@@ -2,13 +2,13 @@ package com.linkedin.venice.fastclient.stats;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
@@ -69,15 +69,19 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     this.dualReadFastClientSlowerRequestCountSensor =
         registerSensor("dual_read_fastclient_slower_request_count", fastClientSlowerRequestRate);
     this.dualReadFastClientSlowerRequestRatioSensor = registerSensor(
-        "dual_read_fastclient_slower_request_ratio",
-        new TehutiUtils.SimpleRatioStat(fastClientSlowerRequestRate, requestRate));
+        new TehutiUtils.SimpleRatioStat(
+            fastClientSlowerRequestRate,
+            requestRate,
+            "dual_read_fastclient_slower_request_ratio"));
     Rate fastClientErrorThinClientSucceedRequestRate = new OccurrenceRate();
     this.dualReadFastClientErrorThinClientSucceedRequestCountSensor = registerSensor(
         "dual_read_fastclient_error_thinclient_succeed_request_count",
         fastClientErrorThinClientSucceedRequestRate);
     this.dualReadFastClientErrorThinClientSucceedRequestRatioSensor = registerSensor(
-        "dual_read_fastclient_error_thinclient_succeed_request_ratio",
-        new TehutiUtils.SimpleRatioStat(fastClientErrorThinClientSucceedRequestRate, requestRate));
+        new TehutiUtils.SimpleRatioStat(
+            fastClientErrorThinClientSucceedRequestRate,
+            requestRate,
+            "dual_read_fastclient_error_thinclient_succeed_request_ratio"));
     this.dualReadThinClientFastClientLatencyDeltaSensor =
         registerSensorWithDetailedPercentiles("dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
@@ -85,13 +89,13 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     this.errorRetryRequestSensor = registerSensor("error_retry_request", new OccurrenceRate());
     this.retryRequestWinSensor = registerSensor("retry_request_win", new OccurrenceRate());
 
-    this.metadataStalenessSensor = registerSensor("metadata_staleness_high_watermark_ms", new Gauge(() -> {
+    this.metadataStalenessSensor = registerSensor(new AsyncGauge((c, t) -> {
       if (this.cacheTimeStampInMs == 0) {
         return Double.NaN;
       } else {
         return System.currentTimeMillis() - this.cacheTimeStampInMs;
       }
-    }));
+    }, "metadata_staleness_high_watermark_ms"));
   }
 
   public void recordNoAvailableReplicaRequest() {

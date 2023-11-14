@@ -3,9 +3,9 @@ package com.linkedin.davinci.stats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsErrorCode;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -89,30 +89,30 @@ public class AggVersionedStorageEngineStats extends
 
     @Override
     protected void registerStats() {
-      registerSensor("disk_usage_in_bytes", new Gauge(() -> {
+      registerSensor(new AsyncGauge((c, t) -> {
         StorageEngineStats stats = getStats();
         if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
           return stats.getDiskUsageInBytes();
         }
-      }));
-      registerSensor("rmd_disk_usage_in_bytes", new Gauge(() -> {
+      }, "disk_usage_in_bytes"));
+      registerSensor(new AsyncGauge((c, t) -> {
         StorageEngineStats stats = getStats();
         if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
           return stats.getRMDDiskUsageInBytes();
         }
-      }));
-      registerSensor("rocksdb_open_failure_count", new Gauge(() -> {
+      }, "rmd_disk_usage_in_bytes"));
+      registerSensor(new AsyncGauge((c, t) -> {
         StorageEngineStats stats = getStats();
         if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
           return stats.rocksDBOpenFailureCount.get();
         }
-      }));
+      }, "rocksdb_open_failure_count"));
     }
   }
 }

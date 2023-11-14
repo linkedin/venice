@@ -31,6 +31,7 @@ import static org.rocksdb.TickerType.READ_AMP_TOTAL_READ_BYTES;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import org.rocksdb.Statistics;
 import org.rocksdb.TickerType;
 
@@ -103,7 +104,7 @@ public class RocksDBStats extends AbstractVeniceStats {
     this.getHitL2AndUp = registerSensor("rocksdb_get_hit_l2_and_up", GET_HIT_L2_AND_UP);
     this.compactionCancelled = registerSensor("rocksdb_compaction_cancelled", COMPACTION_CANCELLED);
 
-    this.blockCacheHitRatio = registerSensor("rocksdb_block_cache_hit_ratio", new Gauge(() -> {
+    this.blockCacheHitRatio = registerSensor(new AsyncGauge((c, t) -> {
       if (rocksDBStat != null) {
         return rocksDBStat.getTickerCount(BLOCK_CACHE_DATA_HIT)
             / (double) (rocksDBStat.getTickerCount(BLOCK_CACHE_DATA_HIT)
@@ -111,25 +112,25 @@ public class RocksDBStats extends AbstractVeniceStats {
       }
 
       return -1;
-    }));
+    }, "rocksdb_block_cache_hit_ratio"));
 
-    this.readAmplificationFactor = registerSensor("rocksdb_read_amplification_factor", new Gauge(() -> {
+    this.readAmplificationFactor = registerSensor(new AsyncGauge((c, t) -> {
       if (rocksDBStat != null) {
         return rocksDBStat.getTickerCount(READ_AMP_TOTAL_READ_BYTES)
             / (double) (rocksDBStat.getTickerCount(READ_AMP_ESTIMATE_USEFUL_BYTES));
       }
 
       return -1;
-    }));
+    }, "rocksdb_read_amplification_factor"));
   }
 
   private Sensor registerSensor(String sensorName, TickerType tickerType) {
-    return registerSensor(sensorName, new Gauge(() -> {
+    return registerSensor(new AsyncGauge((c, t) -> {
       if (rocksDBStat != null) {
         return rocksDBStat.getTickerCount(tickerType);
       }
       return -1;
-    }));
+    }, sensorName));
   }
 
   public void setRocksDBStat(Statistics stat) {

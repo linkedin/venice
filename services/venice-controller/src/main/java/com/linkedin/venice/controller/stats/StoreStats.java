@@ -4,15 +4,15 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 
 
 public class StoreStats extends AbstractVeniceStats {
   public StoreStats(String storeName, MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository) {
     super(metricsRepository, storeName);
 
-    registerSensorIfAbsent("data_age_ms", new Gauge(() -> {
+    registerSensorIfAbsent(new AsyncGauge((c, t) -> {
       try {
         Store store = storeRepository.getStoreOrThrow(storeName);
         long now = System.currentTimeMillis();
@@ -21,6 +21,6 @@ public class StoreStats extends AbstractVeniceStats {
       } catch (Throwable e) {
         return -1;
       }
-    }));
+    }, "data_age_ms"));
   }
 }

@@ -2,6 +2,7 @@ package com.linkedin.venice.stats;
 
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.lang.management.BufferPoolMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
@@ -67,24 +68,24 @@ public class VeniceJVMStats extends AbstractVeniceStats {
     super(metricsRepository, name);
 
     directMemoryCapacity = registerSensor(
-        "DirectMemoryCapacity",
-        new Gauge(() -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getTotalCapacity)));
+        new AsyncGauge(
+            (c, t) -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getTotalCapacity),
+            "DirectMemoryCapacity"));
 
     directMemoryUsage = registerSensor(
-        "DirectMemoryUsage",
-        new Gauge(() -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getMemoryUsed)));
+        new AsyncGauge((c, t) -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getMemoryUsed), "DirectMemoryUsage"));
 
-    directMemoryPoolCount =
-        registerSensor("DirectPoolCount", new Gauge(() -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getCount)));
+    directMemoryPoolCount = registerSensor(
+        new AsyncGauge((c, t) -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getCount), "DirectPoolCount"));
 
-    heapUsage = registerSensor("HeapUsage", new Gauge(() -> {
+    heapUsage = registerSensor(new AsyncGauge((c, t) -> {
       MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
 
       if (memoryBean != null) {
         return memoryBean.getHeapMemoryUsage().getUsed();
       }
       return -1;
-    }));
+    }, "HeapUsage"));
 
     // Removing maxDirectMemory sensor as sun.misc.VM class is removed in JDK11
     // This makes code compatible with both JDK8 and JDK11

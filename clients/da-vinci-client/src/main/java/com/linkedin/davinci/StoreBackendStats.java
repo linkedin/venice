@@ -3,11 +3,12 @@ package com.linkedin.davinci;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Max;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
@@ -23,14 +24,14 @@ public class StoreBackendStats extends AbstractVeniceStats {
   public StoreBackendStats(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
     badRequestSensor = registerSensor("bad_request", new Count());
-    futureVersionSensor = registerSensor("future_version", new Gauge());
-    currentVersionSensor = registerSensor("current_version", new Gauge());
+    futureVersionSensor = registerSensor("future_version_number", new Gauge());
+    currentVersionSensor = registerSensor("current_version_number", new Gauge());
     subscribeDurationSensor = registerSensor("subscribe_duration_ms", new Avg(), new Max());
 
-    registerSensor("data_age_ms", new Gauge(() -> {
+    registerSensor(new AsyncGauge((c, t) -> {
       Version version = currentVersion.get();
       return version != null ? version.getAge().toMillis() : Double.NaN;
-    }));
+    }, "data_age_ms"));
   }
 
   public void recordBadRequest() {

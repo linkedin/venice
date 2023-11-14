@@ -4,7 +4,6 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -12,6 +11,7 @@ import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
@@ -45,10 +45,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    * allocated in a storage node reported with its uncompressed data size.
    */
   private final LongAdderRateGauge totalBytesReadFromKafkaAsUncompressedSizeRate;
-  private final Sensor storageQuotaUsedSensor;
-  // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk quota
-  // allowed.
-  private final Sensor diskQuotaSensor;
 
   /** To measure 'put' latency of consumer records blocking queue */
   private final Sensor consumerRecordsQueuePutLatencySensor;
@@ -253,40 +249,42 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     // Register an aggregate metric for disk_usage_in_bytes metric
     final boolean isTotalStats = isTotalStats();
     registerSensor(
-        "disk_usage_in_bytes",
-        new Gauge(
-            () -> ingestionTaskMap.values()
+        new AsyncGauge(
+            (c, t) -> ingestionTaskMap.values()
                 .stream()
                 .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
                 .mapToLong(
                     task -> isTotalStats
                         ? task.getStorageEngine().getCachedStoreSizeInBytes()
                         : task.getStorageEngine().getStoreSizeInBytes())
-                .sum()));
+                .sum(),
+            "disk_usage_in_bytes"));
     // Register an aggregate metric for rmd_disk_usage_in_bytes metric
     registerSensor(
-        "rmd_disk_usage_in_bytes",
-        new Gauge(
-            () -> ingestionTaskMap.values()
+        new AsyncGauge(
+            (c, t) -> ingestionTaskMap.values()
                 .stream()
                 .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
                 .mapToLong(
                     task -> isTotalStats
                         ? task.getStorageEngine().getCachedRMDSizeInBytes()
                         : task.getStorageEngine().getRMDSizeInBytes())
-                .sum()));
+                .sum(),
+            "rmd_disk_usage_in_bytes"));
     registerSensor(
-        "ingestion_stuck_by_memory_constraint",
-        new Gauge(
-            () -> ingestionTaskMap.values()
+        new AsyncGauge(
+            (c, t) -> ingestionTaskMap.values()
                 .stream()
                 .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
                 .mapToLong(task -> task.isStuckByMemoryConstraint() ? 1 : 0)
-                .sum()));
+                .sum(),
+            "ingestion_stuck_by_memory_constraint"));
 
     // Stats which are per-store only:
-    this.diskQuotaSensor =
-        registerSensor("global_store_disk_quota_allowed", new Gauge(() -> diskQuotaAllowedGauge), new Max());
+    // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk
+    // quota
+    // allowed.
+    registerSensor(new AsyncGauge((c, t) -> diskQuotaAllowedGauge, "global_store_disk_quota_allowed"));
 
     String keySizeSensorName = "record_key_size_in_bytes";
     this.keySizeSensor = registerSensor(
@@ -311,8 +309,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.viewProducerLatencySensor,
         avgAndMax());
 
-    this.storageQuotaUsedSensor =
-        registerSensor("storage_quota_used", new Gauge(() -> hybridQuotaUsageGauge), new Avg(), new Min(), new Max());
+    registerSensor("storage_quota_used", new AsyncGauge((c, t) -> hybridQuotaUsageGauge, "storage_quota_used"));
 
     // Stats which are both per-store and total:
 
@@ -462,12 +459,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordStorageQuotaUsed(double quotaUsed, long currentTimeMs) {
     hybridQuotaUsageGauge = quotaUsed;
-    storageQuotaUsedSensor.record(quotaUsed, currentTimeMs);
   }
 
   public void recordDiskQuotaAllowed(long quotaAllowed, long currentTimeMs) {
     diskQuotaAllowedGauge = quotaAllowed;
-    diskQuotaSensor.record(quotaAllowed, currentTimeMs);
   }
 
   public void recordConsumerRecordsQueuePutLatency(double latency, long currentTimeMs) {

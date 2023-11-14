@@ -1,9 +1,9 @@
 package com.linkedin.venice.pubsub.adapter;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 
 
 /**
@@ -25,10 +25,10 @@ public class PubSubSharedProducerStats extends AbstractVeniceStats {
       PubSubSharedProducerFactory sharedProducerFactory) {
     super(metricsRepository, "PubSubSharedProducerStats");
     sharedProducerActiveTasksCountSensor = registerSensor(
-        "shared_producer_active_task_count",
-        new Gauge(() -> sharedProducerFactory.getActiveSharedProducerTasksCount()));
+        new AsyncGauge(
+            (c, t) -> sharedProducerFactory.getActiveSharedProducerTasksCount(),
+            "shared_producer_active_task_count"));
     sharedProducerActiveCountSensor = registerSensor(
-        "shared_producer_active_count",
-        new Gauge(() -> sharedProducerFactory.getActiveSharedProducerCount()));
+        new AsyncGauge((c, t) -> sharedProducerFactory.getActiveSharedProducerCount(), "shared_producer_active_count"));
   }
 }

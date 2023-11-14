@@ -2,9 +2,9 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.kafka.consumer.AbstractStoreBufferService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,21 +22,20 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
     super(metricsRepository, "StoreBufferService");
     this.workerService = workerService;
     totalMemoryUsageSensor =
-        registerSensor("total_memory_usage", new Gauge(() -> this.workerService.getTotalMemoryUsage()));
-    totalRemainingMemorySensor =
-        registerSensor("total_remaining_memory", new Gauge(() -> this.workerService.getTotalRemainingMemory()));
+        registerSensor(new AsyncGauge((c, t) -> this.workerService.getTotalMemoryUsage(), "total_memory_usage"));
+    totalRemainingMemorySensor = registerSensor(
+        new AsyncGauge((c, t) -> this.workerService.getTotalRemainingMemory(), "total_remaining_memory"));
     maxMemoryUsagePerWriterSensor = registerSensor(
-        "max_memory_usage_per_writer",
-        new Gauge(() -> this.workerService.getMaxMemoryUsagePerDrainer()));
+        new AsyncGauge((c, t) -> this.workerService.getMaxMemoryUsagePerDrainer(), "max_memory_usage_per_writer"));
     minMemoryUsagePerWriterSensor = registerSensor(
-        "min_memory_usage_per_writer",
-        new Gauge(() -> this.workerService.getMinMemoryUsagePerDrainer()));
+        new AsyncGauge((c, t) -> this.workerService.getMinMemoryUsagePerDrainer(), "min_memory_usage_per_writer"));
 
     for (int i = 0; i < this.workerService.getDrainerCount(); i++) {
       int finalIndex = i;
       registerSensor(
-          "memory_usage_for_writer_num_" + i,
-          new Gauge(() -> this.workerService.getDrainerQueueMemoryUsage(finalIndex)));
+          new AsyncGauge(
+              (c, t) -> this.workerService.getDrainerQueueMemoryUsage(finalIndex),
+              "memory_usage_for_writer_num_" + i));
     }
   }
 }

@@ -1,9 +1,9 @@
 package com.linkedin.davinci.stats;
 
-import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -23,8 +23,9 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
       String name) {
     super(metricsRepository, threadPoolExecutor, name);
     threadBlockedOnOfflineToDroppedTransitionSensor = registerSensor(
-        "thread_blocked_on_offline_to_dropped_transition",
-        new LambdaStat(() -> this.threadBlockedOnOfflineToDroppedTransitionCount.get()));
+        new AsyncGauge(
+            (c, t) -> this.threadBlockedOnOfflineToDroppedTransitionCount.get(),
+            "thread_blocked_on_offline_to_dropped_transition"));
   }
 
   public void incrementThreadBlockedOnOfflineToDroppedTransitionCount() {

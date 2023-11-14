@@ -36,6 +36,7 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
+import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -52,6 +53,8 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.AsyncGaugeConfig;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
@@ -310,12 +313,15 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
         SSLFactory sslFactory = ssl ? SslUtils.getVeniceLocalSslFactory() : null;
 
-        VeniceServerContext.Builder serverContextBuilder =
-            new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
-                .setMetricsRepository(new MetricsRepository())
-                .setSslFactory(sslFactory)
-                .setClientConfigForConsumer(consumerClientConfig)
-                .setServiceDiscoveryAnnouncers(d2Servers);
+        VeniceServerContext.Builder serverContextBuilder = new VeniceServerContext.Builder()
+            .setVeniceConfigLoader(veniceConfigLoader)
+            .setMetricsRepository(
+                new MetricsRepository(
+                    new MetricConfig(
+                        new AsyncGaugeConfig(Executors.newSingleThreadExecutor(), TimeUnit.MINUTES.toMillis(1), 100))))
+            .setSslFactory(sslFactory)
+            .setClientConfigForConsumer(consumerClientConfig)
+            .setServiceDiscoveryAnnouncers(d2Servers);
 
         TestVeniceServer server = new TestVeniceServer(serverContextBuilder.build());
         return new VeniceServerWrapper(
@@ -459,7 +465,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
     this.veniceServer = new TestVeniceServer(
         new VeniceServerContext.Builder().setVeniceConfigLoader(config)
-            .setMetricsRepository(new MetricsRepository())
+            .setMetricsRepository(
+                new MetricsRepository(
+                    new MetricConfig(
+                        new AsyncGaugeConfig(Executors.newSingleThreadExecutor(), TimeUnit.MINUTES.toMillis(1), 100))))
             .setSslFactory(sslFactory)
             .setClientConfigForConsumer(consumerClientConfig)
             .setServiceDiscoveryAnnouncers(d2Servers)
@@ -533,7 +542,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     }
 
     VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
-        .setMetricsRepository(new MetricsRepository())
+        .setMetricsRepository(
+            new MetricsRepository(
+                new MetricConfig(
+                    new AsyncGaugeConfig(Executors.newSingleThreadExecutor(), TimeUnit.MINUTES.toMillis(1), 100))))
         .setSslFactory(ssl ? SslUtils.getVeniceLocalSslFactory() : null)
         .setClientConfigForConsumer(consumerClientConfig)
         .build();

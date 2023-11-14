@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.concurrent.atomic.AtomicLong;
 
 
@@ -22,14 +22,14 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
 
   public SystemStoreHealthCheckStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    badMetaSystemStoreCountSensor =
-        registerSensorIfAbsent("bad_meta_system_store_count", new Gauge(badMetaSystemStoreCounter::get));
-    badPushStatusSystemStoreCountSensor =
-        registerSensorIfAbsent("bad_push_status_system_store_count", new Gauge(badPushStatusSystemStoreCounter::get));
-    unreachableSystemStoreCountSensor =
-        registerSensorIfAbsent("unreachable_system_store_count", new Gauge(unreachableSystemStoreCounter::get));
-    notRepairableSystemStoreCountSensor =
-        registerSensorIfAbsent("not_repairable_system_store_count", new Gauge(notRepairableSystemStoreCounter::get));
+    badMetaSystemStoreCountSensor = registerSensorIfAbsent(
+        new AsyncGauge((c, t) -> badMetaSystemStoreCounter.get(), "bad_meta_system_store_count"));
+    badPushStatusSystemStoreCountSensor = registerSensorIfAbsent(
+        new AsyncGauge((c, t) -> badPushStatusSystemStoreCounter.get(), "bad_push_status_system_store_count"));
+    unreachableSystemStoreCountSensor = registerSensorIfAbsent(
+        new AsyncGauge((c, t) -> unreachableSystemStoreCounter.get(), "unreachable_system_store_count"));
+    notRepairableSystemStoreCountSensor = registerSensorIfAbsent(
+        new AsyncGauge((c, t) -> notRepairableSystemStoreCounter.get(), "not_repairable_system_store_count"));
   }
 
   public AtomicLong getBadMetaSystemStoreCounter() {

@@ -1,12 +1,12 @@
 package com.linkedin.venice.fastclient.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
@@ -43,7 +43,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.blockedInstanceCount = registerSensor("blocked_instance_count", new Avg(), new Max());
     this.unhealthyInstanceCount = registerSensor("unhealthy_instance_count", new Avg(), new Max());
     this.versionUpdateFailureSensor = registerSensor("version_update_failure", new OccurrenceRate());
-    this.currentVersionNumberSensor = registerSensor("current_version", new Gauge(() -> this.currentVersion));
+    this.currentVersionNumberSensor = registerSensor(new AsyncGauge((c, t) -> this.currentVersion, "current_version"));
   }
 
   public void recordBlockedInstanceCount(int count) {

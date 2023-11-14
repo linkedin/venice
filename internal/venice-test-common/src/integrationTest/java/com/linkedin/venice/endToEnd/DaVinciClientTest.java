@@ -28,6 +28,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.DaVinciUserApp;
@@ -78,6 +79,8 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
+import io.tehuti.metrics.AsyncGaugeConfig;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -735,7 +738,10 @@ public class DaVinciClientTest {
       }
     }
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    // Since the previous DaVinci client is closed, the static default Gauge metric measurement thread pool is also
+    // shutdown. In order to continue calculating Gauge metrics values in the new client, create a new thread pool
+    MetricsRepository metricsRepository =
+        new MetricsRepository(new MetricConfig(new AsyncGaugeConfig(Executors.newSingleThreadExecutor(), 10000, 50)));
     DaVinciTestContext<Integer, Object> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,
@@ -760,9 +766,11 @@ public class DaVinciClientTest {
       });
       // After restart, Da Vinci client will still get correct metrics for ingested stores.
       String metricName = "." + storeName + "_current--disk_usage_in_bytes.Gauge";
-      Metric storeDiskUsageMetric = metricsRepository.getMetric(metricName);
-      Assert.assertNotNull(storeDiskUsageMetric);
-      Assert.assertTrue(storeDiskUsageMetric.value() > 0);
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Metric storeDiskUsageMetric = metricsRepository.getMetric(metricName);
+        Assert.assertNotNull(storeDiskUsageMetric);
+        Assert.assertTrue(storeDiskUsageMetric.value() > 0);
+      });
     }
 
     daVinciConfig.setStorageClass(StorageClass.DISK);

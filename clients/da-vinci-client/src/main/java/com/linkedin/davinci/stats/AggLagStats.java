@@ -2,11 +2,11 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -36,14 +36,18 @@ public class AggLagStats extends AbstractVeniceStats {
           storeIngestionService.getVeniceConfigLoader().getVeniceServerConfig().getRegionName(),
           entry.getValue());
       registerSensor(
-          regionNamePrefix + "_rt_lag",
-          new Gauge(() -> getAggRegionHybridOffsetLagTotal(entry.getIntKey())));
+          new AsyncGauge((c, t) -> getAggRegionHybridOffsetLagTotal(entry.getIntKey()), regionNamePrefix + "_rt_lag"));
     }
-    registerSensor("agg_batch_replication_lag_future", new Gauge(this::getAggBatchReplicationLagFuture));
-    registerSensor("agg_batch_leader_offset_lag_future", new Gauge(this::getAggBatchLeaderOffsetLagFuture));
-    registerSensor("agg_batch_follower_offset_lag_future", new Gauge(this::getAggBatchFollowerOffsetLagFuture));
-    registerSensor("agg_hybrid_leader_offset_lag_total", new Gauge(this::getAggHybridLeaderOffsetLagTotal));
-    registerSensor("agg_hybrid_follower_offset_lag_total", new Gauge(this::getAggHybridFollowerOffsetLagTotal));
+    registerSensor(
+        new AsyncGauge((c, t) -> this.getAggBatchReplicationLagFuture(), "agg_batch_replication_lag_future"));
+    registerSensor(
+        new AsyncGauge((c, t) -> this.getAggBatchLeaderOffsetLagFuture(), "agg_batch_leader_offset_lag_future"));
+    registerSensor(
+        new AsyncGauge((c, t) -> this.getAggBatchFollowerOffsetLagFuture(), "agg_batch_follower_offset_lag_future"));
+    registerSensor(
+        new AsyncGauge((c, t) -> this.getAggHybridLeaderOffsetLagTotal(), "agg_hybrid_leader_offset_lag_total"));
+    registerSensor(
+        new AsyncGauge((c, t) -> this.getAggHybridFollowerOffsetLagTotal(), "agg_hybrid_follower_offset_lag_total"));
   }
 
   private synchronized void mayCollectAllLags() {

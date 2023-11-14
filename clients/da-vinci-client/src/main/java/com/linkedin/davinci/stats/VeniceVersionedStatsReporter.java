@@ -4,9 +4,9 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsSupplier;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 
 
 public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>>
@@ -27,8 +27,8 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
 
     this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
 
-    registerSensor("current_version", new Gauge(() -> currentVersion));
-    registerSensor("future_version", new Gauge(() -> futureVersion));
+    registerSensor("current_version", new AsyncGauge((ignored1, ignored2) -> currentVersion, "current_version"));
+    registerSensor("future_version", new AsyncGauge((ignored1, ignored2) -> futureVersion, "future_version"));
 
     this.currentStatsReporter = statsSupplier.get(metricsRepository, storeName + "_current");
     if (!isSystemStore) {

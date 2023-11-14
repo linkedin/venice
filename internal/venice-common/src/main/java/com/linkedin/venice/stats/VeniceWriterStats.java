@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 
 
 /**
@@ -22,10 +23,11 @@ public class VeniceWriterStats extends AbstractVeniceStats {
 
   public VeniceWriterStats(MetricsRepository metricsRepository) {
     super(metricsRepository, "VeniceWriterStats");
-    openVeniceWriterCount =
-        registerSensor("open_venice_writer_count", new Gauge(() -> VeniceWriter.OPEN_VENICE_WRITER_COUNT.get()));
+    openVeniceWriterCount = registerSensor(
+        new AsyncGauge((c, t) -> VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), "open_venice_writer_count"));
     veniceWriterFailedToCloseCount = registerSensor(
-        "venice_writer_failed_to_close_count",
-        new Gauge(() -> VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get()));
+        new AsyncGauge(
+            (c, t) -> VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(),
+            "venice_writer_failed_to_close_count"));
   }
 }

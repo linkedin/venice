@@ -2,7 +2,6 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -54,7 +53,7 @@ public class RouteHttpRequestStats {
   }
 
   static class InternalHostStats extends AbstractVeniceStats {
-    private final Sensor pendingRequestCountSensor;
+    // private final Sensor pendingRequestCountSensor;
     private final Sensor unhealthyPendingQueueDuration;
     private final Sensor unhealthyPendingRateSensor;
     private AtomicLong pendingRequestCount;
@@ -62,7 +61,8 @@ public class RouteHttpRequestStats {
     public InternalHostStats(MetricsRepository metricsRepository, String hostName) {
       super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
       pendingRequestCount = new AtomicLong();
-      pendingRequestCountSensor = registerSensor("pending_request_count", new Gauge(() -> pendingRequestCount.get()));
+      // pendingRequestCountSensor =
+      // registerSensor(new AsyncGauge((c, t) -> pendingRequestCount.get(), "pending_request_count"));
 
       unhealthyPendingQueueDuration = registerSensor(
           "unhealthy_pending_queue_duration_per_route",

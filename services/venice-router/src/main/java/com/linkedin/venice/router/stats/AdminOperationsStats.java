@@ -2,9 +2,9 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
 
 
@@ -18,8 +18,9 @@ public class AdminOperationsStats extends AbstractVeniceStats {
     errorAdminRequestSensor = registerSensorIfAbsent("error_admin_request", new Count());
 
     registerSensorIfAbsent(
-        "read_quota_throttle",
-        new Gauge(() -> config.isReadThrottlingEnabled() || config.isEarlyThrottleEnabled() ? 1 : 0));
+        new AsyncGauge(
+            (c, t) -> config.isReadThrottlingEnabled() || config.isEarlyThrottleEnabled() ? 1 : 0,
+            "read_quota_throttle"));
   }
 
   public void recordAdminRequest() {
