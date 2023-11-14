@@ -8,6 +8,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.concurrent.Future;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -19,8 +20,8 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreRecordDeleter.class);
   private final PushStatusStoreVeniceWriterCache veniceWriterCache;
 
-  public PushStatusStoreRecordDeleter(VeniceWriterFactory veniceWriterFactory) {
-    this.veniceWriterCache = new PushStatusStoreVeniceWriterCache(veniceWriterFactory);
+  public PushStatusStoreRecordDeleter(VeniceWriterFactory veniceWriterFactory, Schema updateSchema) {
+    this.veniceWriterCache = new PushStatusStoreVeniceWriterCache(veniceWriterFactory, updateSchema);
   }
 
   public void deletePushStatus(

@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import java.io.IOException;
@@ -118,6 +119,17 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   }
 
   @Override
+  public DerivedSchemaEntry getUpdateSchema(int valueSchemaId) {
+    // Fetch the latest update schema for the specified value schema.
+    String updateSchemaRequestPath = TYPE_GET_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
+    SchemaResponse updateSchemaResponse = fetchSingleSchema(updateSchemaRequestPath);
+    return new DerivedSchemaEntry(
+        updateSchemaResponse.getId(),
+        updateSchemaResponse.getDerivedSchemaId(),
+        updateSchemaResponse.getSchemaStr());
+  }
+
+  @Override
   public Schema getUpdateSchema(Schema valueSchema) throws VeniceException {
     int valueSchemaId = getValueSchemaId(valueSchema);
     // Fetch the latest update schema for the specified value schema.
@@ -195,7 +207,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
     return multiSchemaResponse;
   }
 
-  private String fetchSingleSchemaString(String requestPath) throws VeniceClientException {
+  SchemaResponse fetchSingleSchema(String requestPath) throws VeniceClientException {
     SchemaResponse schemaResponse;
     byte[] response = executeRequest(requestPath);
     try {
@@ -208,6 +220,11 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
           "Received an error while fetching schema from path: " + requestPath + ", error message: "
               + schemaResponse.getError());
     }
+    return schemaResponse;
+  }
+
+  private String fetchSingleSchemaString(String requestPath) throws VeniceClientException {
+    SchemaResponse schemaResponse = fetchSingleSchema(requestPath);
     if (schemaResponse.getSchemaStr() == null) {
       throw new VeniceException("Received bad schema response with null schema string");
     }

@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
@@ -527,24 +526,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
     coloLeaderClusterName = commonConfig.getClusterName();
     pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
-    // TODO: We need to consider removing this config, as push status store is rolled out everywhere.
-    if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
-      pushStatusStoreReader = Optional.of(
-          new PushStatusStoreReader(
-              d2Client,
-              commonConfig.getClusterDiscoveryD2ServiceName(),
-              commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
-      pushStatusStoreWriter = Optional.of(
-          new PushStatusStoreWriter(
-              veniceWriterFactory,
-              controllerName,
-              commonConfig.getProps().getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1)));
-      pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(veniceWriterFactory));
-    } else {
-      pushStatusStoreReader = Optional.empty();
-      pushStatusStoreWriter = Optional.empty();
-      pushStatusStoreDeleter = Optional.empty();
-    }
     usePushStatusStoreToReadServerIncrementalPushStatus = commonConfig.usePushStatusStoreForIncrementalPush();
 
     zkSharedSystemStoreRepository = new SharedHelixReadOnlyZKSharedSystemStoreRepository(
@@ -566,6 +547,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getMetaStoreWriterCloseTimeoutInMS(),
         commonConfig.getMetaStoreWriterCloseConcurrency());
     metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
+    // TODO: We need to consider removing this config, as push status store is rolled out everywhere.
+    if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
+      pushStatusStoreReader = Optional.of(
+          new PushStatusStoreReader(
+              d2Client,
+              commonConfig.getClusterDiscoveryD2ServiceName(),
+              commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
+      DerivedSchemaEntry pushStatusStoreUpdateSchemaEntry = zkSharedSchemaRepository.getLatestDerivedSchema(
+          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName(),
+          AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
+      pushStatusStoreWriter = Optional.of(
+          new PushStatusStoreWriter(
+              veniceWriterFactory,
+              controllerName,
+              pushStatusStoreUpdateSchemaEntry.getId(),
+              pushStatusStoreUpdateSchemaEntry.getSchema()));
+      pushStatusStoreDeleter = Optional
+          .of(new PushStatusStoreRecordDeleter(veniceWriterFactory, pushStatusStoreUpdateSchemaEntry.getSchema()));
+    } else {
+      pushStatusStoreReader = Optional.empty();
+      pushStatusStoreWriter = Optional.empty();
+      pushStatusStoreDeleter = Optional.empty();
+    }
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
     dataRecoveryManager = new DataRecoveryManager(

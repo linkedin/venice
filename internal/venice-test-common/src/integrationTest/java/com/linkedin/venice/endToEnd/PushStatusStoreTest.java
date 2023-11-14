@@ -43,6 +43,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -265,7 +267,10 @@ public class PushStatusStoreTest {
         assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
 
         PushStatusStoreRecordDeleter statusStoreDeleter = new PushStatusStoreRecordDeleter(
-            cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory());
+            cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory(),
+            WriteComputeSchemaConverter.getInstance()
+                .convertFromValueRecordSchema(
+                    AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()));
 
         // After deleting the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status

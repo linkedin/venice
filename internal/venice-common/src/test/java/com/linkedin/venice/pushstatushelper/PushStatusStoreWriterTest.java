@@ -14,10 +14,12 @@ import com.linkedin.venice.pushstatus.NoOp;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValueWriteOpRecord;
 import com.linkedin.venice.pushstatus.instancesMapOps;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Collections;
 import java.util.Optional;
+import org.apache.avro.Schema;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -29,15 +31,19 @@ public class PushStatusStoreWriterTest {
   private final static String storeName = "venice-test-push-status-store";
   private final static int storeVersion = 42;
   private final static String incPushVersion = "inc_push_test_version_1";
-  private final static int derivedSchemaId = 42;
+  private final static int derivedSchemaId = 1;
   private final static int protoVersion =
       AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
+  private final static Schema updateSchema = WriteComputeSchemaConverter.getInstance()
+      .convertFromValueRecordSchema(
+          AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
 
   @BeforeMethod
   public void setUp() {
     veniceWriterCacheMock = mock(PushStatusStoreVeniceWriterCache.class);
     veniceWriterMock = mock(VeniceWriter.class);
-    pushStatusStoreWriter = new PushStatusStoreWriter(veniceWriterCacheMock, "instanceX", derivedSchemaId);
+    pushStatusStoreWriter =
+        new PushStatusStoreWriter(veniceWriterCacheMock, "instanceX", derivedSchemaId, updateSchema);
 
     when(veniceWriterCacheMock.prepareVeniceWriter(storeName)).thenReturn(veniceWriterMock);
   }
