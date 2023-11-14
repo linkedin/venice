@@ -253,11 +253,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   }
 
   @Override
-  public Map<String, Set<Integer>> getLoadedStoreAndUserPartitionsMapping() {
+  public Map<String, Set<Integer>> getLoadedStoreUserPartitionsMapping() {
     /**
      * Merge the loaded store partitions from main process and isolated process.
      */
-    Map<String, Set<Integer>> localMapping = super.getLoadedStoreAndUserPartitionsMapping();
+    Map<String, Set<Integer>> localMapping = super.getLoadedStoreUserPartitionsMapping();
     LoadedStoreUserPartitionMapping isolatedMapping = mainIngestionRequestClient.getLoadedStoreUserPartitionMapping();
     LOGGER.info(
         "Got loaded store partition mapping from isolated process: {}",

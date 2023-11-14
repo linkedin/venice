@@ -160,7 +160,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public Map<String, Set<Integer>> getLoadedStoreAndUserPartitionsMapping() {
+  public Map<String, Set<Integer>> getLoadedStoreUserPartitionsMapping() {
     return storageService.getStoreAndUserPartitionsMapping();
   }
 

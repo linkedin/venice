@@ -67,5 +67,5 @@ public interface IngestionBackendBase extends Closeable {
   /**
    * Get currently loaded store partition mappings.
    */
-  Map<String, Set<Integer>> getLoadedStoreAndUserPartitionsMapping();
+  Map<String, Set<Integer>> getLoadedStoreUserPartitionsMapping();
 }

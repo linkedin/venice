@@ -29,7 +29,7 @@ public class HelixParticipationServiceTest {
     Map<String, Set<Integer>> storePartitionMapping = new HashMap<>();
     storePartitionMapping.put(resourceV1, partitionSet);
     storePartitionMapping.put(resourceV2, partitionSet);
-    doReturn(storePartitionMapping).when(mockBackend).getLoadedStoreAndUserPartitionsMapping();
+    doReturn(storePartitionMapping).when(mockBackend).getLoadedStoreUserPartitionsMapping();
 
     HelixParticipationService.resetAllInstanceCVStates(mockAccessor, mockBackend, LOGGER);
 
