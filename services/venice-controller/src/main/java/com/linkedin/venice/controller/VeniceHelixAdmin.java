@@ -206,6 +206,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
@@ -349,9 +350,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final String coloLeaderClusterName;
   private final Optional<SSLFactory> sslFactory;
   private final String pushJobStatusStoreClusterName;
-  private final Optional<PushStatusStoreReader> pushStatusStoreReader;
-  private final Optional<PushStatusStoreWriter> pushStatusStoreWriter;
-  private final Optional<PushStatusStoreRecordDeleter> pushStatusStoreDeleter;
+  private final PushStatusStoreReader pushStatusStoreReader;
+  private final Lazy<PushStatusStoreWriter> pushStatusStoreWriter;
+  private final Lazy<PushStatusStoreRecordDeleter> pushStatusStoreDeleter;
   private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
   private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private final MetaStoreWriter metaStoreWriter;
@@ -547,29 +548,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getMetaStoreWriterCloseTimeoutInMS(),
         commonConfig.getMetaStoreWriterCloseConcurrency());
     metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
-    // TODO: We need to consider removing this config, as push status store is rolled out everywhere.
-    if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
-      pushStatusStoreReader = Optional.of(
-          new PushStatusStoreReader(
-              d2Client,
-              commonConfig.getClusterDiscoveryD2ServiceName(),
-              commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
+    pushStatusStoreReader = new PushStatusStoreReader(
+        d2Client,
+        commonConfig.getClusterDiscoveryD2ServiceName(),
+        commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds());
+    pushStatusStoreWriter = Lazy.of(() -> {
       DerivedSchemaEntry pushStatusStoreUpdateSchemaEntry = zkSharedSchemaRepository.getLatestDerivedSchema(
           VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName(),
           AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
-      pushStatusStoreWriter = Optional.of(
-          new PushStatusStoreWriter(
-              veniceWriterFactory,
-              controllerName,
-              pushStatusStoreUpdateSchemaEntry.getId(),
-              pushStatusStoreUpdateSchemaEntry.getSchema()));
-      pushStatusStoreDeleter = Optional
-          .of(new PushStatusStoreRecordDeleter(veniceWriterFactory, pushStatusStoreUpdateSchemaEntry.getSchema()));
-    } else {
-      pushStatusStoreReader = Optional.empty();
-      pushStatusStoreWriter = Optional.empty();
-      pushStatusStoreDeleter = Optional.empty();
-    }
+      return new PushStatusStoreWriter(
+          veniceWriterFactory,
+          controllerName,
+          pushStatusStoreUpdateSchemaEntry.getId(),
+          pushStatusStoreUpdateSchemaEntry.getSchema());
+
+    });
+    pushStatusStoreDeleter = Lazy.of(() -> {
+      DerivedSchemaEntry pushStatusStoreUpdateSchemaEntry = zkSharedSchemaRepository.getLatestDerivedSchema(
+          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName(),
+          AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
+      return new PushStatusStoreRecordDeleter(veniceWriterFactory, pushStatusStoreUpdateSchemaEntry.getSchema());
+    });
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
     dataRecoveryManager = new DataRecoveryManager(
@@ -1047,7 +1046,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             clusterName,
             store,
             metaStoreWriter,
-            pushStatusStoreDeleter,
+            getPushStatusStoreRecordDeleter(),
             LOGGER);
 
         if (isForcedDelete) {
@@ -3169,13 +3168,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
           cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
         }
-        if (store.isDaVinciPushStatusStoreEnabled() && pushStatusStoreDeleter.isPresent()) {
-          pushStatusStoreDeleter.get()
-              .deletePushStatus(
-                  storeName,
-                  deletedVersion.get().getNumber(),
-                  Optional.empty(),
-                  deletedVersion.get().getPartitionCount());
+        if (store.isDaVinciPushStatusStoreEnabled()) {
+          getPushStatusStoreRecordDeleter().deletePushStatus(
+              storeName,
+              deletedVersion.get().getNumber(),
+              Optional.empty(),
+              deletedVersion.get().getPartitionCount());
         }
       }
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
@@ -5505,12 +5503,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // if status is not SOIP remove incremental push version from the supposedlyOngoingIncrementalPushVersions
     if (incrementalPushVersion.isPresent()
         && (status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED || status == ExecutionStatus.NOT_CREATED)
-        && usePushStatusStoreToReadServerIncrementalPushStatus && pushStatusStoreWriter.isPresent()) {
-      pushStatusStoreWriter.get()
-          .removeFromSupposedlyOngoingIncrementalPushVersions(
-              store.getName(),
-              versionNumber,
-              incrementalPushVersion.get());
+        && usePushStatusStoreToReadServerIncrementalPushStatus) {
+      getPushStatusStoreWriter().removeFromSupposedlyOngoingIncrementalPushVersions(
+          store.getName(),
+          versionNumber,
+          incrementalPushVersion.get());
     }
     return list.get(0);
   }
@@ -5525,14 +5522,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (!usePushStatusStoreToReadServerIncrementalPushStatus) {
       return monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, cvRepo);
     }
-    if (!pushStatusStoreReader.isPresent()) {
-      throw new VeniceException("Cannot read server incremental push status from the status store.");
-    }
     return monitor.getIncrementalPushStatusFromPushStatusStore(
         kafkaTopic,
         incrementalPushVersion,
         cvRepo,
-        pushStatusStoreReader.get());
+        getPushStatusStoreReader());
   }
 
   private OfflinePushStatusInfo getOfflinePushStatusInfo(
@@ -5588,7 +5582,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (store.getVersion(versionNumber).isPresent()) {
         Version version = store.getVersion(versionNumber).get();
         ExecutionStatusWithDetails daVinciStatusAndDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(
-            pushStatusStoreReader.orElse(null),
+            getPushStatusStoreReader(),
             version.kafkaTopicName(),
             version.getPartitionCount(),
             incrementalPushVersion,
@@ -6654,9 +6648,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     participantMessageWriterMap.clear();
     dataRecoveryManager.close();
     Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
-    pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
-    pushStatusStoreWriter.ifPresent(PushStatusStoreWriter::close);
-    pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
+    getPushStatusStoreReader().close();
+    getPushStatusStoreWriter().close();
+    getPushStatusStoreRecordDeleter().close();
     Utils.closeQuietlyWithErrorLogged(pushJobDetailsStoreClient);
     Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreClient);
     clusterControllerClientPerColoMap.forEach(
@@ -7384,8 +7378,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @see Admin#getPushStatusStoreRecordDeleter()
    */
   @Override
-  public Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter() {
-    return pushStatusStoreDeleter;
+  public PushStatusStoreRecordDeleter getPushStatusStoreRecordDeleter() {
+    return pushStatusStoreDeleter.get();
   }
 
   /**
@@ -7893,13 +7887,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
+  public PushStatusStoreReader getPushStatusStoreReader() {
     return pushStatusStoreReader;
   }
 
   @Override
-  public Optional<PushStatusStoreWriter> getPushStatusStoreWriter() {
-    return pushStatusStoreWriter;
+  public PushStatusStoreWriter getPushStatusStoreWriter() {
+    return pushStatusStoreWriter.get();
   }
 
   @Override
@@ -7908,8 +7902,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String userStoreName = systemStoreType.extractRegularStoreName(storeName);
     long currentTimestamp = System.currentTimeMillis();
     if (VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.equals(systemStoreType)) {
-      // Push status store is fully rolled out in controller. It will be cleaned up to become non-optional argument.
-      getPushStatusStoreWriter().get().writeHeartbeat(userStoreName, currentTimestamp);
+      getPushStatusStoreWriter().writeHeartbeat(userStoreName, currentTimestamp);
     } else {
       getMetaStoreWriter().writeHeartbeat(userStoreName, currentTimestamp);
     }
@@ -7923,7 +7916,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
         long retrievedTimestamp;
         if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-          retrievedTimestamp = getPushStatusStoreReader().get()
+          retrievedTimestamp = getPushStatusStoreReader()
               .getHeartbeat(userStoreName, PushStatusStoreUtils.CONTROLLER_HEARTBEAT_INSTANCE_NAME);
         } else {
           retrievedTimestamp = getMetaStoreReader().getHeartbeat(userStoreName);

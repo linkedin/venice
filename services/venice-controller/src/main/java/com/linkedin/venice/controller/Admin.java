@@ -752,7 +752,7 @@ public interface Admin extends AutoCloseable, Closeable {
   /**
    * Return {@link PushStatusStoreRecordDeleter}.
    */
-  Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter();
+  PushStatusStoreRecordDeleter getPushStatusStoreRecordDeleter();
 
   /** Get a list of clusters this controller is a leader of.
    * @return a list of clusters this controller is a leader of.
@@ -948,9 +948,9 @@ public interface Admin extends AutoCloseable, Closeable {
   default void clearInstanceMonitor(String clusterName) {
   }
 
-  Optional<PushStatusStoreReader> getPushStatusStoreReader();
+  PushStatusStoreReader getPushStatusStoreReader();
 
-  Optional<PushStatusStoreWriter> getPushStatusStoreWriter();
+  PushStatusStoreWriter getPushStatusStoreWriter();
 
   /**
    * Send a heartbeat timestamp to targeted system store.

@@ -4761,7 +4761,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @see Admin#getPushStatusStoreRecordDeleter()
    */
   @Override
-  public Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter() {
+  public PushStatusStoreRecordDeleter getPushStatusStoreRecordDeleter() {
     return getVeniceHelixAdmin().getPushStatusStoreRecordDeleter();
   }
 
@@ -5235,12 +5235,12 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
+  public PushStatusStoreReader getPushStatusStoreReader() {
     throw new VeniceUnsupportedOperationException("Parent controller does not have Da Vinci push status store reader");
   }
 
   @Override
-  public Optional<PushStatusStoreWriter> getPushStatusStoreWriter() {
+  public PushStatusStoreWriter getPushStatusStoreWriter() {
     throw new VeniceUnsupportedOperationException("Parent controller does not have Da Vinci push status store writer");
   }
 

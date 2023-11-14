@@ -129,7 +129,7 @@ public class UserSystemStoreLifeCycleHelper {
       String systemStoreName,
       boolean isStoreMigrating,
       MetaStoreWriter metaStoreWriter,
-      Optional<PushStatusStoreRecordDeleter> pushStatusStoreRecordDeleter,
+      PushStatusStoreRecordDeleter pushStatusStoreRecordDeleter,
       Logger LOGGER) {
     LOGGER.info("Start deleting system store: {}", systemStoreName);
     admin.deleteAllVersionsInStore(clusterName, systemStoreName);
@@ -141,9 +141,8 @@ public class UserSystemStoreLifeCycleHelper {
           metaStoreWriter.removeMetaStoreWriter(systemStoreName);
           break;
         case DAVINCI_PUSH_STATUS_STORE:
-          pushStatusStoreRecordDeleter.ifPresent(
-              deleter -> deleter.removePushStatusStoreVeniceWriter(
-                  DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(systemStoreName)));
+          pushStatusStoreRecordDeleter
+              .removePushStatusStoreVeniceWriter(DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(systemStoreName));
           break;
         case BATCH_JOB_HEARTBEAT_STORE:
           // TODO: do we need to do any clean up here? HEARTBEAT_STORE is not coupled with any specific user store.
@@ -172,7 +171,7 @@ public class UserSystemStoreLifeCycleHelper {
       String clusterName,
       Store userStore,
       MetaStoreWriter metaStoreWriter,
-      Optional<PushStatusStoreRecordDeleter> pushStatusStoreRecordDeleter,
+      PushStatusStoreRecordDeleter pushStatusStoreRecordDeleter,
       Logger LOGGER) {
     if (userStore.isDaVinciPushStatusStoreEnabled()) {
       deleteSystemStore(
