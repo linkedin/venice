@@ -2,6 +2,7 @@ package com.linkedin.venice.client.schema;
 
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import java.io.Closeable;
 import java.util.HashSet;
@@ -43,12 +44,6 @@ public interface StoreSchemaFetcher extends Closeable {
   Map<Integer, Schema> getAllValueSchemasWithId();
 
   /**
-   * Get the latest derived schema of a value schema. Return the derived schema in {@link DerivedSchemaEntry} format,
-   * which contains Schema and protocol ID.
-   */
-  DerivedSchemaEntry getUpdateSchema(int valueSchemaId);
-
-  /**
    * Returns the Update (Write Compute) schema of the provided Value schema. The returned schema is used to construct
    * a {@link GenericRecord} that partially updates a record value that is associated with this value schema.
    * This method is expected to throw {@link InvalidVeniceSchemaException} when the provided value schema could not be
@@ -62,4 +57,12 @@ public interface StoreSchemaFetcher extends Closeable {
    * Returns the Venice store name this class is associated with.
    */
   String getStoreName();
+
+  SchemaEntry getLatestValueSchemaEntry();
+
+  /**
+   * Get the latest derived schema of a value schema. Return the derived schema in {@link DerivedSchemaEntry} format,
+   * which contains Schema and protocol ID.
+   */
+  DerivedSchemaEntry getUpdateSchemaEntry(int valueSchemaId);
 }

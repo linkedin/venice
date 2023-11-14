@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
@@ -81,6 +82,13 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
     return latestSchema;
   }
 
+  @Override
+  public SchemaEntry getLatestValueSchemaEntry() {
+    String latestSchemaRequestPath = TYPE_LATEST_VALUE_SCHEMA + "/" + storeClient.getStoreName();
+    SchemaResponse schemaResponse = fetchSingleSchema(latestSchemaRequestPath);
+    return new SchemaEntry(schemaResponse.getId(), schemaResponse.getSchemaStr());
+  }
+
   private Schema getLatestValueSchemaFromAllValueSchemas() {
     MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas();
     int targetSchemaId = multiSchemaResponse.getSuperSetSchemaId();
@@ -119,7 +127,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   }
 
   @Override
-  public DerivedSchemaEntry getUpdateSchema(int valueSchemaId) {
+  public DerivedSchemaEntry getUpdateSchemaEntry(int valueSchemaId) {
     // Fetch the latest update schema for the specified value schema.
     String updateSchemaRequestPath = TYPE_GET_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
     SchemaResponse updateSchemaResponse = fetchSingleSchema(updateSchemaRequestPath);

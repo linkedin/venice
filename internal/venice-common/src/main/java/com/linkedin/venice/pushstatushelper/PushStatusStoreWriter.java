@@ -4,8 +4,8 @@ import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatus.PushStatusKey;
-import com.linkedin.venice.pushstatus.PushStatusValue;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -29,54 +29,50 @@ public class PushStatusStoreWriter implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreWriter.class);
   private final String instanceName;
   private final PushStatusStoreVeniceWriterCache veniceWriterCache;
+  private final int valueSchemaId;
   private final int derivedSchemaId;
   private final Schema updateSchema;
 
-  /**
-   * @param writerFactory Used for instantiate veniceWriterCache
-   * @param instanceName format = hostAddress,appName
-   * @param derivedSchemaId update schema protocol id for updating push status
-   * @param updateSchema update schema for updating push status
-   */
   public PushStatusStoreWriter(
       VeniceWriterFactory writerFactory,
       String instanceName,
-      int derivedSchemaId,
-      Schema updateSchema) {
+      SchemaEntry valueSchemaEntry,
+      DerivedSchemaEntry updateSchemaEntry) {
     this(
-        new PushStatusStoreVeniceWriterCache(writerFactory, updateSchema),
+        new PushStatusStoreVeniceWriterCache(
+            writerFactory,
+            valueSchemaEntry.getSchema(),
+            updateSchemaEntry.getSchema()),
         instanceName,
-        derivedSchemaId,
-        updateSchema);
+        updateSchemaEntry.getValueSchemaID(),
+        updateSchemaEntry.getId(),
+        updateSchemaEntry.getSchema());
   }
 
   PushStatusStoreWriter(
       PushStatusStoreVeniceWriterCache veniceWriterCache,
       String instanceName,
+      int valueSchemaId,
       int derivedSchemaId,
       Schema updateSchema) {
     this.veniceWriterCache = veniceWriterCache;
     this.instanceName = instanceName;
+    this.valueSchemaId = valueSchemaId;
     this.derivedSchemaId = derivedSchemaId;
     this.updateSchema = updateSchema;
+  }
+
+  public void writeHeartbeat(String storeName) {
+    writeHeartbeat(storeName, System.currentTimeMillis());
   }
 
   public void writeHeartbeat(String storeName, long heartbeat) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
-    PushStatusValue pushStatusValue = new PushStatusValue();
-    pushStatusValue.reportTimestamp = heartbeat;
-    pushStatusValue.instances = Collections.emptyMap();
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
+    updateBuilder.setNewFieldValue("reportTimestamp", heartbeat);
     LOGGER.info("Sending heartbeat of {}", instanceName);
-    writer.put(
-        pushStatusKey,
-        pushStatusValue,
-        AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
-
-  }
-
-  public void writeHeartbeat(String storeName) {
-    writeHeartbeat(storeName, System.currentTimeMillis());
+    writer.update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
   }
 
   public void writePushStatus(
@@ -107,12 +103,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
         storeName,
         version,
         partitionId);
-    writer.update(
-        pushStatusKey,
-        updateBuilder.build(),
-        AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion(),
-        derivedSchemaId,
-        null);
+    writer.update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
 
     // If this is a server side SOIP status update then add this incremental
     // push to the ongoing incremental pushes in push status store.
@@ -138,12 +129,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
         storeName,
         instanceName);
     veniceWriterCache.prepareVeniceWriter(storeName)
-        .update(
-            pushStatusKey,
-            updateBuilder.build(),
-            AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion(),
-            derivedSchemaId,
-            null);
+        .update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
   }
 
   public void removeFromSupposedlyOngoingIncrementalPushVersions(
@@ -159,12 +145,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
         storeName,
         instanceName);
     veniceWriterCache.prepareVeniceWriter(storeName)
-        .update(
-            pushStatusKey,
-            updateBuilder.build(),
-            AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion(),
-            derivedSchemaId,
-            null);
+        .update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
   }
 
   public void deletePushStatus(

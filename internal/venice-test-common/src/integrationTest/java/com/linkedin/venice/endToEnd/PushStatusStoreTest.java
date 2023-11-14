@@ -43,6 +43,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -56,6 +58,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -266,13 +269,16 @@ public class PushStatusStoreTest {
         response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
         assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
 
+        int valueSchemaId = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
+        Schema valueSchema = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema();
+        Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+        SchemaEntry valueSchemaEntry = new SchemaEntry(valueSchemaId, valueSchema);
+        DerivedSchemaEntry updateSchemaEntry = new DerivedSchemaEntry(valueSchemaId, 1, updateSchema);
         PushStatusStoreWriter statusStoreWriter = new PushStatusStoreWriter(
             cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory(),
             "dummyInstance",
-            1,
-            WriteComputeSchemaConverter.getInstance()
-                .convertFromValueRecordSchema(
-                    AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()));
+            valueSchemaEntry,
+            updateSchemaEntry);
 
         // After deleting the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status

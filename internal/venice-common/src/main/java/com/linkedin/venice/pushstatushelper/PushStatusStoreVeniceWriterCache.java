@@ -23,18 +23,19 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
   private final VeniceWriterFactory writerFactory;
   // Local cache of VeniceWriters.
   private final Map<String, VeniceWriter> veniceWriters = new VeniceConcurrentHashMap<>();
+  private final Schema valueSchema;
   private final Schema updateSchema;
 
   // writerFactory Used for instantiating VeniceWriter
-  public PushStatusStoreVeniceWriterCache(VeniceWriterFactory writerFactory, Schema updateSchema) {
+  public PushStatusStoreVeniceWriterCache(VeniceWriterFactory writerFactory, Schema valueSchema, Schema updateSchema) {
     this.writerFactory = writerFactory;
+    this.valueSchema = valueSchema;
     this.updateSchema = updateSchema;
   }
 
   public VeniceWriter prepareVeniceWriter(String storeName) {
     return veniceWriters.computeIfAbsent(storeName, s -> {
       String rtTopic = Version.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
-      Schema valueSchema = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema();
       VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic)
           .setKeySerializer(
               new VeniceAvroKafkaSerializer(

@@ -551,15 +551,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getClusterDiscoveryD2ServiceName(),
         commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds());
     pushStatusStoreWriter = Lazy.of(() -> {
-      DerivedSchemaEntry pushStatusStoreUpdateSchemaEntry = zkSharedSchemaRepository.getLatestDerivedSchema(
+      SchemaEntry valueSchemaEntry = zkSharedSchemaRepository
+          .getSupersetOrLatestValueSchema(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
+      DerivedSchemaEntry updateSchemaEntry = zkSharedSchemaRepository.getLatestDerivedSchema(
           VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName(),
-          AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
-      return new PushStatusStoreWriter(
-          veniceWriterFactory,
-          controllerName,
-          pushStatusStoreUpdateSchemaEntry.getId(),
-          pushStatusStoreUpdateSchemaEntry.getSchema());
-
+          valueSchemaEntry.getId());
+      return new PushStatusStoreWriter(veniceWriterFactory, controllerName, valueSchemaEntry, updateSchemaEntry);
     });
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();

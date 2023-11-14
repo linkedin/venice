@@ -30,8 +30,8 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessageHandler;
@@ -311,14 +311,13 @@ public class HelixParticipationService extends AbstractVeniceService
         veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
     VeniceWriterFactory writerFactory =
         new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
-    DerivedSchemaEntry pushStatusStoreUpdateSchemaEntry = helixReadOnlySchemaRepository.getLatestDerivedSchema(
+    SchemaEntry valueSchemaEntry = helixReadOnlySchemaRepository
+        .getSupersetOrLatestValueSchema(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
+    DerivedSchemaEntry updateSchemaEntry = helixReadOnlySchemaRepository.getLatestDerivedSchema(
         VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName(),
-        AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
-    statusStoreWriter = new PushStatusStoreWriter(
-        writerFactory,
-        instance.getNodeId(),
-        pushStatusStoreUpdateSchemaEntry.getId(),
-        pushStatusStoreUpdateSchemaEntry.getSchema());
+        valueSchemaEntry.getId());
+    statusStoreWriter =
+        new PushStatusStoreWriter(writerFactory, instance.getNodeId(), valueSchemaEntry, updateSchemaEntry);
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.

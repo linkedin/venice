@@ -44,6 +44,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -193,13 +194,10 @@ public class DaVinciBackend implements Closeable {
       ClientConfig pushStatusStoreClientConfig = ClientConfig.cloneConfig(clientConfig)
           .setStoreName(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
       StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(pushStatusStoreClientConfig);
-      DerivedSchemaEntry updateSchemaEntry = schemaFetcher
-          .getUpdateSchema(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
-      pushStatusStoreWriter = new PushStatusStoreWriter(
-          writerFactory,
-          instanceName,
-          updateSchemaEntry.getValueSchemaID(),
-          updateSchemaEntry.getSchema());
+      SchemaEntry valueSchemaEntry = schemaFetcher.getLatestValueSchemaEntry();
+      DerivedSchemaEntry updateSchemaEntry = schemaFetcher.getUpdateSchemaEntry(valueSchemaEntry.getId());
+      pushStatusStoreWriter =
+          new PushStatusStoreWriter(writerFactory, instanceName, valueSchemaEntry, updateSchemaEntry);
 
       SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)
