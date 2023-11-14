@@ -1,7 +1,7 @@
 FROM  mcr.microsoft.com/openjdk/jdk:11-ubuntu as base
 
 RUN apt-get update
-RUN apt-get install -y curl bash socat nano git unzip
+RUN apt-get install git -y
 
 RUN mkdir -p /opt/venice/src
 COPY / /opt/venice/src
@@ -15,7 +15,7 @@ FROM  mcr.microsoft.com/openjdk/jdk:11-ubuntu
 ENV VENICE_DIR=/opt/venice
 
 RUN apt-get update
-RUN apt-get install tree python3 -y
+RUN apt-get install tree netcat -y
 RUN mkdir -p ${VENICE_DIR}/bin && mkdir -p ${VENICE_DIR}/configs && mkdir -p ${VENICE_DIR}/rocksdb
 
 WORKDIR ${VENICE_DIR}
