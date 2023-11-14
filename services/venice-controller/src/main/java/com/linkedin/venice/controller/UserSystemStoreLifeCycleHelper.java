@@ -11,7 +11,6 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -129,7 +128,6 @@ public class UserSystemStoreLifeCycleHelper {
       String systemStoreName,
       boolean isStoreMigrating,
       MetaStoreWriter metaStoreWriter,
-      PushStatusStoreRecordDeleter pushStatusStoreRecordDeleter,
       Logger LOGGER) {
     LOGGER.info("Start deleting system store: {}", systemStoreName);
     admin.deleteAllVersionsInStore(clusterName, systemStoreName);
@@ -141,7 +139,7 @@ public class UserSystemStoreLifeCycleHelper {
           metaStoreWriter.removeMetaStoreWriter(systemStoreName);
           break;
         case DAVINCI_PUSH_STATUS_STORE:
-          pushStatusStoreRecordDeleter
+          admin.getPushStatusStoreWriter()
               .removePushStatusStoreVeniceWriter(DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(systemStoreName));
           break;
         case BATCH_JOB_HEARTBEAT_STORE:
@@ -171,7 +169,6 @@ public class UserSystemStoreLifeCycleHelper {
       String clusterName,
       Store userStore,
       MetaStoreWriter metaStoreWriter,
-      PushStatusStoreRecordDeleter pushStatusStoreRecordDeleter,
       Logger LOGGER) {
     if (userStore.isDaVinciPushStatusStoreEnabled()) {
       deleteSystemStore(
@@ -182,7 +179,6 @@ public class UserSystemStoreLifeCycleHelper {
           DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStore.getName()),
           userStore.isMigrating(),
           metaStoreWriter,
-          pushStatusStoreRecordDeleter,
           LOGGER);
     }
     // We must delete meta system store at the end as deleting other system store will try to send update to meta system
@@ -196,7 +192,6 @@ public class UserSystemStoreLifeCycleHelper {
           VeniceSystemStoreType.META_STORE.getSystemStoreName(userStore.getName()),
           userStore.isMigrating(),
           metaStoreWriter,
-          pushStatusStoreRecordDeleter,
           LOGGER);
     }
   }

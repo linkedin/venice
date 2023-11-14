@@ -164,7 +164,6 @@ import com.linkedin.venice.pushmonitor.PushMonitorUtils;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.GeneratedSchemaID;
@@ -352,7 +351,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final String pushJobStatusStoreClusterName;
   private final PushStatusStoreReader pushStatusStoreReader;
   private final Lazy<PushStatusStoreWriter> pushStatusStoreWriter;
-  private final Lazy<PushStatusStoreRecordDeleter> pushStatusStoreDeleter;
   private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
   private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private final MetaStoreWriter metaStoreWriter;
@@ -562,12 +560,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           pushStatusStoreUpdateSchemaEntry.getId(),
           pushStatusStoreUpdateSchemaEntry.getSchema());
 
-    });
-    pushStatusStoreDeleter = Lazy.of(() -> {
-      DerivedSchemaEntry pushStatusStoreUpdateSchemaEntry = zkSharedSchemaRepository.getLatestDerivedSchema(
-          VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName(),
-          AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
-      return new PushStatusStoreRecordDeleter(veniceWriterFactory, pushStatusStoreUpdateSchemaEntry.getSchema());
     });
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
@@ -1046,7 +1038,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             clusterName,
             store,
             metaStoreWriter,
-            getPushStatusStoreRecordDeleter(),
             LOGGER);
 
         if (isForcedDelete) {
@@ -3169,7 +3160,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
         }
         if (store.isDaVinciPushStatusStoreEnabled()) {
-          getPushStatusStoreRecordDeleter().deletePushStatus(
+          getPushStatusStoreWriter().deletePushStatus(
               storeName,
               deletedVersion.get().getNumber(),
               Optional.empty(),
@@ -6638,6 +6629,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void close() {
+    Utils.closeQuietlyWithErrorLogged(getPushStatusStoreReader());
+    getPushStatusStoreWriter().close();
+
     helixManager.disconnect();
     Utils.closeQuietlyWithErrorLogged(zkSharedSystemStoreRepository);
     Utils.closeQuietlyWithErrorLogged(zkSharedSchemaRepository);
@@ -6648,9 +6642,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     participantMessageWriterMap.clear();
     dataRecoveryManager.close();
     Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
-    getPushStatusStoreReader().close();
-    getPushStatusStoreWriter().close();
-    getPushStatusStoreRecordDeleter().close();
     Utils.closeQuietlyWithErrorLogged(pushJobDetailsStoreClient);
     Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreClient);
     clusterControllerClientPerColoMap.forEach(
@@ -7372,14 +7363,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public MetaStoreReader getMetaStoreReader() {
     return metaStoreReader;
-  }
-
-  /**
-   * @see Admin#getPushStatusStoreRecordDeleter()
-   */
-  @Override
-  public PushStatusStoreRecordDeleter getPushStatusStoreRecordDeleter() {
-    return pushStatusStoreDeleter.get();
   }
 
   /**
