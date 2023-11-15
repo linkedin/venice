@@ -1694,7 +1694,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               amplificationFactorAdapter.executePartitionConsumptionState(
                   newPartitionConsumptionState.getUserPartition(),
                   PartitionConsumptionState::lagHasCaughtUp);
-              reportCompletedAndSendHeartBeat(newPartitionConsumptionState, partition, true);
+              reportCompleted(newPartitionConsumptionState, true);
               isCompletedReport = true;
             }
             // Clear offset lag in metadata, it is only used in restart.
@@ -3473,7 +3473,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 partition,
                 partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
           } else {
-            reportCompletedAndSendHeartBeat(partitionConsumptionState, partition);
+            reportCompleted(partitionConsumptionState);
             warmupSchemaCache(store);
           }
           if (suppressLiveUpdates) {
@@ -3493,30 +3493,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     };
   }
 
-  void reportCompletedAndSendHeartBeat(PartitionConsumptionState partitionConsumptionState, int partition) {
-    reportCompletedAndSendHeartBeat(partitionConsumptionState, partition, false);
+  void reportCompleted(PartitionConsumptionState partitionConsumptionState) {
+    reportCompleted(partitionConsumptionState, false);
   }
 
-  /**
-   * Whenever a leader is marked to be completed, it should send a heartbeat SOS to VT
-   * check {@link StoreIngestionTask#sendInstantHeartBeatAndUpdateVeniceWriter} for more details.
-   */
-  void reportCompletedAndSendHeartBeat(
-      PartitionConsumptionState partitionConsumptionState,
-      int partition,
-      boolean forceCompletion) {
+  void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
     statusReportAdapter.reportCompleted(partitionConsumptionState, forceCompletion);
-    LOGGER.info("{} Partition {} is ready to serve", consumerTaskId, partition);
-    if (partitionConsumptionState.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER)) {
-      sendInstantHeartBeatAndUpdateVeniceWriter(
-          partitionConsumptionState,
-          new PubSubTopicPartitionImpl(versionTopic, partition));
-    }
+    LOGGER.info("{} Partition {} is ready to serve", consumerTaskId, partitionConsumptionState.getPartition());
   }
-
-  protected abstract void sendInstantHeartBeatAndUpdateVeniceWriter(
-      PartitionConsumptionState partitionConsumptionState,
-      PubSubTopicPartition pubSubTopicPartition);
 
   /**
    * Try to warm-up the schema repo cache before reporting completion as new value schema could cause latency degradation

@@ -1677,7 +1677,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (isCurrentVersion.getAsBoolean()) {
           amplificationFactorAdapter
               .executePartitionConsumptionState(pcs.getUserPartition(), PartitionConsumptionState::lagHasCaughtUp);
-          reportCompletedAndSendHeartBeat(pcs, partition, true);
+          reportCompleted(pcs, true);
         }
       }
     }
@@ -2578,23 +2578,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Once leader is marked completed, immediately send a heart beat message to the local VT such that
-   * followers don't have to wait till the periodic heartbeat to know that the leader is completed
-   *
-   * Also update veniceWriter of this status, such that the SOS messages sent from the leader to the
-   * followers can have this status.
-   */
-  @Override
-  protected void sendInstantHeartBeatAndUpdateVeniceWriter(
-      PartitionConsumptionState partitionConsumptionState,
-      PubSubTopicPartition pubSubTopicPartition) {
-    boolean isLeaderCompleted = partitionConsumptionState.isCompletionReported();
-    veniceWriter.get().setPartitionLeaderCompletionStatus(pubSubTopicPartition.getPartitionNumber(), isLeaderCompleted);
-    veniceWriter.get()
-        .sendHeartbeat(pubSubTopicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER, ADD_LEADER_COMPLETED_HEADER);
-  }
-
-  /**
    * Unsubscribe from all the topics being consumed for the partition in partitionConsumptionState
    */
   @Override
@@ -3218,5 +3201,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     lastSendIngestionHeartbeatTimestamp = currentTimestamp;
+  }
+
+  /**
+   * Once leader is marked completed, immediately send a heart beat message to the local VT such that
+   * followers don't have to wait till the periodic heartbeat to know that the leader is completed
+   *
+   * Also update veniceWriter of this status, such that the SOS messages sent from the leader to the
+   * followers can have this status.
+   */
+  void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
+    super.reportCompleted(partitionConsumptionState, forceCompletion);
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER)) {
+      int partitionId = partitionConsumptionState.getPartition();
+      VeniceWriter _veniceWriter = veniceWriter.get();
+      _veniceWriter.setPartitionLeaderCompletionStatus(partitionId, true);
+      _veniceWriter.sendHeartbeat(
+          new PubSubTopicPartitionImpl(versionTopic, partitionId),
+          null,
+          DEFAULT_LEADER_METADATA_WRAPPER,
+          ADD_LEADER_COMPLETED_HEADER);
+    }
   }
 }
