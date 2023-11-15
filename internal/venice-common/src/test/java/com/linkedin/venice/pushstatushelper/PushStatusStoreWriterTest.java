@@ -28,15 +28,16 @@ public class PushStatusStoreWriterTest {
   private PushStatusStoreVeniceWriterCache veniceWriterCacheMock;
   private VeniceWriter veniceWriterMock;
   private PushStatusStoreWriter pushStatusStoreWriter;
-  private final static String storeName = "venice-test-push-status-store";
-  private final static int storeVersion = 42;
-  private final static String incPushVersion = "inc_push_test_version_1";
-  private final static int derivedSchemaId = 1;
-  private final static int valueSchemaId =
+  private static final String instanceName = "instanceX";
+  private static final String storeName = "venice-test-push-status-store";
+  private static final int storeVersion = 42;
+  private static final String incPushVersion = "inc_push_test_version_1";
+  private static final int derivedSchemaId = 1;
+  private static final int valueSchemaId =
       AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
-  private final static Schema valueSchema =
+  private static final Schema valueSchema =
       AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema();
-  private final static Schema updateSchema =
+  private static final Schema updateSchema =
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
 
   @BeforeMethod
@@ -44,7 +45,7 @@ public class PushStatusStoreWriterTest {
     veniceWriterCacheMock = mock(PushStatusStoreVeniceWriterCache.class);
     veniceWriterMock = mock(VeniceWriter.class);
     pushStatusStoreWriter =
-        new PushStatusStoreWriter(veniceWriterCacheMock, "instanceX", valueSchemaId, derivedSchemaId, updateSchema);
+        new PushStatusStoreWriter(veniceWriterCacheMock, instanceName, valueSchemaId, derivedSchemaId, updateSchema);
     when(veniceWriterCacheMock.prepareVeniceWriter(storeName)).thenReturn(veniceWriterMock);
   }
 
@@ -60,6 +61,13 @@ public class PushStatusStoreWriterTest {
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
     updateBuilder.setKeysToRemoveFromMapField("instances", Collections.singletonList(incPushVersion));
     return updateBuilder.build();
+  }
+
+  private GenericRecord getHeartbeatRecord(long heartbeatTimestamp) {
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
+    updateBuilder.setNewFieldValue("reportTimestamp", heartbeatTimestamp);
+    return updateBuilder.build();
+
   }
 
   @Test(description = "Expect an update call for adding current inc-push to ongoing-inc-pushes when status is SOIP")
@@ -114,5 +122,26 @@ public class PushStatusStoreWriterTest {
         eq(valueSchemaId),
         eq(derivedSchemaId),
         eq(null));
+  }
+
+  @Test
+  public void testDeletePushStatus() {
+    int partitionCount = 4;
+    pushStatusStoreWriter.deletePushStatus(storeName, storeVersion, Optional.empty(), partitionCount);
+    verify(veniceWriterCacheMock).prepareVeniceWriter(storeName);
+    for (int i = 0; i < partitionCount; i++) {
+      PushStatusKey statusKey = PushStatusStoreUtils.getPushKey(storeVersion, 0, Optional.empty());
+      verify(veniceWriterMock).delete(eq(statusKey), eq(null));
+    }
+  }
+
+  @Test
+  public void testWriteHeartbeat() {
+    long heartbeat = 12345L;
+    PushStatusKey statusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
+    pushStatusStoreWriter.writeHeartbeat(storeName, heartbeat);
+    verify(veniceWriterCacheMock).prepareVeniceWriter(storeName);
+    verify(veniceWriterMock)
+        .update(eq(statusKey), eq(getHeartbeatRecord(heartbeat)), eq(valueSchemaId), eq(derivedSchemaId), eq(null));
   }
 }
