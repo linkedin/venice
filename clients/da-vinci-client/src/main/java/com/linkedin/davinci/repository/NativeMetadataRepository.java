@@ -430,23 +430,33 @@ public abstract class NativeMetadataRepository
 
   // Helper function with common code for retrieving SchemaData from meta system store.
   protected SchemaData getSchemaDataFromMetaSystemStore(String storeName) {
-    StoreMetaKey keySchemaKey =
-        MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
+    SchemaData schemaData = schemaMap.get(storeName);
+    SchemaEntry keySchema;
+    if (schemaData == null) {
+      // Retrieve the key schema and initialize SchemaData only if it's not cached yet.
+      StoreMetaKey keySchemaKey = MetaStoreDataType.STORE_KEY_SCHEMAS
+          .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
+      Map<CharSequence, CharSequence> keySchemaMap =
+          getStoreMetaValue(storeName, keySchemaKey).storeKeySchemas.keySchemaMap;
+      if (keySchemaMap.isEmpty()) {
+        throw new VeniceException("No key schema found for store: " + storeName);
+      }
+      Map.Entry<CharSequence, CharSequence> keySchemaEntry = keySchemaMap.entrySet().iterator().next();
+      keySchema =
+          new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString());
+      schemaData = new SchemaData(storeName, keySchema);
+    }
     StoreMetaKey valueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMAS
         .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
-    Map<CharSequence, CharSequence> keySchemaMap =
-        getStoreMetaValue(storeName, keySchemaKey).storeKeySchemas.keySchemaMap;
-    if (keySchemaMap.isEmpty()) {
-      throw new VeniceException("No key schema found for store: " + storeName);
-    }
-    Map.Entry<CharSequence, CharSequence> keySchemaEntry = keySchemaMap.entrySet().iterator().next();
-    SchemaEntry keySchema =
-        new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString());
-    SchemaData schemaData = new SchemaData(storeName, keySchema);
     Map<CharSequence, CharSequence> valueSchemaMap =
         getStoreMetaValue(storeName, valueSchemaKey).storeValueSchemas.valueSchemaMap;
     // Check the value schema string, if it's empty then try to query the other key space for individual value schema.
     for (Map.Entry<CharSequence, CharSequence> entry: valueSchemaMap.entrySet()) {
+      // Check if we already have the corresponding value schema
+      int valueSchemaId = Integer.parseInt(entry.getKey().toString());
+      if (schemaData.getValueSchema(valueSchemaId) != null) {
+        continue;
+      }
       if (entry.getValue().toString().isEmpty()) {
         // The value schemas might be too large to be stored in a single K/V.
         StoreMetaKey individualValueSchemaKey =
@@ -460,10 +470,9 @@ public abstract class NativeMetadataRepository
         // the individual value schema key space.
         String valueSchema =
             getStoreMetaValue(storeName, individualValueSchemaKey).storeValueSchema.valueSchema.toString();
-        schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), valueSchema));
+        schemaData.addValueSchema(new SchemaEntry(valueSchemaId, valueSchema));
       } else {
-        schemaData
-            .addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
+        schemaData.addValueSchema(new SchemaEntry(valueSchemaId, entry.getValue().toString()));
       }
     }
     return schemaData;
