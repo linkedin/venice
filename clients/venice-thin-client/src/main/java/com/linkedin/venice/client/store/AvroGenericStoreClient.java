@@ -157,7 +157,7 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * Get the latest value schema known in current store client.
    * This function doesn't guarantee it will return the latest schema if you add a new value schema
    * when current store client is running.
-   * @deprecated This method is considered deprecated. Please use {@link StoreSchemaFetcher#getLatestValueSchema()} to fetch
+   * @deprecated This method is considered deprecated. Please use {@link StoreSchemaFetcher#getLatestValueSchemaEntry()} to fetch
    * latest value schema instead.
    */
   @Deprecated

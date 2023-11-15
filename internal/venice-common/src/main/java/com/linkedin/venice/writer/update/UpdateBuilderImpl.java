@@ -200,7 +200,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     }
     Schema.Type valueFieldType = getCorrespondingValueFieldType(updateField);
     if (valueFieldType != expectedType) {
-      throw new IllegalStateException();
+      throw new IllegalStateException(
+          "Field: " + fieldName + " expect type: " + expectedType + ", got type: " + valueFieldType);
     }
   }
 

@@ -458,6 +458,7 @@ public class VeniceServer {
         storageMetadataService,
         veniceConfigLoader,
         metadataRepo,
+        schemaRepo,
         metricsRepository,
         clusterConfig.getZookeeperAddress(),
         clusterConfig.getClusterName(),
