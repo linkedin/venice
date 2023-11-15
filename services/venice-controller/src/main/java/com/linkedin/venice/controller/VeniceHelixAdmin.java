@@ -6627,7 +6627,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void close() {
     Utils.closeQuietlyWithErrorLogged(getPushStatusStoreReader());
-    getPushStatusStoreWriter().close();
+    pushStatusStoreWriter.ifPresent(PushStatusStoreWriter::close);
 
     helixManager.disconnect();
     Utils.closeQuietlyWithErrorLogged(zkSharedSystemStoreRepository);
