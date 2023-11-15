@@ -304,18 +304,18 @@ public class HelixParticipationService extends AbstractVeniceService
   private void asyncStart() {
     zkClient = ZkClientFactory.newZkClient(zkAddress);
 
-    // we use push status store for persisting incremental push statuses
     VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceProperties veniceProperties = veniceServerConfig.getClusterProperties();
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
     VeniceWriterFactory writerFactory =
         new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
-    SchemaEntry valueSchemaEntry = helixReadOnlySchemaRepository
-        .getSupersetOrLatestValueSchema(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
-    DerivedSchemaEntry updateSchemaEntry = helixReadOnlySchemaRepository.getLatestDerivedSchema(
-        VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName(),
-        valueSchemaEntry.getId());
+    String dummyPushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("dummy");
+    SchemaEntry valueSchemaEntry =
+        helixReadOnlySchemaRepository.getSupersetOrLatestValueSchema(dummyPushStatusStoreName);
+    DerivedSchemaEntry updateSchemaEntry =
+        helixReadOnlySchemaRepository.getLatestDerivedSchema(dummyPushStatusStoreName, valueSchemaEntry.getId());
+    // We use push status store for persisting incremental push statuses
     statusStoreWriter =
         new PushStatusStoreWriter(writerFactory, instance.getNodeId(), valueSchemaEntry, updateSchemaEntry);
 
