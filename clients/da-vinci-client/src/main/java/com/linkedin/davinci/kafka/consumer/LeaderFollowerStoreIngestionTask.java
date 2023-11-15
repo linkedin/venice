@@ -8,6 +8,7 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.ADD_LEADER_COMPLETED_HEADER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -2093,9 +2094,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         topicPartition,
                         callback,
                         leaderMetadataWrapper,
-                        true,
-                        consumerRecord.getValue().producerMetadata.messageTimestamp, // original producers timestamp
-                        partitionConsumptionState.isCompletionReported());
+                        ADD_LEADER_COMPLETED_HEADER,
+                        consumerRecord.getValue().producerMetadata.messageTimestamp); // original producers timestamp
               } else {
                 /**
                  * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -2589,9 +2589,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopicPartition pubSubTopicPartition) {
     boolean isLeaderCompleted = partitionConsumptionState.isCompletionReported();
-    veniceWriter.get()
-        .sendHeartbeat(pubSubTopicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER, true, 0, isLeaderCompleted);
     veniceWriter.get().setPartitionLeaderCompletionStatus(pubSubTopicPartition.getPartitionNumber(), isLeaderCompleted);
+    veniceWriter.get()
+        .sendHeartbeat(pubSubTopicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER, ADD_LEADER_COMPLETED_HEADER);
   }
 
   /**
@@ -3207,14 +3207,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
         PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(leaderTopic, pcs.getPartition());
         try {
-          veniceWriter.get()
-              .sendHeartbeat(
-                  topicPartition,
-                  null,
-                  DEFAULT_LEADER_METADATA_WRAPPER,
-                  false, // Leaders will add this header when they forward HB to the followers
-                  0,
-                  false);
+          veniceWriter.get().sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER);
         } catch (Exception e) {
           String errorMessage = String.format(
               "Failed to send ingestion heartbeat for topic: %s, partition: %s",
