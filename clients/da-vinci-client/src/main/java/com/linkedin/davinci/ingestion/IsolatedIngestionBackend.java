@@ -20,6 +20,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -28,7 +29,10 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -246,6 +250,28 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   @Override
   public void prepareForShutdown() {
     isShuttingDown.set(true);
+  }
+
+  @Override
+  public Map<String, Set<Integer>> getLoadedStoreUserPartitionsMapping() {
+    /**
+     * Merge the loaded store partitions from main process and isolated process.
+     */
+    Map<String, Set<Integer>> localMapping = super.getLoadedStoreUserPartitionsMapping();
+    LoadedStoreUserPartitionMapping isolatedMapping = mainIngestionRequestClient.getLoadedStoreUserPartitionMapping();
+    LOGGER.info(
+        "Got loaded store partition mapping from isolated process: {}",
+        isolatedMapping.storeUserPartitionMapping);
+    isolatedMapping.storeUserPartitionMapping.forEach((storeVersion, storePartitions) -> {
+      localMapping.compute(storeVersion.toString(), (ignored, v) -> {
+        if (v == null) {
+          v = new HashSet<>();
+        }
+        v.addAll(storePartitions);
+        return v;
+      });
+    });
+    return localMapping;
   }
 
   public void setIsolatedIngestionServiceProcess(Process process) {

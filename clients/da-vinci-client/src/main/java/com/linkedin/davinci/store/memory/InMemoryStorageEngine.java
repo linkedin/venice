@@ -32,7 +32,7 @@ public class InMemoryStorageEngine extends AbstractStorageEngine<InMemoryStorage
   }
 
   @Override
-  protected Set<Integer> getPersistedPartitionIds() {
+  public Set<Integer> getPersistedPartitionIds() {
     // Nothing to return for InMemoryStorageEngine
     return Collections.emptySet();
   }

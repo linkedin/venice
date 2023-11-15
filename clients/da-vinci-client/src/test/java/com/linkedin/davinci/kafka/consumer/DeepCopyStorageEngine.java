@@ -43,7 +43,7 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   @Override
-  protected Set<Integer> getPersistedPartitionIds() {
+  public Set<Integer> getPersistedPartitionIds() {
     // We could not delegate protected function here.
     return Collections.emptySet();
   }
