@@ -193,11 +193,12 @@ public class DaVinciBackend implements Closeable {
       // Fetch latest update schema's protocol ID for Push Status Store from Router.
       ClientConfig pushStatusStoreClientConfig = ClientConfig.cloneConfig(clientConfig)
           .setStoreName(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
-      StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(pushStatusStoreClientConfig);
-      SchemaEntry valueSchemaEntry = schemaFetcher.getLatestValueSchemaEntry();
-      DerivedSchemaEntry updateSchemaEntry = schemaFetcher.getUpdateSchemaEntry(valueSchemaEntry.getId());
-      pushStatusStoreWriter =
-          new PushStatusStoreWriter(writerFactory, instanceName, valueSchemaEntry, updateSchemaEntry);
+      try (StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(pushStatusStoreClientConfig)) {
+        SchemaEntry valueSchemaEntry = schemaFetcher.getLatestValueSchemaEntry();
+        DerivedSchemaEntry updateSchemaEntry = schemaFetcher.getUpdateSchemaEntry(valueSchemaEntry.getId());
+        pushStatusStoreWriter =
+            new PushStatusStoreWriter(writerFactory, instanceName, valueSchemaEntry, updateSchemaEntry);
+      }
 
       SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)
