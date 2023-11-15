@@ -10,16 +10,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
-import com.linkedin.venice.pushstatus.NoOp;
 import com.linkedin.venice.pushstatus.PushStatusKey;
-import com.linkedin.venice.pushstatus.PushStatusValueWriteOpRecord;
-import com.linkedin.venice.pushstatus.instancesMapOps;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.update.UpdateBuilder;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.Collections;
 import java.util.Optional;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -48,14 +48,18 @@ public class PushStatusStoreWriterTest {
     when(veniceWriterCacheMock.prepareVeniceWriter(storeName)).thenReturn(veniceWriterMock);
   }
 
-  private PushStatusValueWriteOpRecord getWriteComputeRecord() {
-    PushStatusValueWriteOpRecord writeOpRecord = new PushStatusValueWriteOpRecord();
-    instancesMapOps instances = new instancesMapOps();
-    instances.mapDiff = Collections.emptyList();
-    instances.mapUnion = Collections.singletonMap(incPushVersion, START_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
-    writeOpRecord.instances = instances;
-    writeOpRecord.reportTimestamp = new NoOp();
-    return writeOpRecord;
+  private GenericRecord getAddIncrementalPushUpdateRecord() {
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
+    updateBuilder.setEntriesToAddToMapField(
+        "instances",
+        Collections.singletonMap(incPushVersion, START_OF_INCREMENTAL_PUSH_RECEIVED.getValue()));
+    return updateBuilder.build();
+  }
+
+  private GenericRecord getRemoveIncrementalPushUpdateRecord() {
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
+    updateBuilder.setKeysToRemoveFromMapField("instances", Collections.singletonList(incPushVersion));
+    return updateBuilder.build();
   }
 
   @Test(description = "Expect an update call for adding current inc-push to ongoing-inc-pushes when status is SOIP")
@@ -74,8 +78,12 @@ public class PushStatusStoreWriterTest {
 
     verify(veniceWriterMock).update(eq(serverPushStatusKey), any(), eq(valueSchemaId), eq(derivedSchemaId), eq(null));
     verify(veniceWriterCacheMock, times(2)).prepareVeniceWriter(storeName);
-    verify(veniceWriterMock)
-        .update(eq(ongoPushStatusKey), eq(getWriteComputeRecord()), eq(valueSchemaId), eq(derivedSchemaId), eq(null));
+    verify(veniceWriterMock).update(
+        eq(ongoPushStatusKey),
+        eq(getAddIncrementalPushUpdateRecord()),
+        eq(valueSchemaId),
+        eq(derivedSchemaId),
+        eq(null));
   }
 
   @Test
@@ -87,22 +95,24 @@ public class PushStatusStoreWriterTest {
         incPushVersion,
         START_OF_INCREMENTAL_PUSH_RECEIVED);
     verify(veniceWriterCacheMock).prepareVeniceWriter(storeName);
-    verify(veniceWriterMock)
-        .update(eq(statusKey), eq(getWriteComputeRecord()), eq(valueSchemaId), eq(derivedSchemaId), eq(null));
+    verify(veniceWriterMock).update(
+        eq(statusKey),
+        eq(getAddIncrementalPushUpdateRecord()),
+        eq(valueSchemaId),
+        eq(derivedSchemaId),
+        eq(null));
   }
 
   @Test
   public void testRemoveFromOngoingIncrementalPushVersions() {
     PushStatusKey statusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
-    PushStatusValueWriteOpRecord writeOpRecord = new PushStatusValueWriteOpRecord();
-    instancesMapOps instances = new instancesMapOps();
-    instances.mapDiff = Collections.singletonList(incPushVersion);
-    instances.mapUnion = Collections.emptyMap();
-    writeOpRecord.instances = instances;
-    writeOpRecord.reportTimestamp = new NoOp();
-
     pushStatusStoreWriter.removeFromSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion, incPushVersion);
     verify(veniceWriterCacheMock).prepareVeniceWriter(storeName);
-    verify(veniceWriterMock).update(eq(statusKey), eq(writeOpRecord), eq(valueSchemaId), eq(derivedSchemaId), eq(null));
+    verify(veniceWriterMock).update(
+        eq(statusKey),
+        eq(getRemoveIncrementalPushUpdateRecord()),
+        eq(valueSchemaId),
+        eq(derivedSchemaId),
+        eq(null));
   }
 }
