@@ -265,11 +265,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
                           earlyTerminationException.getMessage(),
                           earlyTerminationException.getHttpResponseStatus()));
                 } else if (e instanceof VeniceNoStoreException) {
-                  // return SERVICE_UNAVAILABLE to kick off error retry in router
+                  HttpResponseStatus status = getHttpResponseStatus((VeniceNoStoreException) e);
                   context.writeAndFlush(
                       new HttpShortcutResponse(
                           "No storage exists for: " + ((VeniceNoStoreException) e).getStoreName(),
-                          HttpResponseStatus.SERVICE_UNAVAILABLE));
+                          status));
                 } else {
                   LOGGER.error("Exception thrown in parallel batch get for {}", request.getResourceName(), e);
                   HttpShortcutResponse shortcutResponse =
@@ -314,11 +314,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           }
           context.writeAndFlush(response);
         } catch (VeniceNoStoreException e) {
-          // return SERVICE_UNAVAILABLE to kick off error retry in router
-          context.writeAndFlush(
-              new HttpShortcutResponse(
-                  "No storage exists for: " + e.getStoreName(),
-                  HttpResponseStatus.SERVICE_UNAVAILABLE));
+          HttpResponseStatus status = getHttpResponseStatus(e);
+          context.writeAndFlush(new HttpShortcutResponse("No storage exists for: " + e.getStoreName(), status));
         } catch (VeniceRequestEarlyTerminationException e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.REQUEST_TIMEOUT));
         } catch (OperationNotAllowedException e) {
@@ -359,6 +356,23 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
               "Unrecognized object in StorageExecutionHandler",
               HttpResponseStatus.INTERNAL_SERVER_ERROR));
     }
+  }
+
+  private HttpResponseStatus getHttpResponseStatus(VeniceNoStoreException e) {
+    HttpResponseStatus status = HttpResponseStatus.BAD_REQUEST;
+
+    // return SERVICE_UNAVAILABLE to kick off error retry in router when store version resource exists
+    String topic = e.getStoreName();
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    int version = Version.parseVersionFromKafkaTopicName(topic);
+    Store store = metadataRepository.getStore(storeName);
+    if (store == null) {
+      return status;
+    }
+    if (store.getCurrentVersion() == version) {
+      status = HttpResponseStatus.SERVICE_UNAVAILABLE;
+    }
+    return status;
   }
 
   /**

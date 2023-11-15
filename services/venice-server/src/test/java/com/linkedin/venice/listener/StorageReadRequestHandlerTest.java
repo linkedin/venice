@@ -626,7 +626,8 @@ public class StorageReadRequestHandlerTest {
   @Test
   public void testNoStorageEngineReturn503() throws Exception {
     String storeName = "testStore";
-    RouterRequest request = mock(GetRouterRequest.class);
+    String keyString = "key_byte";
+    GetRouterRequest request = mock(GetRouterRequest.class);
     doReturn(false).when(request).shouldRequestBeTerminatedEarly();
     doReturn(SINGLE_GET).when(request).getRequestType();
     doReturn(Version.composeKafkaTopic(storeName, 1)).when(request).getResourceName();
@@ -634,7 +635,10 @@ public class StorageReadRequestHandlerTest {
     Store store = mock(Store.class);
     doReturn(Optional.empty()).when(store).getVersion(anyInt());
     doReturn(store).when(storeRepository).getStore(storeName);
+    doReturn(1).when(store).getCurrentVersion();
+    when(storageEngine.isClosed()).thenReturn(true);
     doReturn(null).when(storageEngineRepository).getLocalStorageEngine(any());
+    doReturn(keyString.getBytes()).when(request).getKeyBytes();
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
     ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
