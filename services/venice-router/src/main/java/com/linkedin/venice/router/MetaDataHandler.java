@@ -8,8 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
-import static com.linkedin.venice.router.api.RouterResourceType.TYPE_GET_UPDATE_SCHEMA;
-import static com.linkedin.venice.router.api.RouterResourceType.TYPE_LATEST_VALUE_SCHEMA;
+import static com.linkedin.venice.router.api.RouterResourceType.*;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
@@ -25,6 +24,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -50,6 +50,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.router.api.RouterResourceType;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
+import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
@@ -127,6 +128,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   static final String REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER =
       "Expected partitioner class %s cannot be found.";
 
+  private final VeniceVersionFinder veniceVersionFinder;
+
   public MetaDataHandler(
       HelixCustomizedViewOfflinePushRepository routingDataRepository,
       ReadOnlySchemaRepository schemaRepo,
@@ -138,7 +141,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String clusterName,
       String zkAddress,
       String kafkaBootstrapServers,
-      boolean isSslToKafka) {
+      boolean isSslToKafka,
+      VeniceVersionFinder versionFinder) {
     super();
     this.routingDataRepository = routingDataRepository;
     this.schemaRepo = schemaRepo;
@@ -151,6 +155,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.zkAddress = zkAddress;
     this.kafkaBootstrapServers = kafkaBootstrapServers;
     this.isSslToKafka = isSslToKafka;
+    this.veniceVersionFinder = versionFinder;
   }
 
   @Override
@@ -211,6 +216,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           break;
         case TYPE_REQUEST_TOPIC:
           handleRequestTopic(ctx, helper, req);
+          break;
+        case TYPE_CURRENT_VERSION:
+          handleCurrentVersionLookup(ctx, helper);
           break;
         default:
           // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
@@ -421,6 +429,23 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setErrorType(ErrorType.STORE_NOT_FOUND);
     }
     setupResponseAndFlush(status, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
+  }
+
+  private void handleCurrentVersionLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+    String storeName = helper.getResourceName();
+    checkResourceName(storeName, "/" + TYPE_CURRENT_VERSION + "/${storeName}");
+
+    if (storeRepository.getStore(storeName) == null) {
+      byte[] errBody =
+          ("Cannot find current version for store: " + storeName + " as it cannot be found in cluster: " + clusterName)
+              .getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+    int currentVersion = veniceVersionFinder.getVersion(storeName, null);
+    CurrentVersionResponse response = new CurrentVersionResponse();
+    response.setCurrentVersion(currentVersion);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
   }
 
   private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {

@@ -95,6 +95,11 @@ public class ZkRoutersClusterManager
     zkClient.unsubscribeStateChanges(zkStateListener);
   }
 
+  public List<String> getLiveRouterInstances() {
+    List<String> list = zkClient.getChildren(getRouterRootPath());
+    return list;
+  }
+
   /**
    * Create a ephemeral ZNode for the give router. If parent path does not exist, it will help to create that as well.
    */

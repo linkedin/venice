@@ -1,11 +1,13 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -22,10 +24,23 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestStoreBackupVersionCleanupService {
+  private VeniceHelixAdmin admin;
+  private ZkRoutersClusterManager clusterManager;
+  private HelixVeniceClusterResources mockClusterResource;
+
+  @BeforeMethod
+  public void setUp() throws Exception {
+    admin = mock(VeniceHelixAdmin.class);
+    mockClusterResource = mock(HelixVeniceClusterResources.class);
+    clusterManager = mock(ZkRoutersClusterManager.class);
+
+  }
+
   private Store mockStore(
       long backupVersionRetentionMs,
       long latestVersionPromoteToCurrentTimestamp,
@@ -122,6 +137,9 @@ public class TestStoreBackupVersionCleanupService {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
+    doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
+    doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
+    doReturn(Collections.emptyList()).when(clusterManager).getLiveRouterInstances();
     StoreBackupVersionCleanupService service = new StoreBackupVersionCleanupService(admin, config);
 
     String clusterName = "test_cluster";
@@ -157,7 +175,6 @@ public class TestStoreBackupVersionCleanupService {
 
   @Test
   public void testCleanupBackupVersionSleepValidation() throws Exception {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
@@ -166,6 +183,9 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(controllerConfig).when(config).getControllerConfig(any());
     doReturn(true).when(controllerConfig).isBackupVersionRetentionBasedCleanupEnabled();
     doReturn(true).when(admin).isLeaderControllerFor(any());
+    doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
+    doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
+    doReturn(Collections.emptyList()).when(clusterManager).getLiveRouterInstances();
     Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);

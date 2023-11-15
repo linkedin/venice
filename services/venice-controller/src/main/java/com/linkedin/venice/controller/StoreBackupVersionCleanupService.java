@@ -1,16 +1,32 @@
 package com.linkedin.venice.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
+import com.linkedin.venice.controllerapi.CurrentVersionResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -27,6 +43,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(StoreBackupVersionCleanupService.class);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+
   /**
    * The minimum delay to clean up backup version, and this is used to make sure all the Routers have enough
    * time to switch to the new promoted version.
@@ -39,7 +57,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Thread cleanupThread;
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
+
+  private final Map<String, String> urlMap = new HashMap<>();
   private final AtomicBoolean stop = new AtomicBoolean(false);
+
+  private Map<String, InternalAvroStoreClient> clientMap = new HashMap<>();
 
   private final Time time;
 
@@ -66,7 +88,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
    * @see AbstractVeniceService#startInner()
    */
   @Override
-  public boolean startInner() throws Exception {
+  public boolean startInner() {
     cleanupThread.start();
     return true;
   }
@@ -75,7 +97,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
    * @see AbstractVeniceService#stopInner()
    */
   @Override
-  public void stopInner() throws Exception {
+  public void stopInner() {
     stop.set(true);
     cleanupThread.interrupt();
   }
@@ -91,6 +113,66 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     return store.getLatestVersionPromoteToCurrentTimestamp() + backupVersionRetentionMs < time.getMilliseconds();
   }
 
+  private String convertToURL(String instance) {
+    // Split the input string into two parts using the underscore as the delimiter
+    String[] parts = instance.split("_");
+    String domain = parts[0];
+    String port = parts[1];
+    return "https://" + domain + ":" + port;
+  }
+
+  private boolean validateAllRouterOnCurrentVersion(Store store, String clusterName, int versionToValidate) {
+    List<String> list = admin.getHelixVeniceClusterResources(clusterName)
+        .getRoutersClusterManager()
+        .getLiveRouterInstances()
+        .stream()
+        .map(instance -> urlMap.computeIfAbsent(instance, this::convertToURL))
+        .collect(Collectors.toList());
+
+    for (String instance: list) {
+      InternalAvroStoreClient<Object, Object> storeClient = clientMap.computeIfAbsent(instance, k -> {
+        AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(store.getName()).setVeniceURL(instance));
+        LOGGER.info("Created a new client to router instance: {}", instance);
+        return (InternalAvroStoreClient<Object, Object>) client;
+      });
+
+      String requestTopicRequestPath = "current_version/" + store.getName();
+      CurrentVersionResponse currentVersionResponse;
+      byte[] response = executeRouterRequest(storeClient, requestTopicRequestPath);
+      try {
+        currentVersionResponse = OBJECT_MAPPER.readValue(response, CurrentVersionResponse.class);
+      } catch (Exception e) {
+        throw new VeniceException("Got exception while deserializing response", e);
+      }
+      if (currentVersionResponse.getCurrentVersion() != versionToValidate) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private byte[] executeRouterRequest(InternalAvroStoreClient client, String requestPath) {
+    byte[] response;
+    try {
+      CompletableFuture<byte[]> responseFuture;
+      responseFuture = client.getRaw(requestPath);
+
+      response = RetryUtils.executeWithMaxAttempt(
+          () -> responseFuture.get(),
+          3,
+          Duration.ofSeconds(1),
+          Collections.singletonList(ExecutionException.class));
+    } catch (Exception e) {
+      throw new VeniceException("Failed to execute request from path " + requestPath, e);
+    }
+
+    if (response == null) {
+      throw new VeniceException("Requested data doesn't exist for request path: " + requestPath);
+    }
+    return response;
+  }
+
   /**
    * Using a separate function for store cleanup is to make it easy for testing.
    * @return whether any backup version is removed or not
@@ -104,6 +186,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     List<Version> versions = store.getVersions();
     List<Version> readyToBeRemovedVersions = new ArrayList<>();
     int currentVersion = store.getCurrentVersion();
+
+    if (!validateAllRouterOnCurrentVersion(store, clusterName, currentVersion)) {
+      return false;
+    }
     versions.forEach(v -> {
       if (v.getNumber() < currentVersion) {
         readyToBeRemovedVersions.add(v);
