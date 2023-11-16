@@ -67,7 +67,8 @@ public class InstanceStatusDecider {
     try {
       // If instance is not alive, it's removable.
       if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getHelixManager())) {
-        return NodeRemovableResult.removableResult();
+        return NodeRemovableResult
+            .removableResult("Instance " + instanceId + " not found in liveinstance set of cluster " + clusterName);
       }
 
       RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
@@ -111,7 +112,7 @@ public class InstanceStatusDecider {
                   resourceName,
                   clusterName,
                   result.getSecond());
-              return NodeRemovableResult.nonremoveableResult(
+              return NodeRemovableResult.nonRemovableResult(
                   resourceName,
                   NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA,
                   result.getSecond());
@@ -137,7 +138,7 @@ public class InstanceStatusDecider {
                   resourceName,
                   clusterName,
                   result.getSecond());
-              return NodeRemovableResult.nonremoveableResult(
+              return NodeRemovableResult.nonRemovableResult(
                   resourceName,
                   NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE,
                   result.getSecond());
@@ -145,7 +146,7 @@ public class InstanceStatusDecider {
           }
         }
       }
-      return NodeRemovableResult.removableResult();
+      return NodeRemovableResult.removableResult("Instance " + instanceId + " can be removed.");
     } catch (Exception e) {
       String errorMsg = "Can not verify whether instance " + instanceId + " is removable.";
       LOGGER.error(errorMsg, e);

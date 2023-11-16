@@ -9,8 +9,8 @@
         <a href="https://blog.venicedb.org/stable-releases">
           <img src="https://img.shields.io/docker/v/venicedb/venice-router?label=stable&color=green&logo=docker" alt="Stable Release">
         </a>
-        <a href="https://github.com/linkedin/venice/actions/workflows/gh-ci.yml">
-          <img src="https://img.shields.io/github/actions/workflow/status/linkedin/venice/gh-ci.yml" alt="CI">
+        <a href="https://github.com/linkedin/venice/actions?query=branch%3Amain">
+          <img src="https://img.shields.io/github/actions/workflow/status/linkedin/venice/VeniceCI-StaticAnalysisAndUnitTests.yml" alt="CI">
         </a>
         <a href="https://venicedb.org/">
           <img src="https://img.shields.io/badge/docs-grey" alt="Docs">
@@ -131,7 +131,9 @@ The following talks have been given about Venice:
 - 2019: [People You May Know: Fast Recommendations over Massive Data](https://www.infoq.com/presentations/recommendation-massive-data/)
 - 2019: [Enabling next generation models for PYMK Scale](https://www.youtube.com/watch?v=znd-Q6IvCqY)
 - 2022: [Open Sourcing Venice](https://www.youtube.com/watch?v=pJeg4V3JgYo)
+- 2023: [What is Derived Data? (and Do You Already Have Any?)](https://www.infoq.com/presentations/derived-data/)
 - 2023: [Partial Updates in Venice](https://www.youtube.com/watch?v=WlfvpZuIa6Q&t=3880s)
+- 2023: [When Only the Last Writer Wins We All Lose: Active-Active Geo-Replication in Venice](https://events.bizzabo.com/468544/agenda/session/1136942)
 
 Keep in mind that older content reflects an earlier phase of the project and may not be entirely correct anymore.
 

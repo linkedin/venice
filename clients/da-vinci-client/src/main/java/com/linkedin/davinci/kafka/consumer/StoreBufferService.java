@@ -28,13 +28,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is serving as a {@link ConsumerRecord} buffer with an accompanying pool of drainer threads. The drainers
+ * This class is serving as a {@link PubSubMessage} buffer with an accompanying pool of drainer threads. The drainers
  * pull records out of the buffer and delegate the persistence and validation to the appropriate {@link StoreIngestionTask}.
  *
  * High-level idea:
@@ -56,7 +55,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
    */
   private static class QueueNode implements Measurable {
     /**
-     * Considering the overhead of {@link ConsumerRecord} and its internal structures.
+     * Considering the overhead of {@link PubSubMessage} and its internal structures.
      */
     private static final int QUEUE_NODE_OVERHEAD_IN_BYTE = 256;
     private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;

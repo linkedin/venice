@@ -149,6 +149,7 @@ public class TestHybrid {
   private static final Logger LOGGER = LogManager.getLogger(TestHybrid.class);
   public static final int STREAMING_RECORD_SIZE = 1024;
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
+  private static final long MAX_COMPACTION_LAG = 2 * MIN_COMPACTION_LAG;
 
   /**
    * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #cleanUp()} function
@@ -360,11 +361,6 @@ public class TestHybrid {
         Assert.assertTrue(
             topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
             "topic: " + topicForStoreVersion1 + " should have compaction enabled");
-        Assert.assertEquals(
-            topicManager.getTopicMinLogCompactionLagMs(topicForStoreVersion1),
-            MIN_COMPACTION_LAG,
-            "topic:" + topicForStoreVersion1 + " should have min compaction lag config set to " + MIN_COMPACTION_LAG);
-
         // Verify some records (note, records 1-100 have been pushed)
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           try {
@@ -399,11 +395,13 @@ public class TestHybrid {
           }
         });
 
-        // Update min compaction lag
+        // Update min and max compaction lag
         long expectedMinCompactionLagSeconds = TimeUnit.MINUTES.toSeconds(10); // 10mins
+        long expectedMaxCompactionLagSeconds = TimeUnit.MINUTES.toSeconds(20); // 20mins
         controllerClient.updateStore(
             storeName,
-            new UpdateStoreQueryParams().setMinCompactionLagSeconds(expectedMinCompactionLagSeconds));
+            new UpdateStoreQueryParams().setMinCompactionLagSeconds(expectedMinCompactionLagSeconds)
+                .setMaxCompactionLagSeconds(expectedMaxCompactionLagSeconds));
 
         // Run one more VPJ
         runVPJ(vpjProperties, 2, controllerClient);
@@ -419,6 +417,12 @@ public class TestHybrid {
             expectedMinCompactionLagMS,
             "topic:" + topicForStoreVersion2 + " should have min compaction lag config set to "
                 + expectedMinCompactionLagMS);
+        long expectedMaxCompactionLagMS = TimeUnit.SECONDS.toMillis(expectedMaxCompactionLagSeconds);
+        Assert.assertEquals(
+            topicManager.getTopicMaxLogCompactionLagMs(topicForStoreVersion2).get().longValue(),
+            expectedMaxCompactionLagMS,
+            "topic:" + topicForStoreVersion2 + " should have max compaction lag config set to "
+                + expectedMaxCompactionLagMS);
 
         // Verify streaming record in second version
         checkLargeRecord(client, 2);

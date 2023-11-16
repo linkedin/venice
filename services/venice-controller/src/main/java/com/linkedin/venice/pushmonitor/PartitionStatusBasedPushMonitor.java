@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,7 +37,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       List<String> childDataCenterKafkaUrls,
       HelixAdminClient helixAdminClient,
       VeniceControllerConfig controllerConfig,
-      PushStatusStoreReader pushStatusStoreReader) {
+      PushStatusStoreReader pushStatusStoreReader,
+      MetricsRepository metricsRepository) {
     super(
         clusterName,
         offlinePushAccessor,
@@ -50,7 +52,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         childDataCenterKafkaUrls,
         helixAdminClient,
         controllerConfig,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
   }
 
   @Override

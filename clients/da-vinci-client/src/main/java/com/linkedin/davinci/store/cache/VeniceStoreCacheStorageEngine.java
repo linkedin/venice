@@ -50,7 +50,7 @@ public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceS
   }
 
   @Override
-  protected Set<Integer> getPersistedPartitionIds() {
+  public Set<Integer> getPersistedPartitionIds() {
     return null;
   }
 

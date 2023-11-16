@@ -608,7 +608,7 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGeneration(parentControllerClient);
         testWriteComputeSchemaEnable(parentControllerClient);
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
-        testUpdateMinCompactionLag(parentControllerClient, childControllerClient);
+        testUpdateCompactionLag(parentControllerClient, childControllerClient);
       }
     }
   }
@@ -883,7 +883,7 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(schemaResponse.getSchemas().length, 2);
   }
 
-  private void testUpdateMinCompactionLag(
+  private void testUpdateCompactionLag(
       ControllerClient parentControllerClient,
       ControllerClient childControllerClient) {
     // Adding store
@@ -898,17 +898,21 @@ public class VeniceParentHelixAdminTest {
     parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
 
     final long expectedMinCompactionLagSeconds = 100;
+    final long expectedMaxCompactionLagSeconds = 200;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setMinCompactionLagSeconds(expectedMinCompactionLagSeconds);
+    params.setMaxCompactionLagSeconds(expectedMaxCompactionLagSeconds);
     parentControllerClient.updateStore(storeName, params);
 
     // Validate in parent
     StoreResponse parentStoreResponse = parentControllerClient.getStore(storeName);
     Assert.assertEquals(parentStoreResponse.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
+    Assert.assertEquals(parentStoreResponse.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreResponse childStoreResponse = parentControllerClient.getStore(storeName);
       Assert.assertEquals(childStoreResponse.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
+      Assert.assertEquals(childStoreResponse.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
     });
 
   }

@@ -1,7 +1,5 @@
 package com.linkedin.davinci.helix;
 
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
-
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -16,6 +14,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixInstanceConverter;
@@ -26,10 +25,13 @@ import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessageHandler;
@@ -76,6 +78,7 @@ public class HelixParticipationService extends AbstractVeniceService
   private final StorageService storageService;
   private final VeniceConfigLoader veniceConfigLoader;
   private final ReadOnlyStoreRepository helixReadOnlyStoreRepository;
+  private final ReadOnlySchemaRepository helixReadOnlySchemaRepository;
   private final MetricsRepository metricsRepository;
   private final VeniceIngestionBackend ingestionBackend;
   private final CompletableFuture<SafeHelixManager> managerFuture; // complete this future when the manager is connected
@@ -99,6 +102,7 @@ public class HelixParticipationService extends AbstractVeniceService
       StorageMetadataService storageMetadataService,
       VeniceConfigLoader veniceConfigLoader,
       ReadOnlyStoreRepository helixReadOnlyStoreRepository,
+      ReadOnlySchemaRepository helixReadOnlySchemaRepository,
       MetricsRepository metricsRepository,
       String zkAddress,
       String clusterName,
@@ -113,6 +117,7 @@ public class HelixParticipationService extends AbstractVeniceService
     this.zkAddress = zkAddress;
     this.veniceConfigLoader = veniceConfigLoader;
     this.helixReadOnlyStoreRepository = helixReadOnlyStoreRepository;
+    this.helixReadOnlySchemaRepository = helixReadOnlySchemaRepository;
     this.metricsRepository = metricsRepository;
     this.instance = new Instance(participantName, hostname, port);
     this.managerFuture = managerFuture;
@@ -231,7 +236,7 @@ public class HelixParticipationService extends AbstractVeniceService
     LOGGER.info("Attempting to stop HelixParticipation service.");
     ingestionBackend.prepareForShutdown();
     if (helixManager != null) {
-      resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger);
+      resetAllInstanceCVStates(partitionPushStatusAccessor, ingestionBackend, logger);
     } else {
       logger.error("Can't reset instance CV states since HelixManager is null");
     }
@@ -299,17 +304,20 @@ public class HelixParticipationService extends AbstractVeniceService
   private void asyncStart() {
     zkClient = ZkClientFactory.newZkClient(zkAddress);
 
-    // we use push status store for persisting incremental push statuses
     VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceProperties veniceProperties = veniceServerConfig.getClusterProperties();
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
     VeniceWriterFactory writerFactory =
         new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
-    statusStoreWriter = new PushStatusStoreWriter(
-        writerFactory,
-        instance.getNodeId(),
-        veniceProperties.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1));
+    String dummyPushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("dummy");
+    SchemaEntry valueSchemaEntry =
+        helixReadOnlySchemaRepository.getSupersetOrLatestValueSchema(dummyPushStatusStoreName);
+    DerivedSchemaEntry updateSchemaEntry =
+        helixReadOnlySchemaRepository.getLatestDerivedSchema(dummyPushStatusStoreName, valueSchemaEntry.getId());
+    // We use push status store for persisting incremental push statuses
+    statusStoreWriter =
+        new PushStatusStoreWriter(writerFactory, instance.getNodeId(), valueSchemaEntry, updateSchemaEntry);
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
@@ -343,8 +351,8 @@ public class HelixParticipationService extends AbstractVeniceService
         // our
         // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
         checkBeforeJoinInCluster();
-        helixManager
-            .addPreConnectCallback(() -> resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger));
+        helixManager.addPreConnectCallback(
+            () -> resetAllInstanceCVStates(partitionPushStatusAccessor, ingestionBackend, logger));
         helixManager.connect();
         managerFuture.complete(helixManager);
       } catch (Exception e) {
@@ -371,11 +379,11 @@ public class HelixParticipationService extends AbstractVeniceService
 
   static void resetAllInstanceCVStates(
       HelixPartitionStatusAccessor accessor,
-      StorageService storageService,
+      VeniceIngestionBackend ingestionBackend,
       Logger currentLogger) {
     // Get all hosted stores
     currentLogger.info("Started resetting all instance CV states");
-    Map<String, Set<Integer>> storePartitionMapping = storageService.getStoreAndUserPartitionsMapping();
+    Map<String, Set<Integer>> storePartitionMapping = ingestionBackend.getLoadedStoreUserPartitionsMapping();
     storePartitionMapping.forEach((storeName, partitionIds) -> {
       partitionIds.forEach(partitionId -> {
         try {

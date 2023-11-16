@@ -167,16 +167,16 @@ public class UtilsTest {
 
   @Test
   public void testParseMap() {
-    assertEquals(Utils.parseCommaSeparatedStringMapFromString("", "test_field").size(), 0);
-    Map nonEmptyMap = Utils.parseCommaSeparatedStringMapFromString("a=b", "test_field");
     Map expectedMap = new HashMap<>();
     expectedMap.put("a", "b");
-    assertEquals(nonEmptyMap, expectedMap);
 
-    VeniceException e = expectThrows(
-        VeniceException.class,
-        () -> Utils.parseCommaSeparatedStringMapFromString("invalid_value", "test_field"));
-    assertTrue(e.getMessage().contains("must be key value pairs separated by comma"));
+    assertEquals(Utils.parseJsonMapFromString("", "test_field").size(), 0);
+    Map validMap = Utils.parseJsonMapFromString("{\"a\":\"b\"}", "test_field");
+    assertEquals(validMap, expectedMap);
+
+    VeniceException e = expectThrows(VeniceException.class, () -> Utils.parseJsonMapFromString("a=b", "test_field"));
+    assertTrue(e.getMessage().contains("must be a valid JSON object"));
+
   }
 
   @Test

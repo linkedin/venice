@@ -8,6 +8,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -71,7 +72,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(73, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(74, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -129,6 +130,12 @@ public enum AvroProtocolDefinition {
   PUBSUB_POSITION_WIRE_FORMAT(34, 1, PubSubPositionWireFormat.class),
 
   /**
+   * Used to retrieve the loaded store partition mapping in the isolated process.
+   * In theory, we don't need to use magicByte for the communication with II process.
+   */
+  LOADED_STORE_USER_PARTITION_MAPPING(35, 1, LoadedStoreUserPartitionMapping.class),
+
+  /**
    * Key schema for metadata system store.
    */
   METADATA_SYSTEM_SCHEMA_STORE_KEY(StoreMetaKey.class),
@@ -136,7 +143,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(16, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(17, StoreMetaValue.class),
 
   /**
    * Key schema for push status system store.

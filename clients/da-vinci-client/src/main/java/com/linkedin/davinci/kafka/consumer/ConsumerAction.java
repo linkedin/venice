@@ -26,26 +26,33 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   private long createTimestampInMs = System.currentTimeMillis();
 
+  private boolean isHelixTriggeredAction = true;
   private CompletableFuture<Void> future = new CompletableFuture<>();
 
-  public ConsumerAction(ConsumerActionType type, PubSubTopicPartition topicPartition, int sequenceNumber) {
-    this(type, topicPartition, sequenceNumber, null, Optional.empty());
+  public ConsumerAction(
+      ConsumerActionType type,
+      PubSubTopicPartition topicPartition,
+      int sequenceNumber,
+      boolean isHelixTriggeredAction) {
+    this(type, topicPartition, sequenceNumber, null, Optional.empty(), isHelixTriggeredAction);
   }
 
   public ConsumerAction(
       ConsumerActionType type,
       PubSubTopicPartition topicPartition,
       int sequenceNumber,
-      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-    this(type, topicPartition, sequenceNumber, checker, Optional.empty());
+      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker,
+      boolean isHelixTriggeredAction) {
+    this(type, topicPartition, sequenceNumber, checker, Optional.empty(), isHelixTriggeredAction);
   }
 
   public ConsumerAction(
       ConsumerActionType type,
       PubSubTopicPartition topicPartition,
       int sequenceNumber,
-      Optional<LeaderFollowerStateType> leaderState) {
-    this(type, topicPartition, sequenceNumber, null, leaderState);
+      Optional<LeaderFollowerStateType> leaderState,
+      boolean isHelixTriggeredAction) {
+    this(type, topicPartition, sequenceNumber, null, leaderState, isHelixTriggeredAction);
   }
 
   private ConsumerAction(
@@ -53,12 +60,14 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
       PubSubTopicPartition topicPartition,
       int sequenceNumber,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker,
-      Optional<LeaderFollowerStateType> leaderState) {
+      Optional<LeaderFollowerStateType> leaderState,
+      boolean isHelixTriggeredAction) {
     this.type = type;
     this.topicPartition = Utils.notNull(topicPartition);
     this.sequenceNumber = sequenceNumber;
     this.checker = checker;
     this.leaderState = leaderState.orElse(LeaderFollowerStateType.STANDBY);
+    this.isHelixTriggeredAction = isHelixTriggeredAction;
   }
 
   public ConsumerActionType getType() {
@@ -103,6 +112,10 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   public CompletableFuture<Void> getFuture() {
     return future;
+  }
+
+  public boolean isHelixTriggeredAction() {
+    return isHelixTriggeredAction;
   }
 
   @Override
@@ -161,6 +174,12 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
    * value for no meaning.
    */
   public static ConsumerAction createKillAction(PubSubTopic topic, int sequenceNumber) {
-    return new ConsumerAction(ConsumerActionType.KILL, new PubSubTopicPartitionImpl(topic, 0), sequenceNumber);
+    return new ConsumerAction(
+        ConsumerActionType.KILL,
+        new PubSubTopicPartitionImpl(topic, 0),
+        sequenceNumber,
+        null,
+        Optional.empty(),
+        false);
   }
 }

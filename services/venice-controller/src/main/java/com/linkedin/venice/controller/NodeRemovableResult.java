@@ -26,14 +26,16 @@ public class NodeRemovableResult {
     return details;
   }
 
-  public static NodeRemovableResult removableResult() {
-    return new NodeRemovableResult();
+  public static NodeRemovableResult removableResult(String details) {
+    NodeRemovableResult result = new NodeRemovableResult();
+    result.details = details;
+    return result;
   }
 
   /**
    * @return a {@link NodeRemovableResult} object with specified parameters.
    */
-  public static NodeRemovableResult nonremoveableResult(
+  public static NodeRemovableResult nonRemovableResult(
       String blockingResource,
       BlockingRemoveReason blockingReason,
       String details) {

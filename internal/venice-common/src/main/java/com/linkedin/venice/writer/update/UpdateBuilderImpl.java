@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.avro.Schema;
+import org.apache.avro.UnresolvedUnionException;
+import org.apache.avro.generic.GenericContainer;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
@@ -127,19 +129,34 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     return updateRecord;
   }
 
-  private Exception validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
+  Exception validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
     try {
       serializer.serialize(updateRecord);
+    } catch (UnresolvedUnionException serializationException) {
+      String datumDescription = datumDescription(serializationException.getUnresolvedDatum());
+      return new VeniceException(
+          "The following type does not conform to any branch of the union: " + datumDescription,
+          serializationException);
     } catch (Exception serializationException) {
       return serializationException;
     }
     return null;
   }
 
+  private String datumDescription(Object unresolvedDatum) {
+    if (unresolvedDatum instanceof GenericContainer) {
+      return ((GenericContainer) unresolvedDatum).getSchema().toString();
+    } else if (unresolvedDatum == null) {
+      return "null";
+    } else {
+      return unresolvedDatum.getClass().getSimpleName();
+    }
+  }
+
   /**
    * Given a field from the partial update schema and find the schema of its corresponding value field.
    *
-   * @param updateField A field from the partial update schema.
+   * @param updateFieldName A field from the partial update schema.
    * @return Schema of its corresponding value field.
    */
   private Schema getCorrespondingValueFieldSchema(String updateFieldName) {
@@ -183,7 +200,8 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     }
     Schema.Type valueFieldType = getCorrespondingValueFieldType(updateField);
     if (valueFieldType != expectedType) {
-      throw new IllegalStateException();
+      throw new IllegalStateException(
+          "Field: " + fieldName + " expect type: " + expectedType + ", got type: " + valueFieldType);
     }
   }
 

@@ -20,6 +20,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private String bootstrapFileSystemPath;
 
+  private long versionSwapDetectionIntervalTimeInMs = 600000L;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -131,6 +133,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this.bootstrapFileSystemPath;
   }
 
+  public long getVersionSwapDetectionIntervalTimeInMs() {
+    return versionSwapDetectionIntervalTimeInMs;
+  }
+
+  public ChangelogClientConfig setVersionSwapDetectionIntervalTimeInMs(long intervalTimeInMs) {
+    this.versionSwapDetectionIntervalTimeInMs = intervalTimeInMs;
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -142,7 +153,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setControllerD2ServiceName(config.controllerD2ServiceName)
         .setD2Client(config.getD2Client())
         .setControllerRequestRetryCount(config.getControllerRequestRetryCount())
-        .setBootstrapFileSystemPath(config.getBootstrapFileSystemPath());
+        .setBootstrapFileSystemPath(config.getBootstrapFileSystemPath())
+        .setVersionSwapDetectionIntervalTimeInMs(config.getVersionSwapDetectionIntervalTimeInMs());
     return newConfig;
   }
 }

@@ -8,14 +8,21 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.schemas.TestKeyRecord;
+import com.linkedin.venice.client.store.schemas.TestValueRecord;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.schema.SchemaData;
-import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.system.store.MetaStoreDataType;
+import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
+import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -56,7 +63,45 @@ public class NativeMetadataRepositoryTest {
     Assert.assertNotNull(nmr.getKeySchema(STORE_NAME));
   }
 
+  @Test
+  public void testGetSchemaDataEfficiently() throws InterruptedException {
+    doReturn(Long.MAX_VALUE).when(backendConfig)
+        .getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
+    TestNMR nmr = new TestNMR(clientConfig, backendConfig);
+    nmr.start();
+    Assert.assertEquals(nmr.keySchemaRequestCount, 0);
+    Assert.assertEquals(nmr.valueSchemasRequestCount, 0);
+    Assert.assertEquals(nmr.specificValueSchemaRequestCount, 0);
+    nmr.subscribe(STORE_NAME);
+    Assert.assertEquals(nmr.keySchemaRequestCount, 1);
+    Assert.assertEquals(nmr.valueSchemasRequestCount, 1);
+    Assert.assertEquals(nmr.specificValueSchemaRequestCount, 1);
+    Assert.assertNotNull(nmr.getKeySchema(STORE_NAME));
+    Assert.assertNotNull(nmr.getValueSchema(STORE_NAME, 1));
+    // Refresh the store, we are not expecting to retrieve key schema or any specific value schema again.
+    nmr.refreshOneStore(STORE_NAME);
+    Assert.assertEquals(nmr.keySchemaRequestCount, 1);
+    Assert.assertEquals(nmr.valueSchemasRequestCount, 2);
+    Assert.assertEquals(nmr.specificValueSchemaRequestCount, 1);
+    Assert.assertNotNull(nmr.getKeySchema(STORE_NAME));
+    Assert.assertNotNull(nmr.getValueSchema(STORE_NAME, 1));
+    // Refresh the store a few more times to retrieve value schema v2
+    for (int i = 0; i < 10; i++) {
+      nmr.refreshOneStore(STORE_NAME);
+    }
+    Assert.assertEquals(nmr.keySchemaRequestCount, 1);
+    Assert.assertEquals(nmr.valueSchemasRequestCount, 12);
+    Assert.assertEquals(nmr.specificValueSchemaRequestCount, 2);
+    Assert.assertNotNull(nmr.getKeySchema(STORE_NAME));
+    Assert.assertNotNull(nmr.getValueSchema(STORE_NAME, 1));
+    Assert.assertNotNull(nmr.getValueSchema(STORE_NAME, 2));
+  }
+
   static class TestNMR extends NativeMetadataRepository {
+    int keySchemaRequestCount = 0;
+    int valueSchemasRequestCount = 0;
+    int specificValueSchemaRequestCount = 0;
+
     protected TestNMR(ClientConfig clientConfig, VeniceProperties backendConfig) {
       super(clientConfig, backendConfig);
     }
@@ -78,14 +123,37 @@ public class NativeMetadataRepositoryTest {
 
     @Override
     protected StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key) {
-      return null;
+      StoreMetaValue storeMetaValue = new StoreMetaValue();
+      MetaStoreDataType metaStoreDataType = MetaStoreDataType.valueOf(key.metadataType);
+      switch (metaStoreDataType) {
+        case STORE_KEY_SCHEMAS:
+          Map<CharSequence, CharSequence> keySchemaMap = new HashMap<>();
+          keySchemaMap.put(String.valueOf(1), TestKeyRecord.SCHEMA$.toString());
+          storeMetaValue.storeKeySchemas = new StoreKeySchemas(keySchemaMap);
+          keySchemaRequestCount++;
+          break;
+        case STORE_VALUE_SCHEMAS:
+          Map<CharSequence, CharSequence> valueSchemaMap = new HashMap<>();
+          valueSchemaMap.put(String.valueOf(1), "");
+          if (valueSchemasRequestCount > 1) {
+            valueSchemaMap.put(String.valueOf(2), "");
+          }
+          storeMetaValue.storeValueSchemas = new StoreValueSchemas(valueSchemaMap);
+          valueSchemasRequestCount++;
+          break;
+        case STORE_VALUE_SCHEMA:
+          storeMetaValue.storeValueSchema = new StoreValueSchema(TestValueRecord.SCHEMA$.toString());
+          specificValueSchemaRequestCount++;
+          break;
+        default:
+          // do nothing
+      }
+      return storeMetaValue;
     }
 
     @Override
     protected SchemaData getSchemaDataFromSystemStore(String storeName) {
-      SchemaData schemaData = mock(SchemaData.class);
-      when(schemaData.getKeySchema()).thenReturn(mock(SchemaEntry.class));
-      return schemaData;
+      return getSchemaDataFromMetaSystemStore(storeName);
     }
   }
 }

@@ -10,7 +10,7 @@ import org.apache.avro.Schema;
  */
 public class MapOrderPreservingSerializer<K> extends AvroSerializer<K> {
   /**
-   * Constructor is made package-private so that users of this class should create it via {@link MapOrderingPreservingSerDeFactory}
+   * Constructor is made package-private so that users of this class should create it via {@link MapOrderPreservingSerDeFactory}
    * @param schema
    */
   MapOrderPreservingSerializer(Schema schema) {

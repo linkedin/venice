@@ -42,7 +42,11 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -54,6 +58,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -264,12 +269,20 @@ public class PushStatusStoreTest {
         response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
         assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
 
-        PushStatusStoreRecordDeleter statusStoreDeleter = new PushStatusStoreRecordDeleter(
-            cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory());
+        int valueSchemaId = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
+        Schema valueSchema = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema();
+        Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+        SchemaEntry valueSchemaEntry = new SchemaEntry(valueSchemaId, valueSchema);
+        DerivedSchemaEntry updateSchemaEntry = new DerivedSchemaEntry(valueSchemaId, 1, updateSchema);
+        PushStatusStoreWriter statusStoreWriter = new PushStatusStoreWriter(
+            cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory(),
+            "dummyInstance",
+            valueSchemaEntry,
+            updateSchemaEntry);
 
         // After deleting the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status
-        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1).get();
+        statusStoreWriter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1).get();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           // N.B.: Even though we block on the deleter's future, that only means the delete message is persisted into
           // Kafka, but querying the system store may still yield a stale result, hence the need for retrying.
@@ -279,7 +292,7 @@ public class PushStatusStoreTest {
         });
 
         // expect NOT_CREATED when statuses of all partitions are not available in the push status store
-        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0).get();
+        statusStoreWriter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0).get();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           JobStatusQueryResponse jobStatusQueryResponse =
               controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());

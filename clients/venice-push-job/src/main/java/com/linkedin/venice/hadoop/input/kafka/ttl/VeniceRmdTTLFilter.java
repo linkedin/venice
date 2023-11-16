@@ -5,7 +5,7 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.schema.merge.UpdateResultStatus;
-import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
@@ -36,6 +36,10 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
   private final HDFSSchemaSource schemaSource;
   protected final Map<RmdVersionId, Schema> rmdSchemaMap;
   protected final Map<Integer, Schema> valueSchemaMap;
+  /**
+   * TODO: we will adopt fast-avro in a next iteration after fast-avro adoption in the AAWC code path
+   * is fully verified.
+   */
   private final Map<RmdVersionId, RecordDeserializer<GenericRecord>> rmdDeserializerCache;
   private final Map<Integer, RecordDeserializer<GenericRecord>> valueDeserializerCache;
   private final Map<RmdVersionId, RecordSerializer<GenericRecord>> rmdSerializerCache;
@@ -117,22 +121,22 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
 
   RecordDeserializer<GenericRecord> generateRmdDeserializer(RmdVersionId rmdVersionId) {
     Schema schema = rmdSchemaMap.get(rmdVersionId);
-    return MapOrderingPreservingSerDeFactory.getDeserializer(schema, schema);
+    return MapOrderPreservingSerDeFactory.getDeserializer(schema, schema);
   }
 
   RecordDeserializer<GenericRecord> generateValueDeserializer(int valueSchemaId) {
     Schema schema = valueSchemaMap.get(valueSchemaId);
-    return MapOrderingPreservingSerDeFactory.getDeserializer(schema, schema);
+    return MapOrderPreservingSerDeFactory.getDeserializer(schema, schema);
   }
 
   RecordSerializer<GenericRecord> generateRmdSerializer(RmdVersionId rmdVersionId) {
     Schema schema = rmdSchemaMap.get(rmdVersionId);
-    return MapOrderingPreservingSerDeFactory.getSerializer(schema);
+    return MapOrderPreservingSerDeFactory.getSerializer(schema);
   }
 
   RecordSerializer<GenericRecord> generateValueSerializer(int valueSchemaId) {
     Schema schema = valueSchemaMap.get(valueSchemaId);
-    return MapOrderingPreservingSerDeFactory.getSerializer(schema);
+    return MapOrderPreservingSerDeFactory.getSerializer(schema);
   }
 
   protected abstract int getSchemaId(final INPUT_VALUE value);

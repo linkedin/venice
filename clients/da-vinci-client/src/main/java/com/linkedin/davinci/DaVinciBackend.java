@@ -1,6 +1,5 @@
 package com.linkedin.davinci;
 
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static java.lang.Thread.currentThread;
 
@@ -26,6 +25,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -44,7 +44,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
@@ -52,6 +54,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -186,8 +189,16 @@ public class DaVinciBackend implements Closeable {
           new VeniceWriterFactory(backendProps.toProperties(), pubSubClientsFactory.getProducerAdapterFactory(), null);
       String pid = Utils.getPid();
       String instanceName = Utils.getHostName() + "_" + (pid == null ? "NA" : pid);
-      int derivedSchemaID = backendProps.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
-      pushStatusStoreWriter = new PushStatusStoreWriter(writerFactory, instanceName, derivedSchemaID);
+
+      // Fetch latest update schema's protocol ID for Push Status Store from Router.
+      ClientConfig pushStatusStoreClientConfig = ClientConfig.cloneConfig(clientConfig)
+          .setStoreName(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
+      try (StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(pushStatusStoreClientConfig)) {
+        SchemaEntry valueSchemaEntry = schemaFetcher.getLatestValueSchemaEntry();
+        DerivedSchemaEntry updateSchemaEntry = schemaFetcher.getUpdateSchemaEntry(valueSchemaEntry.getId());
+        pushStatusStoreWriter =
+            new PushStatusStoreWriter(writerFactory, instanceName, valueSchemaEntry, updateSchemaEntry);
+      }
 
       SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)
@@ -423,8 +434,21 @@ public class DaVinciBackend implements Closeable {
     cacheBackend.ifPresent(
         objectCacheBackend -> storeRepository
             .unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
+    ExecutorService storeBackendCloseExecutor =
+        Executors.newCachedThreadPool(new DaemonThreadFactory("DaVinciBackend-StoreBackend-Close"));
     for (StoreBackend storeBackend: storeByNameMap.values()) {
-      storeBackend.close();
+      /**
+       * {@link StoreBackend#close()} is time-consuming since the internal {@link VersionBackend#close()} call triggers
+       * {@link KafkaStoreIngestionService#shutdownStoreIngestionTask}, which can take up to 10s to return.
+       * So here we use a thread pool to shut down all the subscribed stores concurrently.
+       */
+      storeBackendCloseExecutor.submit(() -> storeBackend.close());
+    }
+    storeBackendCloseExecutor.shutdown();
+    try {
+      storeBackendCloseExecutor.awaitTermination(60, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      currentThread().interrupt();
     }
     storeByNameMap.clear();
     versionByTopicMap.clear();

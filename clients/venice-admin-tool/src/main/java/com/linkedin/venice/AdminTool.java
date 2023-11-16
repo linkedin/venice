@@ -992,7 +992,7 @@ public class AdminTool {
       Arg param,
       Consumer<Map<String, String>> setter,
       Set<Arg> argSet) {
-    genericParam(cmd, param, s -> Utils.parseCommaSeparatedStringMapFromString(s, param.toString()), setter, argSet);
+    genericParam(cmd, param, s -> Utils.parseJsonMapFromString(s, param.toString()), setter, argSet);
   }
 
   private static void stringSetParam(CommandLine cmd, Arg param, Consumer<Set<String>> setter, Set<Arg> argSet) {
@@ -1122,6 +1122,7 @@ public class AdminTool {
     genericParam(cmd, Arg.STORAGE_PERSONA, s -> s, p -> params.setStoragePersona(p), argSet);
     integerParam(cmd, Arg.LATEST_SUPERSET_SCHEMA_ID, p -> params.setLatestSupersetSchemaId(p), argSet);
     longParam(cmd, Arg.MIN_COMPACTION_LAG_SECONDS, p -> params.setMinCompactionLagSeconds(p), argSet);
+    longParam(cmd, Arg.MAX_COMPACTION_LAG_SECONDS, p -> params.setMaxCompactionLagSeconds(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.

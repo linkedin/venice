@@ -10,4 +10,8 @@ public interface PubSubTopicPartition {
    * @return the partition number of this topic-partition
    */
   int getPartitionNumber();
+
+  default String getTopicName() {
+    return getPubSubTopic().getName();
+  }
 }
