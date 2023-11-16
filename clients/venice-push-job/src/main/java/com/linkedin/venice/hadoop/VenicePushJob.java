@@ -1219,7 +1219,7 @@ public class VenicePushJob implements AutoCloseable {
             ex);
       } finally {
         try {
-          killJobAndCleanup(pushJobSetting, controllerClient, kafkaTopicInfo);
+          killJob(pushJobSetting, controllerClient, kafkaTopicInfo);
           LOGGER.info("Successfully killed the failed push job.");
         } catch (Exception ex) {
           LOGGER.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
@@ -2289,9 +2289,8 @@ public class VenicePushJob implements AutoCloseable {
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
       String briefErrorMessage = "Key schema mis-match for store " + setting.storeName;
       LOGGER.error(
-          "{}\n\t\tController URLs: {}\n\t\tschema defined in HDFS: \t{}\n\t\tschema defined in Venice: \t{}",
+          "{}\n\t\tschema defined in HDFS: \t{}\n\t\tschema defined in Venice: \t{}",
           briefErrorMessage,
-          controllerClient.getControllerDiscoveryUrls(),
           pushJobSchemaInfo.getKeySchemaString(),
           serverSchema.toString());
       throw new VeniceException(briefErrorMessage);
@@ -3406,7 +3405,7 @@ public class VenicePushJob implements AutoCloseable {
    * @throws Exception
    */
   public void cancel() {
-    killJobAndCleanup(pushJobSetting, controllerClient, kafkaTopicInfo);
+    killJob(pushJobSetting, controllerClient, kafkaTopicInfo);
     if (kafkaTopicInfo != null && StringUtils.isEmpty(kafkaTopicInfo.topic)) {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
     } else {
@@ -3417,12 +3416,9 @@ public class VenicePushJob implements AutoCloseable {
     sendPushJobDetailsToController();
   }
 
-  private void killJobAndCleanup(
-      PushJobSetting pushJobSetting,
-      ControllerClient controllerClient,
-      TopicInfo topicInfo) {
+  private void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient, TopicInfo topicInfo) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
-    killJob();
+    killComputeJob();
     if (!pushJobSetting.isIncrementalPush && topicInfo != null) {
       final int maxRetryAttempt = 10;
       int currentRetryAttempt = 0;
@@ -3443,10 +3439,9 @@ public class VenicePushJob implements AutoCloseable {
         LOGGER.info("Offline push job has been killed, topic: {}", topicInfo.topic);
       }
     }
-    close();
   }
 
-  private void killJob() {
+  private void killComputeJob() {
     if (runningJob == null) {
       LOGGER.warn("No op to kill a null running job");
       return;
@@ -3577,7 +3572,7 @@ public class VenicePushJob implements AutoCloseable {
     Utils.exit("Venice Push Job Completed");
   }
 
-  public static void runPushJob(String jobId, Properties props) {
+  private static void runPushJob(String jobId, Properties props) {
     try (VenicePushJob job = new VenicePushJob(jobId, props)) {
       job.run();
     }
