@@ -39,6 +39,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -228,8 +229,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     // If there are warmup in progress, check its status to cancel or reuse the same warmup
     Set<String> replicasWarmupInProgressFromPastRefresh = new HashSet<>();
     Set<String> futuresToRemove = new HashSet<>();
-    for (String replica: warmUpInstancesFutures.keySet()) {
-      CompletableFuture future = warmUpInstancesFutures.get(replica);
+    Iterator<Map.Entry<String, CompletableFuture>> entryIterator = warmUpInstancesFutures.entrySet().iterator();
+    while (entryIterator.hasNext()) {
+      Map.Entry<String, CompletableFuture> entry = entryIterator.next();
+      String replica = entry.getKey();
+      CompletableFuture future = entry.getValue();
       if (!newReplicasToBeWarmedUp.contains(replica)) {
         // No need to warm up this instance anymore: cancel if already running
         if (!future.isDone()) {
