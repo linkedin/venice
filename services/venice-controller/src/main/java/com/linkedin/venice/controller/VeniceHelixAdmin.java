@@ -231,7 +231,12 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
@@ -321,6 +326,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
   private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
+  private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
 
   static final int VERSION_ID_UNSET = -1;
 
@@ -3117,7 +3123,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Delete version from cluster, removing all related resources
    */
-  @Override
   public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
     deleteOneStoreVersion(clusterName, storeName, versionNumber, false);
   }
@@ -3156,11 +3161,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
         }
         if (store.isDaVinciPushStatusStoreEnabled()) {
-          getPushStatusStoreWriter().deletePushStatus(
-              storeName,
-              deletedVersion.get().getNumber(),
-              Optional.empty(),
-              deletedVersion.get().getPartitionCount());
+          ExecutorService executor = Executors.newSingleThreadExecutor();
+          Future<?> future = executor.submit(
+              () -> getPushStatusStoreWriter().deletePushStatus(
+                  storeName,
+                  deletedVersion.get().getNumber(),
+                  Optional.empty(),
+                  deletedVersion.get().getPartitionCount()));
+          try {
+            future.get(PUSH_STATUS_STORE_WRITER_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            LOGGER.info("Deleted da-vinci push status of {}_v{}", storeName, versionNumber);
+          } catch (InterruptedException e) {
+            LOGGER.error(
+                "Got interrupted while waiting for the completion of {}_v{} da-vinci push status deletion",
+                storeName,
+                versionNumber,
+                e);
+            Thread.currentThread().interrupt();
+          } catch (ExecutionException e) {
+            LOGGER.error("Exception thrown when deleting da-vinci push status of {}_v{}", storeName, versionNumber, e);
+          } catch (TimeoutException e) {
+            LOGGER.error("Timed out when deleting da-vinci push status of {}_v{}", storeName, versionNumber);
+            future.cancel(true);
+          } finally {
+            executor.shutdown();
+          }
         }
       }
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
