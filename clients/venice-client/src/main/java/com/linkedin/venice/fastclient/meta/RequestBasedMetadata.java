@@ -248,7 +248,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         }
       }
     }
-    warmUpInstancesFutures.remove(futuresToRemove);
+    futuresToRemove.forEach(replica -> warmUpInstancesFutures.remove(replica));
 
     if (replicasWarmupInProgressFromPastRefresh.size() != 0) {
       LOGGER.info(
@@ -620,5 +620,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   public long getRefreshIntervalInSeconds() {
     return refreshIntervalInSeconds;
+  }
+
+  public Set<String> getWarmedUpInstances() {
+    return warmedUpInstances;
+  }
+
+  public Map<String, CompletableFuture> getWarmUpInstancesFutures() {
+    return warmUpInstancesFutures;
   }
 }
