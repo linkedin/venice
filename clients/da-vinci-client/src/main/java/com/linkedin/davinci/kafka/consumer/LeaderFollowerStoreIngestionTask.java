@@ -61,6 +61,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.ChunkAwareCallback;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -1676,7 +1677,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (isCurrentVersion.getAsBoolean()) {
           amplificationFactorAdapter
               .executePartitionConsumptionState(pcs.getUserPartition(), PartitionConsumptionState::lagHasCaughtUp);
-          statusReportAdapter.reportCompleted(pcs, true);
+          reportCompleted(pcs, true);
         }
       }
     }
@@ -2087,7 +2088,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 LeaderMetadataWrapper leaderMetadataWrapper =
                     new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
                 PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), subPartition);
-                veniceWriter.get().sendHeartbeat(topicPartition, callback, leaderMetadataWrapper);
+                // Leaders forward HB SOS message to local VT with updated LeaderCompleteState header
+                veniceWriter.get()
+                    .sendHeartbeat(
+                        topicPartition,
+                        callback,
+                        leaderMetadataWrapper,
+                        true,
+                        LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported()),
+                        consumerRecord.getValue().producerMetadata.messageTimestamp); // original producers timestamp
               } else {
                 /**
                  * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -3193,5 +3202,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     lastSendIngestionHeartbeatTimestamp = currentTimestamp;
+  }
+
+  /**
+   * Once leader is marked completed, immediately send a heart beat message to the local VT such that
+   * followers don't have to wait till the periodic heartbeat to know that the leader is completed
+   */
+  void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
+    super.reportCompleted(partitionConsumptionState, forceCompletion);
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER)) {
+      veniceWriter.get()
+          .sendHeartbeat(
+              new PubSubTopicPartitionImpl(versionTopic, partitionConsumptionState.getPartition()),
+              null,
+              DEFAULT_LEADER_METADATA_WRAPPER,
+              true,
+              LeaderCompleteState.LEADER_COMPLETED);
+    }
   }
 }

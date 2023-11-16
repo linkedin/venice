@@ -1694,7 +1694,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               amplificationFactorAdapter.executePartitionConsumptionState(
                   newPartitionConsumptionState.getUserPartition(),
                   PartitionConsumptionState::lagHasCaughtUp);
-              statusReportAdapter.reportCompleted(newPartitionConsumptionState, true);
+              reportCompleted(newPartitionConsumptionState, true);
               isCompletedReport = true;
             }
             // Clear offset lag in metadata, it is only used in restart.
@@ -3473,9 +3473,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 partition,
                 partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
           } else {
-            statusReportAdapter.reportCompleted(partitionConsumptionState);
-            LOGGER.info("{} Partition {} is ready to serve", consumerTaskId, partition);
-
+            reportCompleted(partitionConsumptionState);
             warmupSchemaCache(store);
           }
           if (suppressLiveUpdates) {
@@ -3493,6 +3491,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     };
+  }
+
+  void reportCompleted(PartitionConsumptionState partitionConsumptionState) {
+    reportCompleted(partitionConsumptionState, false);
+  }
+
+  void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
+    statusReportAdapter.reportCompleted(partitionConsumptionState, forceCompletion);
+    LOGGER.info("{} Partition {} is ready to serve", consumerTaskId, partitionConsumptionState.getPartition());
   }
 
   /**

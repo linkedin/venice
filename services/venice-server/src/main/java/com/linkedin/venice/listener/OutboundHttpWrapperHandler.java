@@ -24,8 +24,6 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /***
@@ -34,7 +32,6 @@ import org.apache.logging.log4j.Logger;
 
 public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
   private final StatsHandler statsHandler;
-  private static final Logger LOGGER = LogManager.getLogger(OutboundHttpWrapperHandler.class);
 
   public OutboundHttpWrapperHandler(StatsHandler handler) {
     super();
