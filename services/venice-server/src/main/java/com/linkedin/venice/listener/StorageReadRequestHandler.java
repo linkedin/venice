@@ -359,20 +359,17 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private HttpResponseStatus getHttpResponseStatus(VeniceNoStoreException e) {
-    HttpResponseStatus status = HttpResponseStatus.BAD_REQUEST;
-
-    // return SERVICE_UNAVAILABLE to kick off error retry in router when store version resource exists
     String topic = e.getStoreName();
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int version = Version.parseVersionFromKafkaTopicName(topic);
     Store store = metadataRepository.getStore(storeName);
-    if (store == null) {
-      return status;
+
+    if (store == null || store.getCurrentVersion() != version) {
+      return HttpResponseStatus.BAD_REQUEST;
     }
-    if (store.getCurrentVersion() == version) {
-      status = HttpResponseStatus.SERVICE_UNAVAILABLE;
-    }
-    return status;
+
+    // return SERVICE_UNAVAILABLE to kick off error retry in router when store version resource exists
+    return HttpResponseStatus.SERVICE_UNAVAILABLE;
   }
 
   /**

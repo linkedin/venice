@@ -2,7 +2,8 @@ package com.linkedin.venice.listener;
 
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
+import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -645,5 +646,12 @@ public class StorageReadRequestHandlerTest {
         ArgumentCaptor.forClass(HttpShortcutResponse.class);
     verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), SERVICE_UNAVAILABLE);
+
+    // when current version different from resource, return 400
+    doReturn(10).when(store).getCurrentVersion();
+    requestHandler.channelRead(context, request);
+    verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture());
+
+    Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), BAD_REQUEST);
   }
 }
