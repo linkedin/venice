@@ -3,7 +3,7 @@ package com.linkedin.venice.writer;
 import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
-import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATUS_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -1361,8 +1361,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
       // 1 byte holding 0/1 basd on isLeaderCompleted
       byte[] val = new byte[1];
-      val[0] = (byte) ((leaderCompleteState == LeaderCompleteState.LEADER_COMPLETED) ? 1 : 0);
-      returnPubSubMessageHeaders.add(new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATUS_HEADER, val));
+      val[0] = (byte) (leaderCompleteState.getValue());
+      returnPubSubMessageHeaders.add(new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, val));
     } else {
       returnPubSubMessageHeaders = pubSubMessageHeaders;
     }

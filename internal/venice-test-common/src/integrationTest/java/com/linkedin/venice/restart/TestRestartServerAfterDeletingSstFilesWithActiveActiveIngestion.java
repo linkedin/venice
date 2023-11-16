@@ -8,7 +8,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATUS_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
@@ -582,7 +582,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
           for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: pubSubMessages) {
             PubSubMessageHeaders pubSubMessageHeaders = message.getPubSubMessageHeaders();
             for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
-              if (header.key().equals(VENICE_LEADER_COMPLETION_STATUS_HEADER)) {
+              if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
                 isLeaderCompletionHeaderFound.set(true);
                 if (header.value()[0] == 1) {
                   isLeaderCompleted.set(true);
