@@ -2088,7 +2088,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 LeaderMetadataWrapper leaderMetadataWrapper =
                     new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
                 PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), subPartition);
-                // Leaders forward HB SOS message to local VT with updated isLeaderCompleted header
+                // Leaders forward HB SOS message to local VT with updated LeaderCompleteState header
                 veniceWriter.get()
                     .sendHeartbeat(
                         topicPartition,

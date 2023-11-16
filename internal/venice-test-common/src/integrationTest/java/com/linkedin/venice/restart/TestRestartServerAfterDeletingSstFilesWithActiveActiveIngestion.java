@@ -11,6 +11,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -67,6 +68,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.view.TestView;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -584,7 +586,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
             for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
               if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
                 isLeaderCompletionHeaderFound.set(true);
-                if (header.value()[0] == 1) {
+                if (LeaderCompleteState.valueOf(header.value()[0]) == LEADER_COMPLETED) {
                   isLeaderCompleted.set(true);
                   break;
                 }

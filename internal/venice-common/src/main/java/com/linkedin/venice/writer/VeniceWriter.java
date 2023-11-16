@@ -1343,6 +1343,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return getHeaders(producerMetadata, false, LeaderCompleteState.LEADER_NOT_COMPLETED);
   }
 
+  /**
+   * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER} or {@link VeniceWriter#EMPTY_MSG_HEADERS} is used for
+   * all messages to a partition based on {@link VeniceWriter} param overrideProtocolSchema and whether it's a first message.
+   * {@link PubSubMessageHeaders#VENICE_LEADER_COMPLETION_STATE_HEADER} is added to the above headers for HB SOS message.
+   *
+   * Note: In theory, we can enumerate all the possible headers like below, so that we don't need to create a new header every time
+   * like how it's created for HB SOS in this method. But as it's only for HB SOS, we can ignore such optimization. But if we
+   * add any extra headers that will be used in the hot code paths, we should consider creating these headers in advance.
+   *
+   * Protocol header + leader complete header (LEADER_COMPLETED)
+   * Protocol header + leader complete header (LEADER_NOT_COMPLETED)
+   * leader complete header (LEADER_COMPLETED)
+   * leader complete header (LEADER_NOT_COMPLETED)
+   */
   private PubSubMessageHeaders getHeaders(
       ProducerMetadata producerMetadata,
       boolean addLeaderCompleteState,
@@ -1354,12 +1368,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             : EMPTY_MSG_HEADERS;
 
     if (addLeaderCompleteState) {
-      // copy protocolSchemaHeaders locally and add extra header for isLeaderCompleted
+      // copy protocolSchemaHeaders locally and add extra header for leaderCompleteState
       returnPubSubMessageHeaders = new PubSubMessageHeaders();
       for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
         returnPubSubMessageHeaders.add(header);
       }
-      // 1 byte holding 0/1 basd on isLeaderCompleted
+      // 1 byte holding 0/1 based on leaderCompleteState
       byte[] val = new byte[1];
       val[0] = (byte) (leaderCompleteState.getValue());
       returnPubSubMessageHeaders.add(new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, val));
