@@ -20,7 +20,6 @@ public class PubSubMessageHeaders {
   public static final String VENICE_TRANSPORT_PROTOCOL_HEADER = "vtp";
   /** Header to denote whether the leader is completed or not */
   public static final String VENICE_LEADER_COMPLETION_STATUS_HEADER = "lcs";
-  public static final boolean ADD_LEADER_COMPLETED_HEADER = true;
 
   public PubSubMessageHeaders add(PubSubMessageHeader header) {
     headers.put(header.key(), header);
