@@ -16,7 +16,6 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -321,7 +320,7 @@ public class HelixParticipationService extends AbstractVeniceService
       valueSchemaEntry = helixReadOnlySchemaRepository.getSupersetOrLatestValueSchema(dummyPushStatusStoreName);
       updateSchemaEntry =
           helixReadOnlySchemaRepository.getLatestDerivedSchema(dummyPushStatusStoreName, valueSchemaEntry.getId());
-    } catch (VeniceNoStoreException e) {
+    } catch (VeniceException e) {
       LOGGER.warn(
           "ZK-shared system store is not available in current environment, will fall back to last known protocol version instead.");
       int valueSchemaId = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
