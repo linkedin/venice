@@ -40,6 +40,12 @@ public class DaVinciConfig {
    */
   private boolean readMetricsEnabled = false;
 
+  /**
+   * Whether a CustomStorageEngine is being used
+   * User can pass a CustomStorageEngine for custom materialized views
+   */
+  private boolean hasCustomStorageEngine = false;
+
   public DaVinciConfig() {
   }
 
@@ -91,6 +97,15 @@ public class DaVinciConfig {
   public DaVinciConfig setNonLocalAccessPolicy(NonLocalAccessPolicy nonLocalAccessPolicy) {
     this.nonLocalAccessPolicy = nonLocalAccessPolicy;
     return this;
+  }
+
+  public DaVinciConfig setHasCustomStorageEngine(boolean hasCustomStorageEngine) {
+    this.hasCustomStorageEngine = hasCustomStorageEngine;
+    return this;
+  }
+
+  public boolean getHasCustomStorageEngine() {
+    return hasCustomStorageEngine;
   }
 
   public boolean isCacheEnabled() {

@@ -25,6 +25,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.store.CustomStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
@@ -107,6 +108,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private final AtomicBoolean ready = new AtomicBoolean(false);
   // TODO: Implement copy-on-write ComplementSet to support concurrent modification and reading.
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
+  private final CustomStorageEngine customStorageEngine;
 
   private RecordSerializer<K> keySerializer;
   private RecordDeserializer<K> keyDeserializer;
@@ -139,6 +141,25 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         clientConfig,
         backendConfig,
         managedClients,
+        null,
+        icProvider,
+        GenericChunkingAdapter.INSTANCE,
+        () -> {});
+  }
+
+  public AvroGenericDaVinciClient(
+      DaVinciConfig daVinciConfig,
+      ClientConfig clientConfig,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients,
+      CustomStorageEngine customStorageEngine,
+      ICProvider icProvider) {
+    this(
+        daVinciConfig,
+        clientConfig,
+        backendConfig,
+        managedClients,
+        customStorageEngine,
         icProvider,
         GenericChunkingAdapter.INSTANCE,
         () -> {});
@@ -149,6 +170,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
+      CustomStorageEngine customStorageEngine,
       ICProvider icProvider,
       AbstractAvroChunkingAdapter<V> chunkingAdapter,
       Runnable preValidation) {
@@ -159,6 +181,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     this.managedClients = managedClients;
     this.icProvider = icProvider;
     this.chunkingAdapter = chunkingAdapter;
+    this.customStorageEngine = customStorageEngine;
     preValidation.run();
   }
 
@@ -677,13 +700,20 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Optional<ObjectCacheConfig> cacheConfig) {
+      Optional<ObjectCacheConfig> cacheConfig,
+      CustomStorageEngine customStorageEngine) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         logger
             .info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
         daVinciBackend = new ReferenceCounted<>(
-            new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig),
+            new DaVinciBackend(
+                clientConfig,
+                configLoader,
+                managedClients,
+                icProvider,
+                customStorageEngine,
+                cacheConfig),
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
@@ -719,7 +749,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     logger.info("Starting client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
-    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
+    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig, customStorageEngine);
 
     try {
       if (!getBackend().compareCacheConfig(cacheConfig)) {
