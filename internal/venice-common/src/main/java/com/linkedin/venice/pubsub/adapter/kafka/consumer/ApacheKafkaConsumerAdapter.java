@@ -487,9 +487,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
           "Retriable exception thrown when attempting to get partitions for topic: " + topic,
           e);
     } catch (AuthorizationException | AuthenticationException e) {
-      throw new PubSubTopicAuthorizationException(topic.getName(), e);
+      throw new PubSubTopicAuthorizationException(
+          "Authorization exception thrown when attempting to get partitions for topic: " + topic,
+          e);
     } catch (Exception e) {
-      if (e instanceof InterruptedException || e instanceof InterruptException) {
+      if (e instanceof InterruptException) {
         Thread.currentThread().interrupt();
       }
       throw new PubSubClientException("Exception thrown when attempting to get partitions for topic: " + topic, e);
