@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -30,6 +32,9 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -53,6 +58,10 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.AuthenticationException;
+import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.errors.InterruptException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -139,6 +148,35 @@ public class ApacheKafkaConsumerAdapterTest {
     when(topic.getName()).thenReturn("testTopic");
     when(internalKafkaConsumer.partitionsFor(topic.getName())).thenReturn(null);
     assertNull(kafkaConsumerAdapter.partitionsFor(topic));
+  }
+
+  @Test
+  public void testPartitionsForThrowsException() {
+    doThrow(new TimeoutException("test")).when(internalKafkaConsumer).partitionsFor(any());
+    Throwable throwable = expectThrows(
+        PubSubClientRetriableException.class,
+        () -> kafkaConsumerAdapter.partitionsFor(mock(PubSubTopic.class)));
+    assertTrue(
+        throwable.getMessage().contains("Retriable exception thrown when attempting to get partitions for topic:"));
+
+    doThrow(AuthorizationException.class).when(internalKafkaConsumer).partitionsFor(any());
+    throwable = expectThrows(
+        PubSubTopicAuthorizationException.class,
+        () -> kafkaConsumerAdapter.partitionsFor(mock(PubSubTopic.class)));
+    assertTrue(
+        throwable.getMessage().contains("Authorization exception thrown when attempting to get partitions for topic:"));
+
+    doThrow(AuthenticationException.class).when(internalKafkaConsumer).partitionsFor(any());
+    throwable = expectThrows(
+        PubSubTopicAuthorizationException.class,
+        () -> kafkaConsumerAdapter.partitionsFor(mock(PubSubTopic.class)));
+    assertTrue(
+        throwable.getMessage().contains("Authorization exception thrown when attempting to get partitions for topic:"));
+
+    doThrow(InterruptException.class).when(internalKafkaConsumer).partitionsFor(any());
+    throwable =
+        expectThrows(PubSubClientException.class, () -> kafkaConsumerAdapter.partitionsFor(mock(PubSubTopic.class)));
+    assertTrue(throwable.getMessage().contains("Exception thrown when attempting to get partitions for topic:"));
   }
 
   @Test
@@ -334,5 +372,26 @@ public class ApacheKafkaConsumerAdapterTest {
     // Test close
     kafkaConsumerAdapter.close();
     verify(internalKafkaConsumer).close(eq(Duration.ZERO));
+  }
+
+  // isValidTopicPartition
+  @Test
+  public void testIsValidTopicPartitionReturnsFalseWhenRetriableExceptionIsThrown() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    int retryTimes = apacheKafkaConsumerConfig.getTopicQueryRetryTimes();
+    doThrow(new TimeoutException()).when(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
+    assertFalse(kafkaConsumerAdapter.isValidTopicPartition(pubSubTopicPartition));
+    verify(internalKafkaConsumer, times(retryTimes)).partitionsFor(pubSubTopicPartition.getTopicName());
+  }
+
+  @Test
+  public void testIsValidTopicPartition() {
+    List<PartitionInfo> partitionInfos = new ArrayList<>();
+    partitionInfos.add(new PartitionInfo("testTopic", 0, null, new Node[4], new Node[0]));
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("testTopic"), 0);
+    doReturn(partitionInfos).when(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
+    assertTrue(kafkaConsumerAdapter.isValidTopicPartition(pubSubTopicPartition));
+    verify(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
   }
 }
