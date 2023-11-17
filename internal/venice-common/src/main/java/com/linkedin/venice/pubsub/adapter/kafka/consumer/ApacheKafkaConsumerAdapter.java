@@ -103,7 +103,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     }
 
     // Check if the topic-partition exists
-    if (!isValidTopicPartition(pubSubTopicPartition)) {
+    if (config.shouldCheckTopicExistenceBeforeConsuming() && !isValidTopicPartition(pubSubTopicPartition)) {
       LOGGER.error("Cannot subscribe to topic-partition: {} because it does not exist", pubSubTopicPartition);
       throw new PubSubTopicDoesNotExistException(pubSubTopicPartition.getPubSubTopic());
     }
@@ -148,6 +148,13 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         Thread.currentThread().interrupt();
         throw new PubSubClientException(
             "Interrupted while waiting for validation of topic-partition: " + pubSubTopicPartition,
+            e);
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Exception thrown when attempting to validate topic-partition: {}, attempt {}/{}",
+            pubSubTopicPartition,
+            attempt,
+            retries,
             e);
       }
     }
@@ -468,7 +475,13 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
-    List<PartitionInfo> partitionInfos = this.kafkaConsumer.partitionsFor(topic.getName());
+    List<PartitionInfo> partitionInfos = null;
+    try {
+      partitionInfos = this.kafkaConsumer.partitionsFor(topic.getName());
+    } catch (Exception e) {
+      LOGGER.error("Exception thrown when attempting to get partitions for topic: {}", topic, e);
+    }
+
     if (partitionInfos == null) {
       return null;
     }
