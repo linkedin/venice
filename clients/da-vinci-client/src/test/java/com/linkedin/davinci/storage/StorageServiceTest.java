@@ -114,6 +114,7 @@ public class StorageServiceTest {
         storeRepository,
         true,
         true,
+        null,
         (s) -> true,
         Optional.of(persistenceTypeToStorageEngineFactoryMap));
 

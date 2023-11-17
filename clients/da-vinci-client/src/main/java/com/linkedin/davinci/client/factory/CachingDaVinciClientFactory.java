@@ -7,7 +7,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StatsAvroGenericDaVinciClient;
 import com.linkedin.davinci.client.StatsAvroSpecificDaVinciClient;
-import com.linkedin.davinci.store.CustomStorageEngine;
+import com.linkedin.davinci.store.CustomStorageEngineFactory;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.ICProvider;
@@ -38,7 +38,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   protected final Map<String, DaVinciClient> sharedClients = new HashMap<>();
   protected final List<DaVinciClient> isolatedClients = new ArrayList<>();
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
-  protected final CustomStorageEngine customStorageEngine;
+  protected final CustomStorageEngineFactory customStorageEngineFactory;
 
   @Deprecated
   public CachingDaVinciClientFactory(
@@ -101,7 +101,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       String clusterDiscoveryD2ServiceName,
       MetricsRepository metricsRepository,
       VeniceProperties backendConfig,
-      CustomStorageEngine customStorageEngine) {
+      CustomStorageEngineFactory customStorageEngineFactory) {
     this(
         d2Client,
         clusterDiscoveryD2ServiceName,
@@ -109,7 +109,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         backendConfig,
         Optional.empty(),
         null,
-        customStorageEngine);
+        customStorageEngineFactory);
   }
 
   public CachingDaVinciClientFactory(
@@ -119,7 +119,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      CustomStorageEngine customStorageEngine) {
+      CustomStorageEngineFactory customStorageEngineFactory) {
     LOGGER.info(
         "Creating client factory, managedClients={}, existingMetrics={}",
         managedClients,
@@ -130,7 +130,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     this.backendConfig = backendConfig;
     this.managedClients = managedClients;
     this.icProvider = icProvider;
-    this.customStorageEngine = customStorageEngine;
+    this.customStorageEngineFactory = customStorageEngineFactory;
   }
 
   @Override
@@ -223,7 +223,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   public <K, V> DaVinciClient<K, V> getGenericAvroClientWithCustomStorageEngine(
       String storeName,
       DaVinciConfig config,
-      CustomStorageEngine customStorageEngine) {
+      CustomStorageEngineFactory customStorageEngineFactory) {
     return getClient(
         storeName,
         config,
@@ -231,14 +231,14 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         new GenericDaVinciClientConstructor<>(),
         getClientClass(config, false),
         false,
-        customStorageEngine);
+        customStorageEngineFactory);
   }
 
   @Override
   public <K, V> DaVinciClient<K, V> getAndStartGenericAvroClientWithCustomStorageEngine(
       String storeName,
       DaVinciConfig config,
-      CustomStorageEngine customStorageEngine) {
+      CustomStorageEngineFactory customStorageEngineFactory) {
     return getClient(
         storeName,
         config,
@@ -246,7 +246,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         new GenericDaVinciClientConstructor<>(),
         getClientClass(config, false),
         true,
-        customStorageEngine);
+        customStorageEngineFactory);
   }
 
   @Override
@@ -254,7 +254,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       String storeName,
       DaVinciConfig config,
       Class<V> valueClass,
-      CustomStorageEngine customStorageEngine) {
+      CustomStorageEngineFactory customStorageEngineFactory) {
     return getClient(
         storeName,
         config,
@@ -262,7 +262,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         new SpecificDaVinciClientConstructor<>(),
         getClientClass(config, true),
         false,
-        customStorageEngine);
+        customStorageEngineFactory);
   }
 
   @Override
@@ -270,7 +270,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       String storeName,
       DaVinciConfig config,
       Class<V> valueClass,
-      CustomStorageEngine customStorageEngine) {
+      CustomStorageEngineFactory customStorageEngineFactory) {
     return getClient(
         storeName,
         config,
@@ -278,7 +278,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         new SpecificDaVinciClientConstructor<>(),
         getClientClass(config, true),
         true,
-        customStorageEngine);
+        customStorageEngineFactory);
   }
 
   public VeniceProperties getBackendConfig() {
@@ -292,7 +292,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         VeniceProperties backendConfig,
         Optional<Set<String>> managedClients,
         ICProvider icProvider,
-        CustomStorageEngine customStorageEngine);
+        CustomStorageEngineFactory customStorageEngineFactory);
   }
 
   class GenericDaVinciClientConstructor<K, V> implements DaVinciClientConstructor {
@@ -303,13 +303,13 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         VeniceProperties backendConfig,
         Optional<Set<String>> managedClients,
         ICProvider icProvider,
-        CustomStorageEngine customStorageEngine) {
+        CustomStorageEngineFactory customStorageEngineFactory) {
       AvroGenericDaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(
           config,
           clientConfig,
           backendConfig,
           managedClients,
-          customStorageEngine,
+          customStorageEngineFactory,
           icProvider);
       if (config.isReadMetricsEnabled()) {
         return new StatsAvroGenericDaVinciClient<>(client, clientConfig);
@@ -326,7 +326,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         VeniceProperties backendConfig,
         Optional<Set<String>> managedClients,
         ICProvider icProvider,
-        CustomStorageEngine customStorageEngine) {
+        CustomStorageEngineFactory customStorageEngineFactory) {
       AvroSpecificDaVinciClient<K, V> client =
           new AvroSpecificDaVinciClient<>(config, clientConfig, backendConfig, managedClients, icProvider);
       if (config.isReadMetricsEnabled()) {
@@ -343,7 +343,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       DaVinciClientConstructor clientConstructor,
       Class clientClass,
       boolean startClient,
-      CustomStorageEngine customStorageEngine) {
+      CustomStorageEngineFactory customStorageEngineFactory) {
     if (closed) {
       throw new VeniceException("Unable to get a client from a closed factory, storeName=" + storeName);
     }
@@ -370,8 +370,8 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     if (config.isIsolated()) {
       String statsPrefix = "davinci-client-" + isolatedClients.size();
       clientConfig.setStatsPrefix(statsPrefix);
-      client =
-          clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider, customStorageEngine);
+      client = clientConstructor
+          .apply(config, clientConfig, backendConfig, managedClients, icProvider, customStorageEngineFactory);
       isolatedClients.add(client);
     } else {
       if (originalConfig.getNonLocalAccessPolicy() != config.getNonLocalAccessPolicy()) {
@@ -383,7 +383,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       client = sharedClients.computeIfAbsent(
           storeName,
           k -> clientConstructor
-              .apply(config, clientConfig, backendConfig, managedClients, icProvider, customStorageEngine));
+              .apply(config, clientConfig, backendConfig, managedClients, icProvider, customStorageEngineFactory));
 
       if (!clientClass.isInstance(client)) {
         throw new VeniceException(

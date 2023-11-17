@@ -24,7 +24,7 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.CustomStorageEngine;
+import com.linkedin.davinci.store.CustomStorageEngineFactory;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -102,9 +102,12 @@ public class DaVinciBackend implements Closeable {
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      CustomStorageEngine customStorageEngine,
+      CustomStorageEngineFactory customStorageEngineFactory,
       Optional<ObjectCacheConfig> cacheConfig) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
+    if (customStorageEngineFactory != null) {
+      LOGGER.info("Creating Da Vinci backend with custom storage engine");
+    }
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
       this.configLoader = configLoader;
@@ -172,7 +175,6 @@ public class DaVinciBackend implements Closeable {
       boolean whetherToRestoreDataPartitions = !isIsolatedIngestion()
           || configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
       LOGGER.info("DaVinci {} restore data partitions.", whetherToRestoreDataPartitions ? "will" : "won't");
-      // TODO: Propagate CustomStorageEngine to storageService
       storageService = new StorageService(
           configLoader,
           aggVersionedStorageEngineStats,

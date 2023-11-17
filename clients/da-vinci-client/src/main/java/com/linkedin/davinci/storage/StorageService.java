@@ -10,6 +10,8 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.CustomStorageEngine;
+import com.linkedin.davinci.store.CustomStorageEngineFactory;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngineFactory;
@@ -60,11 +62,13 @@ public class StorageService extends AbstractVeniceService {
   private final VeniceConfigLoader configLoader;
   private final VeniceServerConfig serverConfig;
   private final Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
+  private final Map<PersistenceType, CustomStorageEngineFactory> persistenceTypeToCustomStorageEngineFactoryMap;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final RocksDBMemoryStats rocksDBMemoryStats;
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private final ReadOnlyStoreRepository storeRepository;
+  private final CustomStorageEngineFactory customStorageEngineFactory;
 
   /**
    * Allocates a new {@code StorageService} object.
@@ -87,6 +91,7 @@ public class StorageService extends AbstractVeniceService {
       ReadOnlyStoreRepository storeRepository,
       boolean restoreDataPartitions,
       boolean restoreMetadataPartitions,
+      CustomStorageEngineFactory customStorageEngineFactory,
       Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot,
       Optional<Map<PersistenceType, StorageEngineFactory>> persistenceTypeToStorageEngineFactoryMapOptional) {
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
@@ -111,6 +116,7 @@ public class StorageService extends AbstractVeniceService {
     this.storeVersionStateSerializer = storeVersionStateSerializer;
     this.partitionStateSerializer = partitionStateSerializer;
     this.storeRepository = storeRepository;
+    this.customStorageEngineFactory = customStorageEngineFactory;
     if (persistenceTypeToStorageEngineFactoryMapOptional.isPresent()) {
       this.persistenceTypeToStorageEngineFactoryMap = persistenceTypeToStorageEngineFactoryMapOptional.get();
     } else {
@@ -145,6 +151,7 @@ public class StorageService extends AbstractVeniceService {
         storeRepository,
         restoreDataPartitions,
         restoreMetadataPartitions,
+        null,
         checkWhetherStorageEngineShouldBeKeptOrNot,
         Optional.empty());
   }
@@ -205,6 +212,7 @@ public class StorageService extends AbstractVeniceService {
             storeVersionStateSerializer,
             partitionStateSerializer));
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
+    persistenceTypeToCustomStorageEngineFactoryMap.put(IN_MEMORY, customStorageEngineFactory);
   }
 
   static void deleteStorageEngineOnRocksDBError(
@@ -602,5 +610,36 @@ public class StorageService extends AbstractVeniceService {
       LOGGER.warn("Store {} does not exist in storeRepository.", storeName);
       return false;
     }
+  }
+
+  public synchronized CustomStorageEngine openCustomStore(
+      VeniceStoreVersionConfig storeConfig,
+      Supplier<StoreVersionState> initialStoreVersionStateSupplier) {
+    String topicName = storeConfig.getStoreVersionName();
+    CustomStorageEngine engine = storageEngineRepository.getCustomLocalStorageEngine(topicName);
+    if (engine != null) {
+      return engine;
+    }
+    long startTimeInBuildingNewEngine = System.nanoTime();
+    /**
+     * For new store, it will use the storage engine configured in host level if it is not known.
+     */
+    if (!storeConfig.isStorePersistenceTypeKnown()) {
+      storeConfig.setStorePersistenceType(storeConfig.getPersistenceType());
+    }
+
+    LOGGER.info(
+        "Creating/Opening Custom Storage Engine {} with type: {}",
+        topicName,
+        storeConfig.getStorePersistenceType());
+    engine = customStorageEngineFactory.createEngine();
+    storageEngineRepository.addCustomLocalStorageEngine(engine);
+    // Setup storage engine stats
+
+    LOGGER.info(
+        "time spent on creating new custom storage Engine for store {}: {} ms",
+        topicName,
+        LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine));
+    return engine;
   }
 }

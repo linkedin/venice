@@ -1,6 +1,7 @@
 package com.linkedin.davinci.storage;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.CustomStorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,9 +21,14 @@ public class StorageEngineRepository {
    *   Local storage engine for this node. This is lowest level persistence abstraction, these StorageEngines provide an iterator over their values.
    */
   private final ConcurrentMap<String, AbstractStorageEngine> localStorageEngines = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, CustomStorageEngine> customLocalStorageEngines = new ConcurrentHashMap<>();
 
   public AbstractStorageEngine getLocalStorageEngine(String storeName) {
     return localStorageEngines.get(storeName);
+  }
+
+  public CustomStorageEngine getCustomLocalStorageEngine(String storeName) {
+    return customLocalStorageEngines.get(storeName);
   }
 
   public AbstractStorageEngine removeLocalStorageEngine(String storeName) {
@@ -32,6 +38,15 @@ public class StorageEngineRepository {
 
   public synchronized void addLocalStorageEngine(AbstractStorageEngine engine) {
     AbstractStorageEngine found = localStorageEngines.putIfAbsent(engine.getStoreName(), engine);
+    if (found != null) {
+      String errorMessage = "Storage Engine '" + engine.getStoreName() + "' has already been initialized.";
+      LOGGER.error(errorMessage);
+      throw new VeniceException(errorMessage);
+    }
+  }
+
+  public synchronized void addCustomLocalStorageEngine(CustomStorageEngine engine) {
+    CustomStorageEngine found = customLocalStorageEngines.putIfAbsent(engine.getStoreName(), engine);
     if (found != null) {
       String errorMessage = "Storage Engine '" + engine.getStoreName() + "' has already been initialized.";
       LOGGER.error(errorMessage);
@@ -52,6 +67,16 @@ public class StorageEngineRepository {
         store.close();
       } catch (VeniceException e) {
         LOGGER.error("Error closing storage engine for store: {}", storeName, e);
+        lastException = e;
+      }
+    }
+    for (CustomStorageEngine store: customLocalStorageEngines.values()) {
+      String storeName = store.getStoreName();
+      LOGGER.info("Closing storage engine for store: {}", storeName);
+      try {
+        store.close();
+      } catch (VeniceException e) {
+        LOGGER.error("Error closing custom storage engine for store: {}", storeName, e);
         lastException = e;
       }
     }

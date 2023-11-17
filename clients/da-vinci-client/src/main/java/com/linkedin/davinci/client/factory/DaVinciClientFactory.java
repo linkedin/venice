@@ -2,7 +2,7 @@ package com.linkedin.davinci.client.factory;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.store.CustomStorageEngine;
+import com.linkedin.davinci.store.CustomStorageEngineFactory;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -24,22 +24,22 @@ public interface DaVinciClientFactory {
   <K, V> DaVinciClient<K, V> getGenericAvroClientWithCustomStorageEngine(
       String storeName,
       DaVinciConfig config,
-      CustomStorageEngine customStorageEngine);
+      CustomStorageEngineFactory customStorageEngineFactory);
 
   <K, V> DaVinciClient<K, V> getAndStartGenericAvroClientWithCustomStorageEngine(
       String storeName,
       DaVinciConfig config,
-      CustomStorageEngine customStorageEngine);
+      CustomStorageEngineFactory customStorageEngineFactory);
 
   <K, V extends SpecificRecord> DaVinciClient<K, V> getSpecificAvroClientWithCustomStorageEngine(
       String storeName,
       DaVinciConfig config,
       Class<V> valueClass,
-      CustomStorageEngine customStorageEngine);
+      CustomStorageEngineFactory customStorageEngineFactory);
 
   <K, V extends SpecificRecord> DaVinciClient<K, V> getAndStartSpecificAvroClientWithCustomStorageEngine(
       String storeName,
       DaVinciConfig config,
       Class<V> valueClass,
-      CustomStorageEngine customStorageEngine);
+      CustomStorageEngineFactory customStorageEngineFactory);
 }
