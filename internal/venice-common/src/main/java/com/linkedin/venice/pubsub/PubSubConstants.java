@@ -30,4 +30,7 @@ public class PubSubConstants {
   public static final String PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_INTERVAL_MS =
       "pubsub.consumer.topic.query.retry.interval.ms";
   public static final int PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_INTERVAL_MS_DEFAULT_VALUE = 1000;
+
+  public static final String PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE = "pubsub.consumer.check.topic.existence";
+  public static final boolean PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE_DEFAULT_VALUE = true;
 }
