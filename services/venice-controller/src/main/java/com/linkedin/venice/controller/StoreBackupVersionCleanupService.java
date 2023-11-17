@@ -2,31 +2,29 @@ package com.linkedin.venice.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ObjectMapperFactory;
-import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
-import java.time.Duration;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,6 +40,7 @@ import org.apache.logging.log4j.Logger;
  * to accommodate the delay between Controller and Router.
  */
 public class StoreBackupVersionCleanupService extends AbstractVeniceService {
+  public static final String TYPE_CURRENT_VERSION = "current_version";
   private static final Logger LOGGER = LogManager.getLogger(StoreBackupVersionCleanupService.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
@@ -61,7 +60,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Map<String, String> urlMap = new HashMap<>();
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
-  private Map<String, InternalAvroStoreClient> clientMap = new HashMap<>();
+  private final CloseableHttpAsyncClient storeClient;
 
   private final Time time;
 
@@ -82,6 +81,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.sleepInterval = TimeUnit.MINUTES.toMillis(5);
     this.defaultBackupVersionRetentionMs = multiClusterConfig.getBackupVersionDefaultRetentionMs();
     this.time = time;
+    this.storeClient = HttpAsyncClients.custom()
+        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
+        .build();
   }
 
   /**
@@ -90,6 +92,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   @Override
   public boolean startInner() {
     cleanupThread.start();
+    this.storeClient.start();
     return true;
   }
 
@@ -97,8 +100,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
    * @see AbstractVeniceService#stopInner()
    */
   @Override
-  public void stopInner() {
+  public void stopInner() throws IOException {
     stop.set(true);
+    storeClient.close();
     cleanupThread.interrupt();
   }
 
@@ -122,55 +126,32 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   }
 
   private boolean validateAllRouterOnCurrentVersion(Store store, String clusterName, int versionToValidate) {
-    List<String> list = admin.getHelixVeniceClusterResources(clusterName)
+    List<String> urlList = admin.getHelixVeniceClusterResources(clusterName)
         .getRoutersClusterManager()
         .getLiveRouterInstances()
         .stream()
         .map(instance -> urlMap.computeIfAbsent(instance, this::convertToURL))
         .collect(Collectors.toList());
 
-    for (String instance: list) {
-      InternalAvroStoreClient<Object, Object> storeClient = clientMap.computeIfAbsent(instance, k -> {
-        AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(store.getName()).setVeniceURL(instance));
-        LOGGER.info("Created a new client to router instance: {}", instance);
-        return (InternalAvroStoreClient<Object, Object>) client;
-      });
-
-      String requestTopicRequestPath = "current_version/" + store.getName();
-      CurrentVersionResponse currentVersionResponse;
-      byte[] response = executeRouterRequest(storeClient, requestTopicRequestPath);
+    for (String routerURL: urlList) {
       try {
-        currentVersionResponse = OBJECT_MAPPER.readValue(response, CurrentVersionResponse.class);
+        HttpGet routerRequest = new HttpGet(routerURL + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
+        HttpResponse response = storeClient.execute(routerRequest, null).get();
+        String responseBody;
+        try (InputStream bodyStream = response.getEntity().getContent()) {
+          responseBody = IOUtils.toString(bodyStream);
+        }
+        CurrentVersionResponse currentVersionResponse =
+            OBJECT_MAPPER.readValue(responseBody.getBytes(), CurrentVersionResponse.class);
+        if (currentVersionResponse.getCurrentVersion() != versionToValidate) {
+          return false;
+        }
       } catch (Exception e) {
-        throw new VeniceException("Got exception while deserializing response", e);
-      }
-      if (currentVersionResponse.getCurrentVersion() != versionToValidate) {
+        LOGGER.error("Got exception while getting current version for store {}", store.getName(), e);
         return false;
       }
     }
     return true;
-  }
-
-  private byte[] executeRouterRequest(InternalAvroStoreClient client, String requestPath) {
-    byte[] response;
-    try {
-      CompletableFuture<byte[]> responseFuture;
-      responseFuture = client.getRaw(requestPath);
-
-      response = RetryUtils.executeWithMaxAttempt(
-          () -> responseFuture.get(),
-          3,
-          Duration.ofSeconds(1),
-          Collections.singletonList(ExecutionException.class));
-    } catch (Exception e) {
-      throw new VeniceException("Failed to execute request from path " + requestPath, e);
-    }
-
-    if (response == null) {
-      throw new VeniceException("Requested data doesn't exist for request path: " + requestPath);
-    }
-    return response;
   }
 
   /**
@@ -187,9 +168,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     List<Version> readyToBeRemovedVersions = new ArrayList<>();
     int currentVersion = store.getCurrentVersion();
 
+    // Do not delete version unless all routers are on current version
     if (!validateAllRouterOnCurrentVersion(store, clusterName, currentVersion)) {
       return false;
     }
+
     versions.forEach(v -> {
       if (v.getNumber() < currentVersion) {
         readyToBeRemovedVersions.add(v);
