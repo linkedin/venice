@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import java.time.Duration;
@@ -35,6 +36,9 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.AuthenticationException;
+import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Header;
@@ -149,7 +153,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         throw new PubSubClientException(
             "Interrupted while waiting for validation of topic-partition: " + pubSubTopicPartition,
             e);
-      } catch (Exception e) {
+      } catch (PubSubClientRetriableException e) {
         LOGGER.warn(
             "Exception thrown when attempting to validate topic-partition: {}, attempt {}/{}",
             pubSubTopicPartition,
@@ -475,11 +479,20 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
-    List<PartitionInfo> partitionInfos = null;
+    List<PartitionInfo> partitionInfos;
     try {
       partitionInfos = this.kafkaConsumer.partitionsFor(topic.getName());
+    } catch (RetriableException e) {
+      throw new PubSubClientRetriableException(
+          "Retriable exception thrown when attempting to get partitions for topic: " + topic,
+          e);
+    } catch (AuthorizationException | AuthenticationException e) {
+      throw new PubSubTopicAuthorizationException(topic.getName(), e);
     } catch (Exception e) {
-      LOGGER.error("Exception thrown when attempting to get partitions for topic: {}", topic, e);
+      if (e instanceof InterruptedException || e instanceof InterruptException) {
+        Thread.currentThread().interrupt();
+      }
+      throw new PubSubClientException("Exception thrown when attempting to get partitions for topic: " + topic, e);
     }
 
     if (partitionInfos == null) {
