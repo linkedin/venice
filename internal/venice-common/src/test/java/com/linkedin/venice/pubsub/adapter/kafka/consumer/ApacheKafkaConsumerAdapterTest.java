@@ -373,4 +373,25 @@ public class ApacheKafkaConsumerAdapterTest {
     kafkaConsumerAdapter.close();
     verify(internalKafkaConsumer).close(eq(Duration.ZERO));
   }
+
+  // isValidTopicPartition
+  @Test
+  public void testIsValidTopicPartitionReturnsFalseWhenRetriableExceptionIsThrown() {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
+    int retryTimes = apacheKafkaConsumerConfig.getTopicQueryRetryTimes();
+    doThrow(new TimeoutException()).when(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
+    assertFalse(kafkaConsumerAdapter.isValidTopicPartition(pubSubTopicPartition));
+    verify(internalKafkaConsumer, times(retryTimes)).partitionsFor(pubSubTopicPartition.getTopicName());
+  }
+
+  @Test
+  public void testIsValidTopicPartition() {
+    List<PartitionInfo> partitionInfos = new ArrayList<>();
+    partitionInfos.add(new PartitionInfo("testTopic", 0, null, new Node[4], new Node[0]));
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("testTopic"), 0);
+    doReturn(partitionInfos).when(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
+    assertTrue(kafkaConsumerAdapter.isValidTopicPartition(pubSubTopicPartition));
+    verify(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
+  }
 }

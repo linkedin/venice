@@ -129,7 +129,8 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         lastReadOffset);
   }
 
-  private boolean isValidTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
+  // visible for testing
+  boolean isValidTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
     if (pubSubTopicPartition == null) {
       throw new IllegalArgumentException("PubSubTopicPartition cannot be null");
     }
@@ -141,10 +142,19 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     int retries = config.getTopicQueryRetryTimes();
     int attempt = 0;
     while (attempt++ < retries) {
-      topicPartitionInfos = partitionsFor(pubSubTopicPartition.getPubSubTopic());
-      if (topicPartitionInfos != null && !topicPartitionInfos.isEmpty()
-          && pubSubTopicPartition.getPartitionNumber() < topicPartitionInfos.size()) {
-        return true;
+      try {
+        topicPartitionInfos = partitionsFor(pubSubTopicPartition.getPubSubTopic());
+        if (topicPartitionInfos != null && !topicPartitionInfos.isEmpty()
+            && pubSubTopicPartition.getPartitionNumber() < topicPartitionInfos.size()) {
+          return true;
+        }
+      } catch (PubSubClientRetriableException e) {
+        LOGGER.warn(
+            "Exception thrown when attempting to validate topic-partition: {}, attempt {}/{}",
+            pubSubTopicPartition,
+            attempt,
+            retries,
+            e);
       }
       try {
         Thread.sleep(Math.max(1, config.getTopicQueryRetryIntervalMs()));
@@ -152,13 +162,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         Thread.currentThread().interrupt();
         throw new PubSubClientException(
             "Interrupted while waiting for validation of topic-partition: " + pubSubTopicPartition,
-            e);
-      } catch (PubSubClientRetriableException e) {
-        LOGGER.warn(
-            "Exception thrown when attempting to validate topic-partition: {}, attempt {}/{}",
-            pubSubTopicPartition,
-            attempt,
-            retries,
             e);
       }
     }
