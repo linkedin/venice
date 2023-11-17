@@ -117,6 +117,7 @@ public class StorageService extends AbstractVeniceService {
     this.partitionStateSerializer = partitionStateSerializer;
     this.storeRepository = storeRepository;
     this.customStorageEngineFactory = customStorageEngineFactory;
+    this.persistenceTypeToCustomStorageEngineFactoryMap = new HashMap<>();
     if (persistenceTypeToStorageEngineFactoryMapOptional.isPresent()) {
       this.persistenceTypeToStorageEngineFactoryMap = persistenceTypeToStorageEngineFactoryMapOptional.get();
     } else {
