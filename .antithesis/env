@@ -1,0 +1,5 @@
+REGISTRY=us-central1-docker.pkg.dev
+REPOSITORY=molten-verve-216720/venice-repository
+WEBHOOK_USER=venice
+WEBHOOK_URL=
+BUILD_CONTEXT=../../
