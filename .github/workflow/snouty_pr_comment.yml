@@ -1,0 +1,87 @@
+##
+# Snouty is a github action build pipeline that attempts to build
+# docker images and call an Antithesis webhook at the end of the process
+# It is intended to work with a Pull Request (PR) request comment
+#
+# It requires the following:
+# 1. /.antithesis/env file with REGISTRY, REPOSITORY, WEBHOOK_USER, WEBHOOK_URL environment variables defined
+# 2. configure github secrets for a REST_API, ANTITHESIS_GAR_JSON_KEY and WEBHOOK_PASSWORD 
+# 3. Place this workflow yml in your ./github/workflows directory
+# For more information, see antithesis.com 
+# 
+# To use snouty, simply type "snouty test [service]"
+# [service] should be a directory in the repo that contains a Dockerfile that can be used
+# to run docker build command
+#
+name: PR Snouty
+
+on: 
+  issue_comment:
+    types: [created]
+
+env:
+  API_TOKEN: ${{ secrets.CHANG_PS_REST_TOKEN }}
+  WEBHOOK_PASSWORD: ${{ secrets.ANT_VENICE_WEBHOOK_PASS }}
+  COMMENT: ${{ github.event.comment.body }}
+  PR_URL: ${{ github.event.issue.pull_request.url }}
+
+jobs:
+  pr_commented:
+    # This job only runs for pull request comments
+    name: PR comment
+    if: ${{ github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo This is the $COMMENT
+
+      - name: Download Snouty
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip python3
+      - run: |
+          wget -O $HOME/snouty.zip "https://www.dropbox.com/scl/fi/34h1capzaj899u6vpr95g/snouty.zip?rlkey=owgme6d98ueqmc8h5w30yjafp&dl=0"
+      - run: |
+          unzip $HOME/snouty.zip -d $HOME
+
+      - name: Install Snouty requirements
+        run: $HOME/install.sh
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # Debug: See what we checked out
+      # - run: |
+      #     echo $(ls -lart $GITHUB_WORKSPACE)
+
+      # Running this will populate additional environment variables
+      # from /.antithesis/env
+      # that github actions can access include:
+      # REGISTRY, REPOSITORY, WEBHOOK_USER, WEBHOOK_URL
+      - name: 1. Merge ENVARs
+        run: python3 $HOME/snouty.py populate_envars
+
+      - name: Login to GAR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: _json_key
+          password: ${{ secrets.ANTITHESIS_GAR_JSON_KEY }}
+
+      # Finding buildable services from PR comment and dumping into
+      # $HOME/buildables.sh
+      - name: 2. Finding buildables
+        run: python3 $HOME/snouty.py find_buildable_path
+
+      # Debug: See if we built successfully
+      # - run: |
+      #     echo $(ls $HOME)
+
+      - name: 3. Building + Pushing images
+        run: $HOME/build.sh
+
+      - name: 4. Verify build + reply on Github
+        run: python3 $HOME/snouty.py post_build_reply
+
+      - name: 5. Run webhook
+        run: python3 $HOME/snouty.py webhook
