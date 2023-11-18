@@ -16,10 +16,11 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
       RequestType requestType,
       boolean isKeyValueProfilingEnabled,
       ReadOnlyStoreRepository metadataRepository,
-      boolean unregisterMetricForDeletedStoreEnabled) {
+      boolean unregisterMetricForDeletedStoreEnabled,
+      boolean isDaVinciClient) {
     super(
         metricsRepository,
-        new ServerHttpRequestStatsSupplier(requestType, isKeyValueProfilingEnabled),
+        new ServerHttpRequestStatsSupplier(requestType, isKeyValueProfilingEnabled, isDaVinciClient),
         metadataRepository,
         unregisterMetricForDeletedStoreEnabled);
   }
@@ -28,9 +29,15 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     private final RequestType requestType;
     private final boolean isKeyValueProfilingEnabled;
 
-    ServerHttpRequestStatsSupplier(RequestType requestType, boolean isKeyValueProfilingEnabled) {
+    private boolean isDaVinciClient;
+
+    ServerHttpRequestStatsSupplier(
+        RequestType requestType,
+        boolean isKeyValueProfilingEnabled,
+        boolean isDaVinciClient) {
       this.requestType = requestType;
       this.isKeyValueProfilingEnabled = isKeyValueProfilingEnabled;
+      this.isDaVinciClient = isDaVinciClient;
     }
 
     @Override
@@ -48,7 +55,8 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
           storeName,
           requestType,
           isKeyValueProfilingEnabled,
-          totalStats);
+          totalStats,
+          isDaVinciClient);
     }
   }
 

@@ -63,6 +63,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
   List<ServerInterceptor> aclInterceptors;
 
+  private boolean isDaVinciClient;
+
   public HttpChannelInitializer(
       ReadOnlyStoreRepository storeMetadataRepository,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
@@ -75,6 +77,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       StorageReadRequestHandler requestHandler) {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
+    this.isDaVinciClient = serverConfig.isDaVinciClient();
 
     boolean isKeyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
     boolean isUnregisterMetricForDeletedStoreEnabled = serverConfig.isUnregisterMetricForDeletedStoreEnabled();
@@ -84,19 +87,22 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         RequestType.SINGLE_GET,
         isKeyValueProfilingEnabled,
         storeMetadataRepository,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        isDaVinciClient);
     this.multiGetStats = new AggServerHttpRequestStats(
         metricsRepository,
         RequestType.MULTI_GET,
         isKeyValueProfilingEnabled,
         storeMetadataRepository,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        isDaVinciClient);
     this.computeStats = new AggServerHttpRequestStats(
         metricsRepository,
         RequestType.COMPUTE,
         isKeyValueProfilingEnabled,
         storeMetadataRepository,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        isDaVinciClient);
 
     if (serverConfig.isComputeFastAvroEnabled()) {
       LOGGER.info("Fast avro for compute is enabled");
