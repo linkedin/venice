@@ -23,7 +23,7 @@ public class AdminOperationsStatsTest {
     VeniceRouterConfig mockConfig = mock(VeniceRouterConfig.class);
     when(mockConfig.isReadThrottlingEnabled()).thenReturn(true);
     when(mockConfig.isEarlyThrottleEnabled()).thenReturn(true);
-    AdminOperationsStats stats = new AdminOperationsStats(metrics, "testAdminOperationsStats", mockConfig);
+    new AdminOperationsStats(metrics, "testAdminOperationsStats", mockConfig);
     Assert.assertEquals(reporter.query(".testAdminOperationsStats--read_quota_throttle.Gauge").value(), 1d);
     when(mockConfig.isReadThrottlingEnabled()).thenReturn(false);
     when(mockConfig.isEarlyThrottleEnabled()).thenReturn(false);
