@@ -10,6 +10,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_ACL_ENAB
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SSL_ENABLED;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.COMMAND;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.GET_LOADED_STORE_USER_PARTITION_MAPPING;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.HEARTBEAT;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.METRIC;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.REPORT;
@@ -26,6 +27,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
@@ -114,6 +116,8 @@ public class IsolatedIngestionUtils {
       AvroProtocolDefinition.PROCESS_SHUTDOWN_COMMAND.getSerializer();
   private static final InternalAvroSpecificSerializer<IngestionTaskCommand> ingestionDummyContentSerializer =
       ingestionTaskCommandSerializer;
+  private static final InternalAvroSpecificSerializer<LoadedStoreUserPartitionMapping> storeUserPartitionMappingSerializer =
+      AvroProtocolDefinition.LOADED_STORE_USER_PARTITION_MAPPING.getSerializer();
 
   private static final Map<IngestionAction, InternalAvroSpecificSerializer> ingestionActionToRequestSerializerMap =
       Stream
@@ -123,18 +127,19 @@ public class IsolatedIngestionUtils {
               new AbstractMap.SimpleEntry<>(METRIC, ingestionMetricsReportSerializer),
               new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionDummyContentSerializer),
               new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionStorageMetadataSerializer),
-              new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, processShutdownCommandSerializer))
+              new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, processShutdownCommandSerializer),
+              new AbstractMap.SimpleEntry<>(GET_LOADED_STORE_USER_PARTITION_MAPPING, ingestionDummyContentSerializer))
           .collect(Collectors.toMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue));
 
   private static final Map<IngestionAction, InternalAvroSpecificSerializer> ingestionActionToResponseSerializerMap =
-      Stream
-          .of(
-              new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskReportSerializer),
-              new AbstractMap.SimpleEntry<>(REPORT, ingestionDummyContentSerializer),
-              new AbstractMap.SimpleEntry<>(METRIC, ingestionDummyContentSerializer),
-              new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionTaskCommandSerializer),
-              new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionTaskReportSerializer),
-              new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, ingestionTaskReportSerializer))
+      Stream.of(
+          new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskReportSerializer),
+          new AbstractMap.SimpleEntry<>(REPORT, ingestionDummyContentSerializer),
+          new AbstractMap.SimpleEntry<>(METRIC, ingestionDummyContentSerializer),
+          new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionTaskCommandSerializer),
+          new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionTaskReportSerializer),
+          new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, ingestionTaskReportSerializer),
+          new AbstractMap.SimpleEntry<>(GET_LOADED_STORE_USER_PARTITION_MAPPING, storeUserPartitionMappingSerializer))
           .collect(Collectors.toMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue));
 
   private static final IngestionTaskCommand DUMMY_COMMAND = new IngestionTaskCommand();

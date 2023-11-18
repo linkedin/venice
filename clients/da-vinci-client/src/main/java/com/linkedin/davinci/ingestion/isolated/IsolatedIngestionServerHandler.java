@@ -16,6 +16,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
@@ -30,7 +31,10 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -104,6 +108,10 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
               deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport shutdownTaskReport = handleProcessShutdownCommand(processShutdownCommand);
           result = serializeIngestionActionResponse(action, shutdownTaskReport);
+          break;
+        case GET_LOADED_STORE_USER_PARTITION_MAPPING:
+          LoadedStoreUserPartitionMapping mapping = handleGetLoadedStoreUserPartitionMappingRequest();
+          result = serializeIngestionActionResponse(action, mapping);
           break;
         default:
           throw new UnsupportedOperationException("Unrecognized ingestion action: " + action);
@@ -284,6 +292,18 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       });
     }
     return report;
+  }
+
+  private LoadedStoreUserPartitionMapping handleGetLoadedStoreUserPartitionMappingRequest() {
+    Map<String, Set<Integer>> storeUserPartitionMapping =
+        isolatedIngestionServer.getStorageService().getStoreAndUserPartitionsMapping();
+    LoadedStoreUserPartitionMapping mapping = new LoadedStoreUserPartitionMapping();
+    mapping.storeUserPartitionMapping = new HashMap<>();
+    storeUserPartitionMapping.forEach((k, v) -> {
+      mapping.storeUserPartitionMapping.put(k, new ArrayList<>(v));
+    });
+
+    return mapping;
   }
 
   private IngestionTaskReport handleIngestionStorageMetadataUpdate(IngestionStorageMetadata ingestionStorageMetadata) {

@@ -1,5 +1,8 @@
 package com.linkedin.venice.pubsub.api;
 
+import static com.linkedin.venice.writer.VeniceWriter.EMPTY_MSG_HEADERS;
+
+
 public interface PubSubMessage<K, V, OFFSET> {
   /**
    * @return the key part of this message
@@ -43,4 +46,8 @@ public interface PubSubMessage<K, V, OFFSET> {
    * @return whether this message marks the end of bootstrap.
    */
   boolean isEndOfBootstrap();
+
+  default PubSubMessageHeaders getPubSubMessageHeaders() {
+    return EMPTY_MSG_HEADERS;
+  }
 }

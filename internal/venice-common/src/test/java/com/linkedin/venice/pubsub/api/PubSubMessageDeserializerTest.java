@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
-import static com.linkedin.venice.pubsub.api.PubSubMessageDeserializer.VENICE_TRANSPORT_PROTOCOL_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;

@@ -28,7 +28,6 @@ import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -749,11 +748,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   MetaStoreReader getMetaStoreReader();
 
-  /**
-   * Return {@link PushStatusStoreRecordDeleter}.
-   */
-  Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter();
-
   /** Get a list of clusters this controller is a leader of.
    * @return a list of clusters this controller is a leader of.
    */
@@ -948,9 +942,9 @@ public interface Admin extends AutoCloseable, Closeable {
   default void clearInstanceMonitor(String clusterName) {
   }
 
-  Optional<PushStatusStoreReader> getPushStatusStoreReader();
+  PushStatusStoreReader getPushStatusStoreReader();
 
-  Optional<PushStatusStoreWriter> getPushStatusStoreWriter();
+  PushStatusStoreWriter getPushStatusStoreWriter();
 
   /**
    * Send a heartbeat timestamp to targeted system store.

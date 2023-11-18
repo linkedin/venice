@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import java.time.Duration;
@@ -35,6 +36,9 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.AuthenticationException;
+import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Header;
@@ -103,7 +107,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     }
 
     // Check if the topic-partition exists
-    if (!isValidTopicPartition(pubSubTopicPartition)) {
+    if (config.shouldCheckTopicExistenceBeforeConsuming() && !isValidTopicPartition(pubSubTopicPartition)) {
       LOGGER.error("Cannot subscribe to topic-partition: {} because it does not exist", pubSubTopicPartition);
       throw new PubSubTopicDoesNotExistException(pubSubTopicPartition.getPubSubTopic());
     }
@@ -125,7 +129,8 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         lastReadOffset);
   }
 
-  private boolean isValidTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
+  // visible for testing
+  boolean isValidTopicPartition(PubSubTopicPartition pubSubTopicPartition) {
     if (pubSubTopicPartition == null) {
       throw new IllegalArgumentException("PubSubTopicPartition cannot be null");
     }
@@ -137,10 +142,19 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     int retries = config.getTopicQueryRetryTimes();
     int attempt = 0;
     while (attempt++ < retries) {
-      topicPartitionInfos = partitionsFor(pubSubTopicPartition.getPubSubTopic());
-      if (topicPartitionInfos != null && !topicPartitionInfos.isEmpty()
-          && pubSubTopicPartition.getPartitionNumber() < topicPartitionInfos.size()) {
-        return true;
+      try {
+        topicPartitionInfos = partitionsFor(pubSubTopicPartition.getPubSubTopic());
+        if (topicPartitionInfos != null && !topicPartitionInfos.isEmpty()
+            && pubSubTopicPartition.getPartitionNumber() < topicPartitionInfos.size()) {
+          return true;
+        }
+      } catch (PubSubClientRetriableException e) {
+        LOGGER.warn(
+            "Exception thrown when attempting to validate topic-partition: {}, attempt {}/{}",
+            pubSubTopicPartition,
+            attempt,
+            retries,
+            e);
       }
       try {
         Thread.sleep(Math.max(1, config.getTopicQueryRetryIntervalMs()));
@@ -468,7 +482,24 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
-    List<PartitionInfo> partitionInfos = this.kafkaConsumer.partitionsFor(topic.getName());
+    List<PartitionInfo> partitionInfos;
+    try {
+      partitionInfos = this.kafkaConsumer.partitionsFor(topic.getName());
+    } catch (RetriableException e) {
+      throw new PubSubClientRetriableException(
+          "Retriable exception thrown when attempting to get partitions for topic: " + topic,
+          e);
+    } catch (AuthorizationException | AuthenticationException e) {
+      throw new PubSubTopicAuthorizationException(
+          "Authorization exception thrown when attempting to get partitions for topic: " + topic,
+          e);
+    } catch (Exception e) {
+      if (e instanceof InterruptException) {
+        Thread.currentThread().interrupt();
+      }
+      throw new PubSubClientException("Exception thrown when attempting to get partitions for topic: " + topic, e);
+    }
+
     if (partitionInfos == null) {
       return null;
     }

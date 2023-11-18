@@ -104,7 +104,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   }
 
   @Override
-  protected Set<Integer> getPersistedPartitionIds() {
+  public Set<Integer> getPersistedPartitionIds() {
     File storeDbDir = new File(storeDbPath);
     if (!storeDbDir.exists()) {
       LOGGER.info("Store dir: {} doesn't exist", storeDbPath);

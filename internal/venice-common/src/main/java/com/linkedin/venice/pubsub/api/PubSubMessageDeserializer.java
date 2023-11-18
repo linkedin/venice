@@ -1,5 +1,7 @@
 package com.linkedin.venice.pubsub.api;
 
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -19,9 +21,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class PubSubMessageDeserializer {
   private static final Logger LOGGER = LogManager.getLogger(PubSubMessageDeserializer.class);
-
-  public static final String VENICE_TRANSPORT_PROTOCOL_HEADER = "vtp";
-
   private final KafkaKeySerializer keySerializer = new KafkaKeySerializer();
   private final KafkaValueSerializer valueSerializer;
   private final ObjectPool<KafkaMessageEnvelope> putEnvelopePool;
@@ -59,6 +58,8 @@ public class PubSubMessageDeserializer {
     KafkaMessageEnvelope value = null;
     if (key.isControlMessage()) {
       for (PubSubMessageHeader header: headers.toList()) {
+        // only process VENICE_TRANSPORT_PROTOCOL_HEADER here. Other headers will be stored in
+        // ImmutablePubSubMessage and used down the ingestion path later
         if (header.key().equals(VENICE_TRANSPORT_PROTOCOL_HEADER)) {
           try {
             Schema providedProtocolSchema = AvroCompatibilityHelper.parse(new String(header.value()));
@@ -85,7 +86,8 @@ public class PubSubMessageDeserializer {
         topicPartition,
         position,
         timestamp,
-        keyBytes.length + valueBytes.length);
+        keyBytes.length + valueBytes.length,
+        headers);
   }
 
   private KafkaMessageEnvelope getEnvelope(byte keyHeaderByte) {

@@ -110,6 +110,7 @@ public class PubSubConsumerAdapterTest {
     properties.setProperty(
         PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
         String.valueOf(PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS));
+    properties.setProperty(PubSubConstants.PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE, "true");
     properties.putAll(pubSubBrokerWrapper.getAdditionalConfig());
     properties.putAll(pubSubBrokerWrapper.getMergeableConfigs());
     VeniceProperties veniceProperties = new VeniceProperties(properties);
