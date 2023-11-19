@@ -309,6 +309,23 @@ public class StorageService extends AbstractVeniceService {
     return engine;
   }
 
+  public synchronized CustomStorageEngine openCustomStoreForNewPartition(
+      VeniceStoreVersionConfig storeConfig,
+      int partitionId,
+      Supplier<StoreVersionState> initialStoreVersionStateSupplier) {
+    LOGGER.info("Opening custom store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
+    CustomStorageEngine engine = openCustomStore(storeConfig, initialStoreVersionStateSupplier);
+    synchronized (engine) {
+      for (int subPartition: getSubPartition(storeConfig.getStoreVersionName(), partitionId)) {
+        if (!engine.containsPartition(subPartition)) {
+          engine.addStoragePartition(subPartition);
+        }
+      }
+    }
+    LOGGER.info("Opened custom store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
+    return engine;
+  }
+
   public BiConsumer<String, StoreVersionState> getStoreVersionStateSyncer() {
     return (storeVersionName, storeVersionState) -> {
       AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeVersionName);
@@ -377,6 +394,36 @@ public class StorageService extends AbstractVeniceService {
 
     LOGGER.info(
         "time spent on creating new storage Engine for store {}: {} ms",
+        topicName,
+        LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine));
+    return engine;
+  }
+
+  public synchronized CustomStorageEngine openCustomStore(
+      VeniceStoreVersionConfig storeConfig,
+      Supplier<StoreVersionState> initialStoreVersionStateSupplier) {
+    String topicName = storeConfig.getStoreVersionName();
+    CustomStorageEngine engine = storageEngineRepository.getCustomLocalStorageEngine(topicName);
+    if (engine != null) {
+      return engine;
+    }
+    long startTimeInBuildingNewEngine = System.nanoTime();
+    /**
+     * For new store, it will use the storage engine configured in host level if it is not known.
+     */
+    if (!storeConfig.isStorePersistenceTypeKnown()) {
+      storeConfig.setStorePersistenceType(storeConfig.getPersistenceType());
+    }
+
+    LOGGER.info(
+        "Creating/Opening Custom Storage Engine {} with type: {}",
+        topicName,
+        storeConfig.getStorePersistenceType());
+    engine = customStorageEngineFactory.createEngine();
+    storageEngineRepository.addCustomLocalStorageEngine(engine);
+
+    LOGGER.info(
+        "time spent on creating new custom storage Engine for store {}: {} ms",
         topicName,
         LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine));
     return engine;
@@ -506,6 +553,16 @@ public class StorageService extends AbstractVeniceService {
     return PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
   }
 
+  public List<Integer> getCustomUserPartitions(String kafkaTopicName) {
+    int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, kafkaTopicName);
+    CustomStorageEngine storageEngine = storageEngineRepository.getCustomLocalStorageEngine(kafkaTopicName);
+    if (storageEngine == null) {
+      LOGGER.warn("Local custom storage engine does not exist for topic: {}", kafkaTopicName);
+      return Collections.emptyList();
+    }
+    return PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
+  }
+
   public void closeAllStorageEngines() {
     LOGGER.info(
         "Storage service has {} storage engines before cleanup.",
@@ -611,36 +668,5 @@ public class StorageService extends AbstractVeniceService {
       LOGGER.warn("Store {} does not exist in storeRepository.", storeName);
       return false;
     }
-  }
-
-  public synchronized CustomStorageEngine openCustomStore(
-      VeniceStoreVersionConfig storeConfig,
-      Supplier<StoreVersionState> initialStoreVersionStateSupplier) {
-    String topicName = storeConfig.getStoreVersionName();
-    CustomStorageEngine engine = storageEngineRepository.getCustomLocalStorageEngine(topicName);
-    if (engine != null) {
-      return engine;
-    }
-    long startTimeInBuildingNewEngine = System.nanoTime();
-    /**
-     * For new store, it will use the storage engine configured in host level if it is not known.
-     */
-    if (!storeConfig.isStorePersistenceTypeKnown()) {
-      storeConfig.setStorePersistenceType(storeConfig.getPersistenceType());
-    }
-
-    LOGGER.info(
-        "Creating/Opening Custom Storage Engine {} with type: {}",
-        topicName,
-        storeConfig.getStorePersistenceType());
-    engine = customStorageEngineFactory.createEngine();
-    storageEngineRepository.addCustomLocalStorageEngine(engine);
-    // Setup storage engine stats
-
-    LOGGER.info(
-        "time spent on creating new custom storage Engine for store {}: {} ms",
-        topicName,
-        LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine));
-    return engine;
   }
 }

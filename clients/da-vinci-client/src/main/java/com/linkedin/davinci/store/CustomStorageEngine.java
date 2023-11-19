@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store;
 
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.util.Set;
 
 
 public interface CustomStorageEngine<K, V> {
@@ -9,6 +10,12 @@ public interface CustomStorageEngine<K, V> {
   String getStoreName();
 
   void setStoreName();
+
+  void addStoragePartition(int partitionId);
+
+  boolean containsPartition(int partitionId);
+
+  Set<Integer> getPartitionIds();
 
   void put(Lazy<K> key, Lazy<V> value, int partition);
 

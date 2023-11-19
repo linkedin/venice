@@ -58,6 +58,10 @@ public class StorageEngineRepository {
     return new ArrayList<>(localStorageEngines.values());
   }
 
+  public List<CustomStorageEngine> getAllCustomLocalStorageEngines() {
+    return new ArrayList<>(customLocalStorageEngines.values());
+  }
+
   public void close() {
     VeniceException lastException = null;
     for (AbstractStorageEngine store: localStorageEngines.values()) {
