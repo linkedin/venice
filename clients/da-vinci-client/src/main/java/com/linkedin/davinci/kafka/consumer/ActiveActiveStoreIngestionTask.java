@@ -433,10 +433,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     aggVersionedIngestionStats.recordTotalDCR(storeName, versionNumber);
 
+    Lazy<ByteBuffer> oldValueByteBufferProvider = unwrapByteBufferFromOldValueProvider(oldValueProvider);
+
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(
-            Lazy.of(() -> oldValueProvider.get().value()),
+            unwrapByteBufferFromOldValueProvider(oldValueProvider),
             rmdWithValueSchemaID,
             ((Put) kafkaValue.payloadUnion).putValue,
             writeTimestamp,
@@ -451,7 +453,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       case DELETE:
         mergeConflictResult = mergeConflictResolver.delete(
-            Lazy.of(() -> oldValueProvider.get().value()),
+            oldValueByteBufferProvider,
             rmdWithValueSchemaID,
             writeTimestamp,
             sourceOffset,
@@ -461,7 +463,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       case UPDATE:
         mergeConflictResult = mergeConflictResolver.update(
-            Lazy.of(() -> oldValueProvider.get().value()),
+            oldValueByteBufferProvider,
             rmdWithValueSchemaID,
             ((Update) kafkaValue.payloadUnion).updateValue,
             incomingValueSchemaId,
@@ -512,14 +514,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         int index = 0;
         // The first future is for the previous write to VT
         viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
+        ByteBuffer oldValueBB = oldValueByteBufferProvider.get();
+        int oldValueSchemaId = oldValueBB == null ? -1 : oldValueProvider.get().writerSchemaId();
         for (VeniceViewWriter writer: viewWriters.values()) {
           viewWriterFutures[index++] = writer.processRecord(
               mergeConflictResult.getNewValue(),
-              oldValueProvider.get().value(),
+              oldValueBB,
               keyBytes,
               versionNumber,
               mergeConflictResult.getValueSchemaId(),
-              oldValueProvider.get().writerSchemaId(),
+              oldValueSchemaId,
               mergeConflictResult.getRmdRecord());
         }
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
@@ -561,7 +565,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
       }
     }
+  }
 
+  /**
+   * Package private for testing purposes.
+   */
+  static Lazy<ByteBuffer> unwrapByteBufferFromOldValueProvider(
+      Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider) {
+    return Lazy.of(() -> {
+      ByteBufferValueRecord<ByteBuffer> bbValueRecord = oldValueProvider.get();
+      return bbValueRecord == null ? null : bbValueRecord.value();
+    });
   }
 
   private long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {
