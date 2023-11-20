@@ -64,6 +64,8 @@ public class ListenerService extends AbstractVeniceService {
 
   private StorageReadRequestHandler storageReadRequestHandler;
 
+  private boolean isDaVinciClient;
+
   public ListenerService(
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
