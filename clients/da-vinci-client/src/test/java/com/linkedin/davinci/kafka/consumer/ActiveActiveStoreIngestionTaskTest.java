@@ -15,6 +15,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -28,6 +30,7 @@ import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.NoopCompressor;
@@ -524,6 +527,18 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertNotNull(container.getManifest());
     Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 2);
     Assert.assertEquals(result3, expectedChunkedValue2);
+  }
+
+  @Test
+  public void testUnwrapByteBufferFromOldValueProvider() {
+    Lazy<ByteBuffer> lazyBB = ActiveActiveStoreIngestionTask.unwrapByteBufferFromOldValueProvider(Lazy.of(() -> null));
+    assertNotNull(lazyBB);
+    assertNull(lazyBB.get());
+
+    lazyBB = ActiveActiveStoreIngestionTask.unwrapByteBufferFromOldValueProvider(
+        Lazy.of(() -> new ByteBufferValueRecord<>(ByteBuffer.wrap(new byte[1]), 1)));
+    assertNotNull(lazyBB);
+    assertNotNull(lazyBB.get());
   }
 
   private VeniceCompressor getCompressor(CompressionStrategy strategy) {
