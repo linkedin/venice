@@ -1271,6 +1271,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Only update the metadata if this replica should NOT produce to version topic.
     if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
+      PubSubTopic consumedTopic = consumerRecord.getTopicPartition().getPubSubTopic();
+      if (consumedTopic.isRealTime()) {
+        // Does this ever happen?
+        LOGGER.warn(
+            "Will short-circuit updateOffsetsFromConsumerRecord because the consumerRecord is coming from a "
+                + "RT topic ({}), partitionConsumptionState: {}",
+            consumedTopic,
+            partitionConsumptionState);
+        return;
+      }
       /**
        * If either (1) this is a follower replica or (2) this is a leader replica who is consuming from version topic
        * in a local Kafka cluster, we can update the offset metadata in offset record right after consuming a message;
