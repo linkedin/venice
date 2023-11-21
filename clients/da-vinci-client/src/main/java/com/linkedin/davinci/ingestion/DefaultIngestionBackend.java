@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -24,8 +25,7 @@ import org.apache.logging.log4j.Logger;
  * The default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
  */
 public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
-  private static final Logger LOGGER =
-      LogManager.getLogger(com.linkedin.davinci.ingestion.DefaultIngestionBackend.class);
+  private static final Logger LOGGER = LogManager.getLogger(DefaultIngestionBackend.class);
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;
@@ -77,7 +77,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void shutdownÏ(String topicName) {
+  public void shutdownIngestionTask(String topicName) {
     getStoreIngestionService().shutdownStoreIngestionTask(topicName);
   }
 
@@ -92,10 +92,6 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
       int partition,
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
-    String topicName = storeConfig.getStoreVersionName();
-    // Delete this replica from meta system store if exists.
-    getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier()
-        .ifPresent(systemStoreReplicaStatusNotifier -> systemStoreReplicaStatusNotifier.drop(topicName, partition));
     // Stop consumption of the partition.
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
@@ -161,6 +157,11 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   @Override
   public StorageService getStorageService() {
     return storageService;
+  }
+
+  @Override
+  public Map<String, Set<Integer>> getLoadedStoreUserPartitionsMapping() {
+    return storageService.getStoreAndUserPartitionsMapping();
   }
 
   @Override
