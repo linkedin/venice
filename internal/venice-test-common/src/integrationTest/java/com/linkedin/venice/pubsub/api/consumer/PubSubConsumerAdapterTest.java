@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.api.consumer;
 
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -112,6 +113,7 @@ public class PubSubConsumerAdapterTest {
         String.valueOf(PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS));
     properties.putAll(pubSubBrokerWrapper.getAdditionalConfig());
     properties.putAll(pubSubBrokerWrapper.getMergeableConfigs());
+    properties.put(PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE, "true");
     VeniceProperties veniceProperties = new VeniceProperties(properties);
 
     pubSubConsumerAdapter = pubSubClientsFactory.getConsumerAdapterFactory()
