@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store;
 
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.nio.ByteBuffer;
 import java.util.Set;
 
 
@@ -17,11 +18,9 @@ public interface CustomStorageEngine<K, V> {
 
   Set<Integer> getPartitionIds();
 
-  void put(Lazy<K> key, Lazy<V> value, int partition);
+  void put(int partitionId, byte[] key, ByteBuffer value);
 
   void delete(Lazy<K> key, int partition);
-
-  Lazy<V> get(Lazy<K> key, int partition);
 
   void close();
 }

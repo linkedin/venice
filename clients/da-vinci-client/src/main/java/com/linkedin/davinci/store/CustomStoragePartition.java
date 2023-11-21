@@ -12,7 +12,5 @@ public interface CustomStoragePartition<K, V> {
 
   void delete(Lazy<K> key, int partition);
 
-  Lazy<V> get(Lazy<K> key, int partition);
-
   void close();
 }

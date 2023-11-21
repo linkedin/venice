@@ -21,6 +21,7 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.CustomStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -157,6 +158,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
   protected final AbstractStorageEngine storageEngine;
+  protected final CustomStorageEngine customStorageEngine;
 
   /** Topics used for this topic consumption
    * TODO: Using a PubSubVersionTopic and PubSubRealTimeTopic extending PubSubTopic for type safety.
@@ -369,7 +371,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.diskUsage = builder.getDiskUsage();
 
-    this.storageEngine = Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
+    this.storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+
+    this.customStorageEngine = storageEngineRepository.getCustomLocalStorageEngine(kafkaVersionTopic);
 
     this.serverConfig = builder.getServerConfig();
 
@@ -463,6 +467,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public AbstractStorageEngine getStorageEngine() {
     return storageEngine;
+  }
+
+  public CustomStorageEngine getCustomStorageEngine() {
+    return customStorageEngine;
   }
 
   public boolean isFutureVersion() {
@@ -2873,7 +2881,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Persist Put record to storage engine.
    */
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
-    executeStorageEngineRunnable(partition, () -> storageEngine.put(partition, keyBytes, put.putValue));
+    if (customStorageEngine != null) {
+      executeStorageEngineRunnable(partition, () -> customStorageEngine.put(partition, keyBytes, put.putValue));
+    } else {
+      executeStorageEngineRunnable(partition, () -> storageEngine.put(partition, keyBytes, put.putValue));
+    }
   }
 
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {

@@ -24,7 +24,8 @@ import org.apache.logging.log4j.Logger;
  * The default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
  */
 public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
-  private static final Logger LOGGER = LogManager.getLogger(DefaultIngestionBackend.class);
+  private static final Logger LOGGER =
+      LogManager.getLogger(com.linkedin.davinci.ingestion.DefaultIngestionBackend.class);
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;
@@ -76,7 +77,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void shutdownIngestionTask(String topicName) {
+  public void shutdownÏ(String topicName) {
     getStoreIngestionService().shutdownStoreIngestionTask(topicName);
   }
 
