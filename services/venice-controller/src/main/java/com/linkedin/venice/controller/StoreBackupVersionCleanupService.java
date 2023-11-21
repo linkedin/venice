@@ -3,9 +3,15 @@ package com.linkedin.venice.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -19,8 +25,10 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
@@ -117,26 +125,28 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     return store.getLatestVersionPromoteToCurrentTimestamp() + backupVersionRetentionMs < time.getMilliseconds();
   }
 
-  private String convertToURL(String instance) {
-    // Split the input string into two parts using the underscore as the delimiter
-    String[] parts = instance.split("_");
-    String domain = parts[0];
-    String port = parts[1];
-    return "https://" + domain + ":" + port;
-  }
-
   private boolean validateAllRouterOnCurrentVersion(Store store, String clusterName, int versionToValidate) {
     List<String> urlList = admin.getHelixVeniceClusterResources(clusterName)
         .getRoutersClusterManager()
         .getLiveRouterInstances()
         .stream()
-        .map(instance -> urlMap.computeIfAbsent(instance, this::convertToURL))
+        .map(
+            instance -> urlMap
+                .computeIfAbsent(instance, k -> HelixUtils.getInstanceFromHelixInstanceName(k).getUrl(true)))
         .collect(Collectors.toList());
 
     for (String routerURL: urlList) {
       try {
         HttpGet routerRequest = new HttpGet(routerURL + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
         HttpResponse response = storeClient.execute(routerRequest, null).get();
+        if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
+          LOGGER.warn(
+              "Got status code {} from host {} while querying current version for store {}",
+              response.getStatusLine().getStatusCode(),
+              routerURL,
+              store.getName());
+          return false;
+        }
         String responseBody;
         try (InputStream bodyStream = response.getEntity().getContent()) {
           responseBody = IOUtils.toString(bodyStream);
@@ -154,6 +164,44 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     return true;
   }
 
+  private boolean validateAllServerOnCurrentVersion(Store store, String clusterName, int versionToValidate) {
+    Set<Instance> instances = admin.getLiveInstanceMonitor(clusterName).getAllLiveInstances();
+
+    for (Instance instance: instances) {
+      try {
+        HttpGet routerRequest = new HttpGet(
+            instance.getUrl() + "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + store.getName());
+        HttpResponse response = storeClient.execute(routerRequest, null).get();
+        if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
+          LOGGER.warn(
+              "Got status code {} from host {} while querying current version for store {}",
+              response.getStatusLine().getStatusCode(),
+              instance,
+              store.getName());
+          return false;
+        }
+        byte[] responseBody;
+        try (InputStream bodyStream = response.getEntity().getContent()) {
+          responseBody = IOUtils.toByteArray(bodyStream);
+        }
+        RecordDeserializer<MetadataResponseRecord> metadataResponseRecordRecordDeserializer =
+            SerializerDeserializerFactory.getAvroGenericDeserializer(MetadataResponseRecord.SCHEMA$);
+        GenericRecord metadataResponse = metadataResponseRecordRecordDeserializer.deserialize(responseBody);
+
+        MetadataResponseRecord metadataResponseRecord =
+            OBJECT_MAPPER.readValue(metadataResponse.toString(), MetadataResponseRecord.class);
+        if (metadataResponseRecord.getVersionMetadata().getCurrentVersion() != versionToValidate) {
+          return false;
+        }
+      } catch (Exception e) {
+        LOGGER.error("Got exception while getting server current version for store {}", store.getName(), e);
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   /**
    * Using a separate function for store cleanup is to make it easy for testing.
    * @return whether any backup version is removed or not
@@ -168,8 +216,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     List<Version> readyToBeRemovedVersions = new ArrayList<>();
     int currentVersion = store.getCurrentVersion();
 
-    // Do not delete version unless all routers are on current version
-    if (!validateAllRouterOnCurrentVersion(store, clusterName, currentVersion)) {
+    // Do not delete version unless all routers and all servers are on same current version
+    if (!validateAllRouterOnCurrentVersion(store, clusterName, currentVersion)
+        || !validateAllServerOnCurrentVersion(store, clusterName, currentVersion)) {
       return false;
     }
 
