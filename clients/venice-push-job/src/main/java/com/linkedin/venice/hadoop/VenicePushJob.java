@@ -2487,7 +2487,12 @@ public class VenicePushJob implements AutoCloseable {
 
     if (jobSetting.isTargetedRegionPushEnabled && jobSetting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
-      jobSetting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
+      // use source grid fabric as target region to reduce data hop, else use default NR source
+      if (!StringUtils.isEmpty(jobSetting.sourceGridFabric)) {
+        jobSetting.targetedRegions = jobSetting.sourceGridFabric;
+      } else {
+        jobSetting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
+      }
       if (StringUtils.isEmpty(jobSetting.targetedRegions)) {
         throw new VeniceException(
             "The store either does not have native replication mode enabled or set up default source fabric.");
