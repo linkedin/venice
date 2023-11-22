@@ -519,7 +519,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         for (VeniceViewWriter writer: viewWriters.values()) {
           viewWriterFutures[index++] = writer.processRecord(
               mergeConflictResult.getNewValue(),
-              oldValueProvider.get().value(),
+              oldValueBB,
               keyBytes,
               versionNumber,
               mergeConflictResult.getValueSchemaId(),
