@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -136,6 +137,8 @@ public class TestStoreBackupVersionCleanupService {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
+    LiveInstanceMonitor liveInstanceMonitor = mock(LiveInstanceMonitor.class);
+    doReturn(liveInstanceMonitor).when(admin).getLiveInstanceMonitor(anyString());
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
@@ -177,12 +180,14 @@ public class TestStoreBackupVersionCleanupService {
   public void testCleanupBackupVersionSleepValidation() throws Exception {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
+    LiveInstanceMonitor liveInstanceMonitor = mock(LiveInstanceMonitor.class);
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
     VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
     doReturn(controllerConfig).when(config).getControllerConfig(any());
     doReturn(true).when(controllerConfig).isBackupVersionRetentionBasedCleanupEnabled();
     doReturn(true).when(admin).isLeaderControllerFor(any());
+    doReturn(liveInstanceMonitor).when(admin).getLiveInstanceMonitor(anyString());
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
     doReturn(Collections.emptyList()).when(clusterManager).getLiveRouterInstances();
