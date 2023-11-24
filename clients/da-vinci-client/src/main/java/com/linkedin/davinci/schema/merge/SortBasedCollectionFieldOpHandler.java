@@ -128,10 +128,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     newElements.addAll(toPutList);
 
     // Add elements and timestamps for the collection-merge part.
-    activeElementToTsMap.forEach((activeElement, activeTimestamp) -> {
-      newElements.add(activeElement);
-      newActiveTimestamps.add(activeTimestamp);
-    });
+    for (Map.Entry<Object, Long> entry: activeElementToTsMap.entrySet()) {
+      newElements.add(entry.getKey());
+      newActiveTimestamps.addPrimitive(entry.getValue().longValue());
+    }
 
     // Step 3: Set current elements and their active timestamps.
     currValueRecord.put(currValueRecordField.pos(), newElements);
@@ -140,10 +140,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 4: Set deleted elements and their deleted timestamps.
     List<Object> newDeletedElements = new ArrayList<>(deletedElementToTsMap.size());
     PrimitiveLongList newDeletedTimestamps = new PrimitiveLongArrayList(deletedElementToTsMap.size());
-    deletedElementToTsMap.forEach((deletedElement, deletedTimestamp) -> {
-      newDeletedElements.add(deletedElement);
-      newDeletedTimestamps.add(deletedTimestamp);
-    });
+    for (Map.Entry<Object, Long> entry: deletedElementToTsMap.entrySet()) {
+      newDeletedElements.add(entry.getKey());
+      newDeletedTimestamps.addPrimitive(entry.getValue().longValue());
+    }
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedElements, newDeletedTimestamps);
     if (collectionFieldRmd.isInPutOnlyState() && newFieldValue == null) {
       currValueRecord.put(currValueRecordField.pos(), null);
@@ -245,10 +245,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     toPutMap.forEach(newMap::put);
 
     // Add entries and timestamps for the collection-merge part.
-    activeEntriesToTsMap.forEach((activeEntry, activeTimestamp) -> {
-      newMap.put(activeEntry.getKey(), activeEntry.getVal());
-      newActiveTimestamps.add(activeTimestamp);
-    });
+    for (Map.Entry<KeyValPair, Long> entry: activeEntriesToTsMap.entrySet()) {
+      newMap.put(entry.getKey().getKey(), entry.getKey().getVal());
+      newActiveTimestamps.addPrimitive(entry.getValue().longValue());
+    }
 
     // Step 3: Set new map entries and new active timestamps.
     currValueRecord.put(currValueRecordField.pos(), newMap);
@@ -257,10 +257,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 4: Set deleted keys and their deleted timestamps.
     List<String> newDeletedKeys = new ArrayList<>(deletedKeyToTsMap.size());
     PrimitiveLongList newDeletedTimestamps = new PrimitiveLongArrayList(deletedKeyToTsMap.size());
-    deletedKeyToTsMap.forEach((key, ts) -> {
-      newDeletedKeys.add(key);
-      newDeletedTimestamps.add(ts);
-    });
+    for (Map.Entry<String, Long> entry: deletedKeyToTsMap.entrySet()) {
+      newDeletedKeys.add(entry.getKey());
+      newDeletedTimestamps.addPrimitive(entry.getValue().longValue());
+    }
 
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedKeys, newDeletedTimestamps);
     if (collectionFieldRmd.isInPutOnlyState() && newFieldValue == null) {
@@ -643,7 +643,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     for (ElementAndTimestamp activeElementAndTs: activeElementAndTsList) {
       newActiveElements.add(activeElementAndTs.getElement());
       if (idx >= newPutOnlyPartLength) {
-        newActiveTimestamps.add(activeElementAndTs.getTimestamp());
+        newActiveTimestamps.addPrimitive(activeElementAndTs.getTimestamp());
       }
       idx++;
     }
@@ -659,7 +659,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     PrimitiveLongList deletedTimestamps = new PrimitiveLongArrayList(deletedElementAndTsList.size());
     for (ElementAndTimestamp deletedElementAndTs: deletedElementAndTsList) {
       deletedElements.add(deletedElementAndTs.getElement());
-      deletedTimestamps.add(deletedElementAndTs.getTimestamp());
+      deletedTimestamps.addPrimitive(deletedElementAndTs.getTimestamp());
     }
     collectionFieldRmd.setDeletedElementsAndTimestamps(deletedElements, deletedTimestamps);
   }
@@ -807,7 +807,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     }
     PrimitiveLongList newActiveTimestamps = new PrimitiveLongArrayList(collectionMergePartKeys.size());
     for (int i = 0; i < collectionMergePartKeys.size(); i++) {
-      newActiveTimestamps.add(modifyTimestamp);
+      newActiveTimestamps.addPrimitive(modifyTimestamp);
     }
     collectionFieldRmd.setActiveElementTimestamps(newActiveTimestamps);
     currValueRecord.put(currValueRecordField.pos(), resMap);
@@ -820,7 +820,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long deleteTimestamp) {
     PrimitiveLongList newDeletedTimestamps = new PrimitiveLongArrayList(deletedKeys.size());
     for (int i = 0; i < deletedKeys.size(); i++) {
-      newDeletedTimestamps.add(deleteTimestamp);
+      newDeletedTimestamps.addPrimitive(deleteTimestamp);
     }
     collectionFieldRmd.setDeletedElementsAndTimestamps(deletedKeys, newDeletedTimestamps);
   }
@@ -1013,7 +1013,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       KeyValPair activeEntry = (KeyValPair) activeEntryAndTs.getElement();
       newMap.put(activeEntry.getKey(), activeEntry.getVal());
       if (idx >= newPutOnlyPartLength) {
-        newActiveTimestamps.add(activeEntryAndTs.getTimestamp());
+        newActiveTimestamps.addPrimitive(activeEntryAndTs.getTimestamp());
       }
       idx++;
     }
@@ -1029,7 +1029,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     PrimitiveLongList deletedTimestamps = new PrimitiveLongArrayList(deletedElementAndTsList.size());
     for (ElementAndTimestamp deletedKeyAndTs: deletedElementAndTsList) {
       deletedKeys.add((String) deletedKeyAndTs.getElement());
-      deletedTimestamps.add(deletedKeyAndTs.getTimestamp());
+      deletedTimestamps.addPrimitive(deletedKeyAndTs.getTimestamp());
     }
     collectionFieldRmd.setDeletedElementsAndTimestamps(deletedKeys, deletedTimestamps);
   }
