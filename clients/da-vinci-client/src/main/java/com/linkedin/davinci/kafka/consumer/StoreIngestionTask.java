@@ -950,8 +950,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             final PubSubTopic lagMeasurementTopic = pubSubTopicRepository.getTopic(realTimeTopic.getName());
             final PubSubTopicPartition pubSubTopicPartition =
                 new PubSubTopicPartitionImpl(lagMeasurementTopic, partitionId);
-            // Since DaVinci clients run in embedded mode, they may not have network ACLs to check remote RT to get
-            // the latest producer timestamp in RT. Only use the latest producer time in local RT.
+            // DaVinci and STANDBY checks the local consumption and leaderCompleteState status
             final String lagMeasurementKafkaUrl =
                 (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY))
                     ? localKafkaServer
