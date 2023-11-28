@@ -722,7 +722,7 @@ public class PartitionTracker {
       }
       sb.append("; incoming offset: ")
           .append(consumerRecord.getOffset())
-          .append(";previous segment: ")
+          .append("; previous segment: ")
           .append(previousSegment)
           .append("; incoming segment: ")
           .append(producerMetadata.segmentNumber)
