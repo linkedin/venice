@@ -40,6 +40,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericContainer;
@@ -224,22 +225,20 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       }
       final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
       final Instant sendStartTime = Instant.now();
-      final PubSubProducerCallback callback = (PubSubProduceResult produceResult, Exception exception) -> {
-        Duration sendDuration = Duration.between(sendStartTime, Instant.now());
-        if (exception == null) {
-          producerMetrics.recordSuccessfulRequestWithLatency(sendDuration.toMillis());
-          completableFuture.complete(null);
-        } else {
-          producerMetrics.recordFailedRequest();
-          LOGGER.error("Failed to write the requested data to the PubSub system", exception);
-          completableFuture.completeExceptionally(exception);
-        }
-      };
+      final PubSubProducerCallback callback = getPubSubProducerCallback(
+          sendStartTime,
+          completableFuture,
+          "Failed to write the requested data to the PubSub system");
 
       byte[] keyBytes = keySerializer.serialize(key);
       byte[] valueBytes = getSerializer(valueSchema).serialize(value);
 
-      veniceWriter.put(keyBytes, valueBytes, valueSchemaId, logicalTime, callback);
+      try {
+        veniceWriter.put(keyBytes, valueBytes, valueSchemaId, logicalTime, callback);
+      } catch (Exception e) {
+        callback.onCompletion(null, e);
+        throw e;
+      }
 
       try {
         completableFuture.get();
@@ -249,6 +248,31 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
       return DURABLE_WRITE;
     }, producerExecutor);
+  }
+
+  private PubSubProducerCallback getPubSubProducerCallback(
+      Instant sendStartTime,
+      CompletableFuture<Void> completableFuture,
+      String errorMessage) {
+    final AtomicBoolean callbackTriggered = new AtomicBoolean();
+    final PubSubProducerCallback callback = (PubSubProduceResult produceResult, Exception exception) -> {
+      boolean firstInvocation = callbackTriggered.compareAndSet(false, true);
+      // We do not expect this to be triggered multiple times, but we still handle the case for defensive reasons
+      if (!firstInvocation) {
+        return;
+      }
+
+      Duration sendDuration = Duration.between(sendStartTime, Instant.now());
+      if (exception == null) {
+        producerMetrics.recordSuccessfulRequestWithLatency(sendDuration.toMillis());
+        completableFuture.complete(null);
+      } else {
+        producerMetrics.recordFailedRequest();
+        LOGGER.error(errorMessage, exception);
+        completableFuture.completeExceptionally(exception);
+      }
+    };
+    return callback;
   }
 
   @Override
@@ -275,21 +299,19 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     return CompletableFuture.supplyAsync(() -> {
       final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
       final Instant sendStartTime = Instant.now();
-      final PubSubProducerCallback callback = (PubSubProduceResult produceResult, Exception exception) -> {
-        Duration sendDuration = Duration.between(sendStartTime, Instant.now());
-        if (exception == null) {
-          producerMetrics.recordSuccessfulRequestWithLatency(sendDuration.toMillis());
-          completableFuture.complete(null);
-        } else {
-          producerMetrics.recordFailedRequest();
-          LOGGER.error("Failed to write the delete operation to the PubSub system", exception);
-          completableFuture.completeExceptionally(exception);
-        }
-      };
+      final PubSubProducerCallback callback = getPubSubProducerCallback(
+          sendStartTime,
+          completableFuture,
+          "Failed to write the delete operation to the PubSub system");
 
       byte[] keyBytes = keySerializer.serialize(key);
 
-      veniceWriter.delete(keyBytes, logicalTime, callback);
+      try {
+        veniceWriter.delete(keyBytes, logicalTime, callback);
+      } catch (Exception e) {
+        callback.onCompletion(null, e);
+        throw e;
+      }
 
       try {
         completableFuture.get();
@@ -352,28 +374,29 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
       final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
       final Instant sendStartTime = Instant.now();
-      final PubSubProducerCallback callback = (PubSubProduceResult produceResult, Exception exception) -> {
-        Duration sendDuration = Duration.between(sendStartTime, Instant.now());
-        if (exception == null) {
-          producerMetrics.recordSuccessfulRequestWithLatency(sendDuration.toMillis());
-          completableFuture.complete(null);
-        } else {
-          producerMetrics.recordFailedRequest();
-          LOGGER.error("Failed to write the partial update record to the PubSub system", exception);
-          completableFuture.completeExceptionally(exception);
-        }
-      };
+      final AtomicBoolean callbackTriggered = new AtomicBoolean();
+      final PubSubProducerCallback callback = getPubSubProducerCallback(
+          sendStartTime,
+          completableFuture,
+          "Failed to write the partial update record to the PubSub system");
 
       byte[] keyBytes = keySerializer.serialize(key);
       byte[] updateBytes = getSerializer(updateSchema).serialize(updateRecord);
 
-      veniceWriter.update(
-          keyBytes,
-          updateBytes,
-          updateSchemaEntry.getValueSchemaID(),
-          updateSchemaEntry.getId(),
-          callback,
-          logicalTime);
+      try {
+        veniceWriter.update(
+            keyBytes,
+            updateBytes,
+            updateSchemaEntry.getValueSchemaID(),
+            updateSchemaEntry.getId(),
+            callback,
+            logicalTime);
+      } catch (Exception e) {
+        if (!callbackTriggered.get()) {
+          callback.onCompletion(null, e);
+        }
+        throw e;
+      }
 
       try {
         completableFuture.get();
