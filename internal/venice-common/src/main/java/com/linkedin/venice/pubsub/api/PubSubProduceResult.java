@@ -1,8 +1,5 @@
 package com.linkedin.venice.pubsub.api;
 
-import static com.linkedin.venice.writer.VeniceWriter.EMPTY_MSG_HEADERS;
-
-
 /**
  * An interface implemented by specific PubSubProducerAdapters to return the result of a produce action.
  */
@@ -26,8 +23,4 @@ public interface PubSubProduceResult {
    * The partition the record was sent to
    */
   int getPartition();
-
-  default PubSubMessageHeaders getPubSubMessageHeaders() {
-    return EMPTY_MSG_HEADERS;
-  }
 }

@@ -20,10 +20,6 @@ public class InMemoryKafkaMessage {
    */
   private boolean putValueChanged = false;
 
-  public InMemoryKafkaMessage(KafkaKey key, KafkaMessageEnvelope value) {
-    this(key, value, null);
-  }
-
   public InMemoryKafkaMessage(KafkaKey key, KafkaMessageEnvelope value, PubSubMessageHeaders headers) {
     this.key = key;
     this.value = value;
