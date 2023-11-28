@@ -25,6 +25,7 @@ import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -190,8 +191,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       int maxAttempts =
           (int) Math.ceil((double) nonExistingTopicIngestionTaskKillThresholdMs / nonExistingTopicRetryIntervalMs);
       for (int cnt = 0; cnt < maxAttempts; ++cnt) {
-        for (Map.Entry<String, StoreIngestionTask> entry: versionTopicIngestionTaskMappingForNonExistingTopic
-            .entrySet()) {
+        Iterator<Map.Entry<String, StoreIngestionTask>> iterator =
+            versionTopicIngestionTaskMappingForNonExistingTopic.entrySet().iterator();
+        while (iterator.hasNext()) {
+          Map.Entry<String, StoreIngestionTask> entry = iterator.next();
           String versionTopic = entry.getKey();
           StoreIngestionTask sit = entry.getValue();
           try {
@@ -199,7 +202,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
               /**
                * If the version topic becomes available after retries, remove it from the tracking map.
                */
-              versionTopicIngestionTaskMappingForNonExistingTopic.remove(versionTopic);
+              iterator.remove();
               LOGGER.info("The producing version topic:{} becomes healthy", versionTopic);
             }
           } catch (Exception e) {
