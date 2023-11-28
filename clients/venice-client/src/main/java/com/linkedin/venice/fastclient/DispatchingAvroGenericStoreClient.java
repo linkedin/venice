@@ -840,7 +840,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   void verifyMetadataInitialized() throws VeniceClientException {
     if (!metadata.isReady()) {
-      throw new VeniceClientException(metadata.getStoreName() + " metadata is not ready, attempting to re-initialize");
+      throw new VeniceClientException(metadata.getStoreName() + " metadata is not ready yet, retry in sometime");
     }
     // initialize keySerializer here as it depends on the metadata's key schema
     if (keySerializer == null) {

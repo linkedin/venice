@@ -136,6 +136,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public int getCurrentStoreVersion() {
+    if (!isReady()) {
+      throw new VeniceClientException(getStoreName() + " metadata is not ready yet, retry in sometime");
+    }
     return currentVersion.get();
   }
 
@@ -434,7 +437,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       currentVersion.set(fetchedCurrentVersion);
-      clusterStats.updateCurrentVersion(getCurrentStoreVersion());
+      clusterStats.updateCurrentVersion(fetchedCurrentVersion);
       routingStrategy.updateHelixGroupInfo(helixGroupInfo);
       // Update the metadata timestamp only if all updates are successful
       clientStats.updateCacheTimestamp(currentTimeMs);
