@@ -66,10 +66,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final Function<String, String> kafkaClusterUrlResolver;
 
   private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
-  private final long stuckConsumerRepairThresholdMs;
-  private final long nonExistingTopicIngestionTaskKillThresholdMs;
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
-  private final StuckConsumerRepairStats stuckConsumerRepairStats;
 
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
@@ -100,11 +97,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.sslPropertiesSupplier = sslPropertiesSupplier;
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
 
-    this.stuckConsumerRepairThresholdMs =
-        TimeUnit.SECONDS.toMillis(serverConfig.getStuckConsumerDetectionRepairThresholdSecond());
-    this.nonExistingTopicIngestionTaskKillThresholdMs =
-        TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicIngestionTaskKillThresholdSecond());
-    this.stuckConsumerRepairStats = new StuckConsumerRepairStats(metricsRepository);
     if (serverConfig.isStuckConsumerRepairEnabled()) {
       this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
           new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair"));
@@ -113,10 +105,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
           getStuckConsumerDetectionAndRepairRunnable(
               kafkaServerToConsumerServiceMap,
               versionTopicStoreIngestionTaskMapping,
-              stuckConsumerRepairThresholdMs,
-              nonExistingTopicIngestionTaskKillThresholdMs,
+              TimeUnit.SECONDS.toMillis(serverConfig.getStuckConsumerDetectionRepairThresholdSecond()),
+              TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicIngestionTaskKillThresholdSecond()),
               TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicCheckRetryIntervalSecond()),
-              stuckConsumerRepairStats,
+              new StuckConsumerRepairStats(metricsRepository),
               killIngestionTaskRunnable),
           intervalInSeconds,
           intervalInSeconds,
