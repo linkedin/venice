@@ -10,18 +10,19 @@ import com.linkedin.venice.utils.VeniceEnumValue;
  */
 public enum LeaderCompleteState implements VeniceEnumValue {
   /**
-   * Leader partition is not marked completed yet
+   * Leader partition is not completed yet
    */
   LEADER_NOT_COMPLETED(0),
   /**
-   * Leader partition is marked completed
+   * Leader partition is completed
    */
   LEADER_COMPLETED(1),
   /**
-   * Default state for the standby to know that the feature is not supported, to
-   * not consider leader's completion status for its completion.
+   * Default state for the partition until VENICE_LEADER_COMPLETION_STATE_HEADER is received from leader partition
+   * and the state is updated. This works in conjunction with PartitionConsumptionState#isFirstHeartBeatSOSReceived
+   * to decide whether to use this state or not.
    */
-  NOT_SUPPORTED(2);
+  LEADER_COMPLETE_STATE_UNKNOWN(2);
 
   private final int value;
   private static final LeaderCompleteState[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(LeaderCompleteState.class);

@@ -16,6 +16,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -190,6 +191,10 @@ public class PartitionConsumptionState {
    */
   private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
+  private LeaderCompleteState leaderCompleteState;
+  private long lastLeaderCompleteStateUpdateInMs;
+  private boolean firstHeartBeatSOSReceived;
+
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid) {
     this.partition = partition;
     this.amplificationFactor = amplificationFactor;
@@ -234,6 +239,9 @@ public class PartitionConsumptionState {
     // On start we haven't sent anything
     this.latestRTOffsetTriedToProduceToVTMap = new HashMap<>();
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
+    this.leaderCompleteState = LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
+    this.lastLeaderCompleteStateUpdateInMs = 0;
+    this.firstHeartBeatSOSReceived = false;
   }
 
   public int getPartition() {
@@ -800,5 +808,33 @@ public class PartitionConsumptionState {
 
   public void setLeaderHostId(String hostId) {
     this.leaderHostId = hostId;
+  }
+
+  public boolean isLeaderCompleted() {
+    return getLeaderCompleteState() == LeaderCompleteState.LEADER_COMPLETED;
+  }
+
+  public LeaderCompleteState getLeaderCompleteState() {
+    return leaderCompleteState;
+  }
+
+  public void setLeaderCompleteState(LeaderCompleteState leaderCompleteState) {
+    this.leaderCompleteState = leaderCompleteState;
+  }
+
+  public long getLastLeaderCompleteStateUpdateInMs() {
+    return lastLeaderCompleteStateUpdateInMs;
+  }
+
+  public void setLastLeaderCompleteStateUpdateInMs(long lastLeaderCompleteStateUpdateInMs) {
+    this.lastLeaderCompleteStateUpdateInMs = lastLeaderCompleteStateUpdateInMs;
+  }
+
+  public boolean isFirstHeartBeatSOSReceived() {
+    return firstHeartBeatSOSReceived;
+  }
+
+  public void setFirstHeartBeatSOSReceived(boolean firstHeartBeatSOSReceived) {
+    this.firstHeartBeatSOSReceived = firstHeartBeatSOSReceived;
   }
 }

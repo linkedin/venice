@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
@@ -24,6 +25,10 @@ import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAsserti
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
 import static com.linkedin.venice.utils.Time.MS_PER_DAY;
 import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
+import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
+import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
+import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.after;
@@ -119,6 +124,7 @@ import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -171,6 +177,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -2278,8 +2285,26 @@ public abstract class StoreIngestionTaskTest {
         }
       }
 
+      // HB SOS is not sent yet, so the standby replicas should not be completed
+      verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
+
+      // send HB SOS
+      for (int partition: ALL_PARTITIONS) {
+        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
+            new PubSubTopicImpl(Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1)),
+            partition);
+        localVeniceWriter.sendHeartbeat(
+            topicPartition,
+            null,
+            DEFAULT_LEADER_METADATA_WRAPPER,
+            true,
+            LeaderCompleteState.getLeaderCompleteState(true),
+            System.currentTimeMillis());
+      }
+
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeast(ALL_PARTITIONS.size()))
           .completed(anyString(), anyInt(), anyLong(), anyString());
+
     }, isActiveActiveReplicationEnabled);
   }
 
@@ -2464,6 +2489,7 @@ public abstract class StoreIngestionTaskTest {
     propertyBuilder.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, databaseChecksumVerificationEnabled);
     propertyBuilder.put(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX, VeniceProperties.empty());
     propertyBuilder.put(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX, VeniceProperties.empty());
+    propertyBuilder.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 1000);
     extraProperties.forEach(propertyBuilder::put);
 
     Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
@@ -2752,35 +2778,36 @@ public abstract class StoreIngestionTaskTest {
     doReturn(System.currentTimeMillis() - MS_PER_HOUR).when(mockOffsetRecordLagCaughtUpTimestampLagging)
         .getLatestProducerProcessingTimeInMs();
 
-    // If EOP is not received, partition is not ready to serve
+    // case1: If EOP is not received, partition is not ready to serve
     PartitionConsumptionState mockPcsEOPNotReceived = mock(PartitionConsumptionState.class);
     doReturn(false).when(mockPcsEOPNotReceived).isEndOfPushReceived();
-    Assert.assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsEOPNotReceived));
+    assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsEOPNotReceived));
 
-    // If EOP is received and partition has reported COMPLETED, then partition is ready to serve
+    // case 2: If EOP is received and partition has reported COMPLETED, then partition is ready to serve
     PartitionConsumptionState mockPcsCompleted = mock(PartitionConsumptionState.class);
     doReturn(true).when(mockPcsCompleted).isEndOfPushReceived();
     doReturn(true).when(mockPcsCompleted).isComplete();
-    Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsCompleted));
+    assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsCompleted));
 
-    // If partition has not reported COMPLETED but is not waiting for replication lag to catch up, it is ready to serve
+    // case 3: If partition has not reported COMPLETED but is not waiting for replication lag to catch up,
+    // it is ready to serve
     PartitionConsumptionState mockPcsNotWaitingForReplicationLag = mock(PartitionConsumptionState.class);
     doReturn(true).when(mockPcsNotWaitingForReplicationLag).isEndOfPushReceived();
     doReturn(false).when(mockPcsNotWaitingForReplicationLag).isComplete();
     doReturn(false).when(mockPcsNotWaitingForReplicationLag).isWaitingForReplicationLag();
-    Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsNotWaitingForReplicationLag));
+    assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsNotWaitingForReplicationLag));
 
-    // If partition is waiting for replication lag to catch up, but buffer replay has not started, it is not ready to
-    // serve
+    // case 4: If partition is waiting for replication lag to catch up, but buffer replay has not started,
+    // it is not ready to serve
     PartitionConsumptionState mockPcsHybridButBufferReplayNotStarted = mock(PartitionConsumptionState.class);
     doReturn(true).when(mockPcsHybridButBufferReplayNotStarted).isEndOfPushReceived();
     doReturn(false).when(mockPcsHybridButBufferReplayNotStarted).isComplete();
     doReturn(true).when(mockPcsHybridButBufferReplayNotStarted).isWaitingForReplicationLag();
     doReturn(true).when(mockPcsHybridButBufferReplayNotStarted).isHybrid();
     doReturn(null).when(mockPcsHybridButBufferReplayNotStarted).getTopicSwitch();
-    Assert.assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsHybridButBufferReplayNotStarted));
+    assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsHybridButBufferReplayNotStarted));
 
-    // Since replication lag is caught up, partition is ready to serve
+    // case 5: Replication lag is caught up
     PartitionConsumptionState mockPcsBufferReplayStartedLagCaughtUp = mock(PartitionConsumptionState.class);
     doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isEndOfPushReceived();
     doReturn(false).when(mockPcsBufferReplayStartedLagCaughtUp).isComplete();
@@ -2793,12 +2820,26 @@ public abstract class StoreIngestionTaskTest {
     doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getPartition();
     doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getUserPartition();
     storeIngestionTaskUnderTest.setPartitionConsumptionState(0, mockPcsBufferReplayStartedLagCaughtUp);
-    // partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)
-    doReturn(LEADER).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
-    Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
+    // case 5a: leader replica => partition is ready to serve
+    if (!isDaVinciClient) { // DVC can't be leader
+      doReturn(LEADER).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
+      assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
+    }
+    // case 5b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+    doReturn(STANDBY).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
+    doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
+    assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
+    // case 5c: standby replica and LEADER_COMPLETED => partition is ready to serve
+    doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
+    doCallRealMethod().when(mockPcsBufferReplayStartedLagCaughtUp).isLeaderCompleted();
+    doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isFirstHeartBeatSOSReceived();
+    doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedLagCaughtUp)
+        .getLastLeaderCompleteStateUpdateInMs();
+    assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
 
-    // Remote replication lag has not caught up but host has caught up to lag in local VT, so DaVinci replica will be
-    // marked ready to serve but not storage node replica
+    // case 6: Remote replication lag has not caught up but host has caught up to lag in local VT,
+    // leader won't be marked completed, but both DaVinci replica and storage node will be marked
+    // ready to serve if leader were to be completed
     PartitionConsumptionState mockPcsBufferReplayStartedRemoteLagging = mock(PartitionConsumptionState.class);
     doReturn(true).when(mockPcsBufferReplayStartedRemoteLagging).isEndOfPushReceived();
     doReturn(false).when(mockPcsBufferReplayStartedRemoteLagging).isComplete();
@@ -2810,15 +2851,25 @@ public abstract class StoreIngestionTaskTest {
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(any(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(any(), anyInt());
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), any(), any());
-    Assert.assertEquals(
-        storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
-        isDaVinciClient);
+    // case 6a: leader replica => partition is not ready to serve
+    if (!isDaVinciClient) { // DVC can't be leader
+      doReturn(LEADER).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
+      assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
+    }
+    // case 6b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+    doReturn(STANDBY).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
+    doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
+    assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
+    // case 6c: standby replica and LEADER_COMPLETED => partition is ready to serve
+    doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
+    doCallRealMethod().when(mockPcsBufferReplayStartedRemoteLagging).isLeaderCompleted();
+    doReturn(true).when(mockPcsBufferReplayStartedRemoteLagging).isFirstHeartBeatSOSReceived();
+    doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedRemoteLagging)
+        .getLastLeaderCompleteStateUpdateInMs();
+    assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
 
-    // If there are issues in replication from remote RT -> local VT, DaVinci client will still report ready to serve
-    // since they would have consumed all available data in local VT.
-    // Venice storage nodes will not be ready to serve since they will detect lag with remote colo and wait for
-    // ingestion
-    // to catch up before serving data.
+    // case 7: If there are issues in replication from remote RT -> local VT, leader won't be marked completed,
+    // but both DaVinci replica and storage node will be marked ready to serve if leader were to be completed
     PartitionConsumptionState mockPcsOffsetLagCaughtUpTimestampLagging = mock(PartitionConsumptionState.class);
     doReturn(true).when(mockPcsOffsetLagCaughtUpTimestampLagging).isEndOfPushReceived();
     doReturn(false).when(mockPcsOffsetLagCaughtUpTimestampLagging).isComplete();
@@ -2833,28 +2884,54 @@ public abstract class StoreIngestionTaskTest {
         .getProducerTimestampOfLastDataRecord(any(), anyInt());
     doReturn(System.currentTimeMillis()).when(mockTopicManagerRemoteKafka)
         .getProducerTimestampOfLastDataRecord(any(), anyInt());
-    Assert.assertEquals(
-        storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging),
-        isDaVinciClient);
+    // case 7a: leader replica => partition is not ready to serve
+    if (!isDaVinciClient) {
+      doReturn(LEADER).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
+      assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
+    }
+    // case 7b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+    doReturn(STANDBY).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
+    doReturn(LEADER_NOT_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
+    assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
+    // case 7c: standby replica and LEADER_COMPLETED => partition is ready to serve
+    doReturn(LEADER_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
+    doCallRealMethod().when(mockPcsOffsetLagCaughtUpTimestampLagging).isLeaderCompleted();
+    doReturn(true).when(mockPcsOffsetLagCaughtUpTimestampLagging).isFirstHeartBeatSOSReceived();
+    doReturn(System.currentTimeMillis()).when(mockPcsOffsetLagCaughtUpTimestampLagging)
+        .getLastLeaderCompleteStateUpdateInMs();
+    Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testActiveActiveStoreIsReadyToServe(boolean isDaVinciClient) {
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testActiveActiveStoreIsReadyToServe(boolean isHybrid, boolean isDaVinciClient, boolean isLeader) {
+    if (isDaVinciClient && isLeader) {
+      // DaVinci client can't be leader
+      return;
+    }
+
     int partitionCount = 2;
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(1);
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100,
-        100,
-        -1,
-        DataReplicationPolicy.ACTIVE_ACTIVE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = null;
+    if (isHybrid) {
+      hybridStoreConfig = new HybridStoreConfigImpl(
+          100,
+          100,
+          -1,
+          DataReplicationPolicy.ACTIVE_ACTIVE,
+          BufferReplayPolicy.REWIND_FROM_EOP);
+    }
 
-    MockStoreVersionConfigs storeAndVersionConfigs =
-        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.of(hybridStoreConfig), false, true, true);
+    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
+        partitionCount,
+        partitionerConfig,
+        Optional.ofNullable(hybridStoreConfig),
+        false,
+        true,
+        true);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
@@ -2913,7 +2990,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(mockPcsMultipleSourceKafkaServers).isEndOfPushReceived();
     doReturn(false).when(mockPcsMultipleSourceKafkaServers).isComplete();
     doReturn(true).when(mockPcsMultipleSourceKafkaServers).isWaitingForReplicationLag();
-    doReturn(true).when(mockPcsMultipleSourceKafkaServers).isHybrid();
+    doReturn(isHybrid).when(mockPcsMultipleSourceKafkaServers).isHybrid();
     doReturn(topicSwitchWithMultipleSourceKafkaServersWrapper).when(mockPcsMultipleSourceKafkaServers).getTopicSwitch();
     doReturn(mockOffsetRecord).when(mockPcsMultipleSourceKafkaServers).getOffsetRecord();
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(any(), anyInt());
@@ -2921,8 +2998,123 @@ public abstract class StoreIngestionTaskTest {
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), any(), any());
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getPartition();
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getUserPartition();
+    if (isLeader) {
+      doReturn(LEADER).when(mockPcsMultipleSourceKafkaServers).getLeaderFollowerState();
+    } else {
+      doReturn(STANDBY).when(mockPcsMultipleSourceKafkaServers).getLeaderFollowerState();
+      doReturn(LEADER_COMPLETED).when(mockPcsMultipleSourceKafkaServers).getLeaderCompleteState();
+      doCallRealMethod().when(mockPcsMultipleSourceKafkaServers).isLeaderCompleted();
+      doReturn(true).when(mockPcsMultipleSourceKafkaServers).isFirstHeartBeatSOSReceived();
+      doReturn(System.currentTimeMillis()).when(mockPcsMultipleSourceKafkaServers)
+          .getLastLeaderCompleteStateUpdateInMs();
+    }
     storeIngestionTaskUnderTest.setPartitionConsumptionState(0, mockPcsMultipleSourceKafkaServers);
-    Assert.assertEquals(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers), isDaVinciClient);
+    if (isHybrid && isLeader) {
+      assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers));
+    } else {
+      assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers));
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIsLagAcceptableForHybridStore(boolean isDaVinciClient) {
+    StoreIngestionTask mockStoreIngestionTask = mock(StoreIngestionTask.class);
+    PartitionConsumptionState mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
+    doCallRealMethod().when(mockPartitionConsumptionState).isLeaderCompleted();
+
+    // Case 1: offsetLag > offsetThreshold and instance is leader
+    long offsetLag = 100;
+    long offsetThreshold = 50;
+    if (!isDaVinciClient) {
+      doReturn(LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+      assertFalse(
+          mockStoreIngestionTask
+              .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold, false, 0));
+    }
+
+    // case 2: offsetLag > offsetThreshold and instance is not a leader
+    doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    assertFalse(
+        mockStoreIngestionTask.isLagAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            isDaVinciClient,
+            0));
+
+    // Case 3: offsetLag <= offsetThreshold and instance is not a standby or DaVinciClient
+    offsetLag = 50;
+    offsetThreshold = 100;
+    if (!isDaVinciClient) {
+      doReturn(LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+      assertTrue(
+          mockStoreIngestionTask
+              .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold, false, 0));
+    }
+
+    // Case 4: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
+    // and first heart beat SOS has not been received
+    doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    doReturn(false).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
+    assertFalse(
+        mockStoreIngestionTask.isLagAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            isDaVinciClient,
+            0));
+
+    // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
+    // and first heart beat SOS has been received and leaderCompleteState is unknown
+    doReturn(true).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
+    doReturn(LEADER_COMPLETE_STATE_UNKNOWN).when(mockPartitionConsumptionState).getLeaderCompleteState();
+    assertTrue(
+        mockStoreIngestionTask.isLagAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            isDaVinciClient,
+            0));
+
+    // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
+    // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
+    // and last update time is within threshold
+    doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    doReturn(LEADER_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
+    doReturn(System.currentTimeMillis() - 1000).when(mockPartitionConsumptionState)
+        .getLastLeaderCompleteStateUpdateInMs();
+    assertTrue(
+        mockStoreIngestionTask.isLagAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            isDaVinciClient,
+            5000L));
+
+    // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
+    // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
+    // and last update time is more than threshold
+    doReturn(System.currentTimeMillis() - 6000).when(mockPartitionConsumptionState)
+        .getLastLeaderCompleteStateUpdateInMs();
+    assertFalse(
+        mockStoreIngestionTask.isLagAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            isDaVinciClient,
+            5000L));
+
+    // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
+    // and first heart beat SOS has been received and leaderCompleteState is LEADER_NOT_COMPLETED
+    // and leader is not completed
+    doReturn(LEADER_NOT_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
+    assertFalse(
+        mockStoreIngestionTask.isLagAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            isDaVinciClient,
+            5000L));
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -3510,8 +3702,12 @@ public abstract class StoreIngestionTaskTest {
     Assert.assertTrue(storeIngestionTask.maybeSetIngestionTaskActiveState(false));
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testMaybeSendIngestionHeartbeat(boolean isActiveActive) {
+  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testMaybeSendIngestionHeartbeat(
+      boolean isActiveActive,
+      boolean isRealTimeTopic,
+      boolean isLeader,
+      boolean isHybridStore) {
     String storeName = Utils.getUniqueString("store");
     Store mockStore = mock(Store.class);
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
@@ -3521,8 +3717,12 @@ public abstract class StoreIngestionTaskTest {
     doReturn(1).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
     doReturn(true).when(mockVersion).isUseVersionLevelHybridConfig();
-    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
-    doReturn(mockHybridConfig).when(mockVersion).getHybridStoreConfig();
+    if (isHybridStore) {
+      HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+      doReturn(mockHybridConfig).when(mockVersion).getHybridStoreConfig();
+    } else {
+      doReturn(null).when(mockVersion).getHybridStoreConfig();
+    }
     Properties mockKafkaConsumerProperties = mock(Properties.class);
     doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
@@ -3540,10 +3740,10 @@ public abstract class StoreIngestionTaskTest {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(offsetRecord).when(pcs).getOffsetRecord();
-    doReturn(LEADER).when(pcs).getLeaderFollowerState();
+    doReturn(isLeader ? LEADER : STANDBY).when(pcs).getLeaderFollowerState();
     PubSubTopic pubsubTopic = mock(PubSubTopic.class);
     doReturn(pubsubTopic).when(offsetRecord).getLeaderTopic(any());
-    doReturn(true).when(pubsubTopic).isRealTime();
+    doReturn(isRealTimeTopic).when(pubsubTopic).isRealTime();
 
     VeniceWriter veniceWriter = mock(VeniceWriter.class);
     VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
@@ -3572,7 +3772,11 @@ public abstract class StoreIngestionTaskTest {
     ingestionTask.maybeSendIngestionHeartbeat();
     // Second invocation should be skipped since it shouldn't be time for another heartbeat yet.
     ingestionTask.maybeSendIngestionHeartbeat();
-    verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any());
+    if (isHybridStore && isRealTimeTopic && isLeader) {
+      verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any());
+    } else {
+      verify(veniceWriter, never()).sendHeartbeat(any(), any(), any());
+    }
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

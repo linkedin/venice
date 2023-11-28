@@ -558,7 +558,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
 
     if (!deleteSSTFiles && !deleteRMDSSTFiles) {
       /** creating a {@link pubSubConsumer} to check for the messages with
-       * {@link VENICE_LEADER_COMPLETION_STATUS_HEADER} header. Testing this for just 1 case
+       * {@link VENICE_LEADER_COMPLETION_STATE_HEADER} header. Testing this for just 1 case
        * should be enough as deleting sst and restarting servers doesn't affect the below generic
        * test as we are consuming from kafka to see if the new header is found or not. More specific
        * tests can be added for those cases if needed.
