@@ -57,6 +57,7 @@ import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
+import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -376,6 +377,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // Those variables will be initialized lazily.
   private int pushJobDetailsSchemaId = -1;
 
+  private final Map<String, DisabledPartitionStats> disabledPartitionStatMap = new HashMap<>();
+
   private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
   private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
 
@@ -627,6 +630,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       createControllerClusterIfRequired();
     }
+
     controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
         zkClient,
         adapterSerializer,
@@ -643,6 +647,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         continue;
       }
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
+      DisabledPartitionStats disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
+      disabledPartitionStatMap.put(clusterName, disabledPartitionStats);
       liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
@@ -655,6 +661,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
               helixAdminClient
                   .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
+              disabledPartitionStats.recordClearDisabledPartition();
               LOGGER.info("Enabled disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
             }
           }
@@ -4843,6 +4850,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (entry.getKey().equals(kafkaTopic)) {
           // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
           getHelixAdminClient().enablePartition(true, clusterName, instance, kafkaTopic, entry.getValue());
+          disabledPartitionStatMap.get(clusterName).recordClearDisabledPartition();
           LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
         }
       }
@@ -5315,6 +5323,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return helixAdminClient;
   }
 
+  public DisabledPartitionStats getDisabledPartitionStats(String clusterName) {
+    return disabledPartitionStatMap.get(clusterName);
+  }
+
   /**
    * @return a map containing the storage node name and its connectivity status (<code>InstanceStatus</code>).
    */
@@ -5335,6 +5347,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Map<String, List<String>> disabledPartitions = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
         for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
           helixAdminClient.enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
+          disabledPartitionStatMap.get(clusterName).recordClearDisabledPartition();
           LOGGER.info(
               "Enabled disabled replica of resource {}, partitions {} in cluster {}",
               entry.getKey(),
