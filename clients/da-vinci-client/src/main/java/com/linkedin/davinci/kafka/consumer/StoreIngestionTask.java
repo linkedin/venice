@@ -5,6 +5,7 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -72,6 +73,8 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -94,6 +97,7 @@ import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
@@ -755,6 +759,65 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * HeartBeat SOS messages carry the leader completion state in the header. This function extracts the leader completion
+   * state from that header and updates the {@param partitionConsumptionState} accordingly. <p>
+   * If there is no leader completion state header, reset the leader completion state to
+   * {@link LeaderCompleteState#LEADER_COMPLETE_STATE_UNKNOWN} as the leader don't know about this header
+   * (using old version of the code) or the leader may have rolled back to a version that doesn't support this header or
+   * this topic partition gets a new leader which doesn't support this header yet.
+   */
+  protected void getAndUpdateLeaderCompletedState(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState) {
+    if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
+      ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
+      ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+      if (controlMessageType == ControlMessageType.START_OF_SEGMENT
+          && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+        boolean isLeaderCompleteHeaderFound = false;
+        LeaderCompleteState oldState = partitionConsumptionState.getLeaderCompleteState();
+        LeaderCompleteState newState = oldState;
+        PubSubMessageHeaders pubSubMessageHeaders = consumerRecord.getPubSubMessageHeaders();
+        for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+          if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
+            newState = LeaderCompleteState.valueOf(header.value()[0]);
+            partitionConsumptionState
+                .setLastLeaderCompleteStateUpdateInMs(consumerRecord.getValue().producerMetadata.messageTimestamp);
+            isLeaderCompleteHeaderFound = true;
+            break; // only interested in this header here
+          }
+        }
+        if (!isLeaderCompleteHeaderFound) {
+          // reset LeaderCompleteState: If a leader originally sent this header but later is rolled back to a version
+          // that doesn't support this header or this TP gets a new leader which doesn't support this header yet.
+          newState = LEADER_COMPLETE_STATE_UNKNOWN;
+        }
+
+        if (oldState != newState) {
+          LOGGER.info(
+              "LeaderCompleteState for store {} version {} partition {} changed from {} to {}",
+              storeName,
+              versionNumber,
+              partitionConsumptionState.getPartition(),
+              oldState,
+              newState);
+          partitionConsumptionState.setLeaderCompleteState(newState);
+        } else {
+          LOGGER.debug(
+              "LeaderCompleteState for store {} version {} partition {} received from leader: {} and is unchanged from the previous state",
+              storeName,
+              versionNumber,
+              partitionConsumptionState.getPartition(),
+              newState);
+        }
+        if (!partitionConsumptionState.isFirstHeartBeatSOSReceived()) {
+          partitionConsumptionState.setFirstHeartBeatSOSReceived(true);
+        }
+      }
+    }
+  }
+
+  /**
    * Checks whether the lag is acceptable for hybrid stores
    *
    * If the instance is a standby or DaVinciClient: Also check if
@@ -762,17 +825,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 2. leader was completed and
    * 3. the last update time was within 5 seconds
    */
-  protected static boolean isLagAcceptableForHybridStore(
-      PartitionConsumptionState pcs,
-      long offsetLag,
-      long offsetThreshold,
-      boolean isDaVinciClient,
-      long ingestionHeartbeatIntervalMs) {
+  protected boolean isLagAcceptableForHybridStore(PartitionConsumptionState pcs, long offsetLag, long offsetThreshold) {
     boolean isLagAcceptable = (offsetLag <= offsetThreshold);
 
     if (isDaVinciClient || pcs.getLeaderFollowerState().equals(STANDBY)) {
       if (!isLagAcceptable) {
         return false;
+      }
+
+      if (!getServerConfig().isLeaderCompleteStateCheckEnabled()) {
+        return true;
       }
 
       // For hybrid stores, we need to check if the first heart beat SOS has been received
@@ -786,8 +848,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // if the first HB SOS is received, check if the leader supports sending LeaderCompleteState.
       // If so, check if the leader is completed and the last update time was within 5 seconds.
       // If not, standby don't have to wait further.
-      return (pcs.getLeaderCompleteState().equals(LEADER_COMPLETE_STATE_UNKNOWN) || (pcs.isLeaderCompleted()
-          && (System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs() < ingestionHeartbeatIntervalMs)));
+      return (pcs.getLeaderCompleteState().equals(LEADER_COMPLETE_STATE_UNKNOWN)
+          || (pcs.isLeaderCompleted() && (System.currentTimeMillis()
+              - pcs.getLastLeaderCompleteStateUpdateInMs() < getServerConfig().getIngestionHeartbeatIntervalMs())));
     } else {
       return isLagAcceptable;
     }
@@ -849,12 +912,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         if (offsetThreshold >= 0) {
           long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
-          isLagAcceptable = isLagAcceptableForHybridStore(
-              partitionConsumptionState,
-              lag,
-              offsetThreshold,
-              isDaVinciClient,
-              serverConfig.getIngestionHeartbeatIntervalMs());
+          isLagAcceptable = isLagAcceptableForHybridStore(partitionConsumptionState, lag, offsetThreshold);
 
           if (shouldLogLag) {
             String lagLogFooter;
@@ -896,9 +954,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           boolean timestampLagIsAcceptable = isLagAcceptableForHybridStore(
               partitionConsumptionState,
               producerTimestampLag,
-              producerTimeLagThresholdInMS,
-              isDaVinciClient,
-              serverConfig.getIngestionHeartbeatIntervalMs());
+              producerTimeLagThresholdInMS);
 
           if (shouldLogLag) {
             String lagLogFooter;

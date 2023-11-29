@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
@@ -29,6 +30,9 @@ import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static com.linkedin.venice.writer.VeniceWriter.EMPTY_MSG_HEADERS;
+import static com.linkedin.venice.writer.VeniceWriter.generateHeartbeatMessage;
+import static com.linkedin.venice.writer.VeniceWriter.getHeartbeatKME;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.after;
@@ -130,6 +134,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -178,6 +183,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.LeaderCompleteState;
+import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -3016,9 +3022,61 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testIsLagAcceptableForHybridStore(boolean isDaVinciClient) {
-    StoreIngestionTask mockStoreIngestionTask = mock(StoreIngestionTask.class);
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIsLagAcceptableForHybridStore(
+      boolean isDaVinciClient,
+      boolean isLeader,
+      boolean leaderCompleteStateCheckEnabled) {
+    if (isDaVinciClient && isLeader) {
+      // DaVinci client can't be leader
+      return;
+    }
+
+    int partitionCount = 2;
+    int amplificationFactor = 1;
+    VenicePartitioner partitioner = getVenicePartitioner(1);
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
+    partitionerConfig.setAmplificationFactor(amplificationFactor);
+
+    MockStoreVersionConfigs storeAndVersionConfigs =
+        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.empty(), false, true, true);
+    Store mockStore = storeAndVersionConfigs.store;
+    Version version = storeAndVersionConfigs.version;
+    VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
+
+    Map<String, Object> serverProperties = new HashMap<>();
+    serverProperties.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000L);
+    serverProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED, leaderCompleteStateCheckEnabled);
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        1,
+        serverProperties,
+        false).setIsDaVinciClient(isDaVinciClient).setAggKafkaConsumerService(aggKafkaConsumerService).build();
+
+    TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
+    doReturn(mockTopicManager).when(mockTopicManagerRepository)
+        .getTopicManager(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
+        .getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    doReturn(true).when(mockTopicManager).containsTopic(any());
+    doReturn(true).when(mockTopicManagerRemoteKafka).containsTopic(any());
+
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        mockStore,
+        version,
+        kafkaProps,
+        isCurrentVersion,
+        storeConfig,
+        leaderSubPartition,
+        false,
+        Optional.empty());
     PartitionConsumptionState mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     doCallRealMethod().when(mockPartitionConsumptionState).isLeaderCompleted();
 
@@ -3028,19 +3086,15 @@ public abstract class StoreIngestionTaskTest {
     if (!isDaVinciClient) {
       doReturn(LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
       assertFalse(
-          mockStoreIngestionTask
-              .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold, false, 0));
+          storeIngestionTaskUnderTest
+              .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
     }
 
     // case 2: offsetLag > offsetThreshold and instance is not a leader
     doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
     assertFalse(
-        mockStoreIngestionTask.isLagAcceptableForHybridStore(
-            mockPartitionConsumptionState,
-            offsetLag,
-            offsetThreshold,
-            isDaVinciClient,
-            0));
+        storeIngestionTaskUnderTest
+            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
 
     // Case 3: offsetLag <= offsetThreshold and instance is not a standby or DaVinciClient
     offsetLag = 50;
@@ -3048,33 +3102,26 @@ public abstract class StoreIngestionTaskTest {
     if (!isDaVinciClient) {
       doReturn(LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
       assertTrue(
-          mockStoreIngestionTask
-              .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold, false, 0));
+          storeIngestionTaskUnderTest
+              .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
     }
 
     // Case 4: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has not been received
     doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
     doReturn(false).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
-    assertFalse(
-        mockStoreIngestionTask.isLagAcceptableForHybridStore(
-            mockPartitionConsumptionState,
-            offsetLag,
-            offsetThreshold,
-            isDaVinciClient,
-            0));
+    assertEquals(
+        storeIngestionTaskUnderTest
+            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold),
+        !leaderCompleteStateCheckEnabled);
 
     // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is unknown
     doReturn(true).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
     doReturn(LEADER_COMPLETE_STATE_UNKNOWN).when(mockPartitionConsumptionState).getLeaderCompleteState();
     assertTrue(
-        mockStoreIngestionTask.isLagAcceptableForHybridStore(
-            mockPartitionConsumptionState,
-            offsetLag,
-            offsetThreshold,
-            isDaVinciClient,
-            0));
+        storeIngestionTaskUnderTest
+            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
 
     // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
@@ -3084,37 +3131,108 @@ public abstract class StoreIngestionTaskTest {
     doReturn(System.currentTimeMillis() - 1000).when(mockPartitionConsumptionState)
         .getLastLeaderCompleteStateUpdateInMs();
     assertTrue(
-        mockStoreIngestionTask.isLagAcceptableForHybridStore(
-            mockPartitionConsumptionState,
-            offsetLag,
-            offsetThreshold,
-            isDaVinciClient,
-            5000L));
+        storeIngestionTaskUnderTest
+            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
 
     // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
     // and last update time is more than threshold
     doReturn(System.currentTimeMillis() - 6000).when(mockPartitionConsumptionState)
         .getLastLeaderCompleteStateUpdateInMs();
-    assertFalse(
-        mockStoreIngestionTask.isLagAcceptableForHybridStore(
-            mockPartitionConsumptionState,
-            offsetLag,
-            offsetThreshold,
-            isDaVinciClient,
-            5000L));
+    assertEquals(
+        storeIngestionTaskUnderTest
+            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold),
+        !leaderCompleteStateCheckEnabled);
 
-    // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
+    // Case 8: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is LEADER_NOT_COMPLETED
     // and leader is not completed
     doReturn(LEADER_NOT_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
-    assertFalse(
-        mockStoreIngestionTask.isLagAcceptableForHybridStore(
-            mockPartitionConsumptionState,
-            offsetLag,
-            offsetThreshold,
-            isDaVinciClient,
-            5000L));
+    assertEquals(
+        storeIngestionTaskUnderTest
+            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold),
+        !leaderCompleteStateCheckEnabled);
+  }
+
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetAndUpdateLeaderCompletedState(boolean isDaVinciClient, boolean leaderCompletedHeaderFound) {
+
+    int partitionCount = 2;
+    int amplificationFactor = 1;
+    VenicePartitioner partitioner = getVenicePartitioner(1);
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
+    partitionerConfig.setAmplificationFactor(amplificationFactor);
+
+    MockStoreVersionConfigs storeAndVersionConfigs =
+        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.empty(), false, true, true);
+    Store mockStore = storeAndVersionConfigs.store;
+    Version version = storeAndVersionConfigs.version;
+    VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        1,
+        new HashMap<>(),
+        false).setIsDaVinciClient(isDaVinciClient).setAggKafkaConsumerService(aggKafkaConsumerService).build();
+
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        mockStore,
+        version,
+        kafkaProps,
+        isCurrentVersion,
+        storeConfig,
+        leaderSubPartition,
+        false,
+        Optional.empty());
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PartitionConsumptionState partitionConsumptionState =
+        new PartitionConsumptionState(PARTITION_FOO, amplificationFactor, mockOffsetRecord, true);
+
+    long producerTimestamp = System.currentTimeMillis();
+    LeaderMetadataWrapper mockLeaderMetadataWrapper = mock(LeaderMetadataWrapper.class);
+    KafkaMessageEnvelope kafkaMessageEnvelope =
+        getHeartbeatKME(producerTimestamp, mockLeaderMetadataWrapper, generateHeartbeatMessage(CheckSumType.NONE), "0");
+
+    PubSubMessageHeaders pubSubMessageHeaders = EMPTY_MSG_HEADERS;
+    if (leaderCompletedHeaderFound) {
+      pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
+    }
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+        KafkaKey.HEART_BEAT,
+        kafkaMessageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+        0,
+        0,
+        0,
+        pubSubMessageHeaders);
+
+    assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
+    assertFalse(partitionConsumptionState.isFirstHeartBeatSOSReceived());
+
+    if (!isDaVinciClient) {
+      partitionConsumptionState.setLeaderFollowerState(LEADER);
+      storeIngestionTaskUnderTest.getAndUpdateLeaderCompletedState(pubSubMessage, partitionConsumptionState);
+      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
+      assertFalse(partitionConsumptionState.isFirstHeartBeatSOSReceived());
+      assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
+    }
+
+    partitionConsumptionState.setLeaderFollowerState(STANDBY);
+    storeIngestionTaskUnderTest.getAndUpdateLeaderCompletedState(pubSubMessage, partitionConsumptionState);
+    if (leaderCompletedHeaderFound) {
+      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
+      assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), producerTimestamp);
+    } else {
+      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
+      assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
+    }
+    assertTrue(partitionConsumptionState.isFirstHeartBeatSOSReceived());
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

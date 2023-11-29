@@ -2015,4 +2015,11 @@ public class ConfigKeys {
    * with SOS, EOS or skipped records.
    */
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
+
+  /**
+   * Whether to check LeaderCompleteState in the follower replica and davinci replica before marking the follower
+   * completed. This is to avoid the case that the follower replica is marked completed before the leader replica
+   * and transitions to leader if the leader replicas goes down.
+   */
+  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED = "server.leader.complete.state.check.allowed";
 }

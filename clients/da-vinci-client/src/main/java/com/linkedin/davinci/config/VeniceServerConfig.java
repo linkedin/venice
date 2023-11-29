@@ -75,6 +75,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUN
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
@@ -445,6 +446,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long ingestionHeartbeatIntervalMs;
 
+  public boolean isLeaderCompleteStateCheckEnabled() {
+    return leaderCompleteStateCheckEnabled;
+  }
+
+  private final boolean leaderCompleteStateCheckEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -731,6 +738,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     metaStoreWriterCloseConcurrency = serverProperties.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     ingestionHeartbeatIntervalMs =
         serverProperties.getLong(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
+    leaderCompleteStateCheckEnabled = serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED, true);
   }
 
   long extractIngestionMemoryLimit(
