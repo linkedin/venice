@@ -1390,6 +1390,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("{} has been killed.", consumerTaskId);
       statusReportAdapter.reportKilled(partitionConsumptionStateMap.values(), e);
       doFlush = false;
+      if (isCurrentVersion.getAsBoolean()) {
+        /**
+         * Current version can be killed if {@link AggKafkaConsumerService} discovers there are some issues with
+         * the producing topics, and here will report metrics for such case.
+         */
+        handleIngestionException(e);
+      }
     } catch (VeniceChecksumException e) {
       /**
        * It's possible to receive checksum verification failure exception here from the above syncOffset() call.
@@ -1521,7 +1528,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     LOGGER.info("Store ingestion task for store: {} is closed", kafkaVersionTopic);
   }
 
-  protected void closeVeniceWriters(boolean doFlush) {
+  public void closeVeniceWriters(boolean doFlush) {
   }
 
   protected void closeVeniceViewWriters() {
@@ -3387,6 +3394,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return versionTopic;
   }
 
+  public PubSubTopic getRealtimeTopic() {
+    return realTimeTopic;
+  }
+
   public boolean isMetricsEmissionEnabled() {
     return emitMetrics.get();
   }
@@ -3769,5 +3780,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void maybeSendIngestionHeartbeat() {
     // No op, heartbeat is only useful for L/F hybrid stores.
+  }
+
+  /**
+   * This function is checking the following conditions:
+   * 1. Whether the version topic exists or not.
+   */
+  public boolean isProducingVersionTopicHealthy() {
+    if (isDaVinciClient) {
+      /**
+       * DaVinci doesn't produce to any topics.
+       */
+      return true;
+    }
+    if (!topicManagerRepository.getTopicManager().containsTopic(this.versionTopic)) {
+      return false;
+    }
+    return true;
   }
 }
