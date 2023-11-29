@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -16,15 +17,24 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -56,6 +66,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier;
   private final Function<String, String> kafkaClusterUrlResolver;
 
+  private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
+  private ScheduledExecutorService stuckConsumerRepairExecutorService;
+
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
       TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier,
@@ -65,7 +78,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
       TopicExistenceChecker topicExistenceChecker,
-      final PubSubMessageDeserializer pubSubDeserializer) {
+      final PubSubMessageDeserializer pubSubDeserializer,
+      Consumer<String> killIngestionTaskRunnable) {
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.numOfConsumersPerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
@@ -83,6 +97,26 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.pubSubDeserializer = pubSubDeserializer;
     this.sslPropertiesSupplier = sslPropertiesSupplier;
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
+
+    if (serverConfig.isStuckConsumerRepairEnabled()) {
+      this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
+          new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair"));
+      int intervalInSeconds = serverConfig.getStuckConsumerRepairIntervalSecond();
+      this.stuckConsumerRepairExecutorService.scheduleAtFixedRate(
+          getStuckConsumerDetectionAndRepairRunnable(
+              kafkaServerToConsumerServiceMap,
+              versionTopicStoreIngestionTaskMapping,
+              TimeUnit.SECONDS.toMillis(serverConfig.getStuckConsumerDetectionRepairThresholdSecond()),
+              TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicIngestionTaskKillThresholdSecond()),
+              TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicCheckRetryIntervalSecond()),
+              new StuckConsumerRepairStats(metricsRepository),
+              killIngestionTaskRunnable),
+          intervalInSeconds,
+          intervalInSeconds,
+          TimeUnit.SECONDS);
+      LOGGER.info("Started stuck consumer repair service with checking interval: {} seconds", intervalInSeconds);
+    }
+
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -100,6 +134,106 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumerService.stop();
     }
+    if (this.stuckConsumerRepairExecutorService != null) {
+      this.stuckConsumerRepairExecutorService.shutdownNow();
+    }
+  }
+
+  protected static Runnable getStuckConsumerDetectionAndRepairRunnable(
+      Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap,
+      Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping,
+      long stuckConsumerRepairThresholdMs,
+      long nonExistingTopicIngestionTaskKillThresholdMs,
+      long nonExistingTopicRetryIntervalMs,
+      StuckConsumerRepairStats stuckConsumerRepairStats,
+      Consumer<String> killIngestionTaskRunnable) {
+    return () -> {
+      /**
+       * The following logic can be further optimized in the following way:
+       * 1. If the max delay of previous run is much smaller than the threshold.
+       * 2. In the next run, the max possible delay will be schedule interval + previous max delay ms, and if it is
+       * still below the threshold, this function can return directly.
+       * We are not adopting such optimization right now because:
+       * 1. Extra state to maintain.
+       * 2. The schedule interval is supposed to be high.
+       * 3. The check is cheap when there is no stuck consumer.
+       */
+      boolean scanStoreIngestionTaskToFixStuckConsumer = false;
+      for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+        long maxDelayMs = consumerService.getMaxElapsedTimeMSSinceLastPollInConsumerPool();
+        if (maxDelayMs >= stuckConsumerRepairThresholdMs) {
+          scanStoreIngestionTaskToFixStuckConsumer = true;
+          LOGGER.warn("Found some consumer has stuck for {} ms, will start the repairing procedure", maxDelayMs);
+          break;
+        }
+      }
+      if (!scanStoreIngestionTaskToFixStuckConsumer) {
+        return;
+      }
+      stuckConsumerRepairStats.recordStuckConsumerFound();
+
+      /**
+       * Collect a list of SITs, whose version topic doesn't exist by checking {@link StoreIngestionTask#isProducingVersionTopicHealthy()},
+       * and this function will continue to check the version topic healthiness for a period of {@link nonExistingTopicIngestionTaskKillThresholdMs}
+       * to tolerate transient topic discovery issue.
+       */
+      Map<String, StoreIngestionTask> versionTopicIngestionTaskMappingForNonExistingTopic = new HashMap<>();
+      versionTopicStoreIngestionTaskMapping.forEach((vt, sit) -> {
+        try {
+          if (!sit.isProducingVersionTopicHealthy()) {
+            versionTopicIngestionTaskMappingForNonExistingTopic.put(vt, sit);
+            LOGGER.warn("The producing version topic:{} is not healthy", vt);
+          }
+        } catch (Exception e) {
+          LOGGER.error("Got exception while checking topic existence for version topic: {}", vt, e);
+        }
+      });
+      int maxAttempts =
+          (int) Math.ceil((double) nonExistingTopicIngestionTaskKillThresholdMs / nonExistingTopicRetryIntervalMs);
+      for (int cnt = 0; cnt < maxAttempts; ++cnt) {
+        Iterator<Map.Entry<String, StoreIngestionTask>> iterator =
+            versionTopicIngestionTaskMappingForNonExistingTopic.entrySet().iterator();
+        while (iterator.hasNext()) {
+          Map.Entry<String, StoreIngestionTask> entry = iterator.next();
+          String versionTopic = entry.getKey();
+          StoreIngestionTask sit = entry.getValue();
+          try {
+            if (sit.isProducingVersionTopicHealthy()) {
+              /**
+               * If the version topic becomes available after retries, remove it from the tracking map.
+               */
+              iterator.remove();
+              LOGGER.info("The producing version topic:{} becomes healthy", versionTopic);
+            }
+          } catch (Exception e) {
+            LOGGER.error("Got exception while checking topic existence for version topic: {}", versionTopic, e);
+          } finally {
+            Utils.sleep(nonExistingTopicRetryIntervalMs);
+          }
+        }
+      }
+
+      AtomicBoolean repairSomeIngestionTask = new AtomicBoolean(false);
+      versionTopicIngestionTaskMappingForNonExistingTopic.forEach((vt, sit) -> {
+        LOGGER.warn(
+            "The ingestion topics (version topic) are not healthy for "
+                + "store version: {}, will kill the ingestion task to try to unblock shared consumer",
+            vt);
+        /**
+         * The following function call will interrupt all the stuck {@link org.apache.kafka.clients.producer.KafkaProducer#send} call
+         * to non-existing topics.
+         */
+        sit.closeVeniceWriters(false);
+        killIngestionTaskRunnable.accept(vt);
+        repairSomeIngestionTask.set(true);
+        stuckConsumerRepairStats.recordIngestionTaskRepair();
+      });
+      if (!repairSomeIngestionTask.get()) {
+        LOGGER.error(
+            "Didn't find any suspicious ingestion task, and please contact developers to investigate it further");
+        stuckConsumerRepairStats.recordRepairFailure();
+      }
+    };
   }
 
   /**
@@ -235,6 +369,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
     consumerService.startConsumptionIntoDataReceiver(pubSubTopicPartition, lastOffset, dataReceiver);
 
+    versionTopicStoreIngestionTaskMapping.put(storeIngestionTask.getVersionTopic().getName(), storeIngestionTask);
+
     return dataReceiver;
   }
 
@@ -260,6 +396,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    */
   void unsubscribeAll(PubSubTopic versionTopic) {
     kafkaServerToConsumerServiceMap.values().forEach(consumerService -> consumerService.unsubscribeAll(versionTopic));
+    versionTopicStoreIngestionTaskMapping.remove(versionTopic.getName());
   }
 
   void pauseConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {

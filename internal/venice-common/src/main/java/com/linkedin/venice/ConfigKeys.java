@@ -2022,4 +2022,32 @@ public class ConfigKeys {
    * and transitions to leader if the leader replicas goes down.
    */
   public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED = "server.leader.complete.state.check.allowed";
+
+  /**
+   * Whether to enable stuck consumer repair in Server.
+   */
+  public static final String SERVER_STUCK_CONSUMER_REPAIR_ENABLED = "server.stuck.consumer.repair.enabled";
+
+  /**
+   * Server stuck consumer detection interval.
+   */
+  public static final String SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND = "server.stuck.consumer.repair.second";
+
+  /**
+   * Server stuck consumer repair threshold.
+   */
+  public static final String SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND =
+      "server.stuck.consumer.repair.threshold.second";
+
+  /**
+   * When to kill the ingestion task if the topic doesn't exist for the configured period of time.
+   */
+  public static final String SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND =
+      "server.non.existing.topic.ingestion.task.kill.threshold.second";
+  /**
+   * The config will work together with {@link #SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND}
+   * to decide whether a certain ingestion task should be killed or not.
+   */
+  public static final String SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND =
+      "server.non.existing.topic.check.retry.interval.second";
 }
