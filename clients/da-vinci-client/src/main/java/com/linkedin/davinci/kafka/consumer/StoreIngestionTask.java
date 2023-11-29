@@ -9,6 +9,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -126,6 +127,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -283,6 +285,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StatusReportAdapter statusReportAdapter;
 
   private final Optional<ObjectCacheBackend> cacheBackend;
+  private final DaVinciRecordTransformer recordTransformer;
   private final Runnable runnableForKillIngestionTasksForMissingSOP;
 
   protected final String localKafkaServer;
@@ -320,6 +323,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
+      DaVinciRecordTransformer recordTransformer,
       Queue<VeniceNotifier> notifiers) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -419,6 +423,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.runnableForKillIngestionTasksForMissingSOP = () -> waitForStateVersion(kafkaVersionTopic);
     this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
     this.cacheBackend = cacheBackend;
+    this.recordTransformer = recordTransformer;
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
@@ -2999,14 +3004,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
-        prependHeaderAndWriteToStorageEngine(
-            // Leaders might consume from a RT topic and immediately write into StorageEngine,
-            // so we need to re-calculate partition.
-            // Followers are not affected since they are always consuming from VTs.
-            producedPartition,
-            keyBytes,
-            put,
-            currentTimeMs);
+
+        // Do transorfmation recompute key, value and partition
+        if (recordTransformer != null) {
+          Lazy<byte[]> lazyKey = Lazy.of(() -> keyBytes);
+          Lazy<ByteBuffer> lazyValue = Lazy.of(() -> put.putValue);
+          GenericRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue, producedPartition);
+          ByteBuffer keyByteBuffer = (ByteBuffer) transformedRecord.get("key");
+          byte[] newKeyBytes = new byte[keyByteBuffer.remaining()];
+          keyByteBuffer.get(newKeyBytes);
+          ByteBuffer valueByteBuffer = (ByteBuffer) transformedRecord.get("value");
+          byte[] valueBytes = new byte[valueByteBuffer.remaining()];
+          valueByteBuffer.get(valueBytes);
+          int newProducedPartition = Objects.hash(newKeyBytes, put.putValue);
+
+          prependHeaderAndWriteToStorageEngine(newProducedPartition, newKeyBytes, put, currentTimeMs);
+        } else {
+
+          prependHeaderAndWriteToStorageEngine(
+              // Leaders might consume from a RT topic and immediately write into StorageEngine,
+              // so we need to re-calculate partition.
+              // Followers are not affected since they are always consuming from VTs.
+              producedPartition,
+              keyBytes,
+              put,
+              currentTimeMs);
+        }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
         if (put.schemaId > 0) {
@@ -3024,6 +3047,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
         keyLen = keyBytes.length;
+
+        if (recordTransformer != null) {
+          Lazy<byte[]> lazyKey = Lazy.of(() -> keyBytes);
+          GenericRecord keptRecord = recordTransformer.delete(lazyKey, producedPartition);
+        }
 
         removeFromStorageEngine(producedPartition, keyBytes, delete);
         if (cacheBackend.isPresent()) {

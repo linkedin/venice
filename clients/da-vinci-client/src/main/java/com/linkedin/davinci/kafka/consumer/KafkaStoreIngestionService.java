@@ -18,6 +18,7 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -201,6 +202,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
 
+  private final DaVinciRecordTransformer recordTransformer;
+
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
@@ -233,11 +236,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
+      DaVinciRecordTransformer recordTransformer,
       boolean isDaVinciClient,
       RemoteIngestionRepairService remoteIngestionRepairService,
       PubSubClientsFactory pubSubClientsFactory,
       Optional<SSLFactory> sslFactory) {
     this.cacheBackend = cacheBackend;
+    this.recordTransformer = recordTransformer;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.schemaRepo = schemaRepo;
@@ -592,7 +597,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         veniceStoreVersionConfig,
         partitionId,
         isIsolatedIngestion,
-        cacheBackend);
+        cacheBackend,
+        recordTransformer);
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
