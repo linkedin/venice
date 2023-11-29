@@ -116,7 +116,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         : createKafkaConsumerServiceStats(
             metricsRepository,
             kafkaClusterAlias,
-            this::getMaxElapsedTimeSinceLastPollInConsumerPool);
+            this::getMaxElapsedTimeMSSinceLastPollInConsumerPool);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
@@ -324,7 +324,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         getMaxElapsedTimeSinceLastPollInConsumerPool);
   }
 
-  private long getMaxElapsedTimeSinceLastPollInConsumerPool() {
+  public long getMaxElapsedTimeMSSinceLastPollInConsumerPool() {
     long maxElapsedTimeSinceLastPollInConsumerPool = -1;
     int slowestTaskId = -1;
     long elapsedTimeSinceLastPoll;

@@ -283,7 +283,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void closeVeniceWriters(boolean doFlush) {
+  public void closeVeniceWriters(boolean doFlush) {
     if (veniceWriter.isPresent()) {
       veniceWriter.get().close(doFlush);
     }
