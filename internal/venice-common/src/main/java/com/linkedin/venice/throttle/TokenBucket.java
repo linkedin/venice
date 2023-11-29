@@ -112,6 +112,7 @@ public class TokenBucket {
   }
 
   public boolean tryConsume(long tokensToConsume) {
+    tokensRequestedSinceLastRefill.getAndAdd(tokensToConsume);
     if (noRetryTryConsume(tokensToConsume)) {
       return true;
     } else {
@@ -121,7 +122,6 @@ public class TokenBucket {
   }
 
   private boolean noRetryTryConsume(long tokensToConsume) {
-    tokensRequestedSinceLastRefill.getAndAdd(tokensToConsume);
     long tokensThatWereAvailable = tokens.getAndAccumulate(tokensToConsume, (existing, toConsume) -> {
       if (toConsume <= existing) { // there are sufficient tokens
         return existing - toConsume;
