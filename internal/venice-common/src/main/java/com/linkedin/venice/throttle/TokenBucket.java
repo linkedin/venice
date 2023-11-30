@@ -71,10 +71,10 @@ public class TokenBucket {
   }
 
   /**
-   *
-   * @return true if tokens may have been added, false if short circuited and no tokens were added
+   * Check and add tokens if conditions are met. Note that token may have been updated by another thread even when the
+   * function is short-circuited. Consumers of the token bucket should always retry.
    */
-  private boolean update() {
+  private void update() {
     if (clock.millis() > nextUpdateTime) {
       synchronized (this) {
         long timeNow = clock.millis();
@@ -99,9 +99,6 @@ public class TokenBucket {
           nextUpdateTime = timeNow + refillIntervalMs;
         }
       }
-      return true;
-    } else {
-      return false;
     }
   }
 
@@ -115,11 +112,16 @@ public class TokenBucket {
   }
 
   public boolean tryConsume(long tokensToConsume) {
-    return noRetryTryConsume(tokensToConsume) || (update() && noRetryTryConsume(tokensToConsume));
+    tokensRequestedSinceLastRefill.getAndAdd(tokensToConsume);
+    if (noRetryTryConsume(tokensToConsume)) {
+      return true;
+    } else {
+      update();
+      return noRetryTryConsume(tokensToConsume);
+    }
   }
 
   private boolean noRetryTryConsume(long tokensToConsume) {
-    tokensRequestedSinceLastRefill.getAndAdd(tokensToConsume);
     long tokensThatWereAvailable = tokens.getAndAccumulate(tokensToConsume, (existing, toConsume) -> {
       if (toConsume <= existing) { // there are sufficient tokens
         return existing - toConsume;
