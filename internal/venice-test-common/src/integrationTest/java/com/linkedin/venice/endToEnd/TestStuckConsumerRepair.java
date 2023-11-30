@@ -23,6 +23,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -255,9 +256,9 @@ public class TestStuckConsumerRepair {
                 .value() > 0f) {
               serversHasRepairFailure.set(i, true);
             }
-            assertTrue(serversHasStuckConsumerRepair.get(i));
-            assertTrue(serversHasIngestionTaskRepair.get(i));
-            assertTrue(!serversHasRepairFailure.get(i));
+            assertTrue(serversHasStuckConsumerRepair.get(i), "Server " + i + " do not have stuck consumer");
+            assertTrue(serversHasIngestionTaskRepair.get(i), "Server " + i + " did not repair ingestion task");
+            assertFalse(serversHasRepairFailure.get(i), "Server " + i + " failed during ingestion task repair");
           }
         });
 
