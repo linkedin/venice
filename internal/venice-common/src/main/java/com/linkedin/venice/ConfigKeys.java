@@ -376,6 +376,12 @@ public class ConfigKeys {
   public static final String KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED =
       "kme.registration.from.message.header.enabled";
 
+  /**
+   * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
+   */
+  public static final String CONTROLLER_RENABLE_DISABLED_REPLICA_ENABLED =
+      "controller.renable.disabled.replica.enabled";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String GRPC_READ_SERVER_PORT = "grpc.read.server.port";

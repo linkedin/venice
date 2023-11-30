@@ -4865,8 +4865,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     getHelixAdminClient().dropResource(clusterName, kafkaTopic);
     LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
 
+    enableDisabledPartition(clusterName, kafkaTopic, false);
+  }
+
+  public boolean enableDisabledPartition(String clusterName, String kafkaTopic, boolean enableAll) {
     List<String> instances = getStorageNodes(clusterName);
     Map<String, List<String>> disabledPartitions;
+    boolean didOne = false;
     for (String instance: instances) {
       try {
         disabledPartitions = getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
@@ -4878,14 +4883,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         continue;
       }
       for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
-        if (entry.getKey().equals(kafkaTopic)) {
+        if (enableAll || entry.getKey().equals(kafkaTopic)) {
           // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
-          getHelixAdminClient().enablePartition(true, clusterName, instance, kafkaTopic, entry.getValue());
           getDisabledPartitionStats(clusterName).recordClearDisabledPartition();
+          getHelixAdminClient().enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
           LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
+          didOne = true;
         }
       }
     }
+    return didOne;
   }
 
   /**

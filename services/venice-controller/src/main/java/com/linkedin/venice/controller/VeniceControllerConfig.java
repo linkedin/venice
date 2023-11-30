@@ -46,6 +46,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEAR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_RENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
@@ -219,6 +220,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int daVinciPushStatusScanIntervalInSeconds;
 
   private final int daVinciPushStatusScanThreadNumber;
+
+  private final boolean enableDisabledReplicaEnabled;
 
   private final int daVinciPushStatusScanNoReportRetryMaxAttempt;
 
@@ -526,6 +529,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
     this.isKMERegistrationFromMessageHeaderEnabled =
         props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
+    this.enableDisabledReplicaEnabled = props.getBoolean(CONTROLLER_RENABLE_DISABLED_REPLICA_ENABLED, false);
 
     try {
       String producerFactoryClassName =
@@ -697,6 +701,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getAdminConsumptionTimeoutMinutes() {
     return adminConsumptionTimeoutMinute;
+  }
+
+  public boolean isEnableDisabledReplicaEnabled() {
+    return enableDisabledReplicaEnabled;
   }
 
   public long getAdminConsumptionCycleTimeoutMs() {
