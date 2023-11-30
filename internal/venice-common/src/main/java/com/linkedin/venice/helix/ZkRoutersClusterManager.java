@@ -45,12 +45,11 @@ public class ZkRoutersClusterManager
 
   private final CachedResourceZkStateListener zkStateListener;
 
-  private final int refreshAttemptsForZkReconnect;
-  private final long refreshIntervalForZkReconnectInMs;
+  private final Set<String> liveRouterInstanceSet;
 
   public ZkRoutersClusterManager(
       ZkClient zkClient,
-      HelixAdapterSerializer adaper,
+      HelixAdapterSerializer adapter,
       String clusterName,
       int refreshAttemptsForZkReconnect,
       long refreshIntervalForZkReconnectInMs) {
@@ -58,13 +57,12 @@ public class ZkRoutersClusterManager
     this.clusterName = clusterName;
     routerCountListeners = new HashSet<>();
     configListeners = new HashSet<>();
-    adaper.registerSerializer(getRouterRootPath(), new RouterClusterConfigJSONSerializer());
-    zkClient.setZkSerializer(adaper);
+    this.liveRouterInstanceSet = new HashSet<>();
+    adapter.registerSerializer(getRouterRootPath(), new RouterClusterConfigJSONSerializer());
+    zkClient.setZkSerializer(adapter);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
     zkStateListener =
         new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
-    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
-    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
     isConnected.set(zkClient.getConnection().getZookeeperState().isAlive());
     this.zkClient.subscribeStateChanges(this);
   }
@@ -83,7 +81,8 @@ public class ZkRoutersClusterManager
     routersClusterConfig = newRoutersClusterConfig;
     zkClient.subscribeStateChanges(zkStateListener);
     // force a live router count update
-    changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
+    liveRouterInstanceSet.addAll(zkClient.getChildren(getRouterRootPath()));
+    changeLiveRouterCount(liveRouterInstanceSet.size());
     LOGGER.info("Refresh finished for cluster {}'s {}.", clusterName, getClass().getSimpleName());
   }
 
@@ -95,9 +94,8 @@ public class ZkRoutersClusterManager
     zkClient.unsubscribeStateChanges(zkStateListener);
   }
 
-  public List<String> getLiveRouterInstances() {
-    List<String> list = zkClient.getChildren(getRouterRootPath());
-    return list;
+  public Set<String> getLiveRouterInstances() {
+    return liveRouterInstanceSet;
   }
 
   /**
@@ -110,6 +108,7 @@ public class ZkRoutersClusterManager
       zkClient.createEphemeral(getRouterPath(instanceId));
       LOGGER.info("Add router: {} into live routers.", instanceId);
       changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
+      liveRouterInstanceSet.add(instanceId);
     } catch (ZkNoNodeException e) {
       // For a new cluster, the path for routers might not be created, try to create it.
       try {
@@ -137,6 +136,7 @@ public class ZkRoutersClusterManager
           e);
     }
     changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
+    liveRouterInstanceSet.remove(instanceId);
     LOGGER.info("Removed router {} from live routers temporarily.", instanceId);
   }
 

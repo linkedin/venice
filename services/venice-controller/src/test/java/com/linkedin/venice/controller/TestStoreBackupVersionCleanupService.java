@@ -142,7 +142,7 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
-    doReturn(Collections.emptyList()).when(clusterManager).getLiveRouterInstances();
+    doReturn(Collections.emptySet()).when(clusterManager).getLiveRouterInstances();
     StoreBackupVersionCleanupService service = new StoreBackupVersionCleanupService(admin, config);
 
     String clusterName = "test_cluster";
@@ -190,7 +190,7 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(liveInstanceMonitor).when(admin).getLiveInstanceMonitor(anyString());
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
-    doReturn(Collections.emptyList()).when(clusterManager).getLiveRouterInstances();
+    doReturn(Collections.emptySet()).when(clusterManager).getLiveRouterInstances();
     Map<Integer, VersionStatus> versions = new HashMap<>();
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);

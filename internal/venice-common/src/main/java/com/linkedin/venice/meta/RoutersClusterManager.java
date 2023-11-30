@@ -1,6 +1,6 @@
 package com.linkedin.venice.meta;
 
-import java.util.List;
+import java.util.Set;
 
 
 /**
@@ -38,7 +38,7 @@ public interface RoutersClusterManager {
    */
   void subscribeRouterCountChangedEvent(RouterCountChangedListener listener);
 
-  List<String> getLiveRouterInstances();
+  Set<String> getLiveRouterInstances();
 
   /**
    * Stop listening on the router count.
