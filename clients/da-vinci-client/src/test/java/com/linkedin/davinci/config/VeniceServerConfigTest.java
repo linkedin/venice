@@ -9,7 +9,6 @@ import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -20,7 +19,6 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
 
@@ -108,16 +106,5 @@ public class VeniceServerConfigTest {
     props3.setProperty(INGESTION_ISOLATION_CONFIG_PREFIX + "." + ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, "16MB");
     VeniceServerConfig config1 = new VeniceServerConfig(new VeniceProperties(props3));
     assertEquals(config1.getIngestionMemoryLimit(), 20 * 1024 * 1024l);
-  }
-
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*should be equal to or smaller than.*")
-  public void testServerLeaderCompleteStateCheckValidIntervalMs() {
-    Properties props = populatedBasicProperties();
-    props.put(SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS, 1000);
-    new VeniceServerConfig(new VeniceProperties(props));
-
-    // note: default SERVER_INGESTION_HEARTBEAT_INTERVAL_MS is 1 Min, so the below should fail
-    props.put(SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1) + 1);
-    new VeniceServerConfig(new VeniceProperties(props));
   }
 }

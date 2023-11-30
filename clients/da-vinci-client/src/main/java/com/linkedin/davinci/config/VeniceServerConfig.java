@@ -762,12 +762,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     leaderCompleteStateCheckEnabled = serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED, true);
     leaderCompleteStateCheckValidIntervalMs =
         serverProperties.getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
-    if (leaderCompleteStateCheckValidIntervalMs > ingestionHeartbeatIntervalMs) {
-      throw new VeniceException(
-          "Config for " + SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS + ": "
-              + leaderCompleteStateCheckValidIntervalMs + " should be equal to or smaller than "
-              + SERVER_INGESTION_HEARTBEAT_INTERVAL_MS + ": " + ingestionHeartbeatIntervalMs);
-    }
   }
 
   long extractIngestionMemoryLimit(
