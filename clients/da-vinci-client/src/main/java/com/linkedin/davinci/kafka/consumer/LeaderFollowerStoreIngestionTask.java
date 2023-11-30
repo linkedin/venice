@@ -3212,7 +3212,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Do not send heartbeat if we detected a topic switch is happening since TS requires the leader to be idle.
           continue;
         }
-        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(leaderTopic, pcs.getPartition());
+        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(leaderTopic, pcs.getUserPartition());
         try {
           veniceWriter.get().sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER);
         } catch (Exception e) {
@@ -3233,8 +3233,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
     super.reportCompleted(partitionConsumptionState, forceCompletion);
-    if (partitionConsumptionState.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER)
-        || partitionConsumptionState.getLeaderFollowerState().equals(IN_TRANSITION_FROM_STANDBY_TO_LEADER)) {
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER)) {
       List<Integer> subPartitions =
           PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor);
       for (int _subPartition: subPartitions) {
