@@ -38,6 +38,9 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
 
   private Map<Integer, Set<String>> routesForPartition;
 
+  private Map<K, Integer> keyToPartition;
+  private Map<String, Set<Integer>> routeToReadSchemaId;
+  private Map<String, Set<Integer>> routeToWriteSchemaId;
   final int numKeysInRequest;
   AtomicInteger numKeysCompleted;
   RetryContext retryContext;
@@ -55,10 +58,14 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     this.retryContext = null;
     this.isPartialSuccessAllowed = isPartialSuccessAllowed;
     this.completed = false;
+    this.keyToPartition = new VeniceConcurrentHashMap<>();
+    this.routeToReadSchemaId = new VeniceConcurrentHashMap<>();
+    this.routeToWriteSchemaId = new VeniceConcurrentHashMap<>();
   }
 
   void addKey(String route, K key, byte[] serializedKey, int partitionId) {
     Validate.notNull(route);
+    keyToPartition.put(key, partitionId);
     routeRequests.computeIfAbsent(route, r -> new RouteRequestContext<>()).addKeyInfo(key, serializedKey, partitionId);
     routesForPartition.computeIfAbsent(partitionId, (k) -> new HashSet<>()).add(route);
   }
@@ -161,6 +168,18 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
 
   public Map<Integer, Set<String>> getRoutesForPartitionMapping() {
     return routesForPartition;
+  }
+
+  public Map<K, Integer> getKeyToPartitionMapping() {
+    return keyToPartition;
+  }
+
+  public Map<String, Set<Integer>> getRouteToReadSchemaId() {
+    return routeToReadSchemaId;
+  }
+
+  public Map<String, Set<Integer>> getRouteToWriteSchemaId() {
+    return routeToWriteSchemaId;
   }
 
   public void setRoutesForPartitionMapping(Map<Integer, Set<String>> routesForPartition) {

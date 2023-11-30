@@ -562,6 +562,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     requestContext.recordRequestDeserializationTime(
         transportClientResponse.getRouteId(),
         getLatencyInNS(nanoTsBeforeRequestDeserialization));
+    String routeId = transportClientResponse.getRouteId();
+    requestContext.getRouteToReadSchemaId()
+        .computeIfAbsent(routeId, (k) -> new HashSet<>())
+        .add(metadata.getLatestValueSchemaId());
+    requestContext.getRouteToWriteSchemaId()
+        .computeIfAbsent(routeId, (k) -> new HashSet<>())
+        .add(transportClientResponse.getSchemaId());
     RecordDeserializer<V> dataRecordDeserializer = getDataRecordDeserializer(transportClientResponse.getSchemaId());
 
     List<MultiKeyRequestContext.KeyInfo<K>> keyInfos =

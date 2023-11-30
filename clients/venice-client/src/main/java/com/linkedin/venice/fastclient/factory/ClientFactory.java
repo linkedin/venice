@@ -20,6 +20,8 @@ import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.meta.ThinClientBasedMetadata;
 import java.util.Objects;
 import org.apache.avro.specific.SpecificRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -27,6 +29,7 @@ import org.apache.avro.specific.SpecificRecord;
  * thin-client that's being passed in as a config.
  */
 public class ClientFactory {
+  private static final Logger LOGGER = LogManager.getLogger(ClientFactory.class);
 
   // Use Venice thin client based store metadata by default
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(ClientConfig clientConfig) {
@@ -90,7 +93,8 @@ public class ClientFactory {
     }
 
     AvroGenericStoreClient<K, V> returningClient = statsStoreClient;
-    if (clientConfig.isDualReadEnabled()) {
+    if (true) {
+      LOGGER.info("xyin war drop in action, forcing FC to perform dual read");
       returningClient = new DualReadAvroGenericStoreClient<>(statsStoreClient, clientConfig);
     }
     returningClient.start();

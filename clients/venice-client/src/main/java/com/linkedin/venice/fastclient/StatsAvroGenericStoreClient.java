@@ -270,9 +270,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
     @Override
     public void onRecordReceived(K key, V value) {
-      if (value != null) {
-        requestContext.successRequestKeyCount.incrementAndGet();
-      }
+      requestContext.successRequestKeyCount.incrementAndGet();
       inner.onRecordReceived(key, value);
     }
 
