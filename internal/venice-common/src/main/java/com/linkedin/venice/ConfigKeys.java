@@ -2024,6 +2024,13 @@ public class ConfigKeys {
   public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED = "server.leader.complete.state.check.allowed";
 
   /**
+   * Follower replicas and DavinciClient will only consider heartbeats received within
+   * this time window to mark themselves as completed.
+   */
+  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS =
+      "server.leader.complete.state.check.valid.interval.ms";
+
+  /**
    * Whether to enable stuck consumer repair in Server.
    */
   public static final String SERVER_STUCK_CONSUMER_REPAIR_ENABLED = "server.stuck.consumer.repair.enabled";

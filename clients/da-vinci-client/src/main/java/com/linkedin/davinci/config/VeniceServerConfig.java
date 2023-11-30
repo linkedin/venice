@@ -76,6 +76,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLEC
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
@@ -451,7 +452,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long ingestionHeartbeatIntervalMs;
   private final boolean leaderCompleteStateCheckEnabled;
-
+  private final long leaderCompleteStateCheckValidIntervalMs;
   private final boolean stuckConsumerRepairEnabled;
   private final int stuckConsumerRepairIntervalSecond;
   private final int stuckConsumerDetectionRepairThresholdSecond;
@@ -759,6 +760,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     nonExistingTopicCheckRetryIntervalSecond =
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND, 60); // 1min
     leaderCompleteStateCheckEnabled = serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED, true);
+    leaderCompleteStateCheckValidIntervalMs =
+        serverProperties.getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
+    if (leaderCompleteStateCheckValidIntervalMs > ingestionHeartbeatIntervalMs) {
+      throw new VeniceException(
+          "Config for " + SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS + ": "
+              + leaderCompleteStateCheckValidIntervalMs + " should be equal to or smaller than "
+              + SERVER_INGESTION_HEARTBEAT_INTERVAL_MS + ": " + ingestionHeartbeatIntervalMs);
+    }
   }
 
   long extractIngestionMemoryLimit(
@@ -1315,6 +1324,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isLeaderCompleteStateCheckEnabled() {
     return leaderCompleteStateCheckEnabled;
+  }
+
+  public long getLeaderCompleteStateCheckValidIntervalMs() {
+    return leaderCompleteStateCheckValidIntervalMs;
   }
 
   public boolean isStuckConsumerRepairEnabled() {

@@ -840,17 +840,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // For hybrid stores, we need to check if the first heart beat SOS has been received
       // to be able to decide whether the Leader supports sending LeaderCompleteState or not
       if (!pcs.isFirstHeartBeatSOSReceived()) {
-        // if the first HB is not received, wait for the HB SOS to be received to be
-        // able to know if the leader supports sending LeaderCompleteState or not
+        // wait for the first HB to know if the leader supports sending LeaderCompleteState or not
         return false;
       }
 
-      // if the first HB SOS is received, check if the leader supports sending LeaderCompleteState.
-      // If so, check if the leader is completed and the last update time was within 5 seconds.
-      // If not, standby don't have to wait further.
-      return (pcs.getLeaderCompleteState().equals(LEADER_COMPLETE_STATE_UNKNOWN)
-          || (pcs.isLeaderCompleted() && (System.currentTimeMillis()
-              - pcs.getLastLeaderCompleteStateUpdateInMs() < getServerConfig().getIngestionHeartbeatIntervalMs())));
+      if (pcs.getLeaderCompleteState().equals(LEADER_COMPLETE_STATE_UNKNOWN)) {
+        // if the leader don't support LeaderCompleteState
+        return true;
+      }
+      // check if the leader is completed and the last update time was within the configured time
+      return (pcs.isLeaderCompleted()
+          && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
+              .getLeaderCompleteStateCheckValidIntervalMs()));
     } else {
       return isLagAcceptable;
     }
