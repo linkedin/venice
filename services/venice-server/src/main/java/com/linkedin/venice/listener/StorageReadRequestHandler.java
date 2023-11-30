@@ -6,6 +6,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -27,6 +28,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
+import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
@@ -349,6 +351,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       context.writeAndFlush(response);
     } else if (message instanceof MetadataFetchRequest) {
       MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof CurrentVersionRequest) {
+      ServerCurrentVersionResponse response = handleCurrentVersionRequest((CurrentVersionRequest) message);
       context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
@@ -682,6 +687,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private MetadataResponse handleMetadataFetchRequest(MetadataFetchRequest request) {
     return metadataRetriever.getMetadata(request.getStoreName());
+  }
+
+  private ServerCurrentVersionResponse handleCurrentVersionRequest(CurrentVersionRequest request) {
+    return metadataRetriever.getCurrentVersion(request.getStoreName());
   }
 
   private Schema getComputeResultSchema(ComputeRequest computeRequest, Schema valueSchema) {

@@ -1,15 +1,13 @@
 package com.linkedin.venice.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.metadata.response.MetadataResponseRecord;
-import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -25,7 +23,6 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
@@ -68,7 +65,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Map<String, String> urlMap = new HashMap<>();
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
-  private final CloseableHttpAsyncClient storeClient;
+  private final CloseableHttpAsyncClient httpAsyncClient;
 
   private final Time time;
 
@@ -89,7 +86,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.sleepInterval = TimeUnit.MINUTES.toMillis(5);
     this.defaultBackupVersionRetentionMs = multiClusterConfig.getBackupVersionDefaultRetentionMs();
     this.time = time;
-    this.storeClient = HttpAsyncClients.custom()
+    this.httpAsyncClient = HttpAsyncClients.custom()
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
         .build();
   }
@@ -100,7 +97,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   @Override
   public boolean startInner() {
     cleanupThread.start();
-    this.storeClient.start();
+    this.httpAsyncClient.start();
     return true;
   }
 
@@ -110,7 +107,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   @Override
   public void stopInner() throws IOException {
     stop.set(true);
-    storeClient.close();
+    httpAsyncClient.close();
     cleanupThread.interrupt();
   }
 
@@ -138,7 +135,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     for (String routerURL: urlList) {
       try {
         HttpGet routerRequest = new HttpGet(routerURL + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
-        HttpResponse response = storeClient.execute(routerRequest, null).get();
+        HttpResponse response = httpAsyncClient.execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
               "Got status code {} from host {} while querying current version for store {}",
@@ -170,8 +167,8 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     for (Instance instance: instances) {
       try {
         HttpGet routerRequest = new HttpGet(
-            instance.getUrl() + "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + store.getName());
-        HttpResponse response = storeClient.execute(routerRequest, null).get();
+            instance.getUrl() + "/" + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + store.getName());
+        HttpResponse response = httpAsyncClient.execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
               "Got status code {} from host {} while querying current version for store {}",
@@ -184,13 +181,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         try (InputStream bodyStream = response.getEntity().getContent()) {
           responseBody = IOUtils.toByteArray(bodyStream);
         }
-        RecordDeserializer<MetadataResponseRecord> metadataResponseRecordRecordDeserializer =
-            SerializerDeserializerFactory.getAvroGenericDeserializer(MetadataResponseRecord.SCHEMA$);
-        GenericRecord metadataResponse = metadataResponseRecordRecordDeserializer.deserialize(responseBody);
-
-        MetadataResponseRecord metadataResponseRecord =
-            OBJECT_MAPPER.readValue(metadataResponse.toString(), MetadataResponseRecord.class);
-        if (metadataResponseRecord.getVersionMetadata().getCurrentVersion() != versionToValidate) {
+        ServerCurrentVersionResponse currentVersionResponse =
+            OBJECT_MAPPER.readValue(responseBody, ServerCurrentVersionResponse.class);
+        if (currentVersionResponse.getCurrentVersion() != versionToValidate) {
           return false;
         }
       } catch (Exception e) {
@@ -198,7 +191,6 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         return false;
       }
     }
-
     return true;
   }
 
