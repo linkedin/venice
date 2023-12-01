@@ -8,14 +8,18 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcOutboundResponseHandler;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.grpc.stub.StreamObserver;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -30,6 +34,8 @@ import org.testng.annotations.Test;
 
 
 public class OutboundHttpWrapperHandlerTest {
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+
   @Test
   public void testWriteMetadataResponse() {
     MetadataResponse msg = new MetadataResponse();
@@ -50,6 +56,32 @@ public class OutboundHttpWrapperHandlerTest {
       FullHttpResponse actualResponse = (DefaultFullHttpResponse) i.getArguments()[0];
       Assert.assertEquals(actualResponse.content(), response.content());
       Assert.assertTrue(actualResponse.headers().equals(response.headers()));
+      Assert.assertTrue(actualResponse.equals(response));
+      return null;
+    });
+
+    outboundHttpWrapperHandler.write(mockCtx, msg, null);
+  }
+
+  @Test
+  public void testWriteCurrentVersionResponse() throws JsonProcessingException {
+    ServerCurrentVersionResponse msg = new ServerCurrentVersionResponse();
+    msg.setCurrentVersion(2);
+    StatsHandler statsHandler = mock(StatsHandler.class);
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+    ByteBuf body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(msg));
+    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.OK, body);
+    response.headers().set(CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+    response.headers().set(CONTENT_LENGTH, body.readableBytes());
+    response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+    response.headers().set(HttpConstants.VENICE_SCHEMA_ID, -1);
+    response.headers().set(HttpConstants.VENICE_REQUEST_RCU, 1);
+
+    OutboundHttpWrapperHandler outboundHttpWrapperHandler = new OutboundHttpWrapperHandler(statsHandler);
+
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      FullHttpResponse actualResponse = (DefaultFullHttpResponse) i.getArguments()[0];
+      Assert.assertEquals(actualResponse.content(), response.content());
       Assert.assertTrue(actualResponse.equals(response));
       return null;
     });

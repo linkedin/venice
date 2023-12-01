@@ -140,6 +140,8 @@ public class TestStoreBackupVersionCleanupService {
     LiveInstanceMonitor liveInstanceMonitor = mock(LiveInstanceMonitor.class);
     doReturn(liveInstanceMonitor).when(admin).getLiveInstanceMonitor(anyString());
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(config).getControllerConfig(anyString());
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
     doReturn(Collections.emptySet()).when(clusterManager).getLiveRouterInstances();

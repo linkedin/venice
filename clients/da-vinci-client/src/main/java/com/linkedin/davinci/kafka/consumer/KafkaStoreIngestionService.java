@@ -1192,7 +1192,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public ServerCurrentVersionResponse getCurrentVersion(String storeName) {
+  public ServerCurrentVersionResponse getCurrentVersionResponse(String storeName) {
     ServerCurrentVersionResponse response = new ServerCurrentVersionResponse();
     try {
       Store store = metadataRepo.getStoreOrThrow(storeName);

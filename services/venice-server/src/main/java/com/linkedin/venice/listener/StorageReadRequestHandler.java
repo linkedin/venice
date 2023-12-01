@@ -690,7 +690,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private ServerCurrentVersionResponse handleCurrentVersionRequest(CurrentVersionRequest request) {
-    return metadataRetriever.getCurrentVersion(request.getStoreName());
+    return metadataRetriever.getCurrentVersionResponse(request.getStoreName());
   }
 
   private Schema getComputeResultSchema(ComputeRequest computeRequest, Schema valueSchema) {

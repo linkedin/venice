@@ -14,5 +14,5 @@ public interface MetadataRetriever {
 
   MetadataResponse getMetadata(String storeName);
 
-  ServerCurrentVersionResponse getCurrentVersion(String storeName);
+  ServerCurrentVersionResponse getCurrentVersionResponse(String storeName);
 }
