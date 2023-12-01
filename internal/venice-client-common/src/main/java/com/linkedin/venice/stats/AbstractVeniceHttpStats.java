@@ -7,13 +7,10 @@ import io.tehuti.metrics.Sensor;
 
 
 public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
-  private static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
-  private static final MetricsRepository dummySystemStoreMetricRepo = new MetricsRepository();
-
   private final RequestType requestType;
 
   public AbstractVeniceHttpStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
-    super(storeName.startsWith(SYSTEM_STORE_NAME_PREFIX) ? dummySystemStoreMetricRepo : metricsRepository, storeName);
+    super(metricsRepository, storeName);
     this.requestType = requestType;
   }
 

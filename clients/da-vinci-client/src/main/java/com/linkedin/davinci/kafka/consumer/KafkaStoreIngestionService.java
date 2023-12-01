@@ -448,7 +448,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()),
-        pubSubDeserializer);
+        pubSubDeserializer,
+        (topicName) -> this.killConsumptionTask(topicName));
     /**
      * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
      * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.
