@@ -111,6 +111,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     cleanupThread.interrupt();
   }
 
+  CloseableHttpAsyncClient getHttpAsyncClient() {
+    return httpAsyncClient;
+  }
+
   protected static boolean whetherStoreReadyToBeCleanup(Store store, long defaultBackupVersionRetentionMs, Time time) {
     long backupVersionRetentionMs = store.getBackupVersionRetentionMs();
     if (backupVersionRetentionMs < 0) {
@@ -135,7 +139,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     for (String routerURL: urlList) {
       try {
         HttpGet routerRequest = new HttpGet(routerURL + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
-        HttpResponse response = httpAsyncClient.execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
+        HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
               "Got status code {} from host {} while querying current version for store {}",
@@ -168,7 +172,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       try {
         HttpGet routerRequest = new HttpGet(
             instance.getUrl() + "/" + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + store.getName());
-        HttpResponse response = httpAsyncClient.execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
+        HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
               "Got status code {} from host {} while querying current version for store {}",

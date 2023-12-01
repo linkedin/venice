@@ -1,21 +1,30 @@
 package com.linkedin.venice.controller;
 
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -23,13 +32,22 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.StatusLine;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestStoreBackupVersionCleanupService {
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+
   private VeniceHelixAdmin admin;
   private ZkRoutersClusterManager clusterManager;
   private HelixVeniceClusterResources mockClusterResource;
@@ -137,14 +155,11 @@ public class TestStoreBackupVersionCleanupService {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
-    LiveInstanceMonitor liveInstanceMonitor = mock(LiveInstanceMonitor.class);
-    doReturn(liveInstanceMonitor).when(admin).getLiveInstanceMonitor(anyString());
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
     VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
     doReturn(controllerConfig).when(config).getControllerConfig(anyString());
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
-    doReturn(Collections.emptySet()).when(clusterManager).getLiveRouterInstances();
     StoreBackupVersionCleanupService service = new StoreBackupVersionCleanupService(admin, config);
 
     String clusterName = "test_cluster";
@@ -176,6 +191,64 @@ public class TestStoreBackupVersionCleanupService {
     versions.put(3, VersionStatus.STARTED);
     Store storeWithRollback = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 1);
     Assert.assertFalse(service.cleanupBackupVersion(storeWithRollback, clusterName));
+  }
+
+  @Test
+  public void testMetadataBasedCleanupBackupVersion() throws IOException {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
+    long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
+    LiveInstanceMonitor liveInstanceMonitor = mock(LiveInstanceMonitor.class);
+    doReturn(liveInstanceMonitor).when(admin).getLiveInstanceMonitor(anyString());
+    doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
+    CloseableHttpAsyncClient asyncClient = mock(CloseableHttpAsyncClient.class);
+    StatusLine statusLine = mock(StatusLine.class);
+    CurrentVersionResponse currentVersionResponse = new CurrentVersionResponse();
+    currentVersionResponse.setCurrentVersion(2);
+    HttpResponse response = mock(HttpResponse.class);
+    Future future = CompletableFuture.completedFuture(response);
+    doReturn(future).when(asyncClient).execute(any(), eq(null));
+    doReturn(HttpStatus.SC_OK).when(statusLine).getStatusCode();
+    doReturn(statusLine).when(response).getStatusLine();
+    HttpEntity entity = mock(HttpEntity.class);
+    doReturn(entity).when(response).getEntity();
+
+    doReturn(new ByteArrayInputStream(OBJECT_MAPPER.writeValueAsBytes(currentVersionResponse))).when(entity)
+        .getContent();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(config).getControllerConfig(anyString());
+    doReturn(true).when(controllerConfig).isBackupVersionMetadataFetchBasedCleanupEnabled();
+    doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
+    doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
+    Set<String> strings = new HashSet<>();
+    strings.add("abc_123");
+    Set<Instance> instSet = new HashSet<>();
+    instSet.add(new Instance("0", "localhost1", 1234));
+
+    doReturn(Collections.emptySet()).when(clusterManager).getLiveRouterInstances();
+    StoreBackupVersionCleanupService service = spy(new StoreBackupVersionCleanupService(admin, config));
+    doReturn(asyncClient).when(service).getHttpAsyncClient();
+
+    String clusterName = "test_cluster";
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    // Store is qualified, and contains one removable version
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ONLINE);
+    doReturn(strings).when(clusterManager).getLiveRouterInstances();
+    doReturn(instSet).when(liveInstanceMonitor).getAllLiveInstances();
+
+    Store storeWithTwoVersions = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 2);
+    Assert.assertFalse(service.cleanupBackupVersion(storeWithTwoVersions, clusterName));
+
+    ServerCurrentVersionResponse versionResponse = new ServerCurrentVersionResponse();
+    versionResponse.setCurrentVersion(2);
+
+    // both server and router returns valid version. delete backup.
+    doReturn(new ByteArrayInputStream(OBJECT_MAPPER.writeValueAsBytes(versionResponse)))
+        .doReturn(new ByteArrayInputStream(OBJECT_MAPPER.writeValueAsBytes(currentVersionResponse)))
+        .when(entity)
+        .getContent();
+    Assert.assertTrue(service.cleanupBackupVersion(storeWithTwoVersions, clusterName));
   }
 
   @Test
