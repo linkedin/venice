@@ -263,6 +263,13 @@ public class ConfigKeys {
       "controller.backup.version.retention.based.cleanup.enabled";
 
   /**
+   * The following config is to control whether to enable backup version cleanup based on router and server current version
+   * being served.
+   */
+  public static final String CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED =
+      "controller.backup.version.metadata.fetch.cleanup.enabled";
+
+  /**
    * Whether to automatically create zk shared metadata system store in Controller or not
    */
   public static final String CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =

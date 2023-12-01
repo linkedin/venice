@@ -209,8 +209,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     int currentVersion = store.getCurrentVersion();
 
     // Do not delete version unless all routers and all servers are on same current version
-    if (!validateAllRouterOnCurrentVersion(store, clusterName, currentVersion)
-        || !validateAllServerOnCurrentVersion(store, clusterName, currentVersion)) {
+    if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionMetadataFetchBasedCleanupEnabled()
+        && (!validateAllRouterOnCurrentVersion(store, clusterName, currentVersion)
+            || !validateAllServerOnCurrentVersion(store, clusterName, currentVersion))) {
       return false;
     }
 
