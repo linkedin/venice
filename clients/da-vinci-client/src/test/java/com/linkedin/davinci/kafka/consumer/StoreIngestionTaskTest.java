@@ -3550,7 +3550,6 @@ public abstract class StoreIngestionTaskTest {
     doReturn(veniceWriter).when(veniceWriterFactory).createVeniceWriter(any());
 
     StoreIngestionTaskFactory ingestionTaskFactory = TestUtils.getStoreIngestionTaskBuilder(storeName)
-        .setTopicManagerRepository(mockTopicManagerRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setMetadataRepository(mockReadOnlyStoreRepository)
         .setTopicManagerRepository(mockTopicManagerRepository)
@@ -3573,6 +3572,15 @@ public abstract class StoreIngestionTaskTest {
     // Second invocation should be skipped since it shouldn't be time for another heartbeat yet.
     ingestionTask.maybeSendIngestionHeartbeat();
     verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any());
+
+    /**
+     * Leverage the same test to validate {@link StoreIngestionTask#isProducingVersionTopicHealthy()}
+     */
+    when(mockTopicManager.containsTopic(eq(ingestionTask.getVersionTopic()))).thenReturn(true);
+    Assert.assertTrue(ingestionTask.isProducingVersionTopicHealthy());
+
+    when(mockTopicManager.containsTopic(eq(ingestionTask.getVersionTopic()))).thenReturn(false);
+    Assert.assertFalse(ingestionTask.isProducingVersionTopicHealthy());
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
