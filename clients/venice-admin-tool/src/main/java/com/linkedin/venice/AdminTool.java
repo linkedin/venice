@@ -3,6 +3,7 @@ package com.linkedin.venice;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.meta.Store.SYSTEM_STORE_NAME_PREFIX;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.SERVER_ADMIN_RESPONSE;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
@@ -146,7 +147,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.cli.CommandLine;
@@ -1648,6 +1652,16 @@ public class AdminTool {
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
+
+    // Check the migration status for all source and destination system stores
+    String systemStoreType = getRequiredArgument(cmd, Arg.SYSTEM_STORE_TYPE, Command.BACKFILL_SYSTEM_STORES);
+
+    Stream<String> allSrcStoreNames = srcControllerClient.getClusterStores(srcClusterName).stream().filter(storeInfo -> storeInfo.getName().matches(SYSTEM_STORE_NAME_PREFIX + getSystemStoreName(storeInfo, systemStoreType) + "_" + storeName));
+    Stream<String> allDestStoreNames = destControllerClient.getClusterStores(destClusterName).stream().filter(storeInfo -> storeInfo.getName().matches(SYSTEM_STORE_NAME_PREFIX + getSystemStoreName(storeInfo, systemStoreType) + "_" + storeName));
+
+    allSrcStoreNames.forEach(srcStorename -> printMigrationStatus(srcControllerClient, srcStorename));
+    allDestStoreNames.forEach(destStorename -> printMigrationStatus(destControllerClient, destStorename));
+
     if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
       // This is a controller in single datacenter setup
       printMigrationStatus(srcControllerClient, storeName);
