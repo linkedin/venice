@@ -10,6 +10,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.TransformedRecord;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -127,7 +128,6 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -3009,15 +3009,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (recordTransformer != null) {
           Lazy<byte[]> lazyKey = Lazy.of(() -> keyBytes);
           Lazy<ByteBuffer> lazyValue = Lazy.of(() -> put.putValue);
-          GenericRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue, producedPartition);
-          ByteBuffer keyByteBuffer = (ByteBuffer) transformedRecord.get("key");
-          byte[] newKeyBytes = new byte[keyByteBuffer.remaining()];
-          keyByteBuffer.get(newKeyBytes);
-          ByteBuffer valueByteBuffer = (ByteBuffer) transformedRecord.get("value");
-          byte[] valueBytes = new byte[valueByteBuffer.remaining()];
-          valueByteBuffer.get(valueBytes);
-          int newProducedPartition = Objects.hash(newKeyBytes, put.putValue);
-
+          TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue, producedPartition);
+          put.putValue = transformedRecord.getValueBytes();
+          byte[] newKeyBytes = transformedRecord.getKeyBytes();
+          int newProducedPartition = venicePartitioner.getPartitionId(newKeyBytes, subPartitionCount);
           prependHeaderAndWriteToStorageEngine(newProducedPartition, newKeyBytes, put, currentTimeMs);
         } else {
 
@@ -3050,10 +3045,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         if (recordTransformer != null) {
           Lazy<byte[]> lazyKey = Lazy.of(() -> keyBytes);
-          GenericRecord keptRecord = recordTransformer.delete(lazyKey, producedPartition);
+          TransformedRecord keptRecord = recordTransformer.delete(lazyKey, producedPartition);
+          removeFromStorageEngine(producedPartition, keptRecord.getKeyBytes(), delete);
+        } else {
+          removeFromStorageEngine(producedPartition, keyBytes, delete);
         }
-
-        removeFromStorageEngine(producedPartition, keyBytes, delete);
         if (cacheBackend.isPresent()) {
           if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
             cacheBackend.get().getStorageEngine(kafkaVersionTopic).delete(producedPartition, keyBytes);

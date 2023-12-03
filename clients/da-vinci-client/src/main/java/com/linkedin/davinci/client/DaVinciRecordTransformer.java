@@ -2,7 +2,6 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -18,7 +17,7 @@ import org.apache.avro.generic.GenericRecord;
  * @param <V> type of the input value
  * @param <O> type of the output value
  */
-public interface DaVinciRecordTransformer<K, V, O extends GenericRecord> {
+public interface DaVinciRecordTransformer<K, V, O extends TransformedRecord> {
   /**
    * This will be the type returned by the {@link DaVinciClient}'s read operations.
    *
