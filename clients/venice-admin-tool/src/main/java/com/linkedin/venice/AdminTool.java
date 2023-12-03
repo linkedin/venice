@@ -149,7 +149,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.cli.CommandLine;
@@ -1655,8 +1654,20 @@ public class AdminTool {
     // Check the migration status for all source and destination system stores
     String systemStoreType = getRequiredArgument(cmd, Arg.SYSTEM_STORE_TYPE, Command.BACKFILL_SYSTEM_STORES);
 
-    Stream<String> allSrcStoreNames = srcControllerClient.getClusterStores(srcClusterName).stream().filter(storeInfo -> storeInfo.getName().matches(SYSTEM_STORE_NAME_PREFIX + getSystemStoreName(storeInfo, systemStoreType) + "_" + storeName));
-    Stream<String> allDestStoreNames = destControllerClient.getClusterStores(destClusterName).stream().filter(storeInfo -> storeInfo.getName().matches(SYSTEM_STORE_NAME_PREFIX + getSystemStoreName(storeInfo, systemStoreType) + "_" + storeName));
+    Stream<String> allSrcStoreNames = srcControllerClient.getClusterStores(srcClusterName)
+        .getStoreInfoList()
+        .stream()
+        .filter(
+            storeInfo -> storeInfo.getName()
+                .matches(SYSTEM_STORE_NAME_PREFIX + getSystemStoreName(storeInfo, systemStoreType) + "_" + storeName))
+        .map(StoreInfo::getName);
+    Stream<String> allDestStoreNames = destControllerClient.getClusterStores(destClusterName)
+        .getStoreInfoList()
+        .stream()
+        .filter(
+            storeInfo -> storeInfo.getName()
+                .matches(SYSTEM_STORE_NAME_PREFIX + getSystemStoreName(storeInfo, systemStoreType) + "_" + storeName))
+        .map(StoreInfo::getName);
 
     allSrcStoreNames.forEach(srcStorename -> printMigrationStatus(srcControllerClient, srcStorename));
     allDestStoreNames.forEach(destStorename -> printMigrationStatus(destControllerClient, destStorename));
