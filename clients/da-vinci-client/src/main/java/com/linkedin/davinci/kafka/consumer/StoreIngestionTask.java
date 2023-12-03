@@ -3046,7 +3046,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (recordTransformer != null) {
           Lazy<byte[]> lazyKey = Lazy.of(() -> keyBytes);
           TransformedRecord keptRecord = recordTransformer.delete(lazyKey, producedPartition);
-          removeFromStorageEngine(producedPartition, keptRecord.getKeyBytes(), delete);
+          byte[] newKeyBytes = keptRecord.getKeyBytes();
+          int newProducedPartition = venicePartitioner.getPartitionId(newKeyBytes, subPartitionCount);
+          removeFromStorageEngine(newProducedPartition, newKeyBytes, delete);
         } else {
           removeFromStorageEngine(producedPartition, keyBytes, delete);
         }
