@@ -1753,34 +1753,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
-  public void sendHeartbeat(
-      PubSubTopicPartition topicPartition,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper) {
-    sendHeartbeat(
-        topicPartition,
-        callback,
-        leaderMetadataWrapper,
-        false,
-        LeaderCompleteState.LEADER_NOT_COMPLETED,
-        time.getMilliseconds());
-  }
-
-  public void sendHeartbeat(
-      PubSubTopicPartition topicPartition,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      boolean addLeaderCompleteState,
-      LeaderCompleteState leaderCompleteState) {
-    sendHeartbeat(
-        topicPartition,
-        callback,
-        leaderMetadataWrapper,
-        addLeaderCompleteState,
-        leaderCompleteState,
-        time.getMilliseconds());
-  }
-
   public static KafkaMessageEnvelope getHeartbeatKME(
       long originTimeStampMs,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -1807,7 +1779,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return kafkaMessageEnvelope;
   }
 
-  public void sendHeartbeat(
+  public CompletableFuture<PubSubProduceResult> sendHeartbeat(
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -1816,7 +1788,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       long originTimeStampMs) {
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
-    producerAdapter.sendMessage(
+    return producerAdapter.sendMessage(
         topicPartition.getPubSubTopic().getName(),
         topicPartition.getPartitionNumber(),
         KafkaKey.HEART_BEAT,

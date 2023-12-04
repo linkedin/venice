@@ -828,26 +828,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected boolean isLagAcceptableForHybridStore(PartitionConsumptionState pcs, long offsetLag, long offsetThreshold) {
     boolean isLagAcceptable = (offsetLag <= offsetThreshold);
 
-    if (isDaVinciClient || pcs.getLeaderFollowerState().equals(STANDBY)) {
+    if (isHybridMode() && (isDaVinciClient || pcs.getLeaderFollowerState().equals(STANDBY))) {
       if (!isLagAcceptable) {
         return false;
       }
 
-      if (!getServerConfig().isLeaderCompleteStateCheckEnabled()) {
+      // non AA stores has issues reading HB SOS from the RT leading to the standby replicas waiting for
+      // leader completion state header indefinitely, so disabling it until that issue is resolved
+      if (!(getServerConfig().isLeaderCompleteStateCheckEnabled() && this.isActiveActiveReplicationEnabled())) {
         return true;
       }
 
-      // For hybrid stores, we need to check if the first heart beat SOS has been received
-      // to be able to decide whether the Leader supports sending LeaderCompleteState or not
+      // wait for the first HB to know if the leader supports sending LeaderCompleteState or not
       if (!pcs.isFirstHeartBeatSOSReceived()) {
-        // wait for the first HB to know if the leader supports sending LeaderCompleteState or not
         return false;
       }
 
+      // if the leader don't support LeaderCompleteState
       if (pcs.getLeaderCompleteState().equals(LEADER_COMPLETE_STATE_UNKNOWN)) {
-        // if the leader don't support LeaderCompleteState
         return true;
       }
+
       // check if the leader is completed and the last update time was within the configured time
       return (pcs.isLeaderCompleted()
           && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()

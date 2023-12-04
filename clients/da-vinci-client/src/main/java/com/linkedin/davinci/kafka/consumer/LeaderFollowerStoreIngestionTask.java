@@ -49,6 +49,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -2110,14 +2111,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor);
                 for (int _subPartition: subPartitions) {
                   PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), _subPartition);
-                  veniceWriter.get()
-                      .sendHeartbeat(
-                          topicPartition,
-                          callback,
-                          leaderMetadataWrapper,
-                          true,
-                          LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported()),
-                          consumerRecord.getValue().producerMetadata.messageTimestamp);// original producers timestamp
+                  sendIngestionHeartbeat(
+                      topicPartition,
+                      callback,
+                      leaderMetadataWrapper,
+                      true,
+                      LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported()),
+                      consumerRecord.getValue().producerMetadata.messageTimestamp);// original producers timestamp
                 }
               } else {
                 /**
@@ -3191,6 +3191,65 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionConsumptionStateMap.put(partition, pcs);
   }
 
+  private void sendIngestionHeartbeat(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper) {
+    sendIngestionHeartbeat(
+        topicPartition,
+        callback,
+        leaderMetadataWrapper,
+        false,
+        LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN,
+        System.currentTimeMillis());
+  }
+
+  private void sendIngestionHeartbeat(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      boolean addLeaderCompleteState,
+      LeaderCompleteState leaderCompleteState,
+      long originTimeStampMs) {
+    String topicPartitionName = topicPartition.getPubSubTopic().getName();
+    int partitionId = topicPartition.getPartitionNumber();
+    try {
+      veniceWriter.get()
+          .sendHeartbeat(
+              topicPartition,
+              callback,
+              leaderMetadataWrapper,
+              addLeaderCompleteState,
+              leaderCompleteState,
+              originTimeStampMs)
+          .whenComplete((result, throwable) -> {
+            if (throwable != null) {
+              String errorMessage = String.format(
+                  "Failed to send ingestion heartbeat for topic: %s, partition: %s",
+                  topicPartitionName,
+                  partitionId);
+              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMessage)) {
+                LOGGER.error(errorMessage, throwable);
+              }
+            } else {
+              String message = String.format(
+                  "Ingestion heartbeat successfully sent for topic: %s, partition: %s",
+                  topicPartitionName,
+                  partitionId);
+              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+                LOGGER.info(message);
+              }
+            }
+          });
+    } catch (Exception e) {
+      String errorMessage = String
+          .format("Failed to send ingestion heartbeat for topic: %s, partition: %s", topicPartitionName, partitionId);
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMessage)) {
+        LOGGER.error(errorMessage, e);
+      }
+    }
+  }
+
   @Override
   protected void maybeSendIngestionHeartbeat() {
     if (!isHybridMode() || isDaVinciClient) {
@@ -3212,16 +3271,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Do not send heartbeat if we detected a topic switch is happening since TS requires the leader to be idle.
           continue;
         }
-        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(leaderTopic, pcs.getUserPartition());
-        try {
-          veniceWriter.get().sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER);
-        } catch (Exception e) {
-          String errorMessage = String.format(
-              "Failed to send ingestion heartbeat for topic: %s, partition: %s",
-              topicPartition.getPubSubTopic().getName(),
-              topicPartition.getPartitionNumber());
-          LOGGER.error(errorMessage, e);
-        }
+        sendIngestionHeartbeat(
+            new PubSubTopicPartitionImpl(leaderTopic, pcs.getUserPartition()),
+            null,
+            DEFAULT_LEADER_METADATA_WRAPPER);
       }
     }
     lastSendIngestionHeartbeatTimestamp = currentTimestamp;
@@ -3233,12 +3286,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
     super.reportCompleted(partitionConsumptionState, forceCompletion);
-    if (partitionConsumptionState.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER)) {
+    LeaderFollowerStateType leaderFollowerState = partitionConsumptionState.getLeaderFollowerState();
+    if (leaderFollowerState.equals(LeaderFollowerStateType.LEADER)
+        || leaderFollowerState.equals(LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER)) {
       List<Integer> subPartitions =
           PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor);
       for (int _subPartition: subPartitions) {
         PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, _subPartition);
-        veniceWriter.get().sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER, true, LEADER_COMPLETED);
+        sendIngestionHeartbeat(
+            topicPartition,
+            null,
+            DEFAULT_LEADER_METADATA_WRAPPER,
+            true,
+            LEADER_COMPLETED,
+            System.currentTimeMillis());
       }
     }
   }

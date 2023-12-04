@@ -2786,7 +2786,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(System.currentTimeMillis() - MS_PER_HOUR).when(mockOffsetRecordLagCaughtUpTimestampLagging)
         .getLatestProducerProcessingTimeInMs();
 
-    // case1: If EOP is not received, partition is not ready to serve
+    // case 1: If EOP is not received, partition is not ready to serve
     PartitionConsumptionState mockPcsEOPNotReceived = mock(PartitionConsumptionState.class);
     doReturn(false).when(mockPcsEOPNotReceived).isEndOfPushReceived();
     assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsEOPNotReceived));
@@ -3024,10 +3024,11 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testIsLagAcceptableForHybridStore(
       boolean isDaVinciClient,
       boolean isLeader,
+      boolean isActiveActiveReplicationEnabled,
       boolean leaderCompleteStateCheckEnabled) {
     if (isDaVinciClient && isLeader) {
       // DaVinci client can't be leader
@@ -3041,8 +3042,20 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
-    MockStoreVersionConfigs storeAndVersionConfigs =
-        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.empty(), false, true, true);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        100,
+        100,
+        100,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+
+    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
+        partitionCount,
+        partitionerConfig,
+        Optional.of(hybridStoreConfig),
+        false,
+        true,
+        isActiveActiveReplicationEnabled);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
@@ -3116,7 +3129,7 @@ public abstract class StoreIngestionTaskTest {
     assertEquals(
         storeIngestionTaskUnderTest
             .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold),
-        !leaderCompleteStateCheckEnabled);
+        !(leaderCompleteStateCheckEnabled && isActiveActiveReplicationEnabled));
 
     // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is unknown
@@ -3145,7 +3158,7 @@ public abstract class StoreIngestionTaskTest {
     assertEquals(
         storeIngestionTaskUnderTest
             .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold),
-        !leaderCompleteStateCheckEnabled);
+        !(leaderCompleteStateCheckEnabled && isActiveActiveReplicationEnabled));
 
     // Case 8: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is LEADER_NOT_COMPLETED
@@ -3154,7 +3167,7 @@ public abstract class StoreIngestionTaskTest {
     assertEquals(
         storeIngestionTaskUnderTest
             .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold),
-        !leaderCompleteStateCheckEnabled);
+        !(leaderCompleteStateCheckEnabled && isActiveActiveReplicationEnabled));
   }
 
   @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -3893,9 +3906,9 @@ public abstract class StoreIngestionTaskTest {
     // Second invocation should be skipped since it shouldn't be time for another heartbeat yet.
     ingestionTask.maybeSendIngestionHeartbeat();
     if (isHybridStore && isRealTimeTopic && isLeader) {
-      verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any());
+      verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
     } else {
-      verify(veniceWriter, never()).sendHeartbeat(any(), any(), any());
+      verify(veniceWriter, never()).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
     }
 
     /**
