@@ -648,9 +648,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             new VeniceException("Kill the consumer"));
         /*
          * close can not stop the consumption synchronously, but the status of helix would be set to ERROR after
-         * reportError. The only way to stop it synchronously is interrupt the current running thread, but it's an unsafe
-         * operation, for example it could break the ongoing db operation, so we should avoid that.
+         * reportError. This push is being killed by controller, so this version is abandoned, it will not have
+         * chances to serve traffic; forced kill all resources in this push.
+         * N.B.: if we start seeing alerts from forced killed resource, consider whether we should keep those alerts
+         *       if they are useful, or refactor them.
          */
+        closeVeniceWriters(false);
         close();
       }
     }
