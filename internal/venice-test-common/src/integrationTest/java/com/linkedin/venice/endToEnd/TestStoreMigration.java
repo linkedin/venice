@@ -325,6 +325,7 @@ public class TestStoreMigration {
               .assertEquals(pushStatusStoreReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
 
       startMigration(parentControllerUrl, storeName);
+      checkMigrationStatus(parentControllerUrl, storeName);
       completeMigration(parentControllerUrl, storeName);
 
       // Verify the da vinci push status system store is materialized in dest cluster and contains the same value
@@ -469,6 +470,12 @@ public class TestStoreMigration {
     String[] startMigrationArgs = { "--migrate-store", "--url", controllerUrl, "--store", storeName, "--cluster-src",
         srcClusterName, "--cluster-dest", destClusterName };
     AdminTool.main(startMigrationArgs);
+  }
+
+  private void checkMigrationStatus(String controllerUrl, String storeName) throws Exception {
+    String[] checkMigrationStatusArgs = { "--migration-status", "--url", controllerUrl, "--store", storeName,
+        "--cluster-src", srcClusterName, "--cluster-dest", destClusterName };
+    AdminTool.main(checkMigrationStatusArgs);
   }
 
   private void completeMigration(String controllerUrl, String storeName) {

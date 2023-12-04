@@ -3,7 +3,6 @@ package com.linkedin.venice;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.meta.Store.SYSTEM_STORE_NAME_PREFIX;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.SERVER_ADMIN_RESPONSE;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
@@ -43,6 +42,7 @@ import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoragePersonaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -148,7 +148,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.cli.CommandLine;
@@ -1651,26 +1650,25 @@ public class AdminTool {
 
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
 
-    // Check the migration status for all source and destination system stores
-    String systemStoreType = getRequiredArgument(cmd, Arg.SYSTEM_STORE_TYPE, Command.BACKFILL_SYSTEM_STORES);
+    for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.values()) {
+      MultiStoreInfoResponse srcClusterStoreInfo = srcControllerClient.getClusterStores(srcClusterName);
 
-    Stream<String> allSrcStoreNames = srcControllerClient.getClusterStores(srcClusterName)
-        .getStoreInfoList()
-        .stream()
-        .filter(
-            storeInfo -> storeInfo.getName()
-                .matches(SYSTEM_STORE_NAME_PREFIX + getSystemStoreName(storeInfo, systemStoreType) + "_" + storeName))
-        .map(StoreInfo::getName);
-    Stream<String> allDestStoreNames = destControllerClient.getClusterStores(destClusterName)
-        .getStoreInfoList()
-        .stream()
-        .filter(
-            storeInfo -> storeInfo.getName()
-                .matches(SYSTEM_STORE_NAME_PREFIX + getSystemStoreName(storeInfo, systemStoreType) + "_" + storeName))
-        .map(StoreInfo::getName);
+      if (srcClusterStoreInfo != null && srcClusterStoreInfo.getStoreInfoList() != null) {
+        srcClusterStoreInfo.getStoreInfoList()
+            .stream()
+            .filter(storeInfo -> storeInfo.getName().matches(systemStoreType.getSystemStoreName(storeInfo.getName())))
+            .forEach(storeInfo -> printMigrationStatus(srcControllerClient, storeInfo.getName()));
+      }
 
-    allSrcStoreNames.forEach(srcStorename -> printMigrationStatus(srcControllerClient, srcStorename));
-    allDestStoreNames.forEach(destStorename -> printMigrationStatus(destControllerClient, destStorename));
+      MultiStoreInfoResponse destClusterStoreInfo = srcControllerClient.getClusterStores(destClusterName);
+
+      if (destClusterStoreInfo != null && destClusterStoreInfo.getStoreInfoList() != null) {
+        destClusterStoreInfo.getStoreInfoList()
+            .stream()
+            .filter(storeInfo -> storeInfo.getName().matches(systemStoreType.getSystemStoreName(storeInfo.getName())))
+            .forEach(storeInfo -> printMigrationStatus(destControllerClient, storeInfo.getName()));
+      }
+    }
 
     if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
       // This is a controller in single datacenter setup
