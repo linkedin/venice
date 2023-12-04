@@ -218,15 +218,6 @@ public class TestStuckConsumerRepair {
         for (int i = 20; i <= 100; i++) {
           sendCustomSizeStreamingRecord(veniceProducer, storeName, i, 1024);
         }
-        // Verify that the stuck consumer repair logic does kick in
-        MetricsRepository serverRepo = venice.getVeniceServers().get(0).getMetricsRepository();
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          assertTrue(
-              serverRepo.metrics().get(".StuckConsumerRepair--stuck_consumer_found.OccurrenceRate").value() > 0f);
-          assertTrue(
-              serverRepo.metrics().get(".StuckConsumerRepair--ingestion_task_repair.OccurrenceRate").value() > 0f);
-          assertTrue(serverRepo.metrics().get(".StuckConsumerRepair--repair_failure.OccurrenceRate").value() == 0.0f);
-        });
 
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
           try {
@@ -236,6 +227,15 @@ public class TestStuckConsumerRepair {
           } catch (Exception e) {
             throw new VeniceException(e);
           }
+        });
+        // Verify that the stuck consumer repair logic does kick in
+        MetricsRepository serverRepo = venice.getVeniceServers().get(0).getMetricsRepository();
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          assertTrue(
+              serverRepo.metrics().get(".StuckConsumerRepair--stuck_consumer_found.OccurrenceRate").value() > 0f);
+          assertTrue(
+              serverRepo.metrics().get(".StuckConsumerRepair--ingestion_task_repair.OccurrenceRate").value() > 0f);
+          assertTrue(serverRepo.metrics().get(".StuckConsumerRepair--repair_failure.OccurrenceRate").value() == 0.0f);
         });
       }
     } finally {

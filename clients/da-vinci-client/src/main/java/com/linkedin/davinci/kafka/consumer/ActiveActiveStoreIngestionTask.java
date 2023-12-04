@@ -435,6 +435,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     Lazy<ByteBuffer> oldValueByteBufferProvider = unwrapByteBufferFromOldValueProvider(oldValueProvider);
 
+    long beforeDCRTimestampInNs = System.nanoTime();
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(
@@ -449,6 +450,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                            // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
                            // config to represent the mapping from Kafka server URLs to colo ID.
         );
+        getHostLevelIngestionStats()
+            .recordIngestionActiveActivePutLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
         break;
 
       case DELETE:
@@ -459,6 +462,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             sourceOffset,
             kafkaClusterId,
             kafkaClusterId);
+        getHostLevelIngestionStats()
+            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
         break;
 
       case UPDATE:
@@ -472,17 +477,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             sourceOffset,
             kafkaClusterId,
             kafkaClusterId);
+        getHostLevelIngestionStats()
+            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
         break;
       default:
         throw new VeniceMessageException(
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
-
-    aggVersionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
-        storeName,
-        versionNumber,
-        LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestampNs),
-        currentTimeForMetricsMs);
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
