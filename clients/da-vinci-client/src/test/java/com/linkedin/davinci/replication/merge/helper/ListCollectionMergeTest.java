@@ -254,4 +254,24 @@ public class ListCollectionMergeTest extends SortBasedCollectionFieldOperationHa
         allCollectionOps,
         ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
   }
+
+  @Test
+  public void testHandleListOpsCase11() {
+    /**
+     * Put partially overrides collection-merge-only value:
+     *
+     *  - Event 1, at T1, in DC1, merge 1 to list
+     *  - Event 2, at T2, in DC2, delete 1 from list
+     *  - Event 3, at T3, in DC3, merge 1 to list
+     */
+    List<CollectionOperation> allCollectionOps = Arrays.asList(
+        new MergeListOperation(1L, COLO_ID_1, Collections.singletonList(1), Collections.emptyList(), LIST_FIELD_NAME),
+        new MergeListOperation(2L, COLO_ID_2, Collections.emptyList(), Collections.singletonList(1), LIST_FIELD_NAME),
+        new MergeListOperation(3L, COLO_ID_3, Collections.singletonList(1), Collections.emptyList(), LIST_FIELD_NAME));
+    List<Integer> expectedItemsResult = Collections.singletonList(1);
+    applyAllOperationsOnValue(
+        allCollectionOps,
+        ExpectedCollectionResults.createExpectedListResult(LIST_FIELD_NAME, expectedItemsResult));
+  }
+
 }
