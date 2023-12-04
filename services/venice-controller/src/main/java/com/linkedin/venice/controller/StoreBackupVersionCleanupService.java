@@ -3,16 +3,18 @@ package com.linkedin.venice.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controller.stats.StoreBackupVersionCleanupServiceStats;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -22,7 +24,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
@@ -65,20 +66,27 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Map<String, String> urlMap = new HashMap<>();
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
+  private final Map<String, StoreBackupVersionCleanupServiceStats> clusterNameCleanupStatsMap =
+      new VeniceConcurrentHashMap<>();
+
+  private final MetricsRepository metricsRepository;
+
   private final CloseableHttpAsyncClient httpAsyncClient;
 
   private final Time time;
 
   public StoreBackupVersionCleanupService(
       VeniceHelixAdmin admin,
-      VeniceControllerMultiClusterConfig multiClusterConfig) {
-    this(admin, multiClusterConfig, new SystemTime());
+      VeniceControllerMultiClusterConfig multiClusterConfig,
+      MetricsRepository metricsRepository) {
+    this(admin, multiClusterConfig, new SystemTime(), metricsRepository);
   }
 
   protected StoreBackupVersionCleanupService(
       VeniceHelixAdmin admin,
       VeniceControllerMultiClusterConfig multiClusterConfig,
-      Time time) {
+      Time time,
+      MetricsRepository metricsRepository) {
     this.admin = admin;
     this.multiClusterConfig = multiClusterConfig;
     this.allClusters = multiClusterConfig.getClusters();
@@ -86,6 +94,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.sleepInterval = TimeUnit.MINUTES.toMillis(5);
     this.defaultBackupVersionRetentionMs = multiClusterConfig.getBackupVersionDefaultRetentionMs();
     this.time = time;
+    this.metricsRepository = metricsRepository;
+    allClusters.forEach(clusterName -> {
+      clusterNameCleanupStatsMap
+          .put(clusterName, new StoreBackupVersionCleanupServiceStats(metricsRepository, clusterName));
+    });
     this.httpAsyncClient = HttpAsyncClients.custom()
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
         .build();
@@ -127,24 +140,19 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   }
 
   private boolean validateAllRouterOnCurrentVersion(Store store, String clusterName, int versionToValidate) {
-    List<String> urlList = admin.getHelixVeniceClusterResources(clusterName)
-        .getRoutersClusterManager()
-        .getLiveRouterInstances()
-        .stream()
-        .map(
-            instance -> urlMap
-                .computeIfAbsent(instance, k -> HelixUtils.getInstanceFromHelixInstanceName(k).getUrl(true)))
-        .collect(Collectors.toList());
+    Set<Instance> liveRouterInstances =
+        admin.getHelixVeniceClusterResources(clusterName).getRoutersClusterManager().getLiveRouterInstances();
 
-    for (String routerURL: urlList) {
+    for (Instance routerInstance: liveRouterInstances) {
       try {
-        HttpGet routerRequest = new HttpGet(routerURL + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
+        HttpGet routerRequest =
+            new HttpGet(routerInstance.getUrl() + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
         HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
               "Got status code {} from host {} while querying current version for store {}",
               response.getStatusLine().getStatusCode(),
-              routerURL,
+              routerInstance,
               store.getName());
           return false;
         }
@@ -216,6 +224,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionMetadataFetchBasedCleanupEnabled()
         && (!validateAllRouterOnCurrentVersion(store, clusterName, currentVersion)
             || !validateAllServerOnCurrentVersion(store, clusterName, currentVersion))) {
+      StoreBackupVersionCleanupServiceStats stats = clusterNameCleanupStatsMap
+          .computeIfAbsent(clusterName, k -> new StoreBackupVersionCleanupServiceStats(metricsRepository, k));
+      stats.recordBackupVersionMismatch();
       return false;
     }
 

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
@@ -23,6 +24,8 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -160,7 +163,8 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(controllerConfig).when(config).getControllerConfig(anyString());
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
-    StoreBackupVersionCleanupService service = new StoreBackupVersionCleanupService(admin, config);
+    StoreBackupVersionCleanupService service =
+        new StoreBackupVersionCleanupService(admin, config, mock(MetricsRepository.class));
 
     String clusterName = "test_cluster";
     // Store is not qualified because of short life time of backup version
@@ -220,13 +224,14 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(true).when(controllerConfig).isBackupVersionMetadataFetchBasedCleanupEnabled();
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
-    Set<String> strings = new HashSet<>();
-    strings.add("abc_123");
     Set<Instance> instSet = new HashSet<>();
     instSet.add(new Instance("0", "localhost1", 1234));
+    MetricsRepository metricsRepository = mock(MetricsRepository.class);
+    doReturn(mock(Sensor.class)).when(metricsRepository).sensor(anyString(), any());
 
     doReturn(Collections.emptySet()).when(clusterManager).getLiveRouterInstances();
-    StoreBackupVersionCleanupService service = spy(new StoreBackupVersionCleanupService(admin, config));
+    StoreBackupVersionCleanupService service =
+        spy(new StoreBackupVersionCleanupService(admin, config, metricsRepository));
     doReturn(asyncClient).when(service).getHttpAsyncClient();
 
     String clusterName = "test_cluster";
@@ -234,7 +239,7 @@ public class TestStoreBackupVersionCleanupService {
     // Store is qualified, and contains one removable version
     versions.put(1, VersionStatus.ONLINE);
     versions.put(2, VersionStatus.ONLINE);
-    doReturn(strings).when(clusterManager).getLiveRouterInstances();
+    doReturn(instSet).when(clusterManager).getLiveRouterInstances();
     doReturn(instSet).when(liveInstanceMonitor).getAllLiveInstances();
 
     Store storeWithTwoVersions = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 2);
@@ -279,7 +284,10 @@ public class TestStoreBackupVersionCleanupService {
     storeList.add(storeWithTwoVersions);
     doReturn(storeList).when(admin).getAllStores(any());
     TestMockTime time = new TestMockTime();
-    StoreBackupVersionCleanupService service = new StoreBackupVersionCleanupService(admin, config, time);
+    MetricsRepository metricsRepository = mock(MetricsRepository.class);
+    when(metricsRepository.sensor(anyString(), any())).thenReturn(mock(Sensor.class));
+    StoreBackupVersionCleanupService service =
+        new StoreBackupVersionCleanupService(admin, config, time, metricsRepository);
     service.startInner();
     TestUtils.waitForNonDeterministicAssertion(
         1,

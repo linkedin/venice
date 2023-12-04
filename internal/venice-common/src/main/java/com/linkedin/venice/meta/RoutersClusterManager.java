@@ -38,7 +38,7 @@ public interface RoutersClusterManager {
    */
   void subscribeRouterCountChangedEvent(RouterCountChangedListener listener);
 
-  Set<String> getLiveRouterInstances();
+  Set<Instance> getLiveRouterInstances();
 
   /**
    * Stop listening on the router count.
