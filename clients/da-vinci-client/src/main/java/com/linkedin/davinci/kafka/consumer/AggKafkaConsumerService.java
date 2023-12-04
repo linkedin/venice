@@ -213,22 +213,26 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         }
       }
 
-      AtomicBoolean repairSomeIngestionTask = new AtomicBoolean(false);
+      AtomicBoolean hasRepairedSomeIngestionTask = new AtomicBoolean(false);
       versionTopicIngestionTaskMappingForNonExistingTopic.forEach((vt, sit) -> {
-        LOGGER.warn(
-            "The ingestion topics (version topic) are not healthy for "
-                + "store version: {}, will kill the ingestion task to try to unblock shared consumer",
-            vt);
-        /**
-         * The following function call will interrupt all the stuck {@link org.apache.kafka.clients.producer.KafkaProducer#send} call
-         * to non-existing topics.
-         */
-        sit.closeVeniceWriters(false);
-        killIngestionTaskRunnable.accept(vt);
-        repairSomeIngestionTask.set(true);
-        stuckConsumerRepairStats.recordIngestionTaskRepair();
+        try {
+          LOGGER.warn(
+              "The ingestion topics (version topic) are not healthy for "
+                  + "store version: {}, will kill the ingestion task to try to unblock shared consumer",
+              vt);
+          /**
+           * The following function call will interrupt all the stuck {@link org.apache.kafka.clients.producer.KafkaProducer#send} call
+           * to non-existing topics.
+           */
+          sit.closeVeniceWriters(false);
+          killIngestionTaskRunnable.accept(vt);
+          hasRepairedSomeIngestionTask.set(true);
+          stuckConsumerRepairStats.recordIngestionTaskRepair();
+        } catch (Exception e) {
+          LOGGER.error("Hit exception while killing the stuck ingestion task for store version: {}", vt, e);
+        }
       });
-      if (!repairSomeIngestionTask.get()) {
+      if (!hasRepairedSomeIngestionTask.get()) {
         LOGGER.error(
             "Didn't find any suspicious ingestion task, and please contact developers to investigate it further");
         stuckConsumerRepairStats.recordRepairFailure();

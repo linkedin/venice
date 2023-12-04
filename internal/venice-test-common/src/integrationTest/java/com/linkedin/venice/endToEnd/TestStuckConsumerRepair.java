@@ -223,6 +223,17 @@ public class TestStuckConsumerRepair {
         for (int i = 20; i <= 100; i++) {
           sendCustomSizeStreamingRecord(veniceProducer, storeName, i, 1024);
         }
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          try {
+            for (int i = 20; i <= 100; ++i) {
+              checkLargeRecord(client, i);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
         // Verify that the stuck consumer repair logic does kick in
         List<MetricsRepository> serverMetricRepos = new ArrayList<>();
         for (VeniceServerWrapper server: venice.getVeniceServers()) {
@@ -259,16 +270,6 @@ public class TestStuckConsumerRepair {
             assertTrue(serversHasStuckConsumerRepair.get(i), "Server " + i + " do not have stuck consumer");
             assertTrue(serversHasIngestionTaskRepair.get(i), "Server " + i + " did not repair ingestion task");
             assertFalse(serversHasRepairFailure.get(i), "Server " + i + " failed during ingestion task repair");
-          }
-        });
-
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-          try {
-            for (int i = 20; i <= 100; ++i) {
-              checkLargeRecord(client, i);
-            }
-          } catch (Exception e) {
-            throw new VeniceException(e);
           }
         });
       }
