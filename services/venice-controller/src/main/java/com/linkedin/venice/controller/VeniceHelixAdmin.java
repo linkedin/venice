@@ -3177,6 +3177,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 storeName,
                 versionNumber,
                 e);
+            future.cancel(true);
             Thread.currentThread().interrupt();
           } catch (ExecutionException e) {
             LOGGER.error("Exception thrown when deleting da-vinci push status of {}_v{}", storeName, versionNumber, e);
@@ -3184,7 +3185,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             LOGGER.error("Timed out when deleting da-vinci push status of {}_v{}", storeName, versionNumber);
             future.cancel(true);
           } finally {
-            executor.shutdown();
+            executor.shutdownNow();
           }
         }
       }
