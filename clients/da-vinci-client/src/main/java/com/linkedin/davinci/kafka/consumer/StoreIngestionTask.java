@@ -833,7 +833,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return false;
       }
 
-      // non AA stores has issues reading HB SOS from the RT leading to the standby replicas waiting for
+      // non AA stores have issues reading HB SOS from the RT leading to the standby replicas waiting for
       // leader completion state header indefinitely, so disabling it until that issue is resolved
       if (!(getServerConfig().isLeaderCompleteStateCheckEnabled() && this.isActiveActiveReplicationEnabled())) {
         return true;

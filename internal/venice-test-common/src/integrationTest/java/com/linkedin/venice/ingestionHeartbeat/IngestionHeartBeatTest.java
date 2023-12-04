@@ -45,6 +45,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -68,12 +69,12 @@ import org.testng.annotations.Test;
 
 
 /**
- * This class includes tests on partial update (Write Compute) with a setup that has both the parent and child controllers.
+ * This class includes tests for verifying ingestion heartbeat in RT and VT
  */
-public class sendIngestionHeartBeatTest {
+public class IngestionHeartBeatTest {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final int TEST_TIMEOUT_MS = 180_000;
+  private static final int TEST_TIMEOUT_MS = 120_000;
   private static final String CLUSTER_NAME = "venice-cluster0";
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private VeniceControllerWrapper parentController;
@@ -88,10 +89,10 @@ public class sendIngestionHeartBeatTest {
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
-        1,
+        3,
         3,
         1,
-        3,
+        2,
         Optional.of(controllerProps),
         Optional.of(controllerProps),
         Optional.of(serverProperties),
@@ -104,9 +105,11 @@ public class sendIngestionHeartBeatTest {
     this.parentController = parentControllers.get(0);
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS)
-  public void testSendIngestionHeartBeat(boolean isNativeReplicationEnabled, boolean isActiveActiveEnabled)
-      throws IOException {
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS)
+  public void testIngestionHeartBeat(
+      boolean isAmplificationFactorEnabled,
+      boolean isNativeReplicationEnabled,
+      boolean isActiveActiveEnabled) throws IOException {
     final String storeName = Utils.getUniqueString("ingestionHeartBeatTest");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
@@ -116,6 +119,7 @@ public class sendIngestionHeartBeatTest {
     Properties vpjProperties =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     vpjProperties.put(INCREMENTAL_PUSH, true);
+    int amplificationFactor = isAmplificationFactorEnabled ? 2 : 1;
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -130,13 +134,19 @@ public class sendIngestionHeartBeatTest {
               .setPartitionCount(2)
               .setReplicationFactor(2)
               .setNativeReplicationEnabled(isNativeReplicationEnabled)
-              .setActiveActiveReplicationEnabled(isActiveActiveEnabled);
+              .setActiveActiveReplicationEnabled(isActiveActiveEnabled)
+              .setAmplificationFactor(amplificationFactor);
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
       if (!isNativeReplicationEnabled && isActiveActiveEnabled) {
         assertTrue(
             updateStoreResponse.isError(),
-            "Update store should fail when both native replication is disabled but active-active replication is enabled");
+            "Update store should fail when native replication is disabled and active-active replication is enabled");
+        return;
+      } else if (isAmplificationFactorEnabled && isActiveActiveEnabled) {
+        assertTrue(
+            updateStoreResponse.isError(),
+            "Update store should fail when both amplification factor and active-active replication are enabled");
         return;
       }
 
@@ -148,7 +158,7 @@ public class sendIngestionHeartBeatTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
 
       // VPJ incremental push
@@ -189,87 +199,118 @@ public class sendIngestionHeartBeatTest {
             .create(new VeniceProperties(properties), false, PubSubMessageDeserializer.getInstance(), "testConsumer");
 
         for (int partition = 0; partition < response.getPartitions(); partition++) {
-          // 1. subscribe to RT partition to verify HB and leader completed header from HB
-          pubSubConsumer.subscribe(
-              new PubSubTopicPartitionImpl(
-                  new PubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName)),
-                  partition),
-              0);
+          // RT: verify HB is received
+          verifyHBinKafkaTopic(pubSubConsumer, storeName, partition, isActiveActiveEnabled, true);
 
-          AtomicBoolean isHBFound = new AtomicBoolean(false);
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-            Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
-                pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
-            for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
-                .entrySet()) {
-              List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessages = entry.getValue();
-              for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: pubSubMessages) {
-                if (Arrays.equals(message.getKey().getKey(), HEART_BEAT.getKey())) {
-                  isHBFound.set(true);
-                }
-              }
-              if (isHBFound.get()) {
-                break;
-              }
-            }
-            assertTrue(isHBFound.get(), "Heartbeat should be found in RT topic");
-          });
-
-          // 2. unsubscribe from RT topic and subscribe to VT to verify leader topic partition
-          // receives the HB from RT, adds leader completed header and forwards it to VT
-          pubSubConsumer.unSubscribe(
-              new PubSubTopicPartitionImpl(
-                  new PubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName)),
-                  partition));
-
-          pubSubConsumer.subscribe(
-              new PubSubTopicPartitionImpl(
-                  new PubSubTopicRepository().getTopic(Version.composeKafkaTopic(storeName, 1)),
-                  partition),
-              0);
-
-          isHBFound.set(false);
-          AtomicBoolean isLeaderCompletionHeaderFound = new AtomicBoolean(false);
-          AtomicBoolean isLeaderCompleted = new AtomicBoolean(false);
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-            Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
-                pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
-            for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
-                .entrySet()) {
-              List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessages = entry.getValue();
-              for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: pubSubMessages) {
-                if (Arrays.equals(message.getKey().getKey(), HEART_BEAT.getKey())) {
-                  isHBFound.set(true);
-                }
-                PubSubMessageHeaders pubSubMessageHeaders = message.getPubSubMessageHeaders();
-                for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
-                  if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
-                    isLeaderCompletionHeaderFound.set(true);
-                    if (LeaderCompleteState.valueOf(header.value()[0]) == LEADER_COMPLETED) {
-                      isLeaderCompleted.set(true);
-                      break;
-                    }
-                  }
-                }
-              }
-              if (isLeaderCompleted.get()) {
-                break;
-              }
-            }
-            assertTrue(isHBFound.get(), "Heartbeat should be found in VT");
-            assertTrue(isLeaderCompletionHeaderFound.get(), "Leader completed header should be found in VT");
-            assertTrue(isLeaderCompleted.get(), "Leader completed header should be set to completed in VT");
-          });
+          // VT: verify leader topic partition receives HB from RT, and is forwarded with leader completed
+          // header to all VT.
+          List<Integer> subPartitions = PartitionUtils.getSubPartitions(partition, amplificationFactor);
+          for (int _subPartition: subPartitions) {
+            verifyHBinKafkaTopic(pubSubConsumer, storeName, _subPartition, isActiveActiveEnabled, false);
+          }
         }
       }
     }
+  }
+
+  private void verifyHBinKafkaTopic(
+      PubSubConsumerAdapter pubSubConsumer,
+      String storeName,
+      int partition,
+      boolean isActiveActiveEnabled,
+      boolean isRealTime) {
+    pubSubConsumer.subscribe(
+        new PubSubTopicPartitionImpl(
+            new PubSubTopicRepository().getTopic(
+                isRealTime ? Version.composeRealTimeTopic(storeName) : Version.composeKafkaTopic(storeName, 1)),
+            partition),
+        0);
+    AtomicBoolean isHBFound = new AtomicBoolean(false);
+    AtomicBoolean isLeaderCompletionHeaderFound = new AtomicBoolean(false);
+    AtomicBoolean isLeaderCompleted = new AtomicBoolean(false);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+          pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+          .entrySet()) {
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessages = entry.getValue();
+        for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: pubSubMessages) {
+          if (Arrays.equals(message.getKey().getKey(), HEART_BEAT.getKey())) {
+            isHBFound.set(true);
+          }
+          PubSubMessageHeaders pubSubMessageHeaders = message.getPubSubMessageHeaders();
+          for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+            if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
+              isLeaderCompletionHeaderFound.set(true);
+              if (LeaderCompleteState.valueOf(header.value()[0]) == LEADER_COMPLETED) {
+                isLeaderCompleted.set(true);
+                break;
+              }
+            }
+          }
+        }
+        if (isLeaderCompleted.get()) {
+          break;
+        }
+      }
+      if (isActiveActiveEnabled) {
+        assertTrue(
+            isHBFound.get(),
+            String.format("Heartbeat not found in %s partition %d", isRealTime ? "RT" : "VT", partition));
+        if (isRealTime) {
+          assertFalse(
+              isLeaderCompletionHeaderFound.get(),
+              String.format("Leader completed header found in RT partition %d", partition));
+          assertFalse(
+              isLeaderCompleted.get(),
+              String.format("Leader completed header set to completed in RT partition %d", partition));
+        } else {
+          assertTrue(
+              isLeaderCompletionHeaderFound.get(),
+              String.format("Leader completed header not found in VT partition %d", partition));
+          assertTrue(
+              isLeaderCompleted.get(),
+              String.format("Leader completed header not set to completed in VT partition %d", partition));
+        }
+      } else {
+        // If AA is not enabled, leader partition doesn't receive HB in RT and is not forwarded to all VT
+        if (isRealTime) {
+          // Though, in the consumer created for test, RT does receive HB. Should figure out why the consumer task
+          assertTrue(
+              isHBFound.get(),
+              String.format("Heartbeat not found in RT partition %d with AA not enabled", partition));
+        } else {
+          assertFalse(
+              isHBFound.get(),
+              String.format("Heartbeat found in VT partition %d with AA not enabled", partition));
+        }
+        assertFalse(
+            isLeaderCompletionHeaderFound.get(),
+            String.format(
+                "Leader completed header found in %s partition %d with AA not enabled",
+                isRealTime ? "RT" : "VT",
+                partition));
+        assertFalse(
+            isLeaderCompleted.get(),
+            String.format(
+                "Leader completed header set to completed in %s partition %d with AA not enabled",
+                isRealTime ? "RT" : "VT",
+                partition));
+      }
+    });
+
+    pubSubConsumer.unSubscribe(
+        new PubSubTopicPartitionImpl(
+            new PubSubTopicRepository().getTopic(
+                isRealTime ? Version.composeRealTimeTopic(storeName) : Version.composeKafkaTopic(storeName, 1)),
+            partition));
   }
 
   /**
    * Blocking, waits for new version to go online
    */
   private void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient) {
-    String jobName = Utils.getUniqueString("write-compute-job-" + expectedVersionNumber);
+    String jobName = Utils.getUniqueString("incPushJob-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(

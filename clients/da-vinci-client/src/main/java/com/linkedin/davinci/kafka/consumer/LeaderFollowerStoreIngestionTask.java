@@ -3286,9 +3286,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
     super.reportCompleted(partitionConsumptionState, forceCompletion);
-    LeaderFollowerStateType leaderFollowerState = partitionConsumptionState.getLeaderFollowerState();
-    if (leaderFollowerState.equals(LeaderFollowerStateType.LEADER)
-        || leaderFollowerState.equals(LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER)) {
+    // non AA stores have issues reading HB SOS from the RT leading to the standby replicas waiting for
+    // leader completion state header indefinitely, so disabling it until that issue is resolved
+    if (isHybridMode() && isActiveActiveReplicationEnabled()
+        && partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       List<Integer> subPartitions =
           PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor);
       for (int _subPartition: subPartitions) {

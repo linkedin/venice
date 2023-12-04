@@ -141,7 +141,8 @@ def integrationTestBuckets = [
   "G": [
       "com.linkedin.venice.router.*",
       "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
-      "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest"],
+      "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest",
+      "com.linkedin.venice.ingestionHeartBeat.*"],
   "H": [
       "com.linkedin.venice.fastclient.BatchGet*",
       "com.linkedin.venice.fastclient.schema.*",
