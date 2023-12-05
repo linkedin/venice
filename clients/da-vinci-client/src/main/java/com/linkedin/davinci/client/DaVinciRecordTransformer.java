@@ -23,7 +23,9 @@ public interface DaVinciRecordTransformer<K, V, O extends TransformedRecord> {
    *
    * @return a {@link Schema} corresponding to the type of {@link O}.
    */
-  Schema getOutputSchema();
+  Schema getKeyOutputSchema();
+
+  Schema getValueOutputSchema();
 
   /**
    * @param key to be put

@@ -128,6 +128,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -3007,8 +3008,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Do transorfmation recompute key, value and partition
         if (recordTransformer != null) {
-          Lazy<byte[]> lazyKey = Lazy.of(() -> keyBytes);
-          Lazy<ByteBuffer> lazyValue = Lazy.of(() -> put.putValue);
+          Lazy<GenericRecord> lazyKey = Lazy.of(() -> deserializeKeyAndReturn(put.schemaId, keyBytes, consumerRecord));
+          Lazy<GenericRecord> lazyValue =
+              Lazy.of(() -> deserializeValueAndReturn(put.schemaId, put.putValue, consumerRecord));
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue, producedPartition);
           put.putValue = transformedRecord.getValueBytes();
           byte[] newKeyBytes = transformedRecord.getKeyBytes();
@@ -3044,7 +3046,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
 
         if (recordTransformer != null) {
-          Lazy<byte[]> lazyKey = Lazy.of(() -> keyBytes);
+          Lazy<GenericRecord> lazyKey =
+              Lazy.of(() -> deserializeKeyAndReturn(delete.schemaId, keyBytes, consumerRecord));
           TransformedRecord keptRecord = recordTransformer.delete(lazyKey, producedPartition);
           byte[] newKeyBytes = keptRecord.getKeyBytes();
           int newProducedPartition = venicePartitioner.getPartitionId(newKeyBytes, subPartitionCount);
@@ -3250,6 +3253,46 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       new AvroGenericDeserializer<>(schema, schema).deserialize(value);
       LOGGER.info("Value deserialization succeeded with schema id {} for: {}", schemaId, record.getTopicPartition());
       deserializedSchemaIds.set(schemaId, new Object());
+    }
+  }
+
+  private GenericRecord deserializeKeyAndReturn(
+      int schemaId,
+      byte[] key,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+    if (schemaId < 0 || deserializedSchemaIds.get(schemaId) != null || availableSchemaIds.get(schemaId) == null) {
+      LOGGER.warn("Value schema [{}] is not available", schemaId);
+      throw new VeniceException("Value schema [" + schemaId + "] is not available for " + storeName);
+    }
+    SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, schemaId);
+    if (valueSchema != null) {
+      Schema schema = valueSchema.getSchema();
+      LOGGER.info("Value deserialization succeeded with schema id {} for: {}", schemaId, record.getTopicPartition());
+      deserializedSchemaIds.set(schemaId, new Object());
+      return new AvroGenericDeserializer<GenericRecord>(schema, schema).deserialize(key);
+    } else {
+      LOGGER.warn("Value schema is null");
+      throw new VeniceException("Value schema [" + schemaId + "] is null");
+    }
+  }
+
+  private GenericRecord deserializeValueAndReturn(
+      int schemaId,
+      ByteBuffer value,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+    if (schemaId < 0 || deserializedSchemaIds.get(schemaId) != null || availableSchemaIds.get(schemaId) == null) {
+      LOGGER.warn("Value schema [{}] is not available", schemaId);
+      throw new VeniceException("Value schema [" + schemaId + "] is not available for " + storeName);
+    }
+    SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, schemaId);
+    if (valueSchema != null) {
+      Schema schema = valueSchema.getSchema();
+      LOGGER.info("Value deserialization succeeded with schema id {} for: {}", schemaId, record.getTopicPartition());
+      deserializedSchemaIds.set(schemaId, new Object());
+      return new AvroGenericDeserializer<GenericRecord>(schema, schema).deserialize(value);
+    } else {
+      LOGGER.warn("Value schema is null");
+      throw new VeniceException("Value schema [" + schemaId + "] is null");
     }
   }
 
