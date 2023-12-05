@@ -83,6 +83,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERI
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_IDLE_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_WORKER_THREADS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NODE_CAPACITY_RCU;
+import static com.linkedin.venice.ConfigKeys.SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND;
+import static com.linkedin.venice.ConfigKeys.SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_NO_READ_THRESHOLD_SECONDS;
@@ -110,6 +112,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
+import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND;
+import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
@@ -445,6 +450,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long ingestionHeartbeatIntervalMs;
 
+  private final boolean stuckConsumerRepairEnabled;
+  private final int stuckConsumerRepairIntervalSecond;
+  private final int stuckConsumerDetectionRepairThresholdSecond;
+  private final int nonExistingTopicIngestionTaskKillThresholdSecond;
+  private final int nonExistingTopicCheckRetryIntervalSecond;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -731,6 +742,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     metaStoreWriterCloseConcurrency = serverProperties.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     ingestionHeartbeatIntervalMs =
         serverProperties.getLong(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
+
+    stuckConsumerRepairEnabled = serverProperties.getBoolean(SERVER_STUCK_CONSUMER_REPAIR_ENABLED, true);
+    stuckConsumerRepairIntervalSecond = serverProperties.getInt(SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND, 60);
+    stuckConsumerDetectionRepairThresholdSecond =
+        serverProperties.getInt(SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND, 5 * 60); // 5 mins
+    if (stuckConsumerRepairEnabled && stuckConsumerDetectionRepairThresholdSecond < stuckConsumerRepairIntervalSecond) {
+      throw new VeniceException(
+          "Config for " + SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND + ": "
+              + stuckConsumerDetectionRepairThresholdSecond + " should be equal to or larger than "
+              + SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND + ": " + stuckConsumerRepairIntervalSecond);
+    }
+    nonExistingTopicIngestionTaskKillThresholdSecond =
+        serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND, 15 * 60); // 15 mins
+    nonExistingTopicCheckRetryIntervalSecond =
+        serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND, 60); // 1min
   }
 
   long extractIngestionMemoryLimit(
@@ -1283,5 +1309,25 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getIngestionHeartbeatIntervalMs() {
     return ingestionHeartbeatIntervalMs;
+  }
+
+  public boolean isStuckConsumerRepairEnabled() {
+    return stuckConsumerRepairEnabled;
+  }
+
+  public int getStuckConsumerRepairIntervalSecond() {
+    return stuckConsumerRepairIntervalSecond;
+  }
+
+  public int getStuckConsumerDetectionRepairThresholdSecond() {
+    return stuckConsumerDetectionRepairThresholdSecond;
+  }
+
+  public int getNonExistingTopicIngestionTaskKillThresholdSecond() {
+    return nonExistingTopicIngestionTaskKillThresholdSecond;
+  }
+
+  public int getNonExistingTopicCheckRetryIntervalSecond() {
+    return nonExistingTopicCheckRetryIntervalSecond;
   }
 }

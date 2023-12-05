@@ -192,7 +192,8 @@ public class KafkaConsumptionTest {
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         topicExistenceChecker,
-        pubSubDeserializer);
+        pubSubDeserializer,
+        (ignored) -> {});
 
     versionTopic = getTopic();
     int partition = 0;
