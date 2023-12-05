@@ -16,7 +16,7 @@ box "       A group of SITS\n(a dedicated thread pool)" #White
 collections StoreIngestionTasks as SITS
 end box
 queue "Source Kafka Topic" as remote
-queue "Local Version Topic" as VT
+queue "Local Kafka Version Topic" as VT
 box "  KafkaConsumerService\n(a dedicated thread pool)" #White
 collections  KafkaConsumptionTasks as KCTS
 end box
@@ -30,7 +30,7 @@ KIS -> SITS:Manage lifecycle and \nsend commands for SITs
 
 
 ' # leader behavior
-SITS -[#red]> remote:Leaders subscribe to \nsource kafka topics \n(a remote VT or RT) \nwhen consumes remotely
+SITS -[#red]> remote:Leaders subscribe to \nsource kafka topics \n(a remote Version Topic or Real-time Topic) \nwhen consumes remotely
 remote -[#red]> KCTS:Pull msgs from kafka
 KCTS -[#red]> VT:Produce msgs to local VT \nwhen leader consumes remotely
 VT -[#red]> SBDS:Msgs Acked by Kafka \nthen records queued up into drainers

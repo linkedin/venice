@@ -27,7 +27,7 @@ participant "ZooKeeper" as ZK
 participant "Venice Controller" as controller
 participant "Helix" as helix
 participant "Venice component\n(server/controller/router)" as venice
-sra -> ind:Report status
+sra -> ind:Report various ingestion status
 
 ind --> log
 log -> log:Log the message
