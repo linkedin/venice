@@ -564,11 +564,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       if (activeTimestamp == null) {
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
         updated = true;
-      } else if (activeTimestamp != modifyTimestamp) {
-        // activeElementToTsMap.remove(toAddElement);
+      } else if (activeTimestamp < modifyTimestamp) {
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
         updated = true;
-
       }
     }
 
