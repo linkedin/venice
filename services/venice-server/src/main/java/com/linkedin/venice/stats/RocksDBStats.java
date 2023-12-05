@@ -9,13 +9,11 @@ import static org.rocksdb.TickerType.BLOCK_CACHE_DATA_BYTES_INSERT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_DATA_HIT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_DATA_MISS;
 import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_ADD;
-import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_BYTES_EVICT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_BYTES_INSERT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_HIT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_FILTER_MISS;
 import static org.rocksdb.TickerType.BLOCK_CACHE_HIT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_ADD;
-import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_BYTES_EVICT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_BYTES_INSERT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_HIT;
 import static org.rocksdb.TickerType.BLOCK_CACHE_INDEX_MISS;
@@ -51,12 +49,10 @@ public class RocksDBStats extends AbstractVeniceStats {
   private final Sensor blockCacheIndexHit;
   private final Sensor blockCacheIndexAdd;
   private final Sensor blockCacheIndexBytesInsert;
-  private final Sensor blockCacheIndexBytesEvict;
   private final Sensor blockCacheFilterMiss;
   private final Sensor blockCacheFilterHit;
   private final Sensor blockCacheFilterAdd;
   private final Sensor blockCacheFilterBytesInsert;
-  private final Sensor blockCacheFilterBytesEvict;
   private final Sensor blockCacheDataMiss;
   private final Sensor blockCacheDataHit;
   private final Sensor blockCacheDataAdd;
@@ -87,15 +83,11 @@ public class RocksDBStats extends AbstractVeniceStats {
     this.blockCacheIndexAdd = registerSensor("rocksdb_block_cache_index_add", BLOCK_CACHE_INDEX_ADD);
     this.blockCacheIndexBytesInsert =
         registerSensor("rocksdb_block_cache_index_bytes_insert", BLOCK_CACHE_INDEX_BYTES_INSERT);
-    this.blockCacheIndexBytesEvict =
-        registerSensor("rocksdb_block_cache_index_bytes_evict", BLOCK_CACHE_INDEX_BYTES_EVICT);
     this.blockCacheFilterMiss = registerSensor("rocksdb_block_cache_filter_miss", BLOCK_CACHE_FILTER_MISS);
     this.blockCacheFilterHit = registerSensor("rocksdb_block_cache_filter_hit", BLOCK_CACHE_FILTER_HIT);
     this.blockCacheFilterAdd = registerSensor("rocksdb_block_cache_filter_add", BLOCK_CACHE_FILTER_ADD);
     this.blockCacheFilterBytesInsert =
         registerSensor("rocksdb_block_cache_filter_bytes_insert", BLOCK_CACHE_FILTER_BYTES_INSERT);
-    this.blockCacheFilterBytesEvict =
-        registerSensor("rocksdb_block_cache_filter_bytes_evict", BLOCK_CACHE_FILTER_BYTES_EVICT);
     this.blockCacheDataMiss = registerSensor("rocksdb_block_cache_data_miss", BLOCK_CACHE_DATA_MISS);
     this.blockCacheDataHit = registerSensor("rocksdb_block_cache_data_hit", BLOCK_CACHE_DATA_HIT);
     this.blockCacheDataAdd = registerSensor("rocksdb_block_cache_data_add", BLOCK_CACHE_DATA_ADD);
