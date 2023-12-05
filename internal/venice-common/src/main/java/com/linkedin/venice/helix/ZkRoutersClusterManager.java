@@ -47,7 +47,7 @@ public class ZkRoutersClusterManager
 
   private final CachedResourceZkStateListener zkStateListener;
 
-  private final Set<Instance> liveRouterInstanceSet;
+  private Set<Instance> liveRouterInstanceSet;
 
   public ZkRoutersClusterManager(
       ZkClient zkClient,
@@ -83,14 +83,13 @@ public class ZkRoutersClusterManager
     routersClusterConfig = newRoutersClusterConfig;
     zkClient.subscribeStateChanges(zkStateListener);
     // force a live router count update
-    liveRouterInstanceSet.clear();
-    liveRouterInstanceSet.addAll(
-        zkClient.getChildren(getRouterRootPath())
-            .stream()
-            .map(HelixUtils::getInstanceFromHelixInstanceName)
-            .collect(Collectors.toSet()));
+    liveRouterInstanceSet = convertToInstanceSet(zkClient.getChildren(getRouterRootPath()));
     changeLiveRouterCount(liveRouterInstanceSet.size());
     LOGGER.info("Refresh finished for cluster {}'s {}.", clusterName, getClass().getSimpleName());
+  }
+
+  private Set<Instance> convertToInstanceSet(List<String> instanceList) {
+    return instanceList.stream().map(HelixUtils::getInstanceFromHelixInstanceName).collect(Collectors.toSet());
   }
 
   @Override
@@ -295,9 +294,7 @@ public class ZkRoutersClusterManager
   @Override
   public void handleChildChange(String parentPath, List<String> currentChildren) throws Exception {
     int oldLiveRouterCount = liveRouterCount;
-    liveRouterInstanceSet.clear();
-    liveRouterInstanceSet
-        .addAll(currentChildren.stream().map(HelixUtils::getInstanceFromHelixInstanceName).collect(Collectors.toSet()));
+    liveRouterInstanceSet = convertToInstanceSet(currentChildren);
     changeLiveRouterCount(currentChildren.size());
     LOGGER.info("Live router count has been changed from: {} to: {}.", oldLiveRouterCount, currentChildren.size());
   }
