@@ -42,7 +42,6 @@ import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoragePersonaResponse;
-import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -1650,23 +1649,22 @@ public class AdminTool {
 
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
 
-    for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.values()) {
-      MultiStoreInfoResponse srcClusterStoreInfo = srcControllerClient.getClusterStores(srcClusterName);
+    // Check the migration status for system stores in the source and destination clusters
+    MultiStoreResponse srcClusterStores = srcControllerClient.queryStoreList();
+    for (String currStoreName: srcClusterStores.getStores()) {
+      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(currStoreName);
 
-      if (srcClusterStoreInfo != null && srcClusterStoreInfo.getStoreInfoList() != null) {
-        srcClusterStoreInfo.getStoreInfoList()
-            .stream()
-            .filter(storeInfo -> storeInfo.getName().matches(systemStoreType.getSystemStoreName(storeInfo.getName())))
-            .forEach(storeInfo -> printMigrationStatus(srcControllerClient, storeInfo.getName()));
+      if (systemStoreType != null && currStoreName.matches(systemStoreType.getSystemStoreName(currStoreName))) {
+        printMigrationStatus(srcControllerClient, currStoreName);
       }
+    }
 
-      MultiStoreInfoResponse destClusterStoreInfo = srcControllerClient.getClusterStores(destClusterName);
+    MultiStoreResponse destClusterStores = destControllerClient.queryStoreList();
+    for (String currStoreName: destClusterStores.getStores()) {
+      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(currStoreName);
 
-      if (destClusterStoreInfo != null && destClusterStoreInfo.getStoreInfoList() != null) {
-        destClusterStoreInfo.getStoreInfoList()
-            .stream()
-            .filter(storeInfo -> storeInfo.getName().matches(systemStoreType.getSystemStoreName(storeInfo.getName())))
-            .forEach(storeInfo -> printMigrationStatus(destControllerClient, storeInfo.getName()));
+      if (systemStoreType != null && currStoreName.matches(systemStoreType.getSystemStoreName(currStoreName))) {
+        printMigrationStatus(destControllerClient, currStoreName);
       }
     }
 
