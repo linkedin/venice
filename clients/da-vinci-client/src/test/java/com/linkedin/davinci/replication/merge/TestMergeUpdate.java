@@ -486,7 +486,7 @@ public class TestMergeUpdate extends TestMergeBase {
 
     Assert.assertEquals(
         updatedValueRecord.get(STRING_ARRAY_FIELD_NAME),
-        Arrays.asList(new Utf8("key1"), new Utf8("key2"), new Utf8("key3"), new Utf8("key4")));
+        Arrays.asList(new Utf8("key1"), new Utf8("key2"), new Utf8("key4"), new Utf8("key3")));
 
     IndexedHashMap<Utf8, Utf8> expectedMap = new IndexedHashMap<>();
     expectedMap.put(new Utf8("key1"), new Utf8("2"));
@@ -499,7 +499,7 @@ public class TestMergeUpdate extends TestMergeBase {
     GenericRecord updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
     GenericRecord updatedListTsRecord = (GenericRecord) updatedRmdTsRecord.get(STRING_ARRAY_FIELD_NAME);
     Assert.assertEquals(updatedListTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 1L);
-    Assert.assertEquals(updatedListTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 2L, 2L, 2L));
+    Assert.assertEquals(updatedListTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 2L, 2L, 3L));
     Assert.assertEquals(updatedListTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
     Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_FIELD_NAME), Arrays.asList("key5", "key6"));
     Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 3L));
