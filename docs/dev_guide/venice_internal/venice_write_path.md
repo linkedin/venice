@@ -2,6 +2,7 @@
 layout: default
 title: Venice Write Path
 parent: Venice Internal
+grand_parent: Developer Guides
 permalink: /docs/dev_guide/venice_internal/venice_write_path
 ---
 
