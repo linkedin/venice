@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 
@@ -248,6 +249,9 @@ public class TestHeaderUtils {
 
   @Test(groups = "unit")
   public void testRandomWeakUUID() throws Exception {
+    if (System.getProperty("java.version").startsWith("17")) {
+      throw new SkipException("Java 17 does not allow the reflection used in this test.");
+    }
     CompletableFuture<UUID> uuid = new CompletableFuture<>();
 
     Thread thd = new Thread(() -> {
