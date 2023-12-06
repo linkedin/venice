@@ -12,7 +12,7 @@ end box
 box "IngestionBackend"#White
 participant KafkaStoreIngestionService as KIS
 end box
-box "       A group of SITS\n(a dedicated thread pool)" #White
+box "       A group of SITs\n(a dedicated thread pool)" #White
 collections StoreIngestionTasks as SITS
 end box
 queue "Source Kafka Topic" as remote
@@ -26,21 +26,21 @@ end box
 database "StorageEngine" as db
 
 helix -> KIS:Issue state transitions \naccording to partition assignments
-KIS -> SITS:Manage lifecycle and \nsend commands for SITs
+KIS -> SITs:Manage lifecycle and \nsend commands for SITs
 
 
 ' # leader behavior
-SITS -[#red]> remote:Leaders subscribe to \nsource kafka topics \n(a remote Version Topic or Real-time Topic) \nwhen consumes remotely
+SITs -[#red]> remote:Leaders subscribe to \nsource kafka topics \n(a remote Version Topic or Real-time Topic) \nwhen consuming remotely
 remote -[#red]> KCTS:Pull msgs from kafka
 KCTS -[#red]> VT:Produce msgs to local VT \nwhen leader consumes remotely
 VT -[#red]> SBDS:Msgs Acked by Kafka \nthen records queued up into drainers
 
 ' # follower behavior
-SITS -[#green]> VT:Followers subscribe to local VT
+SITs -[#green]> VT:Followers subscribe to local VT
 VT -[#green]> KCTS:Pull msgs from kafka
 KCTS -[#green]> SBDS:Records queued into drainers
 
-SBDS -> SITS:Dequeue the records and invoke methods from SITS to persist
-SITS -> db:Persist records into storage engine
+SBDS -> SITs:Dequeue the records and invoke methods from SITs to persist
+SITs -> db:Persist records into storage engine
 
 @enduml

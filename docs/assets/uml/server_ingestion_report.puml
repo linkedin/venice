@@ -15,14 +15,11 @@ participant IngestionNotificationDispatcher as ind
 box "Notifiers" #White
 participant "Log\nNotifier" as log
 participant "LeaderFollowerStateModel\nNotifier" as LF
-participant "MetaSystemStoreReplicaStatus\nNotifier" as meta
 participant "PushMonitor\nNotifier" as pmf
 participant "PartitionPushStatus\nNotifier" as ppsn
 end box
 
-queue "Meta system store RT" as RT
 
-participant "Venice Fast Client" as FC
 participant "ZooKeeper" as ZK
 participant "Venice Controller" as controller
 participant "Helix" as helix
@@ -33,9 +30,6 @@ ind --> log
 log -> log:Log the message
 ind --> LF
 LF -> LF:Update status on \na countdown latch which controls \na Helix thread \nblocking on OFFLINE -> STANDBY\nuntil a resource in a terminal state
-ind --> meta
-meta -> RT:Write replica status info \nto the meta system store's RT
-RT -> FC:Fast client consumes \nthe RT to know replica status
 ind --> pmf
 pmf -> ZK:Update offline push partition status history on ZK \nPath:<cluster>/OfflinePushes/<store>
 ZK -> controller:Controller listens \nto ZK changes to poll \noverall push status
