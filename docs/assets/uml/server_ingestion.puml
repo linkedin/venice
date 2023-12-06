@@ -13,7 +13,7 @@ box "IngestionBackend"#White
 participant KafkaStoreIngestionService as KIS
 end box
 box "       A group of SITs\n(a dedicated thread pool)" #White
-collections StoreIngestionTasks as SITS
+collections StoreIngestionTasks as SITs
 end box
 queue "Source Kafka Topic" as remote
 queue "Local Kafka Version Topic" as VT
