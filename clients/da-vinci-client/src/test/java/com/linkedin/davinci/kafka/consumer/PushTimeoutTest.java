@@ -74,7 +74,8 @@ public class PushTimeoutTest {
         mockVeniceStoreVersionConfig,
         0,
         false,
-        Optional.empty());
+        Optional.empty(),
+        null);
 
     leaderFollowerStoreIngestionTask.subscribePartition(
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0),
@@ -147,7 +148,8 @@ public class PushTimeoutTest {
         mockVeniceStoreVersionConfig,
         0,
         false,
-        Optional.empty());
+        Optional.empty(),
+        null);
 
     leaderFollowerStoreIngestionTask.subscribePartition(
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0),
