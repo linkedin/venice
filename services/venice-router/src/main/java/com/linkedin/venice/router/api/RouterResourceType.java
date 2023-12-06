@@ -12,7 +12,8 @@ public enum RouterResourceType {
   TYPE_STREAM_HYBRID_STORE_QUOTA("stream_hybrid_store_quota"),
   TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA("stream_reprocessing_hybrid_store_quota"),
   TYPE_STORE_STATE("store_state"), TYPE_PUSH_STATUS("push_status"), TYPE_STORAGE("storage"), TYPE_COMPUTE("compute"),
-  TYPE_ADMIN("admin"), TYPE_RESOURCE_STATE("resource_state"), TYPE_INVALID("invalid");
+  TYPE_ADMIN("admin"), TYPE_RESOURCE_STATE("resource_state"), TYPE_CURRENT_VERSION("current_version"),
+  TYPE_INVALID("invalid");
 
   private static final RouterResourceType[] RESOURCE_TYPE_VALUES = RouterResourceType.values();
   private static final Map<String, RouterResourceType> ROUTER_RESOURCE_TYPE_MAP = getResourceTypeMap();

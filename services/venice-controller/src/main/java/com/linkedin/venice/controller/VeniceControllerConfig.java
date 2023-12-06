@@ -27,6 +27,7 @@ import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
@@ -196,6 +197,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long errorPartitionProcessingCycleDelay;
   private final long backupVersionDefaultRetentionMs;
   private final boolean backupVersionRetentionBasedCleanupEnabled;
+  private final boolean backupVersionMetadataFetchBasedCleanupEnabled;
+
   private final boolean enforceSSLOnly;
   private final long terminalStateTopicCheckerDelayMs;
   private final List<ControllerRoute> disabledRoutes;
@@ -452,6 +455,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
     this.backupVersionRetentionBasedCleanupEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false);
+    this.backupVersionMetadataFetchBasedCleanupEnabled =
+        props.getBoolean(CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED, false);
     this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false); // By default, allow both secure and insecure
                                                                            // routes
     this.terminalStateTopicCheckerDelayMs =
@@ -800,6 +805,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isBackupVersionRetentionBasedCleanupEnabled() {
     return backupVersionRetentionBasedCleanupEnabled;
+  }
+
+  public boolean isBackupVersionMetadataFetchBasedCleanupEnabled() {
+    return backupVersionMetadataFetchBasedCleanupEnabled;
   }
 
   public boolean isControllerEnforceSSLOnly() {

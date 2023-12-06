@@ -111,11 +111,12 @@ public class ZkRoutersClusterManagerTest {
   }
 
   @Test
-  public void testUPdateExpectRouterCount() {
+  public void testUpdateExpectRouterCount() {
     int port = 10555;
     String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
     ZkRoutersClusterManager manager = createManager(zkClient);
     manager.registerRouter(instanceId);
+    Assert.assertEquals(manager.getLiveRouterInstances().size(), 1);
     int expectRouterNumber = -1;
     try {
       manager.updateExpectedRouterCount(expectRouterNumber);

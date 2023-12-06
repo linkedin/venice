@@ -88,6 +88,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
                                                                                     // code sanity
   public static final String TYPE_RESOURCE_STATE = RouterResourceType.TYPE_RESOURCE_STATE.toString();
 
+  public static final String TYPE_CURRENT_VERSION = RouterResourceType.TYPE_CURRENT_VERSION.toString();
+
   private final VeniceVersionFinder versionFinder;
   private final VenicePartitionFinder partitionFinder;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
