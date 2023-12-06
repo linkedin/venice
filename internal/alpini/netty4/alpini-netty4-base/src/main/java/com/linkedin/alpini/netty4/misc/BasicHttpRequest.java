@@ -231,7 +231,10 @@ public class BasicHttpRequest extends DefaultHttpRequest implements BasicRequest
   }
 
   AttributeMap attributeMap() {
-    return Optional.ofNullable(_attributes).orElseGet(() -> _attributes = new DefaultAttributeMap());
+    if (_attributes != null) {
+      return _attributes;
+    }
+    return _attributes = new DefaultAttributeMap();
   }
 
   @SuppressWarnings("unchecked")
