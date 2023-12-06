@@ -8,7 +8,6 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
-import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -3278,30 +3277,5 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     lastSendIngestionHeartbeatTimestamp = currentTimestamp;
-  }
-
-  /**
-   * Once leader is marked completed, immediately send a heart beat message to the local VT such that
-   * followers don't have to wait till the periodic heartbeat to know that the leader is completed
-   */
-  void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
-    super.reportCompleted(partitionConsumptionState, forceCompletion);
-    // non AA stores have issues reading HB SOS from the RT leading to the standby replicas waiting for
-    // leader completion state header indefinitely, so disabling it until that issue is resolved
-    if (isHybridMode() && isActiveActiveReplicationEnabled()
-        && partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      List<Integer> subPartitions =
-          PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor);
-      for (int _subPartition: subPartitions) {
-        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, _subPartition);
-        sendIngestionHeartbeat(
-            topicPartition,
-            null,
-            DEFAULT_LEADER_METADATA_WRAPPER,
-            true,
-            LEADER_COMPLETED,
-            System.currentTimeMillis());
-      }
-    }
   }
 }
