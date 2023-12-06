@@ -3008,12 +3008,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Do transorfmation recompute key, value and partition
         if (recordTransformer != null) {
-          Lazy<GenericRecord> lazyKey = Lazy.of(() -> deserializeKeyAndReturn(put.schemaId, keyBytes, consumerRecord));
-          Lazy<GenericRecord> lazyValue =
-              Lazy.of(() -> deserializeValueAndReturn(put.schemaId, put.putValue, consumerRecord));
-          TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue, producedPartition);
-          put.putValue = transformedRecord.getValueBytes();
-          byte[] newKeyBytes = transformedRecord.getKeyBytes();
+          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
+          SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, put.schemaId);
+          Lazy<GenericRecord> lazyKey =
+              Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
+          Lazy<GenericRecord> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(put.putValue, valueSchema));
+          TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
+          put.putValue = transformedRecord.getValueBytes(valueSchema.getSchema());
+          byte[] newKeyBytes = transformedRecord.getKeyBytes(keySchema.getSchema());
           int newProducedPartition = venicePartitioner.getPartitionId(newKeyBytes, subPartitionCount);
           prependHeaderAndWriteToStorageEngine(newProducedPartition, newKeyBytes, put, currentTimeMs);
         } else {
@@ -3046,10 +3048,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
 
         if (recordTransformer != null) {
+          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           Lazy<GenericRecord> lazyKey =
-              Lazy.of(() -> deserializeKeyAndReturn(delete.schemaId, keyBytes, consumerRecord));
-          TransformedRecord keptRecord = recordTransformer.delete(lazyKey, producedPartition);
-          byte[] newKeyBytes = keptRecord.getKeyBytes();
+              Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
+          TransformedRecord keptRecord = recordTransformer.delete(lazyKey);
+          byte[] newKeyBytes = keptRecord.getKeyBytes(keySchema.getSchema());
           int newProducedPartition = venicePartitioner.getPartitionId(newKeyBytes, subPartitionCount);
           removeFromStorageEngine(newProducedPartition, newKeyBytes, delete);
         } else {
@@ -3256,44 +3259,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private GenericRecord deserializeKeyAndReturn(
-      int schemaId,
-      byte[] key,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
-    if (schemaId < 0 || deserializedSchemaIds.get(schemaId) != null || availableSchemaIds.get(schemaId) == null) {
-      LOGGER.warn("Value schema [{}] is not available", schemaId);
-      throw new VeniceException("Value schema [" + schemaId + "] is not available for " + storeName);
-    }
-    SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, schemaId);
-    if (valueSchema != null) {
-      Schema schema = valueSchema.getSchema();
-      LOGGER.info("Value deserialization succeeded with schema id {} for: {}", schemaId, record.getTopicPartition());
-      deserializedSchemaIds.set(schemaId, new Object());
-      return new AvroGenericDeserializer<GenericRecord>(schema, schema).deserialize(key);
-    } else {
-      LOGGER.warn("Value schema is null");
-      throw new VeniceException("Value schema [" + schemaId + "] is null");
-    }
-  }
-
-  private GenericRecord deserializeValueAndReturn(
-      int schemaId,
-      ByteBuffer value,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
-    if (schemaId < 0 || deserializedSchemaIds.get(schemaId) != null || availableSchemaIds.get(schemaId) == null) {
-      LOGGER.warn("Value schema [{}] is not available", schemaId);
-      throw new VeniceException("Value schema [" + schemaId + "] is not available for " + storeName);
-    }
-    SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, schemaId);
-    if (valueSchema != null) {
-      Schema schema = valueSchema.getSchema();
-      LOGGER.info("Value deserialization succeeded with schema id {} for: {}", schemaId, record.getTopicPartition());
-      deserializedSchemaIds.set(schemaId, new Object());
-      return new AvroGenericDeserializer<GenericRecord>(schema, schema).deserialize(value);
-    } else {
-      LOGGER.warn("Value schema is null");
-      throw new VeniceException("Value schema [" + schemaId + "] is null");
-    }
+  private GenericRecord deserializeAvroObjectAndReturn(ByteBuffer input, SchemaEntry schemaEntry) {
+    return new AvroGenericDeserializer<GenericRecord>(schemaEntry.getSchema(), schemaEntry.getSchema())
+        .deserialize(input);
   }
 
   private void maybeCloseInactiveIngestionTask() {

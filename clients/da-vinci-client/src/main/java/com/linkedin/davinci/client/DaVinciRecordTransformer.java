@@ -30,19 +30,17 @@ public interface DaVinciRecordTransformer<K, V, O extends TransformedRecord> {
   /**
    * @param key to be put
    * @param value to be put
-   * @param partition the put key/value belong to
    * @return the object to keep in storage, or null if the put should be skipped
    */
-  O put(Lazy<K> key, Lazy<V> value, int partition);
+  O put(Lazy<K> key, Lazy<V> value);
 
   /**
    * By default, deletes will proceed. This can be overridden if some deleted records should be kept.
    *
    * @param key to be deleted
-   * @param partition the deleted key belongs to
    * @return the object to keep in storage, or null to proceed with the deletion
    */
-  default O delete(Lazy<K> key, int partition) {
+  default O delete(Lazy<K> key) {
     return null;
   }
 }

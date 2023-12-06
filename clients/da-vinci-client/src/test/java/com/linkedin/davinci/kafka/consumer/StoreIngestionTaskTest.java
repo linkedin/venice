@@ -700,7 +700,8 @@ public abstract class StoreIngestionTaskTest {
         storeConfig,
         leaderSubPartition,
         false,
-        Optional.empty());
+        Optional.empty(),
+        null);
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -2580,7 +2581,8 @@ public abstract class StoreIngestionTaskTest {
         storeConfig,
         leaderSubPartition,
         false,
-        Optional.empty());
+        Optional.empty(),
+        null);
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
 
@@ -2721,7 +2723,8 @@ public abstract class StoreIngestionTaskTest {
         storeConfig,
         leaderSubPartition,
         false,
-        Optional.empty());
+        Optional.empty(),
+        null);
 
     String rtTopicName = Version.composeRealTimeTopic(mockStore.getName());
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rtTopicName);
@@ -2885,7 +2888,8 @@ public abstract class StoreIngestionTaskTest {
         storeConfig,
         leaderSubPartition,
         false,
-        Optional.empty());
+        Optional.empty(),
+        null);
 
     String rtTopicName = Version.composeRealTimeTopic(mockStore.getName());
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(rtTopicName);
@@ -2959,7 +2963,8 @@ public abstract class StoreIngestionTaskTest {
         storeConfig,
         leaderSubPartition,
         false,
-        Optional.empty());
+        Optional.empty(),
+        null);
 
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
     doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
@@ -3032,7 +3037,8 @@ public abstract class StoreIngestionTaskTest {
             mockVeniceStoreVersionConfig,
             0,
             false,
-            Optional.empty());
+            Optional.empty(),
+            null);
 
     TopicSwitch topicSwitch = new TopicSwitch();
     topicSwitch.sourceKafkaServers = Collections.singletonList("localhost");
@@ -3144,7 +3150,8 @@ public abstract class StoreIngestionTaskTest {
             storeConfig,
             -1,
             false,
-            Optional.empty()));
+            Optional.empty(),
+            null));
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
@@ -3474,7 +3481,8 @@ public abstract class StoreIngestionTaskTest {
         storeConfig,
         1,
         false,
-        Optional.empty());
+        Optional.empty(),
+        null);
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
@@ -3566,7 +3574,8 @@ public abstract class StoreIngestionTaskTest {
             mockVeniceStoreVersionConfig,
             0,
             false,
-            Optional.empty());
+            Optional.empty(),
+            null);
     ingestionTask.setPartitionConsumptionState(0, pcs);
     ingestionTask.maybeSendIngestionHeartbeat();
     // Second invocation should be skipped since it shouldn't be time for another heartbeat yet.

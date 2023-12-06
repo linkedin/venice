@@ -1,22 +1,36 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.venice.serializer.AvroSerializer;
 import java.nio.ByteBuffer;
+import org.apache.avro.Schema;
 
 
-public abstract class TransformedRecord<K, V> {
+public class TransformedRecord<K, V> {
   private K key;
   private V value;
 
-  public abstract K getKey();
+  public K getKey() {
+    return key;
+  }
 
-  public abstract void setKey(K key);
+  public void setKey(K key) {
+    this.key = key;
+  }
 
-  public abstract byte[] getKeyBytes();
+  public byte[] getKeyBytes(Schema schema) {
+    return new AvroSerializer(schema).serialize(key);
+  }
 
-  public abstract V getValue();
+  public V getValue() {
+    return value;
+  }
 
-  public abstract void setValue(V value);
+  public void setValue(V value) {
+    this.value = value;
+  }
 
-  public abstract ByteBuffer getValueBytes();
+  public ByteBuffer getValueBytes(Schema schema) {
+    return ByteBuffer.wrap(new AvroSerializer(schema).serialize(value));
+  }
 
 }
