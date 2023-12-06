@@ -118,6 +118,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.LiveInstanceChangedListener;
+import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -721,6 +722,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     liveInstanceMonitor.refresh();
+  }
+
+  public LiveInstanceMonitor getLiveInstanceMonitor(String clusterName) {
+    return liveInstanceMonitorMap.get(clusterName);
   }
 
   public void clearInstanceMonitor(String clusterName) {

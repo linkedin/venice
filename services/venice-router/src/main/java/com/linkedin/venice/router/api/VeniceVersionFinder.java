@@ -75,7 +75,8 @@ public class VeniceVersionFinder {
       throw new StoreDisabledException(storeName, "read");
     }
     Store storeToCheckMigration = store;
-    if (storeToCheckMigration.isMigrating() && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
+    if (storeToCheckMigration.isMigrating() && request != null
+        && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
       Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
       if (config.isPresent()) {
         String newCluster = config.get().getCluster();

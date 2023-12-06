@@ -19,5 +19,9 @@ public enum QueryAction {
   ADMIN,
 
   // METADATA is a GET request to /metadata/storename on the storage node to fetch metadata for that node
-  METADATA
+  METADATA,
+
+  // CURRENT_VERSION is a GET request to /current_version/storename on the storage node to fetch current version for
+  // that store
+  CURRENT_VERSION
 }
