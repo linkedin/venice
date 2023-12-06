@@ -34,7 +34,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -85,9 +84,9 @@ public abstract class AbstractPushMonitor
   private final long offlineJobResourceAssignmentWaitTimeInMilliseconds;
 
   private final PushStatusCollector pushStatusCollector;
-  private final DisabledPartitionStats disabledPartitionStats;
-
   private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
+
+  private final DisabledPartitionStats disabledPartitionStats;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -103,7 +102,7 @@ public abstract class AbstractPushMonitor
       HelixAdminClient helixAdminClient,
       VeniceControllerConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      MetricsRepository metricsRepository) {
+      DisabledPartitionStats disabledPartitionStats) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -115,7 +114,7 @@ public abstract class AbstractPushMonitor
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
     this.helixAdminClient = helixAdminClient;
-    this.disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
+    this.disabledPartitionStats = disabledPartitionStats;
 
     this.disableErrorLeaderReplica = controllerConfig.isErrorLeaderReplicaFailOverEnabled();
     this.helixClientThrottler =
