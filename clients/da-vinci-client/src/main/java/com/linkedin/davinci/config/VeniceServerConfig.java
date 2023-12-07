@@ -75,7 +75,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUN
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
@@ -760,7 +760,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND, 15 * 60); // 15 mins
     nonExistingTopicCheckRetryIntervalSecond =
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND, 60); // 1min
-    leaderCompleteStateCheckEnabled = serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED, true);
+    leaderCompleteStateCheckEnabled =
+        serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, true);
     /** As this is used to ignore the stale heartbeats, defaulting to 5 minutes, inline with {@link SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS} */
     leaderCompleteStateCheckValidIntervalMs =
         serverProperties.getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(5));

@@ -1909,11 +1909,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   /**
    * Checks whether the lag is acceptable for hybrid stores
-   *
-   * If the instance is a standby or DaVinciClient: Also check if
-   * 1. leaderCompleteStatus header has been received and
-   * 2. leader was completed and
-   * 3. the last update time was within 5 seconds
+   * <p>
+   * If the instance is a standby or DaVinciClient: Also check if <br>
+   * 1. the feature is enabled and is AA enabled: In non AA stores, consumer task is unable to read HB messages from RT
+   *           topic (though a test consumer can still read it), leading to standby replicas waiting for leader completion
+   *           state header indefinitely, so disabling it until that issue is resolved. <br>
+   * 2. first HB SOS is received and <br>
+   * 3. leaderCompleteStatus header has been received and <br>
+   * 4. leader was completed and <br>
+   * 5. the last update time was within the configured time interval
    */
   @Override
   protected boolean checkAndLogIfLagIsAcceptableForHybridStore(
@@ -1926,8 +1930,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean isLagAcceptable = offsetLag <= offsetThreshold;
 
     if (isLagAcceptable && isHybridFollower(pcs)) {
-      // non AA stores have issues reading HB SOS from the RT leading to the standby replicas waiting for
-      // leader completion state header indefinitely, so disabling it until that issue is resolved
       if (!(getServerConfig().isLeaderCompleteStateCheckEnabled() && this.isActiveActiveReplicationEnabled())) {
         isLagAcceptable = true;
       } else if (!pcs.isFirstHeartBeatSOSReceived()) {
@@ -1977,22 +1979,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * this topic partition gets a new leader which doesn't support this header yet.
    */
   protected void getAndUpdateLeaderCompletedState(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaValue,
+      ControlMessage controlMessage,
+      PubSubMessageHeaders pubSubMessageHeaders,
       PartitionConsumptionState partitionConsumptionState) {
     if (isHybridFollower(partitionConsumptionState)) {
-      ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
       ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
       if (controlMessageType == ControlMessageType.START_OF_SEGMENT
-          && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+          && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
         boolean isLeaderCompleteHeaderFound = false;
         LeaderCompleteState oldState = partitionConsumptionState.getLeaderCompleteState();
         LeaderCompleteState newState = oldState;
-        PubSubMessageHeaders pubSubMessageHeaders = consumerRecord.getPubSubMessageHeaders();
         for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
           if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
             newState = LeaderCompleteState.valueOf(header.value()[0]);
             partitionConsumptionState
-                .setLastLeaderCompleteStateUpdateInMs(consumerRecord.getValue().producerMetadata.messageTimestamp);
+                .setLastLeaderCompleteStateUpdateInMs(kafkaValue.producerMetadata.messageTimestamp);
             isLeaderCompleteHeaderFound = true;
             break; // only interested in this header here
           }
@@ -2135,7 +2138,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerTaskId + " hasProducedToKafka: Received UPDATE message in non-leader for: "
                 + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getOffset());
       } else if (msgType == MessageType.CONTROL_MESSAGE) {
-        getAndUpdateLeaderCompletedState(consumerRecord, partitionConsumptionState);
+        ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
+        getAndUpdateLeaderCompletedState(
+            kafkaKey,
+            kafkaValue,
+            controlMessage,
+            consumerRecord.getPubSubMessageHeaders(),
+            partitionConsumptionState);
       }
 
       /**

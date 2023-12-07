@@ -12,7 +12,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
@@ -3063,7 +3063,7 @@ public abstract class StoreIngestionTaskTest {
     Map<String, Object> serverProperties = new HashMap<>();
     serverProperties.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000L);
     serverProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS, 5000L);
-    serverProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED, leaderCompleteStateCheckEnabled);
+    serverProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, leaderCompleteStateCheckEnabled);
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
         new RandomPollStrategy(),
@@ -3286,16 +3286,30 @@ public abstract class StoreIngestionTaskTest {
     assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
     assertFalse(partitionConsumptionState.isFirstHeartBeatSOSReceived());
 
+    KafkaKey kafkaKey = pubSubMessage.getKey();
+    KafkaMessageEnvelope kafkaValue = pubSubMessage.getValue();
+    ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
+
     if (!isDaVinciClient) {
       partitionConsumptionState.setLeaderFollowerState(LEADER);
-      ingestionTask.getAndUpdateLeaderCompletedState(pubSubMessage, partitionConsumptionState);
+      ingestionTask.getAndUpdateLeaderCompletedState(
+          kafkaKey,
+          kafkaValue,
+          controlMessage,
+          pubSubMessage.getPubSubMessageHeaders(),
+          partitionConsumptionState);
       assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
       assertFalse(partitionConsumptionState.isFirstHeartBeatSOSReceived());
       assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
     }
 
     partitionConsumptionState.setLeaderFollowerState(STANDBY);
-    ingestionTask.getAndUpdateLeaderCompletedState(pubSubMessage, partitionConsumptionState);
+    ingestionTask.getAndUpdateLeaderCompletedState(
+        kafkaKey,
+        kafkaValue,
+        controlMessage,
+        pubSubMessage.getPubSubMessageHeaders(),
+        partitionConsumptionState);
     if (leaderCompletedHeaderFound) {
       if (isHybrid) {
         assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
