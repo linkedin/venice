@@ -19,16 +19,17 @@ import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.InputStorageQuotaTracker;
 import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
-import com.linkedin.venice.hadoop.recordreader.AbstractVeniceRecordReader;
-import com.linkedin.venice.hadoop.recordreader.avro.VeniceAvroRecordReader;
-import com.linkedin.venice.hadoop.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -424,7 +425,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       Utils.closeQuietlyWithErrorLogged(duplicateKeyPrinter);
       taskProgressHeartbeatScheduler.shutdownNow();
     }
-    if (dataWriterTaskTracker != null) {
+    if (dataWriterTaskTracker == null) {
+      LOGGER.warn("No TaskTracker set");
+    } else {
       dataWriterTaskTracker.trackPartitionWriterClose();
     }
   }
@@ -523,26 +526,19 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     private final boolean isDupKeyAllowed;
 
-    private final String topic;
     private final Schema keySchema;
-    private final AbstractVeniceRecordReader<?, ?> recordReader;
-    private final VeniceKafkaSerializer<?> keySerializer;
+    private final RecordDeserializer<?> keyDeserializer;
     private final GenericDatumWriter<Object> avroDatumWriter;
     private int numOfDupKey = 0;
 
     DuplicateKeyPrinter(VeniceProperties props) {
-      this.topic = props.getString(TOPIC_PROP);
       this.isDupKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
 
-      this.recordReader =
-          props.getBoolean(VSON_PUSH, false) ? new VeniceVsonRecordReader(props) : new VeniceAvroRecordReader(props);
-      this.keySchema = Schema.parse(recordReader.getKeySchemaStr());
-
-      if (recordReader.getKeySerializer() == null) {
-        throw new VeniceException("key serializer can not be null.");
-      }
-
-      this.keySerializer = recordReader.getKeySerializer();
+      AbstractVeniceRecordReader schemaReader = props.getBoolean(VSON_PUSH, false)
+          ? new VeniceVsonRecordReader(props)
+          : VeniceAvroRecordReader.fromProps(props);
+      this.keySchema = schemaReader.getKeySchema();
+      this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
       this.avroDatumWriter = new GenericDatumWriter<>(keySchema);
     }
 
@@ -583,7 +579,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
 
     private String printDuplicateKey(byte[] keyBytes) {
-      Object keyRecord = keySerializer.deserialize(topic, keyBytes);
+      Object keyRecord = keyDeserializer.deserialize(keyBytes);
       try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
         Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(keySchema, output, false);
         avroDatumWriter.write(keyRecord, jsonEncoder);
@@ -599,8 +595,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     @Override
     public void close() {
-      Utils.closeQuietlyWithErrorLogged(recordReader);
-      Utils.closeQuietlyWithErrorLogged(keySerializer);
+      // Nothing to do
     }
   }
 

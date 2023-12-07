@@ -15,7 +15,8 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.hadoop.recordreader.AbstractVeniceRecordReader;
+import com.linkedin.venice.hadoop.VenicePushJobConstants;
+import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.Utils;
@@ -83,14 +84,14 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     if (TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS != getTaskId()) {
       return;
     }
-    byte[] recordValue = new byte[Integer.BYTES];
     for (int i = 0; i < getPartitionCount(); i++) {
+      byte[] recordValue = new byte[Integer.BYTES];
       ByteUtils.writeInt(recordValue, i, 0);
       recordEmitter.accept(EMPTY_BYTES, recordValue);
     }
     dataWriterTaskTracker.trackSprayAllPartitions();
     LOGGER.info(
-        "Map Task ID {} successfully sprayed all partitions, to ensure that all Reducers come up.",
+        "Task ID {} successfully sprayed all partitions, to ensure that all Reducers come up.",
         TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS);
   }
 
@@ -194,11 +195,11 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   }
 
   /**
-   * A => {@link VenicePushJob#COMPRESSION_METRIC_COLLECTION_ENABLED} => if enabled, Compression metrics needs to be collected.
+   * A => {@link VenicePushJobConstants#COMPRESSION_METRIC_COLLECTION_ENABLED} => if enabled, Compression metrics needs to be collected.
    * check {@link VenicePushJob#evaluateCompressionMetricCollectionEnabled} for more details. <br>
-   * B => {@link VenicePushJob#ZSTD_DICTIONARY_CREATION_REQUIRED} => Check {@link VenicePushJob#shouldBuildZstdCompressionDictionary}
+   * B => {@link VenicePushJobConstants#ZSTD_DICTIONARY_CREATION_REQUIRED} => Check {@link VenicePushJob#shouldBuildZstdCompressionDictionary}
    * for more details<br>
-   * C => {@link VenicePushJob#ZSTD_DICTIONARY_CREATION_SUCCESS} => Whether Zstd Dictionary creation is a success.<br><br>
+   * C => {@link VenicePushJobConstants#ZSTD_DICTIONARY_CREATION_SUCCESS} => Whether Zstd Dictionary creation is a success.<br><br>
    *
    * case 1: A is true <br>
    * case 1a: B is true, C is true => Collect Metrics for all compression strategies. <br>
@@ -285,7 +286,6 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
 
   @Override
   public void close() {
-    Utils.closeQuietlyWithErrorLogged(veniceRecordReader);
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 }

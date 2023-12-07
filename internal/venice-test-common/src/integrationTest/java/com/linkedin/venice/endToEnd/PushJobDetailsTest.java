@@ -164,7 +164,7 @@ public class PushJobDetailsTest {
       List<Integer> expectedStatuses = Arrays.asList(
           PushJobDetailsStatus.STARTED.getValue(),
           PushJobDetailsStatus.TOPIC_CREATED.getValue(),
-          PushJobDetailsStatus.WRITE_COMPLETED.getValue(),
+          PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
           PushJobDetailsStatus.COMPLETED.getValue());
 
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {

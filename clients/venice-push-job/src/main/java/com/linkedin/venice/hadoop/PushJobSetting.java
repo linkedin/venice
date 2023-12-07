@@ -127,12 +127,10 @@ public class PushJobSetting implements Serializable {
   public Schema fileSchema;
   public String fileSchemaString;
 
-  public Schema fileStoreSchema;
-
-  public Schema fileKeySchema;
+  public Schema keySchema;
   public String keySchemaString;
 
-  public Schema fileValueSchema;
+  public Schema valueSchema;
   public String valueSchemaString;
 
   public VsonSchema vsonFileKeySchema;

@@ -807,7 +807,8 @@ public class VenicePushJob implements AutoCloseable {
       closeVeniceWriter();
       // Update and send push job details with new info
       updatePushJobDetailsWithDataWriterTracker();
-      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.WRITE_COMPLETED.getValue()));
+      pushJobDetails.overallStatus
+          .add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue()));
       sendPushJobDetailsToController();
       // Waiting for Venice Backend to complete consumption
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_JOB_STATUS_POLLING);
@@ -1858,7 +1859,7 @@ public class VenicePushJob implements AutoCloseable {
    */
   void validateKeySchema(PushJobSetting setting) {
     Schema serverSchema = pushJobSetting.storeKeySchema;
-    Schema clientSchema = pushJobSetting.fileKeySchema;
+    Schema clientSchema = pushJobSetting.keySchema;
     String canonicalizedServerSchema = AvroCompatibilityHelper.toParsingForm(serverSchema);
     String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
@@ -1954,10 +1955,10 @@ public class VenicePushJob implements AutoCloseable {
         if (supersetSchema == null) {
           throw new VeniceException("Superset schema not found for store: " + setting.storeName);
         }
-        if (!validateSubsetValueSchema(pushJobSetting.fileValueSchema, supersetSchema.getSchemaStr())) {
+        if (!validateSubsetValueSchema(pushJobSetting.valueSchema, supersetSchema.getSchemaStr())) {
           throw new VeniceException(
-              "Input value schema is not subset of superset schema. Input value schema: "
-                  + pushJobSetting.fileValueSchema + " , superset schema: " + supersetSchema.getSchemaStr());
+              "Input value schema is not subset of superset schema. Input value schema: " + pushJobSetting.valueSchema
+                  + " , superset schema: " + supersetSchema.getSchemaStr());
         }
         // With new input format, we will need to use the latest update schema to generate partial update record.
         MultiSchemaResponse.Schema latestUpdateSchema =

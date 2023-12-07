@@ -353,10 +353,10 @@ public class TestActiveActiveIngestion {
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-    props.setProperty(TARGETED_REGION_PUSH_ENABLED, true);
-    props.setProperty(POST_VALIDATION_CONSUMPTION_ENABLED, true); // it's true by default but set it here for clarity
+    props.setProperty(TARGETED_REGION_PUSH_ENABLED, "true");
+    props.setProperty(POST_VALIDATION_CONSUMPTION_ENABLED, "true"); // it's true by default but set it here for clarity
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
-    props.setProperty(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+    props.setProperty(REWIND_TIME_IN_SECONDS_OVERRIDE, "0");
     TestWriteUtils.runPushJob("Run repush job", props);
     ControllerClient controllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());

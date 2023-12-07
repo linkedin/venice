@@ -13,7 +13,9 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.hadoop.InputDataInfoProvider;
 import com.linkedin.venice.hadoop.PushJobZstdConfig;
 import com.linkedin.venice.hadoop.VenicePushJobConstants;
-import com.linkedin.venice.hadoop.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.avro.HdfsAvroUtils;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroFileIterator;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -52,14 +54,14 @@ public class TestZstdLibrary {
       LOGGER.info("Collect maximum of {} Bytes from {} files", pushJobZstdConfig.getMaxBytesPerFile(), numOfFiles);
       for (FileStatus fileStatus: fileStatuses) {
         VeniceAvroRecordReader recordReader = new VeniceAvroRecordReader(
-            null,
+            HdfsAvroUtils.getFileSchema(fs, fileStatus.getPath()),
             "key",
             "value",
-            fs,
-            fileStatus.getPath(),
-            ETLValueSchemaTransformation.NONE);
-
-        InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
+            ETLValueSchemaTransformation.NONE,
+            null);
+        VeniceAvroFileIterator avroFileIterator = new VeniceAvroFileIterator(fs, fileStatus.getPath(), recordReader);
+        InputDataInfoProvider.loadZstdTrainingSamples(avroFileIterator, pushJobZstdConfig);
+        Utils.closeQuietlyWithErrorLogged(avroFileIterator);
       }
       LOGGER.info(
           "Collected {} Bytes from {} samples in {} files",

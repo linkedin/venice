@@ -137,7 +137,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       Pair<Schema, Schema> newSchema =
           inputDataInfoProvider.getAvroFileHeader(fileSystem, fileStatus.getPath(), isZstdDictCreationRequired);
       if (!newSchema.getFirst().equals(pushJobSetting.fileSchema)
-          || !newSchema.getSecond().equals(pushJobSetting.fileStoreSchema)) {
+          || !newSchema.getSecond().equals(pushJobSetting.valueSchema)) {
         MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
         LOGGER.error(
             "Error while trying to validate schema: Inconsistent file Avro schema found. File: {}. \n"

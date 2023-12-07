@@ -12,12 +12,16 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
-import com.linkedin.venice.hadoop.recordreader.AbstractVeniceRecordReader;
-import com.linkedin.venice.hadoop.recordreader.avro.VeniceAvroRecordReader;
-import com.linkedin.venice.hadoop.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.VeniceRecordIterator;
+import com.linkedin.venice.hadoop.input.recordreader.avro.HdfsAvroUtils;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroFileIterator;
+import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonFileIterator;
+import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.FileNotFoundException;
@@ -112,19 +116,18 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
       pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
 
-      Pair<Schema, Schema> fileAndStoreSchema;
+      Pair<Schema, Schema> fileAndOutputValueSchema;
       if (!pushJobSetting.useMapperToBuildDict) {
-        fileAndStoreSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
+        fileAndOutputValueSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
       } else {
-        fileAndStoreSchema = getAvroFileHeader(fs, fileStatuses[0].getPath(), false);
+        fileAndOutputValueSchema = getAvroFileHeader(fs, fileStatuses[0].getPath(), false);
       }
 
-      pushJobSetting.fileSchema = fileAndStoreSchema.getFirst();
-      pushJobSetting.fileStoreSchema = fileAndStoreSchema.getSecond();
+      pushJobSetting.fileSchema = fileAndOutputValueSchema.getFirst();
+      pushJobSetting.valueSchema = fileAndOutputValueSchema.getSecond();
 
       pushJobSetting.fileSchemaString = pushJobSetting.fileSchema.toString();
-      pushJobSetting.fileKeySchema = extractAvroSubSchema(pushJobSetting.fileStoreSchema, pushJobSetting.keyField);
-      pushJobSetting.fileValueSchema = extractAvroSubSchema(pushJobSetting.fileStoreSchema, pushJobSetting.valueField);
+      pushJobSetting.keySchema = extractAvroSubSchema(pushJobSetting.fileSchema, pushJobSetting.keyField);
     } else {
       LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
       // key / value fields are optional for Vson input
@@ -145,12 +148,12 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
           ? vsonSchema.getSecond()
           : vsonSchema.getSecond().recordSubtype(pushJobSetting.valueField);
 
-      pushJobSetting.fileKeySchema = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString());
-      pushJobSetting.fileValueSchema = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString());
+      pushJobSetting.keySchema = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString());
+      pushJobSetting.valueSchema = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString());
     }
 
-    pushJobSetting.keySchemaString = pushJobSetting.fileKeySchema.toString();
-    pushJobSetting.valueSchemaString = pushJobSetting.fileValueSchema.toString();
+    pushJobSetting.keySchemaString = pushJobSetting.keySchema.toString();
+    pushJobSetting.valueSchemaString = pushJobSetting.valueSchema.toString();
 
     return new InputDataInfo(
         inputFileDataSize.get(),
@@ -162,10 +165,10 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
   private boolean hasRecords(boolean isAvroFile, FileSystem fs, FileStatus[] fileStatusList) {
     for (FileStatus fileStatus: fileStatusList) {
-      AbstractVeniceRecordReader recordReader = isAvroFile
-          ? getVeniceAvroRecordReader(fs, fileStatus.getPath())
-          : getVeniceVsonRecordReader(fs, fileStatus.getPath());
-      if (recordReader.iterator().hasNext()) {
+      VeniceRecordIterator recordIterator = isAvroFile
+          ? getVeniceAvroFileIterator(fs, fileStatus.getPath())
+          : getVeniceVsonFileIterator(fs, fileStatus.getPath());
+      if (recordIterator.next()) {
         return true;
       }
     }
@@ -259,29 +262,34 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       boolean isZstdDictCreationRequired) {
     LOGGER.debug("path:{}", path.toUri().getPath());
     VeniceVsonRecordReader recordReader = getVeniceVsonRecordReader(fs, path);
-
+    VeniceVsonFileIterator fileIterator = new VeniceVsonFileIterator(fs, path, recordReader);
     if (isZstdDictCreationRequired) {
       if (!pushJobSetting.isIncrementalPush) {
         if (!pushJobSetting.useMapperToBuildDict) {
           /** If dictionary compression is enabled for version, read the records to get training samples */
           if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-            InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
+            InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
           }
         } else {
           /** If dictionary compression is enabled for version or compression metric collection is enabled,
            * read the records to get training samples
            */
-          InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
+          InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
         }
       }
     }
+    Utils.closeQuietlyWithErrorLogged(fileIterator);
     return recordReader.getMetadataMap();
   }
 
   private VeniceVsonRecordReader getVeniceVsonRecordReader(FileSystem fs, Path path) {
     String keyField = props.getString(KEY_FIELD_PROP, "");
     String valueField = props.getString(VALUE_FIELD_PROP, "");
-    return new VeniceVsonRecordReader(null, keyField, valueField, fs, path);
+    return new VeniceVsonRecordReader(keyField, valueField, fs, path);
+  }
+
+  private VeniceVsonFileIterator getVeniceVsonFileIterator(FileSystem fs, Path path) {
+    return new VeniceVsonFileIterator(fs, path, getVeniceVsonRecordReader(fs, path));
   }
 
   @Override
@@ -343,35 +351,41 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   protected Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean isZstdDictCreationRequired) {
     LOGGER.debug("path:{}", path.toUri().getPath());
     VeniceAvroRecordReader recordReader = getVeniceAvroRecordReader(fs, path);
+    VeniceAvroFileIterator fileIterator = new VeniceAvroFileIterator(fs, path, recordReader);
 
     if (isZstdDictCreationRequired) {
       if (!pushJobSetting.isIncrementalPush) {
         if (!pushJobSetting.useMapperToBuildDict) {
           /** If dictionary compression is enabled for version, read the records to get training samples */
           if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-            InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
+            InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
           }
         } else {
           /** If dictionary compression is enabled for version or compression metric collection is enabled,
            * read the records to get training samples
            */
-          InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
+          InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
         }
       }
     }
-    return new Pair<>(recordReader.getFileSchema(), recordReader.getStoreSchema());
+
+    Utils.closeQuietlyWithErrorLogged(fileIterator);
+    return new Pair<>(recordReader.getDatasetSchema(), recordReader.getValueSchema());
   }
 
   private VeniceAvroRecordReader getVeniceAvroRecordReader(FileSystem fs, Path path) {
     String keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
     return new VeniceAvroRecordReader(
-        null,
+        HdfsAvroUtils.getFileSchema(fs, path),
         keyField,
         valueField,
-        fs,
-        path,
-        pushJobSetting.etlValueSchemaTransformation);
+        pushJobSetting.etlValueSchemaTransformation,
+        null);
+  }
+
+  private VeniceRecordIterator getVeniceAvroFileIterator(FileSystem fs, Path path) {
+    return new VeniceAvroFileIterator(fs, path, getVeniceAvroRecordReader(fs, path));
   }
 
   @Override

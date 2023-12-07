@@ -779,14 +779,13 @@ public class VenicePushJobTest {
         pushJobSetting.valueField = properties.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
 
         pushJobSetting.fileSchema = schema;
-        pushJobSetting.fileStoreSchema = schema;
+        pushJobSetting.valueSchema = schema.getField(pushJobSetting.valueField).schema();
 
         pushJobSetting.fileSchemaString = SIMPLE_FILE_SCHEMA_STR;
-        pushJobSetting.fileKeySchema = pushJobSetting.fileStoreSchema.getField(pushJobSetting.keyField).schema();
-        pushJobSetting.fileValueSchema = pushJobSetting.fileStoreSchema.getField(pushJobSetting.valueField).schema();
+        pushJobSetting.keySchema = pushJobSetting.fileSchema.getField(pushJobSetting.keyField).schema();
 
-        pushJobSetting.keySchemaString = pushJobSetting.fileKeySchema.toString();
-        pushJobSetting.valueSchemaString = pushJobSetting.fileValueSchema.toString();
+        pushJobSetting.keySchemaString = pushJobSetting.keySchema.toString();
+        pushJobSetting.valueSchemaString = pushJobSetting.valueSchema.toString();
       }
 
       return getMockInputDataInfoProvider();
