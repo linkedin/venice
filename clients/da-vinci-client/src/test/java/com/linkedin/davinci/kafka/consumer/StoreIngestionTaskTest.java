@@ -3210,8 +3210,11 @@ public abstract class StoreIngestionTaskTest {
         !(leaderCompleteStateCheckEnabled && isActiveActiveReplicationEnabled));
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testGetAndUpdateLeaderCompletedState(boolean isDaVinciClient, boolean leaderCompletedHeaderFound) {
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetAndUpdateLeaderCompletedState(
+      boolean isHybrid,
+      boolean isDaVinciClient,
+      boolean leaderCompletedHeaderFound) {
 
     int partitionCount = 2;
     int amplificationFactor = 1;
@@ -3220,8 +3223,18 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
-    MockStoreVersionConfigs storeAndVersionConfigs =
-        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.empty(), false, true, true);
+    HybridStoreConfig hybridStoreConfig = null;
+    if (isHybrid) {
+      hybridStoreConfig =
+          new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
+    }
+    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
+        partitionCount,
+        partitionerConfig,
+        Optional.ofNullable(hybridStoreConfig),
+        false,
+        true,
+        true);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
@@ -3284,13 +3297,18 @@ public abstract class StoreIngestionTaskTest {
     partitionConsumptionState.setLeaderFollowerState(STANDBY);
     ingestionTask.getAndUpdateLeaderCompletedState(pubSubMessage, partitionConsumptionState);
     if (leaderCompletedHeaderFound) {
-      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
-      assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), producerTimestamp);
+      if (isHybrid) {
+        assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
+        assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), producerTimestamp);
+      } else {
+        assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
+        assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
+      }
     } else {
       assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
       assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
     }
-    assertTrue(partitionConsumptionState.isFirstHeartBeatSOSReceived());
+    assertEquals(partitionConsumptionState.isFirstHeartBeatSOSReceived(), isHybrid);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
