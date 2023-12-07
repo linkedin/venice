@@ -14,6 +14,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.meta.AbstractClientRoutingStrategy;
@@ -103,6 +104,8 @@ public class TestClientSimulator implements Client {
   private int longTailRetryThresholdForSingleGetInMicroseconds = 0;
   private boolean longTailRetryEnabledForBatchGet = false;
   private int longTailRetryThresholdForBatchGetInMicroSeconds = 0;
+
+  private int expectedValueSchemaId = 1;
 
   private static class UnitTestRoutingStrategy extends AbstractClientRoutingStrategy {
     @Override
@@ -201,6 +204,11 @@ public class TestClientSimulator implements Client {
     }
     timeToEvents.putIfAbsent(timeTick, new ArrayList<>());
     timeToEvents.get(timeTick).add(new SendResponseEvent(requestIdToRequestInfos.get(requestId), errorCode));
+    return this;
+  }
+
+  public TestClientSimulator setExpectedValueSchemaId(int id) {
+    expectedValueSchemaId = id;
     return this;
   }
 
@@ -396,7 +404,7 @@ public class TestClientSimulator implements Client {
           MultiGetResponseRecordV1 rec = new MultiGetResponseRecordV1();
           rec.value = ByteBuffer.wrap(keySerializer.serialize(info.keyValues.get(info.orderedKeys.get(i))));
           rec.keyIndex = i;
-          rec.schemaId = 1;
+          rec.schemaId = expectedValueSchemaId;
           multiGetResponse.add(rec);
         }
         RestResponseBuilder restResponseBuilder = new RestResponseBuilder();
@@ -585,7 +593,12 @@ public class TestClientSimulator implements Client {
 
       @Override
       public Schema getValueSchema(int id) {
-        return KEY_VALUE_SCHEMA;
+        if (id == expectedValueSchemaId) {
+          return KEY_VALUE_SCHEMA;
+        } else {
+          throw new VeniceException(
+              "Unexpected get schema call with id: " + id + ", expecting value schema id: " + expectedValueSchemaId);
+        }
       }
 
       @Override

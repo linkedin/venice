@@ -562,7 +562,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     requestContext.recordRequestDeserializationTime(
         transportClientResponse.getRouteId(),
         getLatencyInNS(nanoTsBeforeRequestDeserialization));
-    RecordDeserializer<V> dataRecordDeserializer = getDataRecordDeserializer(transportClientResponse.getSchemaId());
 
     List<MultiKeyRequestContext.KeyInfo<K>> keyInfos =
         requestContext.keysForRoutes(transportClientResponse.getRouteId());
@@ -572,6 +571,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     VeniceCompressor compressor =
         metadata.getCompressor(transportClientResponse.getCompressionStrategy(), requestContext.currentVersion);
     for (MultiGetResponseRecordV1 r: records) {
+      // Since the underlying FastSerializerDeserializerFactory is caching deserializers by reader, writer and object
+      // class. Retrieving the corresponding deserializer per record should be fast here after initial warmup.
+      RecordDeserializer<V> dataRecordDeserializer = getDataRecordDeserializer(r.getSchemaId());
       long nanoTsBeforeDecompression = System.nanoTime();
       ByteBuffer decompressRecord = decompressRecord(
           transportClientResponse.getCompressionStrategy(),
