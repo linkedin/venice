@@ -3,10 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
-import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -73,8 +70,6 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
-import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -97,7 +92,6 @@ import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.writer.LeaderCompleteState;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
@@ -758,105 +752,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return storagePartitionConfig;
   }
 
-  /**
-   * HeartBeat SOS messages carry the leader completion state in the header. This function extracts the leader completion
-   * state from that header and updates the {@param partitionConsumptionState} accordingly. <p>
-   * If there is no leader completion state header, reset the leader completion state to
-   * {@link LeaderCompleteState#LEADER_COMPLETE_STATE_UNKNOWN} as the leader don't know about this header
-   * (using old version of the code) or the leader may have rolled back to a version that doesn't support this header or
-   * this topic partition gets a new leader which doesn't support this header yet.
-   */
-  protected void getAndUpdateLeaderCompletedState(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState) {
-    if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-      ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
-      ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-      if (controlMessageType == ControlMessageType.START_OF_SEGMENT
-          && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-        boolean isLeaderCompleteHeaderFound = false;
-        LeaderCompleteState oldState = partitionConsumptionState.getLeaderCompleteState();
-        LeaderCompleteState newState = oldState;
-        PubSubMessageHeaders pubSubMessageHeaders = consumerRecord.getPubSubMessageHeaders();
-        for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
-          if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
-            newState = LeaderCompleteState.valueOf(header.value()[0]);
-            partitionConsumptionState
-                .setLastLeaderCompleteStateUpdateInMs(consumerRecord.getValue().producerMetadata.messageTimestamp);
-            isLeaderCompleteHeaderFound = true;
-            break; // only interested in this header here
-          }
-        }
-        if (!isLeaderCompleteHeaderFound) {
-          // reset LeaderCompleteState: If a leader originally sent this header but later is rolled back to a version
-          // that doesn't support this header or this TP gets a new leader which doesn't support this header yet.
-          newState = LEADER_COMPLETE_STATE_UNKNOWN;
-        }
-
-        if (oldState != newState) {
-          LOGGER.info(
-              "LeaderCompleteState for store {} version {} partition {} changed from {} to {}",
-              storeName,
-              versionNumber,
-              partitionConsumptionState.getPartition(),
-              oldState,
-              newState);
-          partitionConsumptionState.setLeaderCompleteState(newState);
-        } else {
-          LOGGER.debug(
-              "LeaderCompleteState for store {} version {} partition {} received from leader: {} and is unchanged from the previous state",
-              storeName,
-              versionNumber,
-              partitionConsumptionState.getPartition(),
-              newState);
-        }
-        if (!partitionConsumptionState.isFirstHeartBeatSOSReceived()) {
-          partitionConsumptionState.setFirstHeartBeatSOSReceived(true);
-        }
-      }
-    }
-  }
+  protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
 
   /**
    * Checks whether the lag is acceptable for hybrid stores
-   *
-   * If the instance is a standby or DaVinciClient: Also check if
-   * 1. leaderCompleteStatus header has been received and
-   * 2. leader was completed and
-   * 3. the last update time was within 5 seconds
    */
-  protected boolean isLagAcceptableForHybridStore(PartitionConsumptionState pcs, long offsetLag, long offsetThreshold) {
-    boolean isLagAcceptable = (offsetLag <= offsetThreshold);
-
-    if (isHybridMode() && (isDaVinciClient || pcs.getLeaderFollowerState().equals(STANDBY))) {
-      if (!isLagAcceptable) {
-        return false;
-      }
-
-      // non AA stores have issues reading HB SOS from the RT leading to the standby replicas waiting for
-      // leader completion state header indefinitely, so disabling it until that issue is resolved
-      if (!(getServerConfig().isLeaderCompleteStateCheckEnabled() && this.isActiveActiveReplicationEnabled())) {
-        return true;
-      }
-
-      // wait for the first HB to know if the leader supports sending LeaderCompleteState or not
-      if (!pcs.isFirstHeartBeatSOSReceived()) {
-        return false;
-      }
-
-      // if the leader don't support LeaderCompleteState
-      if (pcs.getLeaderCompleteState().equals(LEADER_COMPLETE_STATE_UNKNOWN)) {
-        return true;
-      }
-
-      // check if the leader is completed and the last update time was within the configured time
-      return (pcs.isLeaderCompleted()
-          && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
-              .getLeaderCompleteStateCheckValidIntervalMs()));
-    } else {
-      return isLagAcceptable;
-    }
-  }
+  protected abstract boolean checkAndLogIfLagIsAcceptableForHybridStore(
+      PartitionConsumptionState partitionConsumptionState,
+      long offsetLag,
+      long offsetThreshold,
+      boolean shouldLogLag,
+      boolean isOffsetBasedLag,
+      long latestConsumedProducerTimestamp);
 
   /**
    * This function checks various conditions to verify if a store is ready to serve.
@@ -913,28 +820,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
          */
         if (offsetThreshold >= 0) {
-          long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
-          isLagAcceptable = isLagAcceptableForHybridStore(partitionConsumptionState, lag, offsetThreshold);
-
-          if (shouldLogLag) {
-            String lagLogFooter;
-            if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-              lagLogFooter = ". Leader Complete State: {"
-                  + partitionConsumptionState.getLeaderCompleteState().toString() + "}, Last update In Ms: {"
-                  + partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs() + "}.";
-            } else {
-              lagLogFooter = "";
-            }
-            LOGGER.info(
-                "{} [Offset lag] partition {} is {}lagging. Lag: [{}] {} Threshold [{}]{}",
-                consumerTaskId,
-                partitionId,
-                (isLagAcceptable ? "not " : ""),
-                lag,
-                (isLagAcceptable ? "<" : ">"),
-                offsetThreshold,
-                lagLogFooter);
-          }
+          isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
+              partitionConsumptionState,
+              measureHybridOffsetLag(partitionConsumptionState, shouldLogLag),
+              offsetThreshold,
+              shouldLogLag,
+              true,
+              0);
         }
 
         /**
@@ -952,32 +844,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 latestConsumedProducerTimestamp,
                 partitionConsumptionState);
           }
-          long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp);
-          boolean timestampLagIsAcceptable = isLagAcceptableForHybridStore(
+          boolean timestampLagIsAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
               partitionConsumptionState,
-              producerTimestampLag,
-              producerTimeLagThresholdInMS);
-
-          if (shouldLogLag) {
-            String lagLogFooter;
-            if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-              lagLogFooter = ". Leader Complete State: {"
-                  + partitionConsumptionState.getLeaderCompleteState().toString() + "}, Last update In Ms: {"
-                  + partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs() + "}.";
-            } else {
-              lagLogFooter = "";
-            }
-            LOGGER.info(
-                "{} [Time lag] partition {} is {}lagging. The latest producer timestamp is {}. Timestamp Lag: [{}] {} Threshold [{}]{}",
-                consumerTaskId,
-                partitionId,
-                (!timestampLagIsAcceptable ? "" : "not "),
-                latestConsumedProducerTimestamp,
-                producerTimestampLag,
-                (timestampLagIsAcceptable ? "<" : ">"),
-                producerTimeLagThresholdInMS,
-                lagLogFooter);
-          }
+              LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp),
+              producerTimeLagThresholdInMS,
+              shouldLogLag,
+              false,
+              latestConsumedProducerTimestamp);
           /**
            * If time lag is not acceptable but the producer timestamp of the last message of RT is smaller or equal than
            * the known latest producer timestamp in server, it means ingestion task has reached the end of RT, so it's
@@ -1008,11 +881,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             final PubSubTopic lagMeasurementTopic = pubSubTopicRepository.getTopic(realTimeTopic.getName());
             final PubSubTopicPartition pubSubTopicPartition =
                 new PubSubTopicPartitionImpl(lagMeasurementTopic, partitionId);
+
             // DaVinci and STANDBY checks the local consumption and leaderCompleteState status
             final String lagMeasurementKafkaUrl =
-                (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY))
-                    ? localKafkaServer
-                    : realTimeTopicKafkaURL;
+                (isHybridFollower(partitionConsumptionState)) ? localKafkaServer : realTimeTopicKafkaURL;
 
             if (!cachedPubSubMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), realTimeTopic)) {
               timestampLagIsAcceptable = true;
@@ -1808,15 +1680,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * task state transition in Controller.
      */
     try {
-      // For leaders: if offset lag is acceptable, report completed directly, otherwise rely on the
-      // normal ready-to-serve checker. Followers call read-to-serve checker as it looks for leader
-      // completion status as well along with lag.
+      // Compare the offset lag is acceptable or not, if acceptable, report completed directly, otherwise rely on the
+      // normal ready-to-server checker.
       boolean isCompletedReport = false;
       long offsetLagDeltaRelaxFactor = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart();
       long previousOffsetLag = newPartitionConsumptionState.getOffsetRecord().getOffsetLag();
-      if (hybridStoreConfig.isPresent()
-          && newPartitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.LEADER
-          && newPartitionConsumptionState.isEndOfPushReceived()) {
+      if (hybridStoreConfig.isPresent() && newPartitionConsumptionState.isEndOfPushReceived()) {
         long offsetLagThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
         // Only enable this feature with positive offset lag delta relax factor and offset lag threshold.
         if (offsetLagDeltaRelaxEnabled && offsetLagThreshold > 0) {
@@ -1834,11 +1703,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               reportCompleted(newPartitionConsumptionState, true);
               isCompletedReport = true;
             }
+            // Clear offset lag in metadata, it is only used in restart.
+            newPartitionConsumptionState.getOffsetRecord().setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
           }
         }
       }
-      // Clear offset lag in metadata, it is only used in restart.
-      newPartitionConsumptionState.getOffsetRecord().setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
       if (!isCompletedReport) {
         defaultReadyToServeChecker.apply(newPartitionConsumptionState);
       }

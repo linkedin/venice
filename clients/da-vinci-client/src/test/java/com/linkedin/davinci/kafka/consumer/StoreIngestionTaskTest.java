@@ -129,7 +129,6 @@ import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -2298,7 +2297,7 @@ public abstract class StoreIngestionTaskTest {
       // send HB SOS
       for (int partition: ALL_PARTITIONS) {
         PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
-            new PubSubTopicImpl(Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1)),
+            pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1)),
             partition);
         localVeniceWriter.sendHeartbeat(
             topicPartition,
@@ -3024,8 +3023,9 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
-  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testIsLagAcceptableForHybridStore(
+  @Test(dataProvider = "Five-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testCheckAndLogIfLagIsAcceptableForHybridStore(
+      boolean isOffsetBasedLag,
       boolean isDaVinciClient,
       boolean isLeader,
       boolean isActiveActiveReplicationEnabled,
@@ -3102,15 +3102,25 @@ public abstract class StoreIngestionTaskTest {
     if (!isDaVinciClient) {
       doReturn(LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
       assertFalse(
-          storeIngestionTaskUnderTest
-              .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
+          storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+              mockPartitionConsumptionState,
+              offsetLag,
+              offsetThreshold,
+              false,
+              isOffsetBasedLag,
+              0));
     }
 
     // case 2: offsetLag > offsetThreshold and instance is not a leader
     doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
     assertFalse(
-        storeIngestionTaskUnderTest
-            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
+        storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            false,
+            isOffsetBasedLag,
+            0));
 
     // Case 3: offsetLag <= offsetThreshold and instance is not a standby or DaVinciClient
     offsetLag = 50;
@@ -3118,8 +3128,13 @@ public abstract class StoreIngestionTaskTest {
     if (!isDaVinciClient) {
       doReturn(LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
       assertTrue(
-          storeIngestionTaskUnderTest
-              .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
+          storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+              mockPartitionConsumptionState,
+              offsetLag,
+              offsetThreshold,
+              false,
+              isOffsetBasedLag,
+              0));
     }
 
     // Case 4: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
@@ -3127,8 +3142,13 @@ public abstract class StoreIngestionTaskTest {
     doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
     doReturn(false).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
     assertEquals(
-        storeIngestionTaskUnderTest
-            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold),
+        storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            false,
+            isOffsetBasedLag,
+            0),
         !(leaderCompleteStateCheckEnabled && isActiveActiveReplicationEnabled));
 
     // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
@@ -3136,8 +3156,13 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
     doReturn(LEADER_COMPLETE_STATE_UNKNOWN).when(mockPartitionConsumptionState).getLeaderCompleteState();
     assertTrue(
-        storeIngestionTaskUnderTest
-            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
+        storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            false,
+            isOffsetBasedLag,
+            0));
 
     // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
@@ -3147,8 +3172,13 @@ public abstract class StoreIngestionTaskTest {
     doReturn(System.currentTimeMillis() - 1000).when(mockPartitionConsumptionState)
         .getLastLeaderCompleteStateUpdateInMs();
     assertTrue(
-        storeIngestionTaskUnderTest
-            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold));
+        storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            false,
+            isOffsetBasedLag,
+            0));
 
     // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
@@ -3156,8 +3186,13 @@ public abstract class StoreIngestionTaskTest {
     doReturn(System.currentTimeMillis() - 6000).when(mockPartitionConsumptionState)
         .getLastLeaderCompleteStateUpdateInMs();
     assertEquals(
-        storeIngestionTaskUnderTest
-            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold),
+        storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            false,
+            isOffsetBasedLag,
+            0),
         !(leaderCompleteStateCheckEnabled && isActiveActiveReplicationEnabled));
 
     // Case 8: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
@@ -3165,8 +3200,13 @@ public abstract class StoreIngestionTaskTest {
     // and leader is not completed
     doReturn(LEADER_NOT_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
     assertEquals(
-        storeIngestionTaskUnderTest
-            .isLagAcceptableForHybridStore(mockPartitionConsumptionState, offsetLag, offsetThreshold),
+        storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
+            mockPartitionConsumptionState,
+            offsetLag,
+            offsetThreshold,
+            false,
+            isOffsetBasedLag,
+            0),
         !(leaderCompleteStateCheckEnabled && isActiveActiveReplicationEnabled));
   }
 
@@ -3197,15 +3237,17 @@ public abstract class StoreIngestionTaskTest {
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
-    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
-        mockStore,
-        version,
-        kafkaProps,
-        isCurrentVersion,
-        storeConfig,
-        leaderSubPartition,
-        false,
-        Optional.empty());
+    LeaderFollowerStoreIngestionTask ingestionTask =
+        (LeaderFollowerStoreIngestionTask) ingestionTaskFactory.getNewIngestionTask(
+            mockStore,
+            version,
+            kafkaProps,
+            isCurrentVersion,
+            storeConfig,
+            leaderSubPartition,
+            false,
+            Optional.empty());
+
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     PartitionConsumptionState partitionConsumptionState =
         new PartitionConsumptionState(PARTITION_FOO, amplificationFactor, mockOffsetRecord, true);
@@ -3233,14 +3275,14 @@ public abstract class StoreIngestionTaskTest {
 
     if (!isDaVinciClient) {
       partitionConsumptionState.setLeaderFollowerState(LEADER);
-      storeIngestionTaskUnderTest.getAndUpdateLeaderCompletedState(pubSubMessage, partitionConsumptionState);
+      ingestionTask.getAndUpdateLeaderCompletedState(pubSubMessage, partitionConsumptionState);
       assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
       assertFalse(partitionConsumptionState.isFirstHeartBeatSOSReceived());
       assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
     }
 
     partitionConsumptionState.setLeaderFollowerState(STANDBY);
-    storeIngestionTaskUnderTest.getAndUpdateLeaderCompletedState(pubSubMessage, partitionConsumptionState);
+    ingestionTask.getAndUpdateLeaderCompletedState(pubSubMessage, partitionConsumptionState);
     if (leaderCompletedHeaderFound) {
       assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
       assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), producerTimestamp);

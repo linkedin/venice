@@ -20,7 +20,8 @@ public enum LeaderCompleteState implements VeniceEnumValue {
   /**
    * Default state for the partition until VENICE_LEADER_COMPLETION_STATE_HEADER is received from leader partition
    * and the state is updated. This works in conjunction with PartitionConsumptionState#isFirstHeartBeatSOSReceived
-   * to decide whether to use this state or not.
+   * to decide whether to use this state or not. This will be used only during the transition phase to avoid 2 phase
+   * deployment and once all servers are running the latest code, this can be removed.
    */
   LEADER_COMPLETE_STATE_UNKNOWN(2);
 

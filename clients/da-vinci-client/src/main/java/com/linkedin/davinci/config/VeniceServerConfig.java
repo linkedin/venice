@@ -761,8 +761,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     nonExistingTopicCheckRetryIntervalSecond =
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND, 60); // 1min
     leaderCompleteStateCheckEnabled = serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_ENABLED, true);
+    /** As this is used to ignore the stale heartbeats, defaulting to 5 minutes, inline with {@link SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS} */
     leaderCompleteStateCheckValidIntervalMs =
-        serverProperties.getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
+        serverProperties.getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(5));
   }
 
   long extractIngestionMemoryLimit(

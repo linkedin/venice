@@ -2025,7 +2025,9 @@ public class ConfigKeys {
 
   /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
-   * this time window to mark themselves as completed.
+   * this time window to mark themselves as completed. This is to avoid the cases that
+   * the follower replica is marked completed based on the old heartbeat messages from
+   * a previous leader replica.
    */
   public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS =
       "server.leader.complete.state.check.valid.interval.ms";
