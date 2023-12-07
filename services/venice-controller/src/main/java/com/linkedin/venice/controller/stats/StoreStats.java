@@ -12,7 +12,7 @@ public class StoreStats extends AbstractVeniceStats {
   public StoreStats(String storeName, MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository) {
     super(metricsRepository, storeName);
 
-    registerSensorIfAbsent(new AsyncGauge((ignored, ignored) -> {
+    registerSensorIfAbsent(new AsyncGauge((ignored, ignored2) -> {
       try {
         Store store = storeRepository.getStoreOrThrow(storeName);
         long now = System.currentTimeMillis();

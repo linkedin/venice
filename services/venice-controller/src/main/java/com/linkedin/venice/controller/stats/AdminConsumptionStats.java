@@ -79,14 +79,14 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminConsumeFailCountSensor = registerSensor("failed_admin_messages", new Count());
     adminConsumeFailRetriableMessageCountSensor = registerSensor("failed_retriable_admin_messages", new Count());
     adminTopicDIVErrorReportCountSensor = registerSensor("admin_message_div_error_report_count", new Count());
-    registerSensor(new AsyncGauge((ignored, ignored) -> adminConsumptionFailedOffset, "failed_admin_message_offset"));
+    registerSensor(new AsyncGauge((ignored, ignored2) -> adminConsumptionFailedOffset, "failed_admin_message_offset"));
     adminConsumptionCycleDurationMsSensor =
         registerSensor("admin_consumption_cycle_duration_ms", new Avg(), new Min(), new Max());
     registerSensor(
-        new AsyncGauge((ignored, ignored) -> pendingAdminMessagesCountGauge, "pending_admin_messages_count"));
+        new AsyncGauge((ignored, ignored2) -> pendingAdminMessagesCountGauge, "pending_admin_messages_count"));
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> storesWithPendingAdminMessagesCountGauge,
+            (ignored, ignored2) -> storesWithPendingAdminMessagesCountGauge,
             "stores_with_pending_admin_messages_count"));
     adminMessageMMLatencySensor = registerSensor("admin_message_mm_latency_ms", new Avg(), new Max());
     adminMessageDelegateLatencySensor = registerSensor("admin_message_delegate_latency_ms", new Avg(), new Max());
@@ -97,9 +97,9 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         registerSensor("admin_message_add_version_process_latency_ms", new Avg(), new Max());
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
     registerSensor(
-        new AsyncGauge((ignored, ignored) -> this.adminConsumptionOffsetLag, "admin_consumption_offset_lag"));
+        new AsyncGauge((ignored, ignored2) -> this.adminConsumptionOffsetLag, "admin_consumption_offset_lag"));
     registerSensor(
-        new AsyncGauge((ignored, ignored) -> this.maxAdminConsumptionOffsetLag, "max_admin_consumption_offset_lag"));
+        new AsyncGauge((ignored, ignored2) -> this.maxAdminConsumptionOffsetLag, "max_admin_consumption_offset_lag"));
   }
 
   /**
@@ -170,7 +170,7 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   public void registerAdminConsumptionCheckpointOffset() {
     registerSensorIfAbsent(
         new AsyncGauge(
-            (ignored, ignored) -> this.adminConsumptionCheckpointOffset,
+            (ignored, ignored2) -> this.adminConsumptionCheckpointOffset,
             "admin_consumption_checkpoint_offset"));
   }
 

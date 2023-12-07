@@ -94,7 +94,7 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
    */
   private static class VersionStat extends AsyncGauge {
     VersionStat(DoubleSupplier supplier, String metricName) {
-      super((ignored, ignored) -> supplier.getAsDouble(), metricName);
+      super((ignored, ignored2) -> supplier.getAsDouble(), metricName);
     }
   }
 

@@ -69,20 +69,20 @@ public class VeniceJVMStats extends AbstractVeniceStats {
 
     directMemoryCapacity = registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getTotalCapacity),
+            (ignored, ignored2) -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getTotalCapacity),
             "DirectMemoryCapacity"));
 
     directMemoryUsage = registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getMemoryUsed),
+            (ignored, ignored2) -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getMemoryUsed),
             "DirectMemoryUsage"));
 
     directMemoryPoolCount = registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getCount),
+            (ignored, ignored2) -> getDirectMemoryBufferPoolBean(BufferPoolMXBean::getCount),
             "DirectPoolCount"));
 
-    heapUsage = registerSensor(new AsyncGauge((ignored, ignored) -> {
+    heapUsage = registerSensor(new AsyncGauge((ignored, ignored2) -> {
       MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
 
       if (memoryBean != null) {

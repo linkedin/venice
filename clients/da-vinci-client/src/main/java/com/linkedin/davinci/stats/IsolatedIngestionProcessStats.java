@@ -49,14 +49,14 @@ public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
           if (sensorAndAttributeName.length == 1) {
             registerSensor(
                 new AsyncGauge(
-                    (ignored, ignored) -> this.metricValueMap.get(originalMetricName),
+                    (ignored, ignored2) -> this.metricValueMap.get(originalMetricName),
                     sensorAndAttributeName[0]));
           } else if (sensorAndAttributeName.length == 2) {
             registerSensorAttributeGauge(
                 sensorAndAttributeName[0],
                 sensorAndAttributeName[1],
                 new AsyncGauge(
-                    (ignored, ignored) -> this.metricValueMap.get(originalMetricName),
+                    (ignored, ignored2) -> this.metricValueMap.get(originalMetricName),
                     sensorAndAttributeName[0]));
           } else {
             /**
@@ -65,7 +65,9 @@ public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
              */
             String correctedMetricName = name.toString().replace('.', '_');
             registerSensor(
-                new AsyncGauge((ignored, ignored) -> this.metricValueMap.get(originalMetricName), correctedMetricName));
+                new AsyncGauge(
+                    (ignored, ignored2) -> this.metricValueMap.get(originalMetricName),
+                    correctedMetricName));
           }
           newMetricNameSet.add(originalMetricName);
         }

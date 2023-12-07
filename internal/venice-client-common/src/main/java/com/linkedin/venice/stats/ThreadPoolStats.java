@@ -23,10 +23,10 @@ public class ThreadPoolStats extends AbstractVeniceStats {
     this.threadPoolExecutor = threadPoolExecutor;
 
     activeThreadNumberSensor = registerSensor(
-        new LambdaStat((ignored, ignored) -> this.threadPoolExecutor.getActiveCount(), "active_thread_number"));
+        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getActiveCount(), "active_thread_number"));
     maxThreadNumberSensor = registerSensor(
-        new LambdaStat((ignored, ignored) -> this.threadPoolExecutor.getMaximumPoolSize(), "max_thread_number"));
+        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getMaximumPoolSize(), "max_thread_number"));
     queuedTasksNumberSensor = registerSensor(
-        new LambdaStat((ignored, ignored) -> this.threadPoolExecutor.getQueue().size(), "queued_task_number"));
+        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getQueue().size(), "queued_task_number"));
   }
 }

@@ -19,7 +19,7 @@ public class AdminOperationsStats extends AbstractVeniceStats {
 
     registerSensorIfAbsent(
         new AsyncGauge(
-            (ignored, ignored) -> config.isReadThrottlingEnabled() || config.isEarlyThrottleEnabled() ? 1 : 0,
+            (ignored, ignored2) -> config.isReadThrottlingEnabled() || config.isEarlyThrottleEnabled() ? 1 : 0,
             "read_quota_throttle"));
   }
 

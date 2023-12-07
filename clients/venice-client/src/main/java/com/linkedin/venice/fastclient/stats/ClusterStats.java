@@ -44,7 +44,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.unhealthyInstanceCount = registerSensor("unhealthy_instance_count", new Avg(), new Max());
     this.versionUpdateFailureSensor = registerSensor("version_update_failure", new OccurrenceRate());
     this.currentVersionNumberSensor =
-        registerSensor(new AsyncGauge((ignored, ignored) -> this.currentVersion, "current_version"));
+        registerSensor(new AsyncGauge((ignored, ignored2) -> this.currentVersion, "current_version"));
   }
 
   public void recordBlockedInstanceCount(int count) {

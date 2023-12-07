@@ -21,7 +21,7 @@ public class DiskHealthStats extends AbstractVeniceStats {
     super(metricsRepository, name);
     this.diskHealthCheckService = diskHealthCheckService;
 
-    diskHealthSensor = registerSensor(new AsyncGauge((ignored, ignored) -> {
+    diskHealthSensor = registerSensor(new AsyncGauge((ignored, ignored2) -> {
       if (this.diskHealthCheckService.isDiskHealthy()) {
         // report 1 if the disk in this host is healthy; otherwise, report 0.
         return 1;

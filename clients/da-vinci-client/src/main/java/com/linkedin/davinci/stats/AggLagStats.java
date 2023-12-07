@@ -37,28 +37,28 @@ public class AggLagStats extends AbstractVeniceStats {
           entry.getValue());
       registerSensor(
           new AsyncGauge(
-              (ignored, ignored) -> getAggRegionHybridOffsetLagTotal(entry.getIntKey()),
+              (ignored, ignored2) -> getAggRegionHybridOffsetLagTotal(entry.getIntKey()),
               regionNamePrefix + "_rt_lag"));
     }
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> this.getAggBatchReplicationLagFuture(),
+            (ignored, ignored2) -> this.getAggBatchReplicationLagFuture(),
             "agg_batch_replication_lag_future"));
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> this.getAggBatchLeaderOffsetLagFuture(),
+            (ignored, ignored2) -> this.getAggBatchLeaderOffsetLagFuture(),
             "agg_batch_leader_offset_lag_future"));
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> this.getAggBatchFollowerOffsetLagFuture(),
+            (ignored, ignored2) -> this.getAggBatchFollowerOffsetLagFuture(),
             "agg_batch_follower_offset_lag_future"));
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> this.getAggHybridLeaderOffsetLagTotal(),
+            (ignored, ignored2) -> this.getAggHybridLeaderOffsetLagTotal(),
             "agg_hybrid_leader_offset_lag_total"));
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> this.getAggHybridFollowerOffsetLagTotal(),
+            (ignored, ignored2) -> this.getAggHybridFollowerOffsetLagTotal(),
             "agg_hybrid_follower_offset_lag_total"));
   }
 

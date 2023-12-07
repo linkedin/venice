@@ -24,10 +24,10 @@ public class VeniceWriterStats extends AbstractVeniceStats {
   public VeniceWriterStats(MetricsRepository metricsRepository) {
     super(metricsRepository, "VeniceWriterStats");
     openVeniceWriterCount = registerSensor(
-        new AsyncGauge((ignored, ignored) -> VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), "open_venice_writer_count"));
+        new AsyncGauge((ignored, ignored2) -> VeniceWriter.OPEN_VENICE_WRITER_COUNT.get(), "open_venice_writer_count"));
     veniceWriterFailedToCloseCount = registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(),
+            (ignored, ignored2) -> VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get(),
             "venice_writer_failed_to_close_count"));
   }
 }

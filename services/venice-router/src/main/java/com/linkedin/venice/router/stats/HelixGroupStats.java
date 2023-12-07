@@ -25,11 +25,11 @@ public class HelixGroupStats extends AbstractVeniceStats {
 
     this.groupCountSensor = registerSensor("group_count", new Avg());
     this.maxGroupPendingRequest = registerSensor(
-        new AsyncGauge((ignored, ignored) -> strategy.getMaxGroupPendingRequest(), "max_group_pending_request"));
+        new AsyncGauge((ignored, ignored2) -> strategy.getMaxGroupPendingRequest(), "max_group_pending_request"));
     this.minGroupPendingRequest = registerSensor(
-        new AsyncGauge((ignored, ignored) -> strategy.getMinGroupPendingRequest(), "min_group_pending_request"));
+        new AsyncGauge((ignored, ignored2) -> strategy.getMinGroupPendingRequest(), "min_group_pending_request"));
     this.avgGroupPendingRequest = registerSensor(
-        new AsyncGauge((ignored, ignored) -> strategy.getAvgGroupPendingRequest(), "avg_group_pending_request"));
+        new AsyncGauge((ignored, ignored2) -> strategy.getAvgGroupPendingRequest(), "avg_group_pending_request"));
   }
 
   public void recordGroupNum(int groupNum) {

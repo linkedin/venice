@@ -42,7 +42,7 @@ public class ZkClientStatusStats extends AbstractVeniceStats implements IZkState
     zkClientSessionEstablishmentErrorSensor = registerSensor("zk_client_SessionEstablishmentError", new Count());
     zkClientReconnectionLatencySensor =
         registerSensor("zk_client_reconnection_latency", new Avg(), new Min(), new Max());
-    registerSensor(new AsyncGauge((ignored, ignored) -> clientState.getIntValue(), "zk_client_status"));
+    registerSensor(new AsyncGauge((ignored, ignored2) -> clientState.getIntValue(), "zk_client_status"));
   }
 
   @Override

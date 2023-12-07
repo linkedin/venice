@@ -24,7 +24,7 @@ public class ParticipantStateTransitionStats extends ThreadPoolStats {
     super(metricsRepository, threadPoolExecutor, name);
     threadBlockedOnOfflineToDroppedTransitionSensor = registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> this.threadBlockedOnOfflineToDroppedTransitionCount.get(),
+            (ignored, ignored2) -> this.threadBlockedOnOfflineToDroppedTransitionCount.get(),
             "thread_blocked_on_offline_to_dropped_transition"));
   }
 

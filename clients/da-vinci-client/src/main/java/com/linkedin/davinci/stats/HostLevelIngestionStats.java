@@ -250,7 +250,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     final boolean isTotalStats = isTotalStats();
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> ingestionTaskMap.values()
+            (ignored, ignored2) -> ingestionTaskMap.values()
                 .stream()
                 .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
                 .mapToLong(
@@ -262,7 +262,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     // Register an aggregate metric for rmd_disk_usage_in_bytes metric
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> ingestionTaskMap.values()
+            (ignored, ignored2) -> ingestionTaskMap.values()
                 .stream()
                 .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
                 .mapToLong(
@@ -273,7 +273,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
             "rmd_disk_usage_in_bytes"));
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored) -> ingestionTaskMap.values()
+            (ignored, ignored2) -> ingestionTaskMap.values()
                 .stream()
                 .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
                 .mapToLong(task -> task.isStuckByMemoryConstraint() ? 1 : 0)
@@ -284,7 +284,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk
     // quota
     // allowed.
-    registerSensor(new AsyncGauge((ignored, ignored) -> diskQuotaAllowedGauge, "global_store_disk_quota_allowed"));
+    registerSensor(new AsyncGauge((ignored, ignored2) -> diskQuotaAllowedGauge, "global_store_disk_quota_allowed"));
 
     String keySizeSensorName = "record_key_size_in_bytes";
     this.keySizeSensor = registerSensor(
@@ -311,7 +311,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     registerSensor(
         "storage_quota_used",
-        new AsyncGauge((ignored, ignored) -> hybridQuotaUsageGauge, "storage_quota_used"));
+        new AsyncGauge((ignored, ignored2) -> hybridQuotaUsageGauge, "storage_quota_used"));
 
     // Stats which are both per-store and total:
 

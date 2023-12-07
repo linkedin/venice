@@ -126,17 +126,17 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     quotaSensor = registerSensor("read_quota_per_router", new Gauge());
     findUnhealthyHostRequestSensor = registerSensor("find_unhealthy_host_request", new OccurrenceRate());
 
-    registerSensor(new LambdaStat((ignored, ignored) -> scatterGatherStats.getTotalRetries(), "retry_count"));
-    registerSensor(new LambdaStat((ignored, ignored) -> scatterGatherStats.getTotalRetriedKeys(), "retry_key_count"));
+    registerSensor(new LambdaStat((ignored, ignored2) -> scatterGatherStats.getTotalRetries(), "retry_count"));
+    registerSensor(new LambdaStat((ignored, ignored2) -> scatterGatherStats.getTotalRetriedKeys(), "retry_key_count"));
     registerSensor(
         new LambdaStat(
-            (ignored, ignored) -> scatterGatherStats.getTotalRetriesDiscarded(),
+            (ignored, ignored2) -> scatterGatherStats.getTotalRetriesDiscarded(),
             "retry_slower_than_original_count"));
     registerSensor(
-        new LambdaStat((ignored, ignored) -> scatterGatherStats.getTotalRetriesError(), "retry_error_count"));
+        new LambdaStat((ignored, ignored2) -> scatterGatherStats.getTotalRetriesError(), "retry_error_count"));
     registerSensor(
         new LambdaStat(
-            (ignored, ignored) -> scatterGatherStats.getTotalRetriesWinner(),
+            (ignored, ignored2) -> scatterGatherStats.getTotalRetriesWinner(),
             "retry_faster_than_original_count"));
 
     keyNumSensor = registerSensor("key_num", new Avg(), new Max(0));

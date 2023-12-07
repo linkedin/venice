@@ -15,9 +15,9 @@ public class StoreCacheStats extends AbstractVeniceStats {
 
   public StoreCacheStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    cacheHitCount = registerSensor(new AsyncGauge((ignored, ignored) -> this.getHitCount(), "cache_hit"));
-    cacheMissCount = registerSensor(new AsyncGauge((ignored, ignored) -> this.getMissCount(), "cache_miss"));
-    cacheHitRate = registerSensor(new AsyncGauge((ignored, ignored) -> this.getHitRate(), "cache_hit_rate"));
+    cacheHitCount = registerSensor(new AsyncGauge((ignored, ignored2) -> this.getHitCount(), "cache_hit"));
+    cacheMissCount = registerSensor(new AsyncGauge((ignored, ignored2) -> this.getMissCount(), "cache_miss"));
+    cacheHitRate = registerSensor(new AsyncGauge((ignored, ignored2) -> this.getHitRate(), "cache_hit_rate"));
   }
 
   public synchronized void registerServingCache(VeniceStoreCache cache) {

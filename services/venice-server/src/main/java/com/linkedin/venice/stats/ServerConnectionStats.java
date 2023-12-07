@@ -20,9 +20,9 @@ public class ServerConnectionStats extends AbstractVeniceStats {
 
   public ServerConnectionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    registerSensorIfAbsent(new AsyncGauge((ignored, ignored) -> routerConnectionCount, ROUTER_CONNECTION_COUNT_GAUGE));
+    registerSensorIfAbsent(new AsyncGauge((ignored, ignored2) -> routerConnectionCount, ROUTER_CONNECTION_COUNT_GAUGE));
     routerConnectionCountSensor = registerSensorIfAbsent(NEW_ROUTER_CONNECTION_COUNT, new OccurrenceRate());
-    registerSensorIfAbsent(new AsyncGauge((ignored, ignored) -> clientConnectionCount, CLIENT_CONNECTION_COUNT_GAUGE));
+    registerSensorIfAbsent(new AsyncGauge((ignored, ignored2) -> clientConnectionCount, CLIENT_CONNECTION_COUNT_GAUGE));
     clientConnectionCountSensor = registerSensorIfAbsent(NEW_CLIENT_CONNECTION_COUNT, new OccurrenceRate());
   }
 
