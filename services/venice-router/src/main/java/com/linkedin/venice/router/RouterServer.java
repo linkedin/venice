@@ -492,7 +492,7 @@ public class RouterServer extends AbstractVeniceService {
         config.getClusterToD2Map(),
         config.getClusterName(),
         compressorFactory,
-        null);
+        metricsRepository);
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,
         partitionFinder,
