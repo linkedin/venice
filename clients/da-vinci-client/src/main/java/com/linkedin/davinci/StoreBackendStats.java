@@ -28,7 +28,7 @@ public class StoreBackendStats extends AbstractVeniceStats {
     currentVersionSensor = registerSensor("current_version_number", new Gauge());
     subscribeDurationSensor = registerSensor("subscribe_duration_ms", new Avg(), new Max());
 
-    registerSensor(new AsyncGauge((c, t) -> {
+    registerSensor(new AsyncGauge((ignored, ignored) -> {
       Version version = currentVersion.get();
       return version != null ? version.getAge().toMillis() : Double.NaN;
     }, "data_age_ms"));

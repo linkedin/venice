@@ -80,7 +80,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       if (plainTableEnabled && BLOCK_CACHE_METRICS.contains(metric)) {
         continue;
       }
-      registerSensor(new AsyncGauge((c, t) -> {
+      registerSensor(new AsyncGauge((ignored, ignored) -> {
         Long total = 0L;
         // Lock down the list of RocksDB interfaces while the collection is ongoing
         synchronized (hostedRocksDBPartitions) {
@@ -100,8 +100,8 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         return total;
       }, metric));
     }
-    registerSensor(new AsyncGauge((c, t) -> memoryLimit, "memory_limit"));
-    registerSensor(new AsyncGauge((c, t) -> {
+    registerSensor(new AsyncGauge((ignored, ignored) -> memoryLimit, "memory_limit"));
+    registerSensor(new AsyncGauge((ignored, ignored) -> {
       if (memoryLimit > 0 && sstFileManager != null) {
         return sstFileManager.getTotalSize();
       }

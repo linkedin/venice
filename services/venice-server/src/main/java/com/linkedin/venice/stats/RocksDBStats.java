@@ -104,7 +104,7 @@ public class RocksDBStats extends AbstractVeniceStats {
     this.getHitL2AndUp = registerSensor("rocksdb_get_hit_l2_and_up", GET_HIT_L2_AND_UP);
     this.compactionCancelled = registerSensor("rocksdb_compaction_cancelled", COMPACTION_CANCELLED);
 
-    this.blockCacheHitRatio = registerSensor(new AsyncGauge((c, t) -> {
+    this.blockCacheHitRatio = registerSensor(new AsyncGauge((ignored, ignored) -> {
       if (rocksDBStat != null) {
         return rocksDBStat.getTickerCount(BLOCK_CACHE_DATA_HIT)
             / (double) (rocksDBStat.getTickerCount(BLOCK_CACHE_DATA_HIT)
@@ -114,7 +114,7 @@ public class RocksDBStats extends AbstractVeniceStats {
       return -1;
     }, "rocksdb_block_cache_hit_ratio"));
 
-    this.readAmplificationFactor = registerSensor(new AsyncGauge((c, t) -> {
+    this.readAmplificationFactor = registerSensor(new AsyncGauge((ignored, ignored) -> {
       if (rocksDBStat != null) {
         return rocksDBStat.getTickerCount(READ_AMP_TOTAL_READ_BYTES)
             / (double) (rocksDBStat.getTickerCount(READ_AMP_ESTIMATE_USEFUL_BYTES));
@@ -125,7 +125,7 @@ public class RocksDBStats extends AbstractVeniceStats {
   }
 
   private Sensor registerSensor(String sensorName, TickerType tickerType) {
-    return registerSensor(new AsyncGauge((c, t) -> {
+    return registerSensor(new AsyncGauge((ignored, ignored) -> {
       if (rocksDBStat != null) {
         return rocksDBStat.getTickerCount(tickerType);
       }

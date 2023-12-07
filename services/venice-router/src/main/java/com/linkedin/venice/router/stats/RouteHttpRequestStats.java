@@ -62,7 +62,7 @@ public class RouteHttpRequestStats {
       super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
       pendingRequestCount = new AtomicLong();
       // pendingRequestCountSensor =
-      // registerSensor(new AsyncGauge((c, t) -> pendingRequestCount.get(), "pending_request_count"));
+      // registerSensor(new AsyncGauge((ignored, ignored) -> pendingRequestCount.get(), "pending_request_count"));
 
       unhealthyPendingQueueDuration = registerSensor(
           "unhealthy_pending_queue_duration_per_route",

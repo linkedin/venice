@@ -308,7 +308,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
        * which is not an error. The users of the stats should decide whether it's reasonable to emit an error
        * code simply because the version is not created yet.
        */
-      super((c, t) -> reporter.getStats() == null ? defaultValue : supplier.getAsDouble(), metricName);
+      super((ignored, ignored) -> reporter.getStats() == null ? defaultValue : supplier.getAsDouble(), metricName);
     }
   }
 }

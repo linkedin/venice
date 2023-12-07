@@ -50,7 +50,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
      */
     registerSensor(
         new AsyncGauge(
-            (c, t) -> getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong(),
+            (ignored, ignored) -> getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong(),
             "max_elapsed_time_since_last_successful_poll"));
     // consumer record number per second returned by Kafka consumer poll.
     pollResultNumSensor = registerSensor("consumer_poll_result_num", new Avg(), new Total());

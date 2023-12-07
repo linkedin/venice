@@ -89,7 +89,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     this.errorRetryRequestSensor = registerSensor("error_retry_request", new OccurrenceRate());
     this.retryRequestWinSensor = registerSensor("retry_request_win", new OccurrenceRate());
 
-    this.metadataStalenessSensor = registerSensor(new AsyncGauge((c, t) -> {
+    this.metadataStalenessSensor = registerSensor(new AsyncGauge((ignored, ignored) -> {
       if (this.cacheTimeStampInMs == 0) {
         return Double.NaN;
       } else {

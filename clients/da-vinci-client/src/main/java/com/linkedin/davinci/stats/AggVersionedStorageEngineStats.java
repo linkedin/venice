@@ -89,7 +89,7 @@ public class AggVersionedStorageEngineStats extends
 
     @Override
     protected void registerStats() {
-      registerSensor(new AsyncGauge((c, t) -> {
+      registerSensor(new AsyncGauge((ignored, ignored) -> {
         StorageEngineStats stats = getStats();
         if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
@@ -97,7 +97,7 @@ public class AggVersionedStorageEngineStats extends
           return stats.getDiskUsageInBytes();
         }
       }, "disk_usage_in_bytes"));
-      registerSensor(new AsyncGauge((c, t) -> {
+      registerSensor(new AsyncGauge((ignored, ignored) -> {
         StorageEngineStats stats = getStats();
         if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
@@ -105,7 +105,7 @@ public class AggVersionedStorageEngineStats extends
           return stats.getRMDDiskUsageInBytes();
         }
       }, "rmd_disk_usage_in_bytes"));
-      registerSensor(new AsyncGauge((c, t) -> {
+      registerSensor(new AsyncGauge((ignored, ignored) -> {
         StorageEngineStats stats = getStats();
         if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;

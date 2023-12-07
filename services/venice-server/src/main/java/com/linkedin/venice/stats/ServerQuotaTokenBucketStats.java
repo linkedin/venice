@@ -19,7 +19,7 @@ public class ServerQuotaTokenBucketStats extends AbstractVeniceStats {
       String name,
       Supplier<TokenBucket> tokenBucketSupplier) {
     super(metricsRepository, name);
-    quota = registerSensor(new AsyncGauge((c, t) -> {
+    quota = registerSensor(new AsyncGauge((ignored, ignored) -> {
       TokenBucket bucket = tokenBucketSupplier.get();
       if (bucket == null) {
         return 0;
@@ -27,7 +27,7 @@ public class ServerQuotaTokenBucketStats extends AbstractVeniceStats {
         return bucket.getAmortizedRefillPerSecond();
       }
     }, "QuotaRcuPerSecondAllowed"));
-    tokensAvailable = registerSensor(new AsyncGauge((c, t) -> {
+    tokensAvailable = registerSensor(new AsyncGauge((ignored, ignored) -> {
       TokenBucket bucket = tokenBucketSupplier.get();
       if (bucket == null) {
         return 0;

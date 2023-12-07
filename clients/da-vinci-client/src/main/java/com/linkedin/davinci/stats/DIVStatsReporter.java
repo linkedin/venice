@@ -69,7 +69,9 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
 
   protected static class DIVStatsCounter extends AsyncGauge {
     DIVStatsCounter(String metricName, DIVStatsReporter reporter, DoubleSupplier supplier) {
-      super((c, t) -> (reporter.getStats() == null) ? NULL_DIV_STATS.code : supplier.getAsDouble(), metricName);
+      super(
+          (ignored, ignored) -> (reporter.getStats() == null) ? NULL_DIV_STATS.code : supplier.getAsDouble(),
+          metricName);
     }
   }
 

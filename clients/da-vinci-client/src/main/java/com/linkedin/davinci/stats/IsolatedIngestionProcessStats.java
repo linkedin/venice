@@ -48,19 +48,24 @@ public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
           String[] sensorAndAttributeName = getSensorAndAttributeName(originalMetricName);
           if (sensorAndAttributeName.length == 1) {
             registerSensor(
-                new AsyncGauge((c, t) -> this.metricValueMap.get(originalMetricName), sensorAndAttributeName[0]));
+                new AsyncGauge(
+                    (ignored, ignored) -> this.metricValueMap.get(originalMetricName),
+                    sensorAndAttributeName[0]));
           } else if (sensorAndAttributeName.length == 2) {
             registerSensorAttributeGauge(
                 sensorAndAttributeName[0],
                 sensorAndAttributeName[1],
-                new AsyncGauge((c, t) -> this.metricValueMap.get(originalMetricName), sensorAndAttributeName[0]));
+                new AsyncGauge(
+                    (ignored, ignored) -> this.metricValueMap.get(originalMetricName),
+                    sensorAndAttributeName[0]));
           } else {
             /**
              * In theory due to Tehuti metric naming pattern this won't happen, but we add it as defensive
              * coding to avoid potential metric errors.
              */
             String correctedMetricName = name.toString().replace('.', '_');
-            registerSensor(new AsyncGauge((c, t) -> this.metricValueMap.get(originalMetricName), correctedMetricName));
+            registerSensor(
+                new AsyncGauge((ignored, ignored) -> this.metricValueMap.get(originalMetricName), correctedMetricName));
           }
           newMetricNameSet.add(originalMetricName);
         }

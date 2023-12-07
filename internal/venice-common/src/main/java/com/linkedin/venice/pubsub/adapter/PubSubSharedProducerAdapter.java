@@ -159,7 +159,7 @@ public class PubSubSharedProducerAdapter implements PubSubProducerAdapter {
       producerMetrics.keySet().forEach(metric -> {
         String metricName = "producer_" + id + "_" + metric;
         LOGGER.info("Registering metric: {}", metricName);
-        registerSensorIfAbsent(new AsyncGauge((c, t) -> {
+        registerSensorIfAbsent(new AsyncGauge((ignored, ignored) -> {
           mayBeCalculateAllProducerMetrics();
           return producerMetrics.get(metric);
         }, metricName));

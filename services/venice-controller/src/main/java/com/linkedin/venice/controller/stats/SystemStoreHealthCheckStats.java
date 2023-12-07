@@ -23,13 +23,17 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
   public SystemStoreHealthCheckStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
     badMetaSystemStoreCountSensor = registerSensorIfAbsent(
-        new AsyncGauge((c, t) -> badMetaSystemStoreCounter.get(), "bad_meta_system_store_count"));
+        new AsyncGauge((ignored, ignored) -> badMetaSystemStoreCounter.get(), "bad_meta_system_store_count"));
     badPushStatusSystemStoreCountSensor = registerSensorIfAbsent(
-        new AsyncGauge((c, t) -> badPushStatusSystemStoreCounter.get(), "bad_push_status_system_store_count"));
+        new AsyncGauge(
+            (ignored, ignored) -> badPushStatusSystemStoreCounter.get(),
+            "bad_push_status_system_store_count"));
     unreachableSystemStoreCountSensor = registerSensorIfAbsent(
-        new AsyncGauge((c, t) -> unreachableSystemStoreCounter.get(), "unreachable_system_store_count"));
+        new AsyncGauge((ignored, ignored) -> unreachableSystemStoreCounter.get(), "unreachable_system_store_count"));
     notRepairableSystemStoreCountSensor = registerSensorIfAbsent(
-        new AsyncGauge((c, t) -> notRepairableSystemStoreCounter.get(), "not_repairable_system_store_count"));
+        new AsyncGauge(
+            (ignored, ignored) -> notRepairableSystemStoreCounter.get(),
+            "not_repairable_system_store_count"));
   }
 
   public AtomicLong getBadMetaSystemStoreCounter() {

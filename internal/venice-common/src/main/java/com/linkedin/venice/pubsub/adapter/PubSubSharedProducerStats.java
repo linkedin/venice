@@ -26,9 +26,11 @@ public class PubSubSharedProducerStats extends AbstractVeniceStats {
     super(metricsRepository, "PubSubSharedProducerStats");
     sharedProducerActiveTasksCountSensor = registerSensor(
         new AsyncGauge(
-            (c, t) -> sharedProducerFactory.getActiveSharedProducerTasksCount(),
+            (ignored, ignored) -> sharedProducerFactory.getActiveSharedProducerTasksCount(),
             "shared_producer_active_task_count"));
     sharedProducerActiveCountSensor = registerSensor(
-        new AsyncGauge((c, t) -> sharedProducerFactory.getActiveSharedProducerCount(), "shared_producer_active_count"));
+        new AsyncGauge(
+            (ignored, ignored) -> sharedProducerFactory.getActiveSharedProducerCount(),
+            "shared_producer_active_count"));
   }
 }

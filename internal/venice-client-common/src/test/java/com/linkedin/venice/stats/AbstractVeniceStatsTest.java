@@ -53,7 +53,7 @@ public class AbstractVeniceStatsTest {
       for (int j = 0; j < 16; j++) {
         executorService.submit(() -> {
           try {
-            statsTest.registerSensor(new AsyncGauge((c, t) -> 1, "testGauge"));
+            statsTest.registerSensor(new AsyncGauge((ignored, ignored) -> 1, "testGauge"));
           } catch (Exception e) {
             exceptionReceived.set(true);
           }
@@ -70,7 +70,7 @@ public class AbstractVeniceStatsTest {
   public void testRegisterSensor() {
     MetricsRepository metricsRepository = new MetricsRepository();
     AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
-    stats.registerSensor(new AsyncGauge((c, t) -> 1.0, "foo"));
+    stats.registerSensor(new AsyncGauge((ignored, ignored) -> 1.0, "foo"));
     Assert.assertEquals(metricsRepository.metrics().size(), 1);
     Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.Gauge").value(), 1.0);
 
@@ -91,10 +91,10 @@ public class AbstractVeniceStatsTest {
   public void testRegisterSensorAttributeGauge() {
     MetricsRepository metricsRepository = new MetricsRepository();
     AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
-    stats.registerSensorAttributeGauge("foo", "bar", new AsyncGauge((c, t) -> 1.0, "foo"));
-    stats.registerSensorAttributeGauge("foo", "bar2", new AsyncGauge((c, t) -> 2.0, "foo"));
+    stats.registerSensorAttributeGauge("foo", "bar", new AsyncGauge((ignored, ignored) -> 1.0, "foo"));
+    stats.registerSensorAttributeGauge("foo", "bar2", new AsyncGauge((ignored, ignored) -> 2.0, "foo"));
     // Duplicate registration will not count.
-    stats.registerSensorAttributeGauge("foo", "bar2", new AsyncGauge((c, t) -> 3.0, "foo"));
+    stats.registerSensorAttributeGauge("foo", "bar2", new AsyncGauge((ignored, ignored) -> 3.0, "foo"));
     Assert.assertEquals(metricsRepository.metrics().size(), 2);
     Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.bar").value(), 1.0);
     Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.bar2").value(), 2.0);

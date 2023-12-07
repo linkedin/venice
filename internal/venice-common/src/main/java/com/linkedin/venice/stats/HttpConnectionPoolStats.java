@@ -55,7 +55,7 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
      */
     registerSensor(
         new LambdaStat(
-            (c, t) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getLeased()),
+            (ignored, ignored) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getLeased()),
             "total_active_connection_count"));
     /**
      * Total idle connections
@@ -64,7 +64,7 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
      */
     registerSensor(
         new LambdaStat(
-            (c, t) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getAvailable()),
+            (ignored, ignored) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getAvailable()),
             "total_idle_connection_count"));
     /**
      * Total max connections
@@ -73,7 +73,7 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
      */
     registerSensor(
         new LambdaStat(
-            (c, t) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getMax()),
+            (ignored, ignored) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getMax()),
             "total_max_connection_count"));
     /**
      * Total number of connection requests being blocked awaiting a free connection
@@ -82,7 +82,7 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
      */
     registerSensor(
         new LambdaStat(
-            (c, t) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getPending()),
+            (ignored, ignored) -> getAggStats(connectionManager -> connectionManager.getTotalStats().getPending()),
             "total_pending_connection_request_count"));
   }
 
@@ -156,14 +156,18 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
        * Check {@link PoolStats#getLeased()} to get more details.
        */
       registerSensor(
-          new AsyncGauge((c, t) -> getRouteAggStats(poolStats -> poolStats.getLeased()), "active_connection_count"));
+          new AsyncGauge(
+              (ignored, ignored) -> getRouteAggStats(poolStats -> poolStats.getLeased()),
+              "active_connection_count"));
       /**
        * Total idle connections
        *
        * Check {@link PoolStats#getAvailable()} to get more details.
        */
       registerSensor(
-          new AsyncGauge((c, t) -> getRouteAggStats(poolStats -> poolStats.getAvailable()), "idle_connection_count"));
+          new AsyncGauge(
+              (ignored, ignored) -> getRouteAggStats(poolStats -> poolStats.getAvailable()),
+              "idle_connection_count"));
 
       /**
        * Total max connections
@@ -171,7 +175,9 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
        * Check {@link PoolStats#getMax()} to get more details.
        */
       registerSensor(
-          new AsyncGauge((c, t) -> getRouteAggStats(poolStats -> poolStats.getMax()), "max_connection_count"));
+          new AsyncGauge(
+              (ignored, ignored) -> getRouteAggStats(poolStats -> poolStats.getMax()),
+              "max_connection_count"));
 
       /**
        * Total number of connection requests being blocked awaiting a free connection
@@ -180,7 +186,7 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
        */
       registerSensor(
           new AsyncGauge(
-              (c, t) -> getRouteAggStats(poolStats -> poolStats.getPending()),
+              (ignored, ignored) -> getRouteAggStats(poolStats -> poolStats.getPending()),
               "pending_connection_request_count"));
     }
 
