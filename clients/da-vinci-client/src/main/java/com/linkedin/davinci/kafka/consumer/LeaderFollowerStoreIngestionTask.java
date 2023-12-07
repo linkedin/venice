@@ -12,6 +12,7 @@ import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
@@ -90,6 +91,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
@@ -175,7 +177,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final AvroStoreDeserializerCache storeDeserializerCache;
 
-  private long lastSendIngestionHeartbeatTimestamp;
+  private AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -2051,15 +2053,28 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
     List<Integer> subPartitions =
         PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor);
-    for (int _subPartition: subPartitions) {
-      PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), _subPartition);
+    LeaderCompleteState leaderCompleteState =
+        LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
+    /**
+     * The maximum value between the original producer timestamp and the timestamp when the message is added to the RT topic is used:
+     * This approach addresses scenarios wrt clock drift where the producer's timestamp is consistently delayed by several minutes,
+     * causing it not to align with the {@link com.linkedin.davinci.config.VeniceServerConfig#leaderCompleteStateCheckValidIntervalMs}
+     * interval. The likelihood of simultaneous significant time discrepancies between the leader (producer) and the RT should be very
+     * rare, making this a viable workaround. In cases where the time discrepancy is reversed, the follower may complete slightly earlier
+     * than expected. However, this should not pose a significant issue as the completion of the leader, indicated by the leader
+     * completed header, is a prerequisite for the follower completion and is expected to occur shortly thereafter.
+     */
+    long producerTimeStamp =
+        max(consumerRecord.getPubSubMessageTime(), consumerRecord.getValue().producerMetadata.messageTimestamp);
+    for (int subPartition: subPartitions) {
+      PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), subPartition);
       sendIngestionHeartbeat(
           topicPartition,
           callback,
           leaderMetadataWrapper,
           true,
-          LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported()),
-          consumerRecord.getValue().producerMetadata.messageTimestamp);// original producers timestamp
+          leaderCompleteState,
+          producerTimeStamp);
     }
   }
 
@@ -3417,7 +3432,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
     long currentTimestamp = System.currentTimeMillis();
-    if (lastSendIngestionHeartbeatTimestamp + serverConfig.getIngestionHeartbeatIntervalMs() > currentTimestamp) {
+    if (lastSendIngestionHeartbeatTimestamp.get() + serverConfig.getIngestionHeartbeatIntervalMs() > currentTimestamp) {
       // Not time for another heartbeat yet.
       return;
     }
@@ -3437,6 +3452,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             DEFAULT_LEADER_METADATA_WRAPPER);
       }
     }
-    lastSendIngestionHeartbeatTimestamp = currentTimestamp;
+    lastSendIngestionHeartbeatTimestamp.set(currentTimestamp);
+  }
+
+  /**
+   * Once leader is marked completed, immediately reset {@link #lastSendIngestionHeartbeatTimestamp}
+   * such that {@link #maybeSendIngestionHeartbeat()} will send HB SOS to the respective RT topics
+   * rather than waiting for the timer to send HB SOS.
+   */
+  @Override
+  void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
+    super.reportCompleted(partitionConsumptionState, forceCompletion);
+    if (isHybridMode() && partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      // reset lastSendIngestionHeartbeatTimestamp to force sending HB SOS to the respective RT topics.
+      lastSendIngestionHeartbeatTimestamp.set(0);
+    }
   }
 }

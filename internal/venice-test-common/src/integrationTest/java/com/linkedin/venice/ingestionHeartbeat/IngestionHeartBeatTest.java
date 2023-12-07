@@ -205,8 +205,8 @@ public class IngestionHeartBeatTest {
           // VT: verify leader topic partition receives HB from RT, and is forwarded with leader completed
           // header to all VT.
           List<Integer> subPartitions = PartitionUtils.getSubPartitions(partition, amplificationFactor);
-          for (int _subPartition: subPartitions) {
-            verifyHBinKafkaTopic(pubSubConsumer, storeName, _subPartition, isActiveActiveEnabled, false);
+          for (int subPartition: subPartitions) {
+            verifyHBinKafkaTopic(pubSubConsumer, storeName, subPartition, isActiveActiveEnabled, false);
           }
         }
       }
