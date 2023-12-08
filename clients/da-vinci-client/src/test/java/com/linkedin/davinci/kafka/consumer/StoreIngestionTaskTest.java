@@ -2700,8 +2700,8 @@ public abstract class StoreIngestionTaskTest {
         "Remote consumer should not poll for new records but return previously cached records");
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testIsReadyToServe(boolean isDaVinciClient) {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIsReadyToServe(boolean isDaVinciClient, boolean isActiveActiveReplicationEnabled) {
     int partitionCount = 2;
     int amplificationFactor = 1;
 
@@ -2717,13 +2717,21 @@ public abstract class StoreIngestionTaskTest {
         DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
 
-    MockStoreVersionConfigs storeAndVersionConfigs =
-        setupStoreAndVersionMocks(partitionCount, partitionerConfig, Optional.of(hybridStoreConfig), false, true, true);
+    MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
+        partitionCount,
+        partitionerConfig,
+        Optional.of(hybridStoreConfig),
+        false,
+        true,
+        isActiveActiveReplicationEnabled);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
 
     Map<String, Object> extraServerProperties = new HashMap<>();
+    extraServerProperties.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000L);
+    extraServerProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS, 5000L);
+    extraServerProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, true);
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
         new RandomPollStrategy(),
@@ -2835,7 +2843,9 @@ public abstract class StoreIngestionTaskTest {
     // case 5b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
     doReturn(STANDBY).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
     doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
-    assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
+    assertEquals(
+        storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp),
+        !isActiveActiveReplicationEnabled);
     // case 5c: standby replica and LEADER_COMPLETED => partition is ready to serve
     doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
     doCallRealMethod().when(mockPcsBufferReplayStartedLagCaughtUp).isLeaderCompleted();
@@ -2866,7 +2876,9 @@ public abstract class StoreIngestionTaskTest {
     // case 6b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
     doReturn(STANDBY).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
     doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
-    assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
+    assertEquals(
+        storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
+        !isActiveActiveReplicationEnabled);
     // case 6c: standby replica and LEADER_COMPLETED => partition is ready to serve
     doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
     doCallRealMethod().when(mockPcsBufferReplayStartedRemoteLagging).isLeaderCompleted();
@@ -2899,7 +2911,9 @@ public abstract class StoreIngestionTaskTest {
     // case 7b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
     doReturn(STANDBY).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
     doReturn(LEADER_NOT_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
-    assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
+    assertEquals(
+        storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging),
+        !isActiveActiveReplicationEnabled);
     // case 7c: standby replica and LEADER_COMPLETED => partition is ready to serve
     doReturn(LEADER_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
     doCallRealMethod().when(mockPcsOffsetLagCaughtUpTimestampLagging).isLeaderCompleted();
