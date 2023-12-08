@@ -193,7 +193,8 @@ public class KafkaConsumptionTest {
         metricsRepository,
         topicExistenceChecker,
         pubSubDeserializer,
-        (ignored) -> {});
+        (ignored) -> {},
+        (ignored) -> false);
 
     versionTopic = getTopic();
     int partition = 0;
