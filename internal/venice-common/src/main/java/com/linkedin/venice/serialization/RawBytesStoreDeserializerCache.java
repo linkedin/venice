@@ -12,6 +12,12 @@ public class RawBytesStoreDeserializerCache implements StoreDeserializerCache<By
     return IdentityRecordDeserializer.getInstance();
   }
 
+  @Override
+  public RecordDeserializer<ByteBuffer> getDeserializer(int writerSchemaId) {
+    throw new UnsupportedOperationException(
+        "getDeserializer by only writeSchemaId is not supported by " + this.getClass().getSimpleName());
+  }
+
   public static StoreDeserializerCache<ByteBuffer> getInstance() {
     return INSTANCE;
   }

@@ -557,6 +557,7 @@ public class DispatchingAvroGenericStoreClientTest {
       routerRequestValue.setValue(valueByteBuffer);
       routerRequestValue.keyIndex = count.getAndIncrement();
       routerRequestValues.add(routerRequestValue);
+      routerRequestValue.setSchemaId(1);
     });
     return MULTI_GET_RESPONSE_SERIALIZER.serializeObjects(routerRequestValues);
   }
