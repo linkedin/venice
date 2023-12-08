@@ -19,6 +19,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.testng.annotations.DataProvider;
@@ -172,6 +173,66 @@ public class KafkaConsumerServiceDelegatorTest {
     assertFalse(delegator.hasAnySubscriptionFor(versionTopic));
     verify(mockDedicatedConsumerService).hasAnySubscriptionFor(versionTopic);
     verify(mockDefaultConsumerService).hasAnySubscriptionFor(versionTopic);
+
+    // When dedicated consumer pool is disabled.
+    reset(mockConfig);
+    doReturn(false).when(mockConfig).isDedicatedConsumerPoolForAAWCLeaderEnabled();
+    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+    reset(mockDefaultConsumerService);
+    reset(mockDedicatedConsumerService);
+    delegator.startInner();
+    verify(mockDefaultConsumerService).start();
+    verify(mockDedicatedConsumerService, never()).start();
+
+    reset(mockDefaultConsumerService);
+    reset(mockDedicatedConsumerService);
+    delegator.stopInner();
+    verify(mockDefaultConsumerService).stop();
+    verify(mockDedicatedConsumerService, never()).stop();
+
+    reset(mockDefaultConsumerService);
+    reset(mockDedicatedConsumerService);
+    delegator.batchUnsubscribe(versionTopic, partitionSet);
+    verify(mockDefaultConsumerService).batchUnsubscribe(versionTopic, partitionSet);
+    verify(mockDedicatedConsumerService, never()).batchUnsubscribe(versionTopic, partitionSet);
+
+    reset(mockDefaultConsumerService);
+    reset(mockDedicatedConsumerService);
+    delegator.getMaxElapsedTimeMSSinceLastPollInConsumerPool();
+    verify(mockDefaultConsumerService).getMaxElapsedTimeMSSinceLastPollInConsumerPool();
+    verify(mockDedicatedConsumerService, never()).getMaxElapsedTimeMSSinceLastPollInConsumerPool();
+  }
+
+  @Test
+  public void consumerAssignmentStickiness() {
+    KafkaConsumerService mockDefaultConsumerService = mock(KafkaConsumerService.class);
+    KafkaConsumerService mockDedicatedConsumerService = mock(KafkaConsumerService.class);
+    VeniceServerConfig mockConfig = mock(VeniceServerConfig.class);
+    doReturn(true).when(mockConfig).isDedicatedConsumerPoolForAAWCLeaderEnabled();
+
+    AtomicBoolean retValueForIsAAWCStoreFunc = new AtomicBoolean(false);
+    Function<String, Boolean> isAAWCStoreFunc = vt -> retValueForIsAAWCStoreFunc.get();
+    BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor =
+        (ignored, statSuffix) -> statSuffix.isEmpty() ? mockDefaultConsumerService : mockDedicatedConsumerService;
+
+    KafkaConsumerServiceDelegator delegator =
+        new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+
+    PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic(VERSION_TOPIC_NAME);
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic(RT_TOPIC_NAME);
+    PubSubTopicPartition topicPartitionForRT = new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID);
+
+    delegator.assignConsumerFor(versionTopic, topicPartitionForRT);
+    verify(mockDefaultConsumerService).assignConsumerFor(versionTopic, topicPartitionForRT);
+    verify(mockDedicatedConsumerService, never()).assignConsumerFor(versionTopic, topicPartitionForRT);
+
+    reset(mockDefaultConsumerService);
+    reset(mockDedicatedConsumerService);
+    // Change the AAWC flag
+    retValueForIsAAWCStoreFunc.set(true);
+    delegator.unSubscribe(versionTopic, topicPartitionForRT);
+    verify(mockDefaultConsumerService).unSubscribe(versionTopic, topicPartitionForRT);
+    verify(mockDedicatedConsumerService, never()).unSubscribe(versionTopic, topicPartitionForRT);
   }
 
   @Test

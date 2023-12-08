@@ -7,6 +7,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiFunction;
@@ -27,6 +28,18 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   private final KafkaConsumerService consumerServiceForAAWCLeader;
   private final Function<String, Boolean> isAAWCStoreFunc;
 
+  /**
+   * The reason to introduce this cache layer is that write-compute is a store-level feature, which means
+   * it can change in the lifetime of a particular store version, which might lead this class to pick
+   * up a wrong consumer service.
+   * For example
+   * 1. StoreA doesn't have write compute enabled.
+   * 2. StoreA leader gets assigned to default consumer pool.
+   * 3. StoreA enables write compute.
+   * 4. Without this cache, the consumer operations of the same partition will be forwarded to dedicated consumer pool, which is wrong.
+   */
+  private final VeniceConcurrentHashMap<String, Boolean> storeVersionAAWCFlagMap = new VeniceConcurrentHashMap<>();
+
   public KafkaConsumerServiceDelegator(
       VeniceServerConfig serverConfig,
       BiFunction<Integer, String, KafkaConsumerService> consumerServiceConstructor,
@@ -40,7 +53,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     } else {
       this.consumerServiceForAAWCLeader = null;
     }
-    this.isAAWCStoreFunc = isAAWCStoreFunc;
+    this.isAAWCStoreFunc = vt -> storeVersionAAWCFlagMap.computeIfAbsent(vt, ignored -> isAAWCStoreFunc.apply(vt));
   }
 
   private KafkaConsumerService getKafkaConsumerService(PubSubTopic versionTopic, PubSubTopicPartition topicPartition) {
@@ -73,6 +86,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     if (consumerServiceForAAWCLeader != null) {
       consumerServiceForAAWCLeader.unsubscribeAll(versionTopic);
     }
+    storeVersionAAWCFlagMap.remove(versionTopic.getName());
   }
 
   @Override
