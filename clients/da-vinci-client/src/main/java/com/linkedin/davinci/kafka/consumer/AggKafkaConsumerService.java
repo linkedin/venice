@@ -48,7 +48,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(AggKafkaConsumerService.class);
 
   private final PubSubConsumerAdapterFactory consumerFactory;
-  private final int numOfConsumersPerKafkaCluster;
+  private final VeniceServerConfig serverConfig;
   private final long readCycleDelayMs;
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final EventThrottler bandwidthThrottler;
@@ -59,7 +59,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
   private final boolean isKafkaConsumerOffsetCollectionEnabled;
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
-  private final Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap =
+      new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
   private final PubSubMessageDeserializer pubSubDeserializer;
@@ -68,6 +69,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
+  private final Function<String, Boolean> isAAOrWCEnabledFunc;
 
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
@@ -79,10 +81,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final MetricsRepository metricsRepository,
       TopicExistenceChecker topicExistenceChecker,
       final PubSubMessageDeserializer pubSubDeserializer,
-      Consumer<String> killIngestionTaskRunnable) {
+      Consumer<String> killIngestionTaskRunnable,
+      Function<String, Boolean> isAAOrWCEnabledFunc) {
+    this.serverConfig = serverConfig;
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
-    this.numOfConsumersPerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
     this.sharedConsumerNonExistingTopicCleanupDelayMS = serverConfig.getSharedConsumerNonExistingTopicCleanupDelayMS();
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
@@ -116,6 +119,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
           TimeUnit.SECONDS);
       LOGGER.info("Started stuck consumer repair service with checking interval: {} seconds", intervalInSeconds);
     }
+    this.isAAOrWCEnabledFunc = isAAOrWCEnabledFunc;
 
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
@@ -131,7 +135,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+    for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumerService.stop();
     }
     if (this.stuckConsumerRepairExecutorService != null) {
@@ -140,7 +144,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   protected static Runnable getStuckConsumerDetectionAndRepairRunnable(
-      Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap,
+      Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
       Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping,
       long stuckConsumerRepairThresholdMs,
       long nonExistingTopicIngestionTaskKillThresholdMs,
@@ -159,7 +163,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
        * 3. The check is cheap when there is no stuck consumer.
        */
       boolean scanStoreIngestionTaskToFixStuckConsumer = false;
-      for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+      for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
         long maxDelayMs = consumerService.getMaxElapsedTimeMSSinceLastPollInConsumerPool();
         if (maxDelayMs >= stuckConsumerRepairThresholdMs) {
           scanStoreIngestionTaskToFixStuckConsumer = true;
@@ -244,8 +248,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    * @return the {@link KafkaConsumerService} for a specific Kafka bootstrap url,
    *         or null if there isn't any.
    */
-  private KafkaConsumerService getKafkaConsumerService(final String kafkaURL) {
-    KafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.get(kafkaURL);
+  private AbstractKafkaConsumerService getKafkaConsumerService(final String kafkaURL) {
+    AbstractKafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.get(kafkaURL);
     if (consumerService == null && kafkaClusterUrlResolver != null) {
       consumerService = kafkaServerToConsumerServiceMap.get(kafkaClusterUrlResolver.apply(kafkaURL));
     }
@@ -259,7 +263,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    *
    * @param consumerProperties consumer properties that are used to create {@link KafkaConsumerService}
    */
-  public synchronized KafkaConsumerService createKafkaConsumerService(final Properties consumerProperties) {
+  public synchronized AbstractKafkaConsumerService createKafkaConsumerService(final Properties consumerProperties) {
     String kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     Properties properties = sslPropertiesSupplier.get(kafkaUrl).toProperties();
     consumerProperties.putAll(properties);
@@ -267,31 +271,34 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       throw new IllegalArgumentException("Kafka URL must be set in the consumer properties config. Got: " + kafkaUrl);
     }
     String resolvedKafkaUrl = kafkaClusterUrlResolver == null ? kafkaUrl : kafkaClusterUrlResolver.apply(kafkaUrl);
-    final KafkaConsumerService alreadyCreatedConsumerService = getKafkaConsumerService(resolvedKafkaUrl);
+    final AbstractKafkaConsumerService alreadyCreatedConsumerService = getKafkaConsumerService(resolvedKafkaUrl);
     if (alreadyCreatedConsumerService != null) {
       LOGGER.warn("KafkaConsumerService has already been created for Kafka cluster with URL: {}", resolvedKafkaUrl);
       return alreadyCreatedConsumerService;
     }
 
-    KafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.computeIfAbsent(
+    AbstractKafkaConsumerService consumerService = kafkaServerToConsumerServiceMap.computeIfAbsent(
         resolvedKafkaUrl,
-        url -> sharedConsumerAssignmentStrategy.constructor.construct(
-            consumerFactory,
-            consumerProperties,
-            readCycleDelayMs,
-            numOfConsumersPerKafkaCluster,
-            bandwidthThrottler,
-            recordsThrottler,
-            kafkaClusterBasedRecordThrottler,
-            metricsRepository,
-            kafkaClusterUrlToAliasMap.getOrDefault(url, url),
-            sharedConsumerNonExistingTopicCleanupDelayMS,
-            topicExistenceChecker,
-            liveConfigBasedKafkaThrottlingEnabled,
-            pubSubDeserializer,
-            SystemTime.INSTANCE,
-            null,
-            isKafkaConsumerOffsetCollectionEnabled));
+        url -> new KafkaConsumerServiceDelegator(
+            serverConfig,
+            (consumerPoolSize, statsSuffix) -> sharedConsumerAssignmentStrategy.constructor.construct(
+                consumerFactory,
+                consumerProperties,
+                readCycleDelayMs,
+                consumerPoolSize,
+                bandwidthThrottler,
+                recordsThrottler,
+                kafkaClusterBasedRecordThrottler,
+                metricsRepository,
+                kafkaClusterUrlToAliasMap.getOrDefault(url, url) + statsSuffix,
+                sharedConsumerNonExistingTopicCleanupDelayMS,
+                topicExistenceChecker,
+                liveConfigBasedKafkaThrottlingEnabled,
+                pubSubDeserializer,
+                SystemTime.INSTANCE,
+                null,
+                isKafkaConsumerOffsetCollectionEnabled),
+            isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {
       consumerService.start();
@@ -303,7 +310,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final String kafkaURL,
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
-    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     if (consumerService == null) {
       return false;
     }
@@ -322,7 +329,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   boolean hasAnyConsumerAssignedForVersionTopic(PubSubTopic versionTopic) {
-    for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+    for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       if (consumerService.hasAnySubscriptionFor(versionTopic)) {
         return true;
       }
@@ -332,7 +339,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   void resetOffsetFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumerAdapter consumer;
-    for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+    for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
         consumer.resetOffset(pubSubTopicPartition);
@@ -341,13 +348,13 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   public void unsubscribeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+    for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumerService.unSubscribe(versionTopic, pubSubTopicPartition);
     }
   }
 
   void batchUnsubscribeConsumerFor(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionSet) {
-    for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+    for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumerService.batchUnsubscribe(versionTopic, topicPartitionSet);
     }
   }
@@ -358,7 +365,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       PubSubTopicPartition pubSubTopicPartition,
       long lastOffset) {
     PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
-    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     if (consumerService == null) {
       throw new VeniceException(
           "Kafka consumer service must exist for version topic: " + versionTopic + " in Kafka cluster: " + kafkaURL);
@@ -371,9 +378,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             kafkaURL,
             kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1));
 
-    consumerService.startConsumptionIntoDataReceiver(pubSubTopicPartition, lastOffset, dataReceiver);
-
     versionTopicStoreIngestionTaskMapping.put(storeIngestionTask.getVersionTopic().getName(), storeIngestionTask);
+    consumerService.startConsumptionIntoDataReceiver(pubSubTopicPartition, lastOffset, dataReceiver);
 
     return dataReceiver;
   }
@@ -382,7 +388,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final String kafkaURL,
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
-    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     return consumerService == null ? -1 : consumerService.getOffsetLagFor(versionTopic, pubSubTopicPartition);
   }
 
@@ -390,7 +396,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final String kafkaURL,
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
-    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
+    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     return consumerService == null ? -1 : consumerService.getLatestOffsetFor(versionTopic, pubSubTopicPartition);
   }
 
@@ -405,7 +411,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   void pauseConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumerAdapter consumer;
-    for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+    for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
         consumer.pause(pubSubTopicPartition);
@@ -415,7 +421,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   void resumeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumerAdapter consumer;
-    for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+    for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
         consumer.resume(pubSubTopicPartition);
@@ -428,7 +434,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    */
   Set<String> getKafkaUrlsFor(PubSubTopic versionTopic) {
     Set<String> kafkaUrls = new HashSet<>(kafkaServerToConsumerServiceMap.size());
-    for (Map.Entry<String, KafkaConsumerService> entry: kafkaServerToConsumerServiceMap.entrySet()) {
+    for (Map.Entry<String, AbstractKafkaConsumerService> entry: kafkaServerToConsumerServiceMap.entrySet()) {
       if (entry.getValue().hasAnySubscriptionFor(versionTopic)) {
         kafkaUrls.add(entry.getKey());
       }
