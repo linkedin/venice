@@ -1289,7 +1289,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     boolean isLagAcceptable = offsetLag <= offsetThreshold;
 
     if (isLagAcceptable && isHybridFollower(pcs)) {
-      if (!getServerConfig().isLeaderCompleteStateCheckEnabled()) {
+      if (!getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled()) {
         isLagAcceptable = true;
       } else if (!pcs.isFirstHeartBeatSOSReceived()) {
         // wait for the first HB to know if the leader supports sending LeaderCompleteState or not
@@ -1301,7 +1301,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // check if the leader is completed and the last update time was within the configured time
         isLagAcceptable = pcs.isLeaderCompleted()
             && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
-                .getLeaderCompleteStateCheckValidIntervalMs());
+                .getLeaderCompleteStateCheckInFollowerValidIntervalMs());
       }
     }
 

@@ -2032,8 +2032,8 @@ public class ConfigKeys {
    * the follower replica is marked completed based on the old heartbeat messages from
    * a previous leader replica.
    */
-  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_VALID_INTERVAL_MS =
-      "server.leader.complete.state.check.valid.interval.ms";
+  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS =
+      "server.leader.complete.state.check.in.follower.valid.interval.ms";
 
   /**
    * Whether to enable stuck consumer repair in Server.
