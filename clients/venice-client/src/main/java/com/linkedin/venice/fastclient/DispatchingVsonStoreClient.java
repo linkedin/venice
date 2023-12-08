@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -22,7 +23,16 @@ public class DispatchingVsonStoreClient<K, V> extends DispatchingAvroGenericStor
   }
 
   @Override
-  protected RecordDeserializer<V> getValueDeserializer(Schema writerSchema, Schema readerSchema) {
+  protected RecordDeserializer<V> getDataRecordDeserializer(int schemaId) {
+    Schema readerSchema = metadata.getLatestValueSchema();
+    if (readerSchema == null) {
+      throw new VeniceClientException("Failed to get latest value schema for store: " + metadata.getStoreName());
+    }
+    Schema writerSchema = metadata.getValueSchema(schemaId);
+    if (writerSchema == null) {
+      throw new VeniceClientException(
+          "Failed to get writer schema with id: " + schemaId + " from store: " + metadata.getStoreName());
+    }
     return SerializerDeserializerFactory.getVsonDeserializer(writerSchema, readerSchema);
   }
 }
