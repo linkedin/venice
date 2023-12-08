@@ -68,12 +68,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(RequestBasedMetadata.class);
   private static final String VERSION_PARTITION_SEPARATOR = "_";
 
-  static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
+  public static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final long ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS = 10;
-  static final long H2_CONN_WARMUP_TIMEOUT_IN_SECONDS = 20;
+  public static final long DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT = 20;
   static final long INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS = 5;
 
   private long refreshIntervalInSeconds;
+  private long connWarmupTimeoutInSeconds;
   /** scheduler to run {@link #refresh()} to periodically update metadata */
   private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
   /** scheduler within {@link #refresh()} to warmup new instances updated via metadata refresh.
@@ -90,8 +91,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
   private final AtomicReference<SchemaData> schemas = new AtomicReference<>();
   private final Map<String, List<String>> readyToServeInstancesMap = new VeniceConcurrentHashMap<>();
-  private final Set<String> warmedUpInstances = VeniceConcurrentHashMap.newKeySet();
-  private final Map<String, CompletableFuture> warmUpInstancesFutures = new VeniceConcurrentHashMap<>();
+  private Map<String, CompletableFuture> warmUpInstancesFutures = new VeniceConcurrentHashMap<>();
   private final Map<Integer, VenicePartitioner> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
@@ -113,6 +113,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
+    this.connWarmupTimeoutInSeconds = clientConfig.getMetadataConnWarmupTimeoutInSeconds() > 0
+        ? clientConfig.getMetadataConnWarmupTimeoutInSeconds()
+        : DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT;
     this.d2TransportClient = d2TransportClient;
     this.d2ServiceDiscovery = new D2ServiceDiscovery();
     this.clusterDiscoveryD2ServiceName = d2TransportClient.getServiceName();
@@ -208,7 +211,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   /**
    * Warmup the connection from the client to Instances discovered from the metadata update.
    * To avoid duplicate warmup requests being sent which might delay the warmup process,
-   * {@link #warmedUpInstances} is used to track the list of already warmed up instances.
+   * {@link #warmUpInstancesFutures} is used to track the list of already warmed up instances
+   * and its status.
    * <p>
    * As we are not trying to validate the metadata here but just to warmup conns beforehand,
    * warmup is on best effort basis for now. If we want to improve the long tail and potentially
@@ -216,8 +220,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * to be warmed up, we can think of adding more fine-grained logic wrt partitions, replicas or
    * warmup success rate, which might succeed faster that waiting for all conns.
    */
-  private void warmupConnectionToInstances(int currentFetchedVersion, int partitionCount)
-      throws ExecutionException, InterruptedException {
+  private void warmupConnectionToInstances(int currentFetchedVersion, int partitionCount) throws ExecutionException {
     Set<String> newReplicasToBeWarmedUp = new HashSet<>();
     // get all replicas
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
@@ -231,54 +234,54 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
     // If there are warmup in progress, check its status to cancel or reuse the same warmup
     Set<String> replicasWarmupInProgressFromPastRefresh = new HashSet<>();
-    Set<String> futuresToRemove = new HashSet<>();
     Iterator<Map.Entry<String, CompletableFuture>> entryIterator = warmUpInstancesFutures.entrySet().iterator();
     while (entryIterator.hasNext()) {
       Map.Entry<String, CompletableFuture> entry = entryIterator.next();
       String replica = entry.getKey();
-      CompletableFuture future = entry.getValue();
+      CompletableFuture<Void> future = entry.getValue();
       if (!newReplicasToBeWarmedUp.contains(replica)) {
-        // No need to warm up this instance anymore: cancel if already running
+        // No need to warm up this instance anymore as it's not in the latest metadata: cancel if already running
         if (!future.isDone()) {
           future.cancel(true);
         }
-        futuresToRemove.add(replica);
+        entryIterator.remove();
       } else {
-        // Need to be warmed up: If already in process, don't retry
+        // Already attempted to warmup in the past warmups.
         if (!future.isDone()) {
-          // warmup started in the previous warmups for this, not restarting it: in the
-          // worst case, the first read request to this instance will try it again.
-          newReplicasToBeWarmedUp.remove(replica);
+          // not restarting it: in the worst case, the first read request to this instance will try it again.
           replicasWarmupInProgressFromPastRefresh.add(replica);
+          newReplicasToBeWarmedUp.remove(replica);
+        } else if (!future.isCompletedExceptionally()) {
+          // no need to warm up these instances again as its already completed successfully in the past warmups.
+          newReplicasToBeWarmedUp.remove(replica);
         } else {
-          futuresToRemove.add(replica);
+          // else will be warmed up again
+          entryIterator.remove();
         }
       }
     }
-    futuresToRemove.forEach(replica -> warmUpInstancesFutures.remove(replica));
 
     if (replicasWarmupInProgressFromPastRefresh.size() != 0) {
-      LOGGER.info(
-          "H2 connection warmup to {} instances still incomplete from the previous attempt, not retrying again for these instances: {}",
+      LOGGER.warn(
+          "H2 connection warmup to {} instances still incomplete from the previous attempt, not retrying "
+              + "again for these instances: {}",
           replicasWarmupInProgressFromPastRefresh.size(),
           String.join(",", replicasWarmupInProgressFromPastRefresh));
     }
 
-    // Remove old instances from warmedUpInstances to keep warmedUpInstances relatively fresh
-    warmedUpInstances.retainAll(newReplicasToBeWarmedUp);
-
     // Warmup all the new instances
-    newReplicasToBeWarmedUp.removeAll(warmedUpInstances);
     int instanceNum = newReplicasToBeWarmedUp.size();
     if (instanceNum == 0) {
       if (replicasWarmupInProgressFromPastRefresh.size() == 0) {
         LOGGER.info(
-            "H2 connection warmup to all instances for store {} version {} is completed",
+            "H2 connection warmup to all instances for store {} version {} is already completed in the "
+                + "previous warmups",
             storeName,
             currentFetchedVersion);
       }
       return;
     }
+
     LOGGER.info(
         "Starting H2 connection warm up from fast client to {} instances for store {} version {}",
         instanceNum,
@@ -289,48 +292,51 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     Set<String> warmUpFailedInstances = VeniceConcurrentHashMap.newKeySet();
     newReplicasToBeWarmedUp.forEach((replica) -> {
       String url = replica + "/" + QueryAction.HEALTH.toString().toLowerCase();
-      warmUpInstancesFutures.put(replica, r2TransportClient.get(url).whenCompleteAsync((ignore, throwable) -> {
-        if (throwable == null) {
-          warmedUpInstances.add(replica);
+      CompletableFuture warmupFuture = CompletableFuture.runAsync(() -> {
+        try {
+          r2TransportClient.get(url).get();
           numberOfWarmUpSuccess.incrementAndGet();
-        } else {
+        } catch (Exception e) {
           warmUpFailedInstances.add(replica);
+          throw new RuntimeException("warmup failed for replica: " + replica, e);
         }
-      }, h2ConnWarmupExecutorService));
+      }, h2ConnWarmupExecutorService);
+
+      warmupFuture.whenComplete((ignore, throwable) -> {
+        if (throwable != null) {
+          warmupFuture.completeExceptionally((Throwable) throwable);
+        }
+      });
+      warmUpInstancesFutures.put(replica, warmupFuture);
     });
 
-    CompletableFuture<Object> warmupResultFuture = new CompletableFuture<>();
-    CompletableFuture.allOf(warmUpInstancesFutures.values().toArray(new CompletableFuture[0]))
-        .whenComplete((response, throwable) -> {
-          if (throwable != null) {
-            LOGGER.error(
-                "H2 connection warmup to {} instances succeeded and {} instances failed. List of failed instances: {}",
-                numberOfWarmUpSuccess.get(),
-                warmUpFailedInstances.size(),
-                String.join(",", warmUpFailedInstances),
-                throwable);
-
-            warmupResultFuture.complete(null);
-          } else {
-            LOGGER.info("H2 connection warmup to {} instances succeeded", numberOfWarmUpSuccess.get());
-            warmupResultFuture.complete(null);
-          }
-        });
-
+    CompletableFuture<Void> warmupResultFuture =
+        CompletableFuture.allOf(warmUpInstancesFutures.values().toArray(new CompletableFuture[0]));
     try {
-      warmupResultFuture.get(H2_CONN_WARMUP_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS);
-    } catch (TimeoutException e) {
+      warmupResultFuture.get(connWarmupTimeoutInSeconds, TimeUnit.SECONDS);
+      LOGGER.info("H2 connection warmup to {} instances succeeded", numberOfWarmUpSuccess.get());
+    } catch (Exception e) {
       int successCount = numberOfWarmUpSuccess.get();
       int failureCount = warmUpFailedInstances.size();
-      int notCompletedCount = instanceNum - (successCount + failureCount);
-      LOGGER.error(
-          "H2 connection warmup to {} instances succeeded, {} instances failed and {} instances failed to finish within {} seconds. Failed instances {} will be retried during the periodic metadata refresh. ",
-          successCount,
-          failureCount,
-          notCompletedCount,
-          H2_CONN_WARMUP_TIMEOUT_IN_SECONDS,
-          String.join(",", warmUpFailedInstances),
-          e);
+      if (e instanceof TimeoutException) {
+        int notCompletedCount = instanceNum - (successCount + failureCount);
+        LOGGER.error(
+            "H2 connection warmup to {} instances succeeded, {} instances failed and {} instances failed to finish "
+                + "within {} seconds. Failed instances {} will be retried during the periodic metadata refresh. ",
+            successCount,
+            failureCount,
+            notCompletedCount,
+            connWarmupTimeoutInSeconds,
+            String.join(",", warmUpFailedInstances));
+      } else {
+        LOGGER.error(
+            "H2 connection warmup to {} instances succeeded, {} instances failed. Failed instances {} will be retried "
+                + "during the periodic metadata refresh. ",
+            successCount,
+            failureCount,
+            String.join(",", warmUpFailedInstances),
+            e);
+      }
     }
   }
 
@@ -629,11 +635,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     return refreshIntervalInSeconds;
   }
 
-  public Set<String> getWarmedUpInstances() {
-    return warmedUpInstances;
-  }
-
   public Map<String, CompletableFuture> getWarmUpInstancesFutures() {
     return warmUpInstancesFutures;
+  }
+
+  public void setWarmUpInstancesFutures(Map<String, CompletableFuture> warmUpInstancesFutures) {
+    this.warmUpInstancesFutures = warmUpInstancesFutures;
   }
 }

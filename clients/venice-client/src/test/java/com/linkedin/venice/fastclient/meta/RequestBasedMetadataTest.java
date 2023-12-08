@@ -14,6 +14,7 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
@@ -22,10 +23,10 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -56,7 +57,7 @@ public class RequestBasedMetadataTest {
       requestBasedMetadata.start();
       CountDownLatch isReadyLatch = requestBasedMetadata.getIsReadyLatch();
 
-      // 1. verify based on isReadyLatch
+      // 1. verify based on isReadyLatch: warmup conn is on best effort, so it won't prevent warmup from finishing
       assertEquals(isReadyLatch.getCount(), 0);
 
       // 2. verify based on the scheduled retries
@@ -84,7 +85,9 @@ public class RequestBasedMetadataTest {
   }
 
   /**
-   * This is to test warmedUpInstances and warmUpInstancesFutures in case if the one of the conn warmup fails
+   * This is to test warmUpInstancesFutures in case if the one of the conn warmup fails
+   *
+   * @param firstConnWarmupFails REPLICA1_NAME conn warmup fails for the first time if true
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testMetadataWarmupWithConnWarmupFailure(boolean firstConnWarmupFails)
@@ -97,40 +100,28 @@ public class RequestBasedMetadataTest {
       requestBasedMetadata.start();
       CountDownLatch isReadyLatch = requestBasedMetadata.getIsReadyLatch();
 
-      // 1. verify based on isReadyLatch
+      // 1. verify based on isReadyLatch: warmup conn is on best effort, so it won't prevent warmup from finishing
       assertEquals(isReadyLatch.getCount(), 0);
 
-      // 2. verify based on warmedUpInstances
-      RequestBasedMetadata finalRequestBasedMetadata = requestBasedMetadata;
-      Set<String> warmedUpInstances = finalRequestBasedMetadata.getWarmedUpInstances();
-      if (firstConnWarmupFails) {
-        assertEquals(warmedUpInstances.size(), 1);
-        assertTrue(warmedUpInstances.contains(REPLICA2_NAME));
-      } else {
-        assertEquals(warmedUpInstances.size(), 2);
-        assertTrue(warmedUpInstances.contains(REPLICA1_NAME));
-        assertTrue(warmedUpInstances.contains(REPLICA2_NAME));
-      }
-
-      Map<String, CompletableFuture> warmUpInstancesFutures = finalRequestBasedMetadata.getWarmUpInstancesFutures();
+      // 2. verify based on warmUpInstancesFutures
+      Map<String, CompletableFuture> warmUpInstancesFutures = requestBasedMetadata.getWarmUpInstancesFutures();
       assertEquals(warmUpInstancesFutures.size(), 2);
       assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+      assertEquals(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally(), firstConnWarmupFails);
       assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
       assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
+      assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
       assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
 
-      // after update runs for the 2nd time as per its scheduled run: warmedUpInstances
-      // should contain both the replica in both the case and warmUpInstancesFutures should
-      // have REPLICA1_NAME as it tries to warmup only the failed replica
+      // after update runs for the 2nd time as per its scheduled run: both replicas should be warmed up
       waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        assertEquals(warmedUpInstances.size(), 2);
-        assertTrue(warmedUpInstances.contains(REPLICA1_NAME));
-        assertTrue(warmedUpInstances.contains(REPLICA2_NAME));
-        assertEquals(warmUpInstancesFutures.size(), firstConnWarmupFails ? 1 : 0);
-        if (firstConnWarmupFails) {
-          assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
-          assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
-        }
+        assertEquals(warmUpInstancesFutures.size(), 2);
+        assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+        assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
+        assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
+        assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
+        assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
+        assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
       });
     } finally {
       if (requestBasedMetadata != null) {
@@ -140,7 +131,9 @@ public class RequestBasedMetadataTest {
   }
 
   /**
-   * This is to test warmedUpInstances and warmUpInstancesFutures in case if there is a change in the metadata
+   * This is to test warmUpInstancesFutures in case if there is a change in the metadata
+   *
+   * @param isMetadataChange if true, there is a change in the metadata (NEW_REPLICA_NAME replaces REPLICA1_NAME) for the 2nd update
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testMetadataWarmupWithMetadataChange(boolean isMetadataChange) throws IOException, InterruptedException {
@@ -153,47 +146,110 @@ public class RequestBasedMetadataTest {
       requestBasedMetadata.start();
       CountDownLatch isReadyLatch = requestBasedMetadata.getIsReadyLatch();
 
-      // 1. verify based on isReadyLatch
+      // 1. verify based on isReadyLatch: warmup conn is on best effort, so it won't prevent warmup from finishing
       assertEquals(isReadyLatch.getCount(), 0);
 
-      // 2. verify based on warmedUpInstances
-      RequestBasedMetadata finalRequestBasedMetadata = requestBasedMetadata;
-      Set<String> warmedUpInstances = finalRequestBasedMetadata.getWarmedUpInstances();
-      assertEquals(warmedUpInstances.size(), 2);
-      assertTrue(warmedUpInstances.contains(REPLICA1_NAME));
-      assertTrue(warmedUpInstances.contains(REPLICA2_NAME));
-
-      Map<String, CompletableFuture> warmUpInstancesFutures = finalRequestBasedMetadata.getWarmUpInstancesFutures();
+      // 2. verify based on warmUpInstancesFutures
+      Map<String, CompletableFuture> warmUpInstancesFutures = requestBasedMetadata.getWarmUpInstancesFutures();
       assertEquals(warmUpInstancesFutures.size(), 2);
       assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+      assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
       assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
       assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
+      assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
       assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
 
-      // after update runs for the 2nd time as per its scheduled run: warmedUpInstances
-      // should contain the latest 2 replicas in both the cases and warmUpInstancesFutures
-      // should only have NEW_REPLICA_NAME in case of isMetadataChange being true,
-      // as it tries to warm up the new replica
+      // after update runs for the 2nd time as per its scheduled run: warmUpInstancesFutures
+      // should have the new replica if there is a metadata change
       waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        assertEquals(warmedUpInstances.size(), 2);
-        assertTrue(warmedUpInstances.contains(isMetadataChange ? NEW_REPLICA_NAME : REPLICA1_NAME));
-        assertTrue(warmedUpInstances.contains(REPLICA2_NAME));
-        assertEquals(warmUpInstancesFutures.size(), isMetadataChange ? 1 : 0);
+        assertEquals(warmUpInstancesFutures.size(), 2);
         if (isMetadataChange) {
-          assertTrue(warmUpInstancesFutures.containsKey(isMetadataChange ? NEW_REPLICA_NAME : REPLICA1_NAME));
-          assertTrue(warmUpInstancesFutures.get(isMetadataChange ? NEW_REPLICA_NAME : REPLICA1_NAME).isDone());
+          assertTrue(warmUpInstancesFutures.containsKey(NEW_REPLICA_NAME));
+          assertFalse(warmUpInstancesFutures.get(NEW_REPLICA_NAME).isCompletedExceptionally());
+          assertTrue(warmUpInstancesFutures.get(NEW_REPLICA_NAME).isDone());
+        } else {
+          assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+          assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
+          assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
         }
+        assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
+        assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
+        assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
+      });
+    } finally {
+      if (requestBasedMetadata != null) {
+        requestBasedMetadata.close();
+      }
+    }
+  }
+
+  /**
+   * This is to test warmUpInstancesFutures in case if there is an incomplete warmup from the previous run
+   *
+   * @param isMetadataChange if true, there is a change in the metadata (NEW_REPLICA_NAME replaces REPLICA1_NAME) for the 2nd update
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testMetadataWarmupWithIncompleteWarmup(boolean isMetadataChange)
+      throws IOException, InterruptedException {
+    String storeName = "testStore";
+
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false);
+    RequestBasedMetadata requestBasedMetadata = null;
+    try {
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, isMetadataChange);
+      Map<String, CompletableFuture> warmUpInstancesFutures = new VeniceConcurrentHashMap<>();
+      CompletableFuture replica1Future = new CompletableFuture();
+      warmUpInstancesFutures.put(REPLICA1_NAME, replica1Future);
+      requestBasedMetadata.setWarmUpInstancesFutures(warmUpInstancesFutures);
+      requestBasedMetadata.start();
+      CountDownLatch isReadyLatch = requestBasedMetadata.getIsReadyLatch();
+
+      // 1. verify based on isReadyLatch: warmup conn is on best effort, so it won't prevent warmup from finishing
+      assertEquals(isReadyLatch.getCount(), 0);
+
+      // 2. verify based on warmUpInstancesFutures
+      assertEquals(warmUpInstancesFutures.size(), 2);
+      assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+      assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
+      assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
+      assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
+      assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
+
+      // after update runs for the 2nd time as per its scheduled run:
+      // If there is a metadata change: warmUpInstancesFutures should have the new replica and
+      // the old replica's future should be cancelled
+      // If no metadata change: still waiting on the first replica's warmup to be completed
+      waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertEquals(warmUpInstancesFutures.size(), 2);
+        if (isMetadataChange) {
+          // replica1Future should be cancelled in warmupConnectionToInstances
+          assertTrue(replica1Future.isCancelled());
+          assertTrue(warmUpInstancesFutures.containsKey(NEW_REPLICA_NAME));
+          assertFalse(warmUpInstancesFutures.get(NEW_REPLICA_NAME).isCompletedExceptionally());
+          assertTrue(warmUpInstancesFutures.get(NEW_REPLICA_NAME).isDone());
+        } else {
+          assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+          assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
+        }
+        assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
+        assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
+        assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
       });
 
-      // after update runs for the 3rd time as per its scheduled run: warmedUpInstances
-      // should be the same as 2nd run and warmUpInstancesFutures should be 0 as all replicas
-      // are now warmed up
-      waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        assertEquals(warmedUpInstances.size(), 2);
-        assertTrue(warmedUpInstances.contains(isMetadataChange ? NEW_REPLICA_NAME : REPLICA1_NAME));
-        assertTrue(warmedUpInstances.contains(REPLICA2_NAME));
-        assertEquals(warmUpInstancesFutures.size(), 0);
-      });
+      if (!isMetadataChange) {
+        // mark the replica1Future as done. Now, after the update runs for the 3rd time as per its scheduled run:
+        // warmUpInstancesFutures should be completed for both replicas
+        replica1Future.complete(null);
+        waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+          assertEquals(warmUpInstancesFutures.size(), 2);
+          assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+          assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
+          assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
+          assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
+          assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
+          assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
+        });
+      }
 
     } finally {
       if (requestBasedMetadata != null) {

@@ -65,6 +65,7 @@ public class RequestBasedMetadataTestUtils {
     ClusterStats clusterStats = new ClusterStats(new MetricsRepository(), storeName);
     doReturn(getMockR2Client(firstConnWarmupFails)).when(clientConfig).getR2Client();
     doReturn(1L).when(clientConfig).getMetadataRefreshIntervalInSeconds();
+    doReturn(1L).when(clientConfig).getMetadataConnWarmupTimeoutInSeconds();
     doReturn(storeName).when(clientConfig).getStoreName();
     doReturn(clusterStats).when(clientConfig).getClusterStats();
     doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
@@ -88,6 +89,7 @@ public class RequestBasedMetadataTestUtils {
                   argument -> argument.getURI().getPath().endsWith("/" + QueryAction.HEALTH.toString().toLowerCase())),
               any(Callback.class));
     } else {
+      // for REPLICA1_NAME: first request fails and other succeeds
       doAnswer(invocation -> {
         R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
         callback.getValueFuture().completeExceptionally(new VeniceClientHttpException(500));
@@ -100,7 +102,20 @@ public class RequestBasedMetadataTestUtils {
           .when(r2Client)
           .restRequest(
               argThat(
-                  argument -> argument.getURI().getPath().endsWith("/" + QueryAction.HEALTH.toString().toLowerCase())),
+                  argument -> (argument.getURI().getPath().endsWith("/" + QueryAction.HEALTH.toString().toLowerCase())
+                      && argument.getURI().getPath().contains(REPLICA1_NAME))),
+              any(Callback.class));
+
+      // for other replicas: all request succeeds
+      doAnswer(invocation -> {
+        R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+        callback.getValueFuture().complete(null);
+        return null;
+      }).when(r2Client)
+          .restRequest(
+              argThat(
+                  argument -> (argument.getURI().getPath().endsWith("/" + QueryAction.HEALTH.toString().toLowerCase())
+                      && !argument.getURI().getPath().contains(REPLICA1_NAME))),
               any(Callback.class));
     }
     return r2Client;
