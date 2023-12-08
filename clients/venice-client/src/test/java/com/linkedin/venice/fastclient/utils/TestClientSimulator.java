@@ -613,7 +613,7 @@ public class TestClientSimulator implements Client {
 
       @Override
       public Integer getLatestValueSchemaId() {
-        return 0;
+        return expectedValueSchemaId;
       }
 
       @Override

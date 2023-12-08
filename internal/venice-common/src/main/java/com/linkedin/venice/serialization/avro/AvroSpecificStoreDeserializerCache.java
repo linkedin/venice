@@ -35,7 +35,7 @@ public class AvroSpecificStoreDeserializerCache<V extends SpecificRecord> implem
 
   @Override
   public RecordDeserializer<V> getDeserializer(int writerSchemaId, int readerSchemaId) {
-    // We can also throw Unsupported exception here instead of ignoring the readerSchemaId parameter.
+    // TODO we can also throw Unsupported exception here instead of ignoring the readerSchemaId parameter.
     return cache.computeIfAbsent(
         writerSchemaId,
         (schemaId) -> FastSerializerDeserializerFactory

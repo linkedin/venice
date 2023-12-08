@@ -700,6 +700,8 @@ ext.createDiffFile = { ->
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
       // unit test for gRPC Transport Client is not straightforward, adding to exclusion list for now
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/transport/GrpcTransportClient.java',
+      // unit test for deprecated DispatchingVsonStoreClient is not meaningful since most logic is in its parent class
+      ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/DispatchingVsonStoreClient.java',
 
       // venice-producer
       ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/OnlineProducerFactory.java',

@@ -75,7 +75,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private final String BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
   private final String COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
 
-  private final StoreMetadata metadata;
+  protected final StoreMetadata metadata;
   private final int requiredReplicaCount;
 
   private final ClientConfig config;
@@ -771,10 +771,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   private RecordDeserializer<GenericRecord> getComputeResultRecordDeserializer(Schema resultSchema) {
     return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(resultSchema, resultSchema);
-  }
-
-  protected RecordDeserializer<V> getValueDeserializer(Schema writerSchema, Schema readerSchema) {
-    return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, readerSchema);
   }
 
   private <T> T tryToDeserialize(RecordDeserializer<T> dataDeserializer, ByteBuffer data, int writerSchemaId, K key) {
