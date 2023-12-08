@@ -1660,16 +1660,27 @@ public class AdminTool {
   }
 
   public static void checkMigrationStatus(CommandLine cmd, PrintFunction printFunction) {
-    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
+    checkMigrationStatus(
+        cmd,
+        printFunction,
+        new ControllerClient(getRequiredArgument(cmd, Arg.CLUSTER_SRC), getRequiredArgument(cmd, Arg.URL), sslFactory),
+        new ControllerClient(
+            getRequiredArgument(cmd, Arg.CLUSTER_DEST),
+            getRequiredArgument(cmd, Arg.URL),
+            sslFactory));
+  }
+
+  public static void checkMigrationStatus(
+      CommandLine cmd,
+      PrintFunction printFunction,
+      ControllerClient srcControllerClient,
+      ControllerClient destControllerClient) {
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
     String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
-
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
 
