@@ -2024,6 +2024,25 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
 
   /**
+   * Whether to check LeaderCompleteState in the follower replica and davinci replica before marking the follower
+   * completed. This is to avoid the case that the follower replica is marked completed before the leader replica
+   * and transitions to leader if the leader replicas goes down.
+   * <p>
+   * Default to false. Should be enabled only after Venice tag 0.4.154 is fully rolled out.
+   */
+  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED =
+      "server.leader.complete.state.check.in.follower.enabled";
+
+  /**
+   * Follower replicas and DavinciClient will only consider heartbeats received within
+   * this time window to mark themselves as completed. This is to avoid the cases that
+   * the follower replica is marked completed based on the old heartbeat messages from
+   * a previous leader replica.
+   */
+  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS =
+      "server.leader.complete.state.check.in.follower.valid.interval.ms";
+
+  /**
    * Whether to enable stuck consumer repair in Server.
    */
   public static final String SERVER_STUCK_CONSUMER_REPAIR_ENABLED = "server.stuck.consumer.repair.enabled";

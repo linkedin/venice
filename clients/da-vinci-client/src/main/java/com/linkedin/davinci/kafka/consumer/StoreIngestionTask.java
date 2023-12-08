@@ -755,6 +755,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return storagePartitionConfig;
   }
 
+  protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
+
+  /**
+   * Checks whether the lag is acceptable for hybrid stores
+   */
+  protected abstract boolean checkAndLogIfLagIsAcceptableForHybridStore(
+      PartitionConsumptionState partitionConsumptionState,
+      long offsetLag,
+      long offsetThreshold,
+      boolean shouldLogLag,
+      boolean isOffsetBasedLag,
+      long latestConsumedProducerTimestamp);
+
   /**
    * This function checks various conditions to verify if a store is ready to serve.
    * Lag = (Source Max Offset - SOBR Source Offset) - (Current Offset - SOBR Destination Offset)
@@ -810,21 +823,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
          */
         if (offsetThreshold >= 0) {
-          long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
-
-          boolean lagging = lag > offsetThreshold;
-          isLagAcceptable = !lagging;
-
-          if (shouldLogLag) {
-            LOGGER.info(
-                "{} [Offset lag] partition {} is {}lagging. Lag: [{}] {} Threshold [{}]",
-                consumerTaskId,
-                partitionId,
-                (lagging ? "" : "not "),
-                lag,
-                (lagging ? ">" : "<"),
-                offsetThreshold);
-          }
+          isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
+              partitionConsumptionState,
+              measureHybridOffsetLag(partitionConsumptionState, shouldLogLag),
+              offsetThreshold,
+              shouldLogLag,
+              true,
+              0);
         }
 
         /**
@@ -842,19 +847,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 latestConsumedProducerTimestamp,
                 partitionConsumptionState);
           }
-          long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp);
-          boolean timestampLagIsAcceptable = (producerTimestampLag < producerTimeLagThresholdInMS);
-          if (shouldLogLag) {
-            LOGGER.info(
-                "{} [Time lag] partition {} is {}lagging. The latest producer timestamp is {}. Timestamp Lag: [{}] {} Threshold [{}]",
-                consumerTaskId,
-                partitionId,
-                (!timestampLagIsAcceptable ? "" : "not "),
-                latestConsumedProducerTimestamp,
-                producerTimestampLag,
-                (timestampLagIsAcceptable ? "<" : ">"),
-                producerTimeLagThresholdInMS);
-          }
+          boolean timestampLagIsAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
+              partitionConsumptionState,
+              LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp),
+              producerTimeLagThresholdInMS,
+              shouldLogLag,
+              false,
+              latestConsumedProducerTimestamp);
           /**
            * If time lag is not acceptable but the producer timestamp of the last message of RT is smaller or equal than
            * the known latest producer timestamp in server, it means ingestion task has reached the end of RT, so it's
@@ -885,9 +884,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             final PubSubTopic lagMeasurementTopic = pubSubTopicRepository.getTopic(realTimeTopic.getName());
             final PubSubTopicPartition pubSubTopicPartition =
                 new PubSubTopicPartitionImpl(lagMeasurementTopic, partitionId);
-            // Since DaVinci clients run in embedded mode, they may not have network ACLs to check remote RT to get
-            // the latest producer timestamp in RT. Only use the latest producer time in local RT.
-            final String lagMeasurementKafkaUrl = isDaVinciClient ? localKafkaServer : realTimeTopicKafkaURL;
+
+            // DaVinci and STANDBY checks the local consumption and leaderCompleteState status
+            final String lagMeasurementKafkaUrl =
+                (isHybridFollower(partitionConsumptionState)) ? localKafkaServer : realTimeTopicKafkaURL;
 
             if (!cachedPubSubMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), realTimeTopic)) {
               timestampLagIsAcceptable = true;
@@ -1684,8 +1684,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     try {
       // Compare the offset lag is acceptable or not, if acceptable, report completed directly, otherwise rely on the
-      // normal
-      // ready-to-server checker.
+      // normal ready-to-server checker.
       boolean isCompletedReport = false;
       long offsetLagDeltaRelaxFactor = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart();
       long previousOffsetLag = newPartitionConsumptionState.getOffsetRecord().getOffsetLag();
@@ -2121,7 +2120,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) throws InterruptedException {
+      long beforeProcessingRecordTimestampNs) {
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when
     // unsubscribing)
     // in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
@@ -2610,7 +2609,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
         /**
-         * Nothing to do here as all of the processing is being done in {@link StoreIngestionTask#delegateConsumerRecord(ConsumerRecord, int, String)}.
+         * Nothing to do here as all the processing is being done in {@link StoreIngestionTask#delegateConsumerRecord(ConsumerRecord, int, String)}.
          */
         break;
       case START_OF_INCREMENTAL_PUSH:

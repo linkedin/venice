@@ -90,7 +90,8 @@ public abstract class AbstractPollStrategy implements PollStrategy {
             pubSubTopicPartition,
             nextOffset,
             System.currentTimeMillis(),
-            -1);
+            -1,
+            message.get().headers);
         if (!records.containsKey(pubSubTopicPartition)) {
           records.put(pubSubTopicPartition, new ArrayList<>());
         }
