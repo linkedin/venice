@@ -226,14 +226,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       newReplicasToBeWarmedUp.addAll(getReplicas(currentFetchedVersion, partitionId));
     }
-    LOGGER.info(
-        "New fetched metadata has {} instances for store {} version {}",
-        newReplicasToBeWarmedUp.size(),
-        storeName,
-        currentFetchedVersion);
+    String logPrefix =
+        String.format("Metadata connection warmup for store %s version %d:", storeName, currentFetchedVersion);
+    LOGGER.info("{} Newly fetched metadata has {} instances", logPrefix, newReplicasToBeWarmedUp.size());
 
     // If there are warmup in progress, check its status to cancel or reuse the same warmup
     Set<String> replicasWarmupInProgressFromPastRefresh = new HashSet<>();
+    int warmupSuccessfullInPastRefresh = 0;
     Iterator<Map.Entry<String, CompletableFuture>> entryIterator = warmUpInstancesFutures.entrySet().iterator();
     while (entryIterator.hasNext()) {
       Map.Entry<String, CompletableFuture> entry = entryIterator.next();
@@ -254,6 +253,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         } else if (!future.isCompletedExceptionally()) {
           // no need to warm up these instances again as its already completed successfully in the past warmups.
           newReplicasToBeWarmedUp.remove(replica);
+          warmupSuccessfullInPastRefresh++;
         } else {
           // else will be warmed up again
           entryIterator.remove();
@@ -263,8 +263,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
     if (replicasWarmupInProgressFromPastRefresh.size() != 0) {
       LOGGER.warn(
-          "H2 connection warmup to {} instances still incomplete from the previous attempt, not retrying "
-              + "again for these instances: {}",
+          "{} {} instances still incomplete from the previous attempt, not retrying again for these instances: {}",
+          logPrefix,
           replicasWarmupInProgressFromPastRefresh.size(),
           String.join(",", replicasWarmupInProgressFromPastRefresh));
     }
@@ -273,20 +273,20 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     int instanceNum = newReplicasToBeWarmedUp.size();
     if (instanceNum == 0) {
       if (replicasWarmupInProgressFromPastRefresh.size() == 0) {
-        LOGGER.info(
-            "H2 connection warmup to all instances for store {} version {} is already completed in the "
-                + "previous warmups",
-            storeName,
-            currentFetchedVersion);
+        LOGGER.info("{} all instances are already warmed up in the previous attempts", logPrefix);
       }
       return;
     }
 
-    LOGGER.info(
-        "Starting H2 connection warm up from fast client to {} instances for store {} version {}",
-        instanceNum,
-        storeName,
-        currentFetchedVersion);
+    if (warmupSuccessfullInPastRefresh != 0) {
+      LOGGER.info(
+          "{} {} instances already warmed up in the previous attempts, Starting H2 connection warm up from fast client to the remaining {} instances",
+          logPrefix,
+          warmupSuccessfullInPastRefresh,
+          instanceNum);
+    } else {
+      LOGGER.info("{} Starting H2 connection warm up from fast client to {} instances", logPrefix, instanceNum);
+    }
 
     AtomicInteger numberOfWarmUpSuccess = new AtomicInteger(0);
     Set<String> warmUpFailedInstances = VeniceConcurrentHashMap.newKeySet();
@@ -298,7 +298,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           numberOfWarmUpSuccess.incrementAndGet();
         } catch (Exception e) {
           warmUpFailedInstances.add(replica);
-          throw new RuntimeException("warmup failed for replica: " + replica, e);
+          throw new RuntimeException(String.format("%s warmup failed for replica: %s", logPrefix, replica), e);
         }
       }, h2ConnWarmupExecutorService);
 
@@ -314,24 +314,26 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         CompletableFuture.allOf(warmUpInstancesFutures.values().toArray(new CompletableFuture[0]));
     try {
       warmupResultFuture.get(connWarmupTimeoutInSeconds, TimeUnit.SECONDS);
-      LOGGER.info("H2 connection warmup to {} instances succeeded", numberOfWarmUpSuccess.get());
+      LOGGER.info("{} {} instances succeeded", logPrefix, numberOfWarmUpSuccess.get());
     } catch (Exception e) {
       int successCount = numberOfWarmUpSuccess.get();
       int failureCount = warmUpFailedInstances.size();
       if (e instanceof TimeoutException) {
         int notCompletedCount = instanceNum - (successCount + failureCount);
-        LOGGER.error(
-            "H2 connection warmup to {} instances succeeded, {} instances failed and {} instances failed to finish "
-                + "within {} seconds. Failed instances {} will be retried during the periodic metadata refresh. ",
+        LOGGER.warn(
+            "{} {} instances succeeded, {} instances failed and {} instances failed to finish "
+                + "within {} seconds. Failed instances {} will be retried during the periodic metadata refresh.",
+            logPrefix,
             successCount,
             failureCount,
             notCompletedCount,
             connWarmupTimeoutInSeconds,
             String.join(",", warmUpFailedInstances));
       } else {
-        LOGGER.error(
-            "H2 connection warmup to {} instances succeeded, {} instances failed. Failed instances {} will be retried "
-                + "during the periodic metadata refresh. ",
+        LOGGER.warn(
+            "{} {} instances succeeded, {} instances failed. Failed instances {} will be retried "
+                + "during the periodic metadata refresh.",
+            logPrefix,
             successCount,
             failureCount,
             String.join(",", warmUpFailedInstances),
@@ -447,7 +449,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       routingStrategy.updateHelixGroupInfo(helixGroupInfo);
       // Update the metadata timestamp only if all updates are successful
       clientStats.updateCacheTimestamp(currentTimeMs);
-      LOGGER.info("Metadata fetch operation for store: {} finished successfully", storeName);
+      LOGGER.info(
+          "Metadata fetch operation for store: {} finished successfully with current version {}.",
+          storeName,
+          fetchedCurrentVersion);
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration
@@ -459,7 +464,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       } else {
         // pass the error along if the on demand refresh also fails
         clusterStats.recordVersionUpdateFailure();
-        throw new VeniceClientException("Metadata fetch operation retry failed", e.getCause());
+        throw new VeniceClientException(
+            String.format("Metadata fetch operation for store: %s retry failed", storeName),
+            e.getCause());
       }
     }
   }
