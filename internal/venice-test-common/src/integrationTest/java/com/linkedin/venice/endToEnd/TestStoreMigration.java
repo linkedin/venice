@@ -18,6 +18,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.AdminTool;
+import com.linkedin.venice.AdminTool.PrintFunction;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -54,6 +55,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Optional;
@@ -292,8 +294,8 @@ public class TestStoreMigration {
     createAndPushStore(srcClusterName, storeName);
 
     // DaVinci push status system store is enabled by default. Check if it has online version.
+    String systemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
     try (ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, childControllerUrl0)) {
-      String systemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreResponse storeResponse = srcChildControllerClient.getStore(systemStoreName);
         Assert.assertFalse(storeResponse.isError());
@@ -325,7 +327,20 @@ public class TestStoreMigration {
               .assertEquals(pushStatusStoreReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
 
       startMigration(parentControllerUrl, storeName);
-      checkMigrationStatus(parentControllerUrl, storeName);
+
+      // Store migration status output in ArrayList via closure PrintFunction
+      ArrayList<String> statusOutput = new ArrayList<>();
+      PrintFunction printFunction = (message) -> {
+        statusOutput.add(message);
+        System.err.println(message);
+      };
+
+      checkMigrationStatus(parentControllerUrl, storeName, printFunction);
+
+      // Check that the store and system store appear in the migration status output
+      Assert.assertTrue(statusOutput.stream().filter(message -> message.contains(storeName)).count() >= 1);
+      Assert.assertTrue(statusOutput.stream().filter(message -> message.contains(systemStoreName)).count() >= 1);
+
       completeMigration(parentControllerUrl, storeName);
 
       // Verify the da vinci push status system store is materialized in dest cluster and contains the same value
@@ -472,10 +487,11 @@ public class TestStoreMigration {
     AdminTool.main(startMigrationArgs);
   }
 
-  private void checkMigrationStatus(String controllerUrl, String storeName) throws Exception {
+  private void checkMigrationStatus(String controllerUrl, String storeName, PrintFunction printFunction)
+      throws Exception {
     String[] checkMigrationStatusArgs = { "--migration-status", "--url", controllerUrl, "--store", storeName,
         "--cluster-src", srcClusterName, "--cluster-dest", destClusterName };
-    AdminTool.main(checkMigrationStatusArgs);
+    AdminTool.checkMigrationStatus(AdminTool.getCommandLine(checkMigrationStatusArgs), printFunction);
   }
 
   private void completeMigration(String controllerUrl, String storeName) {

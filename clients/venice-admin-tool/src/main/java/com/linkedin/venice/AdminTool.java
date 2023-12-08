@@ -558,7 +558,7 @@ public class AdminTool {
     }
   }
 
-  static CommandLine getCommandLine(String[] args) throws ParseException, IOException {
+  public static CommandLine getCommandLine(String[] args) throws ParseException, IOException {
     /**
      * Command Options are split up for help text formatting, see printUsageAndExit()
      *
@@ -1615,28 +1615,28 @@ public class AdminTool {
   }
 
   @FunctionalInterface
-  interface PrintFunction {
+  public interface PrintFunction {
     void apply(String message);
   }
 
-  private static void printMigrationStatus(ControllerClient controller, String storeName) {
-    printMigrationStatus(controller, storeName, System.err::println);
-  }
+  // private static void printMigrationStatus(ControllerClient controller, String storeName) {
+  // printMigrationStatus(controller, storeName, System.err::println);
+  // }
 
   private static void printMigrationStatus(ControllerClient controller, String storeName, PrintFunction printFunction) {
     StoreInfo store = controller.getStore(storeName).getStore();
 
-    System.err.println("\n" + controller.getClusterName() + "\t" + controller.getLeaderControllerUrl());
+    printFunction.apply("\n" + controller.getClusterName() + "\t" + controller.getLeaderControllerUrl());
 
     if (store == null) {
-      System.err.println(storeName + " DOES NOT EXIST in this cluster " + controller.getClusterName());
+      printFunction.apply(storeName + " DOES NOT EXIST in this cluster " + controller.getClusterName());
     } else {
-      System.err.println(storeName + " exists in this cluster " + controller.getClusterName());
-      System.err.println("\t" + storeName + ".isMigrating = " + store.isMigrating());
-      System.err.println("\t" + storeName + ".largestUsedVersion = " + store.getLargestUsedVersionNumber());
-      System.err.println("\t" + storeName + ".currentVersion = " + store.getCurrentVersion());
-      System.err.println("\t" + storeName + ".versions = ");
-      store.getVersions().stream().forEach(version -> System.err.println("\t\t" + version.toString()));
+      printFunction.apply(storeName + " exists in this cluster " + controller.getClusterName());
+      printFunction.apply("\t" + storeName + ".isMigrating = " + store.isMigrating());
+      printFunction.apply("\t" + storeName + ".largestUsedVersion = " + store.getLargestUsedVersionNumber());
+      printFunction.apply("\t" + storeName + ".currentVersion = " + store.getCurrentVersion());
+      printFunction.apply("\t" + storeName + ".versions = ");
+      store.getVersions().stream().forEach(version -> printFunction.apply("\t\t" + version.toString()));
     }
 
     printFunction.apply(
@@ -1663,7 +1663,7 @@ public class AdminTool {
     checkMigrationStatus(cmd, System.err::println);
   }
 
-  private static void checkMigrationStatus(CommandLine cmd, PrintFunction printFunction) {
+  public static void checkMigrationStatus(CommandLine cmd, PrintFunction printFunction) {
     String veniceUrl = getRequiredArgument(cmd, Arg.URL);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
