@@ -191,7 +191,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private ParticipantStoreConsumptionTask participantStoreConsumptionTask;
 
-  private boolean metaSystemStoreReplicaStatusNotifierQueued = false;
   // TODO: This could be a composite storage engine which keeps secondary storage engines updated in lockstep with a
   // primary
   // source. This could be a view of the data, or in our case a cache, or both potentially.
