@@ -48,7 +48,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(AggKafkaConsumerService.class);
 
   private final PubSubConsumerAdapterFactory consumerFactory;
-  // private final int numOfConsumersPerKafkaCluster;
   private final VeniceServerConfig serverConfig;
   private final long readCycleDelayMs;
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
