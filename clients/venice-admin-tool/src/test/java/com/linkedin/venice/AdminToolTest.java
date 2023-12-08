@@ -21,7 +21,6 @@ public class AdminToolTest {
   String CONTROLLER_URL = "http://somePlaceElse.com:12345";
   String STORE_NAME = "TestStore";
   String SYSTEM_STORE_NAME = "venice_system_store_davinci_" + STORE_NAME;
-  String FABRIC0 = "dc-0";
 
   @Test
   public void testCheckMigrationStatus() throws ParseException, IOException {
