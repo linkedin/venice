@@ -449,7 +449,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metricsRepository,
         new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()),
         pubSubDeserializer,
-        (topicName) -> this.killConsumptionTask(topicName));
+        (topicName) -> this.killConsumptionTask(topicName),
+        vt -> {
+          String storeName = Version.parseStoreFromKafkaTopicName(vt);
+          int versionNumber = Version.parseVersionFromKafkaTopicName(vt);
+          Store store = metadataRepo.getStore(storeName);
+          if (null == store) {
+            return false;
+          }
+          Optional<Version> version = store.getVersion(versionNumber);
+          if (!version.isPresent()) {
+            return false;
+          }
+          return version.get().isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
+        });
     /**
      * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
      * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.

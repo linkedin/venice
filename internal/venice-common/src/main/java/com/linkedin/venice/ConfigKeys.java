@@ -2069,4 +2069,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND =
       "server.non.existing.topic.check.retry.interval.second";
+
+  /**
+   * Handling AA or WC stores is expensive because of RocksDB lookup, and this following
+   * feature will handle these writes in dedicated consumer pool, so that the full
+   * updates won't be affected by the heavy writes to these AA/WC stores.
+   */
+  public static final String SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED =
+      "server.dedicated.consumer.pool.for.aa.wc.leader.enabled";
+  public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER =
+      "server.dedicated.consumer.pool.size.for.aa.wc.leader";
 }
