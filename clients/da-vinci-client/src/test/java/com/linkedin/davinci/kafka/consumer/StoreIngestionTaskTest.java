@@ -2700,8 +2700,13 @@ public abstract class StoreIngestionTaskTest {
         "Remote consumer should not poll for new records but return previously cached records");
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testIsReadyToServe(boolean isDaVinciClient, boolean isActiveActiveReplicationEnabled) {
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIsReadyToServe(boolean isDaVinciClient, boolean isLeader, boolean isActiveActiveReplicationEnabled) {
+    if (isDaVinciClient && isLeader) {
+      // DaVinci client can't be leader
+      return;
+    }
+
     int partitionCount = 2;
     int amplificationFactor = 1;
 
@@ -2835,24 +2840,25 @@ public abstract class StoreIngestionTaskTest {
     doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getPartition();
     doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getUserPartition();
     storeIngestionTaskUnderTest.setPartitionConsumptionState(0, mockPcsBufferReplayStartedLagCaughtUp);
-    // case 5a: leader replica => partition is ready to serve
-    if (!isDaVinciClient) { // DVC can't be leader
+    if (isLeader) {
+      // case 5a: leader replica => partition is ready to serve
       doReturn(LEADER).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
+    } else {
+      // case 5b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      doReturn(STANDBY).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
+      doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
+      assertEquals(
+          storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp),
+          !isActiveActiveReplicationEnabled);
+      // case 5c: standby replica and LEADER_COMPLETED => partition is ready to serve
+      doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
+      doCallRealMethod().when(mockPcsBufferReplayStartedLagCaughtUp).isLeaderCompleted();
+      doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isFirstHeartBeatSOSReceived();
+      doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedLagCaughtUp)
+          .getLastLeaderCompleteStateUpdateInMs();
+      assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
     }
-    // case 5b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
-    doReturn(STANDBY).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
-    doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
-    assertEquals(
-        storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp),
-        !isActiveActiveReplicationEnabled);
-    // case 5c: standby replica and LEADER_COMPLETED => partition is ready to serve
-    doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
-    doCallRealMethod().when(mockPcsBufferReplayStartedLagCaughtUp).isLeaderCompleted();
-    doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isFirstHeartBeatSOSReceived();
-    doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedLagCaughtUp)
-        .getLastLeaderCompleteStateUpdateInMs();
-    assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
 
     // case 6: Remote replication lag has not caught up but host has caught up to lag in local VT,
     // leader won't be marked completed, but both DaVinci replica and storage node will be marked
@@ -2868,24 +2874,25 @@ public abstract class StoreIngestionTaskTest {
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(any(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(any(), anyInt());
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), any(), any());
-    // case 6a: leader replica => partition is not ready to serve
-    if (!isDaVinciClient) { // DVC can't be leader
+    if (isLeader) {
+      // case 6a: leader replica => partition is not ready to serve
       doReturn(LEADER).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
       assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
+    } else {
+      // case 6b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      doReturn(STANDBY).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
+      doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
+      assertEquals(
+          storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
+          !isActiveActiveReplicationEnabled);
+      // case 6c: standby replica and LEADER_COMPLETED => partition is ready to serve
+      doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
+      doCallRealMethod().when(mockPcsBufferReplayStartedRemoteLagging).isLeaderCompleted();
+      doReturn(true).when(mockPcsBufferReplayStartedRemoteLagging).isFirstHeartBeatSOSReceived();
+      doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedRemoteLagging)
+          .getLastLeaderCompleteStateUpdateInMs();
+      assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
     }
-    // case 6b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
-    doReturn(STANDBY).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
-    doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
-    assertEquals(
-        storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
-        !isActiveActiveReplicationEnabled);
-    // case 6c: standby replica and LEADER_COMPLETED => partition is ready to serve
-    doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
-    doCallRealMethod().when(mockPcsBufferReplayStartedRemoteLagging).isLeaderCompleted();
-    doReturn(true).when(mockPcsBufferReplayStartedRemoteLagging).isFirstHeartBeatSOSReceived();
-    doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedRemoteLagging)
-        .getLastLeaderCompleteStateUpdateInMs();
-    assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
 
     // case 7: If there are issues in replication from remote RT -> local VT, leader won't be marked completed,
     // but both DaVinci replica and storage node will be marked ready to serve if leader were to be completed
@@ -2903,24 +2910,25 @@ public abstract class StoreIngestionTaskTest {
         .getProducerTimestampOfLastDataRecord(any(), anyInt());
     doReturn(System.currentTimeMillis()).when(mockTopicManagerRemoteKafka)
         .getProducerTimestampOfLastDataRecord(any(), anyInt());
-    // case 7a: leader replica => partition is not ready to serve
-    if (!isDaVinciClient) {
+    if (isLeader) {
+      // case 7a: leader replica => partition is not ready to serve
       doReturn(LEADER).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
       assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
+    } else {
+      // case 7b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      doReturn(STANDBY).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
+      doReturn(LEADER_NOT_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
+      assertEquals(
+          storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging),
+          !isActiveActiveReplicationEnabled);
+      // case 7c: standby replica and LEADER_COMPLETED => partition is ready to serve
+      doReturn(LEADER_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
+      doCallRealMethod().when(mockPcsOffsetLagCaughtUpTimestampLagging).isLeaderCompleted();
+      doReturn(true).when(mockPcsOffsetLagCaughtUpTimestampLagging).isFirstHeartBeatSOSReceived();
+      doReturn(System.currentTimeMillis()).when(mockPcsOffsetLagCaughtUpTimestampLagging)
+          .getLastLeaderCompleteStateUpdateInMs();
+      Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
     }
-    // case 7b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
-    doReturn(STANDBY).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
-    doReturn(LEADER_NOT_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
-    assertEquals(
-        storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging),
-        !isActiveActiveReplicationEnabled);
-    // case 7c: standby replica and LEADER_COMPLETED => partition is ready to serve
-    doReturn(LEADER_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
-    doCallRealMethod().when(mockPcsOffsetLagCaughtUpTimestampLagging).isLeaderCompleted();
-    doReturn(true).when(mockPcsOffsetLagCaughtUpTimestampLagging).isFirstHeartBeatSOSReceived();
-    doReturn(System.currentTimeMillis()).when(mockPcsOffsetLagCaughtUpTimestampLagging)
-        .getLastLeaderCompleteStateUpdateInMs();
-    Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
   }
 
   @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
