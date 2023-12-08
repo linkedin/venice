@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -155,6 +156,22 @@ public class KafkaConsumerServiceDelegatorTest {
     assertTrue(delegator.hasAnySubscriptionFor(versionTopic));
     verify(mockDedicatedConsumerService).hasAnySubscriptionFor(versionTopic);
     verify(mockDefaultConsumerService).hasAnySubscriptionFor(versionTopic);
+
+    reset(mockDefaultConsumerService);
+    reset(mockDedicatedConsumerService);
+    doReturn(true).when(mockDefaultConsumerService).hasAnySubscriptionFor(any());
+    doReturn(true).when(mockDedicatedConsumerService).hasAnySubscriptionFor(any());
+    assertTrue(delegator.hasAnySubscriptionFor(versionTopic));
+    verify(mockDedicatedConsumerService, never()).hasAnySubscriptionFor(versionTopic);
+    verify(mockDefaultConsumerService).hasAnySubscriptionFor(versionTopic);
+
+    reset(mockDefaultConsumerService);
+    reset(mockDedicatedConsumerService);
+    doReturn(false).when(mockDefaultConsumerService).hasAnySubscriptionFor(any());
+    doReturn(false).when(mockDedicatedConsumerService).hasAnySubscriptionFor(any());
+    assertFalse(delegator.hasAnySubscriptionFor(versionTopic));
+    verify(mockDedicatedConsumerService).hasAnySubscriptionFor(versionTopic);
+    verify(mockDefaultConsumerService).hasAnySubscriptionFor(versionTopic);
   }
 
   @Test
@@ -188,5 +205,23 @@ public class KafkaConsumerServiceDelegatorTest {
     delegator.startConsumptionIntoDataReceiver(topicPartitionForRT, 0, dataReceiver);
     verify(mockDefaultConsumerService, never()).startConsumptionIntoDataReceiver(topicPartitionForRT, 0, dataReceiver);
     verify(mockDedicatedConsumerService).startConsumptionIntoDataReceiver(topicPartitionForRT, 0, dataReceiver);
+
+    // Test non-AA/WC cases
+    isAAWCStoreFunc = vt -> false;
+    delegator = new KafkaConsumerServiceDelegator(mockConfig, consumerServiceConstructor, isAAWCStoreFunc);
+
+    reset(mockDefaultConsumerService);
+    reset(mockDedicatedConsumerService);
+    delegator.startConsumptionIntoDataReceiver(topicPartitionForVT, 0, dataReceiver);
+    verify(mockDefaultConsumerService).startConsumptionIntoDataReceiver(topicPartitionForVT, 0, dataReceiver);
+    verify(mockDedicatedConsumerService, never())
+        .startConsumptionIntoDataReceiver(topicPartitionForVT, 0, dataReceiver);
+
+    reset(mockDefaultConsumerService);
+    reset(mockDedicatedConsumerService);
+    delegator.startConsumptionIntoDataReceiver(topicPartitionForRT, 0, dataReceiver);
+    verify(mockDefaultConsumerService).startConsumptionIntoDataReceiver(topicPartitionForRT, 0, dataReceiver);
+    verify(mockDedicatedConsumerService, never())
+        .startConsumptionIntoDataReceiver(topicPartitionForRT, 0, dataReceiver);
   }
 }
