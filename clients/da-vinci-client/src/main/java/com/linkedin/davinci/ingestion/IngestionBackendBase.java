@@ -7,7 +7,9 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import java.io.Closeable;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 
@@ -61,4 +63,9 @@ public interface IngestionBackendBase extends Closeable {
   KafkaStoreIngestionService getStoreIngestionService();
 
   StorageService getStorageService();
+
+  /**
+   * Get currently loaded store partition mappings.
+   */
+  Map<String, Set<Integer>> getLoadedStoreUserPartitionsMapping();
 }

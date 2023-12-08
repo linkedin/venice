@@ -101,7 +101,7 @@ public class PartitionUtils {
   /**
    * @param topicPartition the {@link PubSubTopicPartition} topic which the record is from
    * @param amplificationFactor of the store-version
-   * @return leaderSubPartition if is consuming from a Real-time topic, else return partition itself
+   * @return leaderSubPartition if it's consuming from a Real-time topic, else return partition itself
    */
   public static int getSubPartition(PubSubTopicPartition topicPartition, int amplificationFactor) {
     return topicPartition.getPubSubTopic().isRealTime()

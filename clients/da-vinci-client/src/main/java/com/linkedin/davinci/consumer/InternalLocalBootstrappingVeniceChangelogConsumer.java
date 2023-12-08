@@ -389,7 +389,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
             localCheckpoint = VeniceChangeCoordinate.decodeStringAndConvertToVeniceChangeCoordinate(offsetString);
           }
         } catch (IOException | ClassNotFoundException e) {
-          throw new VeniceException("Failed to decode local hhange capture coordinate chekcpoint with exception: ", e);
+          throw new VeniceException("Failed to decode local change capture coordinate checkpoint with exception: ", e);
         }
 
         // Where we need to catch up to

@@ -26,13 +26,9 @@ public class ApacheKafkaProducerCallback implements Callback {
 
   private final PubSubProducerCallback pubsubProducerCallback;
   private final CompletableFuture<PubSubProduceResult> produceResultFuture = new CompletableFuture<>();
-  private final ApacheKafkaProducerAdapter producerAdapter;
 
-  public ApacheKafkaProducerCallback(
-      PubSubProducerCallback pubsubProducerCallback,
-      ApacheKafkaProducerAdapter producerAdapter) {
+  public ApacheKafkaProducerCallback(PubSubProducerCallback pubsubProducerCallback) {
     this.pubsubProducerCallback = pubsubProducerCallback;
-    this.producerAdapter = producerAdapter;
   }
 
   /**
@@ -72,7 +68,7 @@ public class ApacheKafkaProducerCallback implements Callback {
     }
 
     // This is a special case where the producer is closed forcefully. We can skip the callback processing
-    if (kafkaException != null && kafkaException.getMessage() != null && producerAdapter.isForceClosed()
+    if (kafkaException != null && kafkaException.getMessage() != null
         && kafkaException.getMessage().contains("Producer is closed forcefully")) {
       LOGGER.debug("Producer is closed forcefully. Skipping the callback processing.");
       return;

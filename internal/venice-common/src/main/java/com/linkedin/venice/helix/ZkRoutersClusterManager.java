@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutersClusterManager;
 import com.linkedin.venice.utils.HelixUtils;
@@ -9,6 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -45,12 +47,11 @@ public class ZkRoutersClusterManager
 
   private final CachedResourceZkStateListener zkStateListener;
 
-  private final int refreshAttemptsForZkReconnect;
-  private final long refreshIntervalForZkReconnectInMs;
+  private Set<Instance> liveRouterInstanceSet;
 
   public ZkRoutersClusterManager(
       ZkClient zkClient,
-      HelixAdapterSerializer adaper,
+      HelixAdapterSerializer adapter,
       String clusterName,
       int refreshAttemptsForZkReconnect,
       long refreshIntervalForZkReconnectInMs) {
@@ -58,13 +59,12 @@ public class ZkRoutersClusterManager
     this.clusterName = clusterName;
     routerCountListeners = new HashSet<>();
     configListeners = new HashSet<>();
-    adaper.registerSerializer(getRouterRootPath(), new RouterClusterConfigJSONSerializer());
-    zkClient.setZkSerializer(adaper);
+    this.liveRouterInstanceSet = new HashSet<>();
+    adapter.registerSerializer(getRouterRootPath(), new RouterClusterConfigJSONSerializer());
+    zkClient.setZkSerializer(adapter);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
     zkStateListener =
         new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
-    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
-    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
     isConnected.set(zkClient.getConnection().getZookeeperState().isAlive());
     this.zkClient.subscribeStateChanges(this);
   }
@@ -83,8 +83,13 @@ public class ZkRoutersClusterManager
     routersClusterConfig = newRoutersClusterConfig;
     zkClient.subscribeStateChanges(zkStateListener);
     // force a live router count update
-    changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
+    liveRouterInstanceSet = convertToInstanceSet(zkClient.getChildren(getRouterRootPath()));
+    changeLiveRouterCount(liveRouterInstanceSet.size());
     LOGGER.info("Refresh finished for cluster {}'s {}.", clusterName, getClass().getSimpleName());
+  }
+
+  private Set<Instance> convertToInstanceSet(List<String> instanceList) {
+    return instanceList.stream().map(HelixUtils::getInstanceFromHelixInstanceName).collect(Collectors.toSet());
   }
 
   @Override
@@ -93,6 +98,10 @@ public class ZkRoutersClusterManager
     zkClient.unsubscribeChildChanges(getRouterRootPath(), this);
     routersClusterConfig = null;
     zkClient.unsubscribeStateChanges(zkStateListener);
+  }
+
+  public Set<Instance> getLiveRouterInstances() {
+    return liveRouterInstanceSet;
   }
 
   /**
@@ -104,7 +113,8 @@ public class ZkRoutersClusterManager
     try {
       zkClient.createEphemeral(getRouterPath(instanceId));
       LOGGER.info("Add router: {} into live routers.", instanceId);
-      changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
+      liveRouterInstanceSet.add(HelixUtils.getInstanceFromHelixInstanceName(instanceId));
+      changeLiveRouterCount(liveRouterInstanceSet.size());
     } catch (ZkNoNodeException e) {
       // For a new cluster, the path for routers might not be created, try to create it.
       try {
@@ -131,7 +141,8 @@ public class ZkRoutersClusterManager
           "Error when deleting router " + instanceId + " from zk path " + getRouterPath(instanceId),
           e);
     }
-    changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
+    liveRouterInstanceSet.remove(HelixUtils.getInstanceFromHelixInstanceName(instanceId));
+    changeLiveRouterCount(liveRouterInstanceSet.size());
     LOGGER.info("Removed router {} from live routers temporarily.", instanceId);
   }
 
@@ -281,10 +292,11 @@ public class ZkRoutersClusterManager
    * will be executed to process the event.
    */
   @Override
-  public void handleChildChange(String parentPath, List<String> currentChilds) throws Exception {
+  public void handleChildChange(String parentPath, List<String> currentChildren) throws Exception {
     int oldLiveRouterCount = liveRouterCount;
-    changeLiveRouterCount(currentChilds.size());
-    LOGGER.info("Live router count has been changed from: {} to: {}.", oldLiveRouterCount, currentChilds.size());
+    liveRouterInstanceSet = convertToInstanceSet(currentChildren);
+    changeLiveRouterCount(currentChildren.size());
+    LOGGER.info("Live router count has been changed from: {} to: {}.", oldLiveRouterCount, currentChildren.size());
   }
 
   /**

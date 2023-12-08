@@ -58,7 +58,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   public void setHostAsUnhealthy(Instance instance) {
     String identifier = instance.getNodeId();
     unhealthyHosts.add(identifier);
-    LOGGER.info("Marking {} as unhealthy until it passes the next health check.", identifier);
+    LOGGER.warn("Marking {} as unhealthy until it passes the next health check.", identifier);
     aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
   }
 

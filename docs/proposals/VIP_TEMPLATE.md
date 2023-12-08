@@ -1,11 +1,11 @@
 ---
 layout: default
-title: Venice Improvement Plan
+title: VIP-`$VIP_Number` `$VIP_Title`
 parent: Proposals
 permalink: /docs/proposals/VIP_TEMPLATE.md
 ---
 
-# Venice Improvement Proposal Template
+# VIP-`$VIP_Number`: `$VIP_Title`
 
 * **Status**: _"one of ['Under Discussion', 'Accepted', 'Adopted', 'Rejected']"_
 * **Author(s)**: _(Names)_

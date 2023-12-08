@@ -134,7 +134,7 @@ public class VeniceChangelogConsumerClientFactory {
     return viewClass;
   }
 
-  private PubSubConsumerAdapter getConsumer(Properties consumerProps, String consumerName) {
+  static PubSubConsumerAdapter getConsumer(Properties consumerProps, String consumerName) {
     PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),

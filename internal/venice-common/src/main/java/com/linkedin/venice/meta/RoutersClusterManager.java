@@ -1,5 +1,8 @@
 package com.linkedin.venice.meta;
 
+import java.util.Set;
+
+
 /**
  * This interface define the operations used to manage all routers in a cluster. Each router could know how many
  * routers are still living through the implementation of this interface.
@@ -34,6 +37,8 @@ public interface RoutersClusterManager {
    * Listen on the router count, get the notification once it's changed.
    */
   void subscribeRouterCountChangedEvent(RouterCountChangedListener listener);
+
+  Set<Instance> getLiveRouterInstances();
 
   /**
    * Stop listening on the router count.

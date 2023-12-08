@@ -6,6 +6,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -27,6 +28,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
+import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
@@ -265,10 +267,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
                           earlyTerminationException.getMessage(),
                           earlyTerminationException.getHttpResponseStatus()));
                 } else if (e instanceof VeniceNoStoreException) {
+                  HttpResponseStatus status = getHttpResponseStatus((VeniceNoStoreException) e);
                   context.writeAndFlush(
                       new HttpShortcutResponse(
                           "No storage exists for: " + ((VeniceNoStoreException) e).getStoreName(),
-                          HttpResponseStatus.BAD_REQUEST));
+                          status));
                 } else {
                   LOGGER.error("Exception thrown in parallel batch get for {}", request.getResourceName(), e);
                   HttpShortcutResponse shortcutResponse =
@@ -313,8 +316,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           }
           context.writeAndFlush(response);
         } catch (VeniceNoStoreException e) {
-          context.writeAndFlush(
-              new HttpShortcutResponse("No storage exists for: " + e.getStoreName(), HttpResponseStatus.BAD_REQUEST));
+          HttpResponseStatus status = getHttpResponseStatus(e);
+          context.writeAndFlush(new HttpShortcutResponse("No storage exists for: " + e.getStoreName(), status));
         } catch (VeniceRequestEarlyTerminationException e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.REQUEST_TIMEOUT));
         } catch (OperationNotAllowedException e) {
@@ -349,12 +352,29 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     } else if (message instanceof MetadataFetchRequest) {
       MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
       context.writeAndFlush(response);
+    } else if (message instanceof CurrentVersionRequest) {
+      ServerCurrentVersionResponse response = handleCurrentVersionRequest((CurrentVersionRequest) message);
+      context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
           new HttpShortcutResponse(
               "Unrecognized object in StorageExecutionHandler",
               HttpResponseStatus.INTERNAL_SERVER_ERROR));
     }
+  }
+
+  private HttpResponseStatus getHttpResponseStatus(VeniceNoStoreException e) {
+    String topic = e.getStoreName();
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    int version = Version.parseVersionFromKafkaTopicName(topic);
+    Store store = metadataRepository.getStore(storeName);
+
+    if (store == null || store.getCurrentVersion() != version) {
+      return HttpResponseStatus.BAD_REQUEST;
+    }
+
+    // return SERVICE_UNAVAILABLE to kick off error retry in router when store version resource exists
+    return HttpResponseStatus.SERVICE_UNAVAILABLE;
   }
 
   /**
@@ -667,6 +687,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private MetadataResponse handleMetadataFetchRequest(MetadataFetchRequest request) {
     return metadataRetriever.getMetadata(request.getStoreName());
+  }
+
+  private ServerCurrentVersionResponse handleCurrentVersionRequest(CurrentVersionRequest request) {
+    return metadataRetriever.getCurrentVersionResponse(request.getStoreName());
   }
 
   private Schema getComputeResultSchema(ComputeRequest computeRequest, Schema valueSchema) {

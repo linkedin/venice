@@ -7,14 +7,17 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -24,8 +27,6 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /***
@@ -34,7 +35,7 @@ import org.apache.logging.log4j.Logger;
 
 public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
   private final StatsHandler statsHandler;
-  private static final Logger LOGGER = LogManager.getLogger(OutboundHttpWrapperHandler.class);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   public OutboundHttpWrapperHandler(StatsHandler handler) {
     super();
@@ -109,6 +110,19 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           schemaIdHeader = metadataResponse.getResponseSchemaIdHeader();
         } else {
           String errorMessage = metadataResponse.getMessage();
+          if (errorMessage == null) {
+            errorMessage = "Unknown error";
+          }
+          body = Unpooled.wrappedBuffer(errorMessage.getBytes(StandardCharsets.UTF_8));
+          contentType = HttpConstants.TEXT_PLAIN;
+          responseStatus = INTERNAL_SERVER_ERROR;
+        }
+      } else if (msg instanceof ServerCurrentVersionResponse) {
+        ServerCurrentVersionResponse currentVersionResponse = (ServerCurrentVersionResponse) msg;
+        if (!currentVersionResponse.isError()) {
+          body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(currentVersionResponse));
+        } else {
+          String errorMessage = currentVersionResponse.getMessage();
           if (errorMessage == null) {
             errorMessage = "Unknown error";
           }

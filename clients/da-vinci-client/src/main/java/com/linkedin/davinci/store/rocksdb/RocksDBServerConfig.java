@@ -219,7 +219,6 @@ public class RocksDBServerConfig {
 
   private final long rocksDBBlockCacheSizeInBytes;
   private final long rocksDBRMDBlockCacheSizeInBytes;
-  private final long rocksDBBlockCacheCompressedSizeInBytes;
   private final boolean rocksDBBlockCacheStrictCapacityLimit;
   private final boolean rocksDBSetCacheIndexAndFilterBlocks;
   private final int rocksDBBlockCacheShardBits;
@@ -296,8 +295,6 @@ public class RocksDBServerConfig {
 
     this.rocksDBBlockCacheSizeInBytes =
         props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024L); // 16GB
-    this.rocksDBBlockCacheCompressedSizeInBytes =
-        props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0L); // disable compressed cache
     this.rocksDBRMDBlockCacheSizeInBytes =
         props.getSizeInBytes(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024 * 1024L); // 2GB
 
@@ -451,10 +448,6 @@ public class RocksDBServerConfig {
 
   public int getRocksDBBlockCacheShardBits() {
     return rocksDBBlockCacheShardBits;
-  }
-
-  public long getRocksDBBlockCacheCompressedSizeInBytes() {
-    return rocksDBBlockCacheCompressedSizeInBytes;
   }
 
   public long getRocksDBSSTFileBlockSizeInBytes() {

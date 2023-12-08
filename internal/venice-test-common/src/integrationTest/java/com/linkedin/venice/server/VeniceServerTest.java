@@ -4,8 +4,10 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SC
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_IS_AUTO_JOIN;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
@@ -28,6 +30,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -217,6 +220,7 @@ public class VeniceServerTest {
       }
 
       String storeName = cluster.createStore(1);
+      ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
       client.start();
 
@@ -265,6 +269,20 @@ public class VeniceServerTest {
               zonesSeen.add(helixGroupInfo.get(instance));
             }
           }
+        }
+        httpsRequest = new HttpGet(
+            "http://" + cluster.getVeniceServers().get(i).getAddress() + "/"
+                + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + storeName);
+        httpsResponse = client.execute(httpsRequest, null).get();
+        Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), 200);
+        try (InputStream bodyStream = httpsResponse.getEntity().getContent()) {
+          byte[] body = IOUtils.toByteArray(bodyStream);
+          Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
+          ServerCurrentVersionResponse currentVersionResponse =
+              OBJECT_MAPPER.readValue(body, ServerCurrentVersionResponse.class);
+          Assert.assertEquals(currentVersionResponse.getCurrentVersion(), 1);
+        } catch (IOException e) {
+          throw new VeniceException(e);
         }
       }
     }

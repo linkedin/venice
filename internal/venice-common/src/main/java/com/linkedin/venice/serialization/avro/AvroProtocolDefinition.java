@@ -8,6 +8,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -127,6 +128,12 @@ public enum AvroProtocolDefinition {
    * Used to encode the position of a PubSub message.
    */
   PUBSUB_POSITION_WIRE_FORMAT(34, 1, PubSubPositionWireFormat.class),
+
+  /**
+   * Used to retrieve the loaded store partition mapping in the isolated process.
+   * In theory, we don't need to use magicByte for the communication with II process.
+   */
+  LOADED_STORE_USER_PARTITION_MAPPING(35, 1, LoadedStoreUserPartitionMapping.class),
 
   /**
    * Key schema for metadata system store.

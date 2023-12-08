@@ -198,8 +198,8 @@ public class VeniceController {
         throw new VeniceException(
             "'VeniceHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in child mode");
       }
-      storeBackupVersionCleanupService =
-          Optional.of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs));
+      storeBackupVersionCleanupService = Optional
+          .of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs, metricsRepository));
       LOGGER.info("StoreBackupVersionCleanupService is enabled");
     }
     // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.

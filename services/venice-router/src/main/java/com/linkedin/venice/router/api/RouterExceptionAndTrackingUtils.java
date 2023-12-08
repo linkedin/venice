@@ -60,7 +60,10 @@ public class RouterExceptionAndTrackingUtils {
     String name = storeName.isPresent() ? storeName.get() : "";
     if (!EXCEPTION_FILTER.isRedundantException(name, String.valueOf(e.code()))) {
       if (responseStatus == BAD_REQUEST) {
-        LOGGER.debug("{} for store: {}", BAD_REQUEST, name, e);
+        String error = "Received bad request for store: " + name;
+        if (!EXCEPTION_FILTER.isRedundantException(error)) {
+          LOGGER.warn(error, e);
+        }
       } else if (failureType == FailureType.RESOURCE_NOT_FOUND) {
         LOGGER.error("Could not find resources for store: {} ", name, e);
       } else {

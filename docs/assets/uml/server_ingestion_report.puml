@@ -1,0 +1,40 @@
+@startuml
+
+' ### Description
+' This diagram describes how the store ingestion task is reporting the status
+' and how the status signal is consumed by other components
+
+scale 3840*2160
+
+box "StoreIngestionTask" #White
+participant StatusReportAdapter as sra
+end box
+
+participant IngestionNotificationDispatcher as ind
+
+box "Notifiers" #White
+participant "Log\nNotifier" as log
+participant "LeaderFollowerStateModel\nNotifier" as LF
+participant "PushMonitor\nNotifier" as pmf
+participant "PartitionPushStatus\nNotifier" as ppsn
+end box
+
+
+participant "ZooKeeper" as ZK
+participant "Venice Controller" as controller
+participant "Helix" as helix
+participant "Venice component\n(server/controller/router)" as venice
+sra -> ind:Report various ingestion status
+
+ind --> log
+log -> log:Log the message
+ind --> LF
+LF -> LF:Update status on \na countdown latch which controls \na Helix thread \nblocking on OFFLINE -> STANDBY\nuntil a resource in a terminal state
+ind --> pmf
+pmf -> ZK:Update offline push partition status history on ZK \nPath:<cluster>/OfflinePushes/<store>
+ZK -> controller:Controller listens \nto ZK changes to poll \noverall push status
+ind --> ppsn
+ppsn -> helix:Update Helix CV \non offline push \nand hybrid quota status \nPath:<cluster>/CustomizedView/
+helix -> venice:Various venice components \nlisten to the CV change \nand update related business logics\ne.g routing tables
+
+@enduml

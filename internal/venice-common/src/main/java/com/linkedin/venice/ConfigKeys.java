@@ -263,6 +263,13 @@ public class ConfigKeys {
       "controller.backup.version.retention.based.cleanup.enabled";
 
   /**
+   * The following config is to control whether to enable backup version cleanup based on router and server current version
+   * being served.
+   */
+  public static final String CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED =
+      "controller.backup.version.metadata.fetch.cleanup.enabled";
+
+  /**
    * Whether to automatically create zk shared metadata system store in Controller or not
    */
   public static final String CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
@@ -2015,4 +2022,51 @@ public class ConfigKeys {
    * with SOS, EOS or skipped records.
    */
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
+
+  /**
+   * Whether to check LeaderCompleteState in the follower replica and davinci replica before marking the follower
+   * completed. This is to avoid the case that the follower replica is marked completed before the leader replica
+   * and transitions to leader if the leader replicas goes down.
+   * <p>
+   * Default to false. Should be enabled only after Venice tag 0.4.154 is fully rolled out.
+   */
+  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED =
+      "server.leader.complete.state.check.in.follower.enabled";
+
+  /**
+   * Follower replicas and DavinciClient will only consider heartbeats received within
+   * this time window to mark themselves as completed. This is to avoid the cases that
+   * the follower replica is marked completed based on the old heartbeat messages from
+   * a previous leader replica.
+   */
+  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS =
+      "server.leader.complete.state.check.in.follower.valid.interval.ms";
+
+  /**
+   * Whether to enable stuck consumer repair in Server.
+   */
+  public static final String SERVER_STUCK_CONSUMER_REPAIR_ENABLED = "server.stuck.consumer.repair.enabled";
+
+  /**
+   * Server stuck consumer detection interval.
+   */
+  public static final String SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND = "server.stuck.consumer.repair.second";
+
+  /**
+   * Server stuck consumer repair threshold.
+   */
+  public static final String SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND =
+      "server.stuck.consumer.repair.threshold.second";
+
+  /**
+   * When to kill the ingestion task if the topic doesn't exist for the configured period of time.
+   */
+  public static final String SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND =
+      "server.non.existing.topic.ingestion.task.kill.threshold.second";
+  /**
+   * The config will work together with {@link #SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND}
+   * to decide whether a certain ingestion task should be killed or not.
+   */
+  public static final String SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND =
+      "server.non.existing.topic.check.retry.interval.second";
 }

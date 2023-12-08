@@ -127,7 +127,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return 0;
   }
 
-  protected abstract Set<Integer> getPersistedPartitionIds();
+  public abstract Set<Integer> getPersistedPartitionIds();
 
   public abstract Partition createStoragePartition(StoragePartitionConfig partitionConfig);
 
@@ -590,6 +590,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       throw new IllegalArgumentException("Invalid partition id argument in clearPartitionOffset");
     }
     metadataPartition.delete(getPartitionMetadataKey(partitionId));
+  }
+
+  public static boolean isMetadataPartition(int partitionId) {
+    return partitionId == METADATA_PARTITION_ID;
   }
 
   /**

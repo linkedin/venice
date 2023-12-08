@@ -122,6 +122,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    */
   private final Sensor leaderIngestionReplicationMetadataLookUpLatencySensor;
 
+  private final Sensor leaderIngestionActiveActivePutLatencySensor;
+
+  private final Sensor leaderIngestionActiveActiveUpdateLatencySensor;
+
+  private final Sensor leaderIngestionActiveActiveDeleteLatencySensor;
+
   /**
    * Measure the count of ignored updates due to conflict resolution
    */
@@ -409,6 +415,24 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.leaderIngestionReplicationMetadataLookUpLatencySensor,
         avgAndMax());
 
+    this.leaderIngestionActiveActivePutLatencySensor = registerPerStoreAndTotalSensor(
+        "leader_ingestion_active_active_put_latency",
+        totalStats,
+        () -> totalStats.leaderIngestionActiveActivePutLatencySensor,
+        avgAndMax());
+
+    this.leaderIngestionActiveActiveUpdateLatencySensor = registerPerStoreAndTotalSensor(
+        "leader_ingestion_active_active_update_latency",
+        totalStats,
+        () -> totalStats.leaderIngestionActiveActiveUpdateLatencySensor,
+        avgAndMax());
+
+    this.leaderIngestionActiveActiveDeleteLatencySensor = registerPerStoreAndTotalSensor(
+        "leader_ingestion_active_active_delete_latency",
+        totalStats,
+        () -> totalStats.leaderIngestionActiveActiveDeleteLatencySensor,
+        avgAndMax());
+
     this.requestBasedMetadataInvokeCount = registerPerStoreAndTotalSensor(
         "request_based_metadata_invoke_count",
         totalStats,
@@ -492,6 +516,18 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordIngestionReplicationMetadataLookUpLatency(double latency, long currentTimeMs) {
     leaderIngestionReplicationMetadataLookUpLatencySensor.record(latency, currentTimeMs);
+  }
+
+  public void recordIngestionActiveActivePutLatency(double latency) {
+    leaderIngestionActiveActivePutLatencySensor.record(latency);
+  }
+
+  public void recordIngestionActiveActiveUpdateLatency(double latency) {
+    leaderIngestionActiveActiveUpdateLatencySensor.record(latency);
+  }
+
+  public void recordIngestionActiveActiveDeleteLatency(double latency) {
+    leaderIngestionActiveActiveDeleteLatencySensor.record(latency);
   }
 
   public void recordWriteComputeUpdateLatency(double latency) {

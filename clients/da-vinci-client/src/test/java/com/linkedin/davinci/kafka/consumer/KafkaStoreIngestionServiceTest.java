@@ -18,6 +18,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -513,5 +514,11 @@ public abstract class KafkaStoreIngestionServiceTest {
     String metadataFailureMetricName = "." + storeName + "--request_based_metadata_failure_count.Rate";
     Assert.assertTrue(metricsRepository.getMetric(metadataInvokeMetricName).value() > 0);
     Assert.assertEquals(metricsRepository.getMetric(metadataFailureMetricName).value(), 0d);
+
+    ServerCurrentVersionResponse currentVersionResponse =
+        kafkaStoreIngestionService.getCurrentVersionResponse(storeName);
+    Assert.assertNotNull(currentVersionResponse);
+    Assert.assertEquals(currentVersionResponse.getCurrentVersion(), 2);
+
   }
 }

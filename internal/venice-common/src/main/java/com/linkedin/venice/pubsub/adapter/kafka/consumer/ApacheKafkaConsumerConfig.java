@@ -42,6 +42,7 @@ public class ApacheKafkaConsumerConfig {
   private final int topicQueryRetryTimes;
   private final int topicQueryRetryIntervalMs;
   private final Duration defaultApiTimeout;
+  private final boolean shouldCheckTopicExistenceBeforeConsuming;
 
   ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
     this.consumerProperties =
@@ -88,6 +89,10 @@ public class ApacheKafkaConsumerConfig {
         PubSubConstants.PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_INTERVAL_MS,
         PubSubConstants.PUBSUB_CONSUMER_TOPIC_QUERY_RETRY_INTERVAL_MS_DEFAULT_VALUE);
 
+    shouldCheckTopicExistenceBeforeConsuming = veniceProperties.getBoolean(
+        PubSubConstants.PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE,
+        PubSubConstants.PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE_DEFAULT_VALUE);
+
     LOGGER.debug("Created ApacheKafkaConsumerConfig: {} - consumerProperties: {}", this, consumerProperties);
   }
 
@@ -124,6 +129,10 @@ public class ApacheKafkaConsumerConfig {
 
   int getTopicQueryRetryIntervalMs() {
     return topicQueryRetryIntervalMs;
+  }
+
+  boolean shouldCheckTopicExistenceBeforeConsuming() {
+    return shouldCheckTopicExistenceBeforeConsuming;
   }
 
   public static Properties getValidConsumerProperties(Properties extractedProperties) {

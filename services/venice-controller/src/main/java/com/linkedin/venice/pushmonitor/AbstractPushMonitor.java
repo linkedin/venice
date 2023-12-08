@@ -34,11 +34,11 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -84,9 +84,9 @@ public abstract class AbstractPushMonitor
   private final long offlineJobResourceAssignmentWaitTimeInMilliseconds;
 
   private final PushStatusCollector pushStatusCollector;
-  private final DisabledPartitionStats disabledPartitionStats;
-
   private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
+
+  private final DisabledPartitionStats disabledPartitionStats;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -102,7 +102,7 @@ public abstract class AbstractPushMonitor
       HelixAdminClient helixAdminClient,
       VeniceControllerConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      MetricsRepository metricsRepository) {
+      DisabledPartitionStats disabledPartitionStats) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -114,7 +114,7 @@ public abstract class AbstractPushMonitor
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
     this.helixAdminClient = helixAdminClient;
-    this.disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
+    this.disabledPartitionStats = disabledPartitionStats;
 
     this.disableErrorLeaderReplica = controllerConfig.isErrorLeaderReplicaFailOverEnabled();
     this.helixClientThrottler =
@@ -395,6 +395,33 @@ public abstract class AbstractPushMonitor
       String incrementalPushVersion,
       int partitionCount,
       int replicationFactor) {
+
+    class IncPushPartitionStates {
+      private static final int UNKNOWN = -1;
+      private int partitionId;
+      private int minRequiredReplicationFactor;
+      private int numOfReplicasWithEoip;
+
+      private IncPushPartitionStates(int partitionId, int minRequiredReplicationFactor, int numOfReplicasWithEoip) {
+        this.partitionId = partitionId;
+        this.minRequiredReplicationFactor = minRequiredReplicationFactor;
+        this.numOfReplicasWithEoip = numOfReplicasWithEoip;
+      }
+
+      private IncPushPartitionStates(int partitionId) {
+        this(partitionId, UNKNOWN, UNKNOWN);
+      }
+
+      @Override
+      public String toString() {
+        return String.format(
+            "(%s, %s, %s)",
+            partitionId,
+            minRequiredReplicationFactor == UNKNOWN ? "U" : minRequiredReplicationFactor,
+            numOfReplicasWithEoip == UNKNOWN ? "U" : numOfReplicasWithEoip);
+      }
+    }
+
     // when push status map is null or empty means that given incremental push hasn't been created/started yet
     if (pushStatusMap == null || pushStatusMap.isEmpty()) {
       return NOT_CREATED;
@@ -402,10 +429,12 @@ public abstract class AbstractPushMonitor
     int numberOfPartitionsWithEnoughEoipReceivedReplicas = 0;
     boolean isIncrementalPushStatusAvailableForAtLeastOneReplica = false;
 
+    List<IncPushPartitionStates> unFinishedPartitions = new LinkedList<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       Map<CharSequence, Integer> replicaStatusMap = pushStatusMap.get(partitionId);
       // inc push status of replicas of this partition is not available yet
       if (replicaStatusMap == null || replicaStatusMap.isEmpty()) {
+        unFinishedPartitions.add(new IncPushPartitionStates(partitionId));
         continue;
       }
 
@@ -427,25 +456,21 @@ public abstract class AbstractPushMonitor
       if (numberOfReplicasWithEoipStatus >= minRequiredReplicationFactor) {
         numberOfPartitionsWithEnoughEoipReceivedReplicas++;
       } else {
-        LOGGER.info(
-            "For partitionId {} need {} replicas to acknowledge the delivery of EOIP but got only {}. "
-                + "kafkaTopic:{} incrementalPushVersion:{}",
-            partitionId,
-            minRequiredReplicationFactor,
-            numberOfReplicasWithEoipStatus,
-            kafkaTopic,
-            incrementalPushVersion);
+        unFinishedPartitions
+            .add(new IncPushPartitionStates(partitionId, minRequiredReplicationFactor, numberOfReplicasWithEoipStatus));
       }
     }
     if (numberOfPartitionsWithEnoughEoipReceivedReplicas == partitionCount) {
       return END_OF_INCREMENTAL_PUSH_RECEIVED;
     }
     LOGGER.info(
-        "Only {} out of {} partitions are sufficiently replicated. kafkaTopic:{} incrementalPushVersion:{}",
+        "{} out of {} partitions are sufficiently replicated, kafkaTopic: {}, incrementalPushVersion: {}, unfinished partitions (partitionId, minRequired, No. of EOIP replicas): {}, size: {}",
         numberOfPartitionsWithEnoughEoipReceivedReplicas,
         partitionCount,
         kafkaTopic,
-        incrementalPushVersion);
+        incrementalPushVersion,
+        unFinishedPartitions,
+        unFinishedPartitions.size());
 
     // to report SOIP at least one replica should have seen either SOIP or EOIP
     if (isIncrementalPushStatusAvailableForAtLeastOneReplica) {

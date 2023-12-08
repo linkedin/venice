@@ -8,8 +8,11 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
+import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
@@ -48,6 +51,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -61,6 +67,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.ChunkAwareCallback;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -84,6 +91,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
@@ -169,7 +177,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final AvroStoreDeserializerCache storeDeserializerCache;
 
-  private long lastSendIngestionHeartbeatTimestamp;
+  private AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -282,7 +290,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void closeVeniceWriters(boolean doFlush) {
+  public void closeVeniceWriters(boolean doFlush) {
     if (veniceWriter.isPresent()) {
       veniceWriter.get().close(doFlush);
     }
@@ -1270,6 +1278,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Only update the metadata if this replica should NOT produce to version topic.
     if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
+      PubSubTopic consumedTopic = consumerRecord.getTopicPartition().getPubSubTopic();
+      if (consumedTopic.isRealTime()) {
+        // Does this ever happen?
+        LOGGER.warn(
+            "Will short-circuit updateOffsetsFromConsumerRecord because the consumerRecord is coming from a "
+                + "RT topic ({}), partitionConsumptionState: {}",
+            consumedTopic,
+            partitionConsumptionState);
+        return;
+      }
       /**
        * If either (1) this is a follower replica or (2) this is a leader replica who is consuming from version topic
        * in a local Kafka cluster, we can update the offset metadata in offset record right after consuming a message;
@@ -1676,7 +1694,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (isCurrentVersion.getAsBoolean()) {
           amplificationFactorAdapter
               .executePartitionConsumptionState(pcs.getUserPartition(), PartitionConsumptionState::lagHasCaughtUp);
-          statusReportAdapter.reportCompleted(pcs, true);
+          reportCompleted(pcs, true);
         }
       }
     }
@@ -1884,6 +1902,155 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  @Override
+  protected boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState) {
+    return isHybridMode() && (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY));
+  }
+
+  /**
+   * Checks whether the lag is acceptable for hybrid stores
+   * <p>
+   * leaderCompleteStateCheckEnabled is not used for non AA stores: as consumer task is unable to read HB messages from
+   * RT topic (though a test consumer can still read it), leading to standby replicas waiting for leader completion
+   * state header indefinitely, so disabling it until that issue is resolved
+   */
+  @Override
+  protected boolean checkAndLogIfLagIsAcceptableForHybridStore(
+      PartitionConsumptionState pcs,
+      long offsetLag,
+      long offsetThreshold,
+      boolean shouldLogLag,
+      boolean isOffsetBasedLag,
+      long latestConsumedProducerTimestamp) {
+    boolean isLagAcceptable = offsetLag <= offsetThreshold;
+
+    if (shouldLogLag) {
+      LOGGER.info(
+          "{} [{} lag] partition {} is {}lagging. {}Lag: [{}] {} Threshold [{}]",
+          isOffsetBasedLag ? "Offset" : "Time",
+          consumerTaskId,
+          pcs.getPartition(),
+          (isLagAcceptable ? "not " : ""),
+          (isOffsetBasedLag ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+          offsetLag,
+          (isLagAcceptable ? "<" : ">"),
+          offsetThreshold);
+    }
+
+    return isLagAcceptable;
+  }
+
+  /**
+   * HeartBeat SOS messages carry the leader completion state in the header. This function extracts the leader completion
+   * state from that header and updates the {@param partitionConsumptionState} accordingly. <p>
+   * If there is no leader completion state header, reset the leader completion state to
+   * {@link LeaderCompleteState#LEADER_COMPLETE_STATE_UNKNOWN} as the leader don't know about this header
+   * (using old version of the code) or the leader may have rolled back to a version that doesn't support this header or
+   * this topic partition gets a new leader which doesn't support this header yet.
+   */
+  protected void getAndUpdateLeaderCompletedState(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaValue,
+      ControlMessage controlMessage,
+      PubSubMessageHeaders pubSubMessageHeaders,
+      PartitionConsumptionState partitionConsumptionState) {
+    if (isHybridFollower(partitionConsumptionState)) {
+      ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+      if (controlMessageType == ControlMessageType.START_OF_SEGMENT
+          && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
+        boolean isLeaderCompleteHeaderFound = false;
+        LeaderCompleteState oldState = partitionConsumptionState.getLeaderCompleteState();
+        LeaderCompleteState newState = oldState;
+        for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+          if (header.key().equals(VENICE_LEADER_COMPLETION_STATE_HEADER)) {
+            newState = LeaderCompleteState.valueOf(header.value()[0]);
+            partitionConsumptionState
+                .setLastLeaderCompleteStateUpdateInMs(kafkaValue.producerMetadata.messageTimestamp);
+            isLeaderCompleteHeaderFound = true;
+            break; // only interested in this header here
+          }
+        }
+        if (!isLeaderCompleteHeaderFound) {
+          // reset LeaderCompleteState: If a leader originally sent this header but later is rolled back to a version
+          // that doesn't support this header or this TP gets a new leader which doesn't support this header yet.
+          newState = LEADER_COMPLETE_STATE_UNKNOWN;
+        }
+
+        if (oldState != newState) {
+          LOGGER.info(
+              "LeaderCompleteState for store {} version {} partition {} changed from {} to {}",
+              storeName,
+              versionNumber,
+              partitionConsumptionState.getPartition(),
+              oldState,
+              newState);
+          partitionConsumptionState.setLeaderCompleteState(newState);
+        } else {
+          LOGGER.debug(
+              "LeaderCompleteState for store {} version {} partition {} received from leader: {} and is unchanged from the previous state",
+              storeName,
+              versionNumber,
+              partitionConsumptionState.getPartition(),
+              newState);
+        }
+        if (!partitionConsumptionState.isFirstHeartBeatSOSReceived()) {
+          partitionConsumptionState.setFirstHeartBeatSOSReceived(true);
+        }
+      }
+    }
+  }
+
+  /**
+   * Leaders propagate HB SOS message from RT to local VT (to all subpartitions in case if amplification
+   * Factor is configured to be more than 1) with updated LeaderCompleteState header:
+   * Adding the headers during this phase instead of adding it to RT directly simplifies the logic
+   * of how to identify the HB SOS from the correct version or whether the HB SOS is from the local
+   * colo or remote colo, as the header inherited from an incorrect version or remote colos might
+   * provide incorrect information about the support of the header and the leader state.
+   */
+  private void propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs) {
+    LeaderProducerCallback callback = createProducerCallback(
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        partition,
+        kafkaUrl,
+        beforeProcessingRecordTimestampNs);
+    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
+    List<Integer> subPartitions =
+        PartitionUtils.getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor);
+    LeaderCompleteState leaderCompleteState =
+        LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
+    /**
+     * The maximum value between the original producer timestamp and the timestamp when the message is added to the RT topic is used:
+     * This approach addresses scenarios wrt clock drift where the producer's timestamp is consistently delayed by several minutes,
+     * causing it not to align with the {@link com.linkedin.davinci.config.VeniceServerConfig#leaderCompleteStateCheckValidIntervalMs}
+     * interval. The likelihood of simultaneous significant time discrepancies between the leader (producer) and the RT should be very
+     * rare, making this a viable workaround. In cases where the time discrepancy is reversed, the follower may complete slightly earlier
+     * than expected. However, this should not pose a significant issue as the completion of the leader, indicated by the leader
+     * completed header, is a prerequisite for the follower completion and is expected to occur shortly thereafter.
+     */
+    long producerTimeStamp =
+        max(consumerRecord.getPubSubMessageTime(), consumerRecord.getValue().producerMetadata.messageTimestamp);
+    for (int subPartition: subPartitions) {
+      PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), subPartition);
+      sendIngestionHeartbeat(
+          topicPartition,
+          callback,
+          leaderMetadataWrapper,
+          true,
+          leaderCompleteState,
+          producerTimeStamp);
+    }
+  }
+
   /**
    * The goal of this function is to possibly produce the incoming kafka message consumed from local VT, remote VT, RT or SR topic to
    * local VT if needed. It's decided based on the function output of {@link #shouldProduceToVersionTopic} and message type.
@@ -1940,6 +2107,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         throw new VeniceMessageException(
             consumerTaskId + " hasProducedToKafka: Received UPDATE message in non-leader for: "
                 + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getOffset());
+      } else if (msgType == MessageType.CONTROL_MESSAGE) {
+        ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
+        getAndUpdateLeaderCompletedState(
+            kafkaKey,
+            kafkaValue,
+            controlMessage,
+            consumerRecord.getPubSubMessageHeaders(),
+            partitionConsumptionState);
       }
 
       /**
@@ -2077,17 +2252,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             } else {
               if (controlMessageType == START_OF_SEGMENT
                   && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-                LeaderProducerCallback callback = createProducerCallback(
-                    consumerRecord,
+                propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
                     partitionConsumptionState,
+                    consumerRecord,
                     leaderProducedRecordContext,
                     subPartition,
                     kafkaUrl,
+                    kafkaClusterId,
                     beforeProcessingRecordTimestampNs);
-                LeaderMetadataWrapper leaderMetadataWrapper =
-                    new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
-                PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), subPartition);
-                veniceWriter.get().sendHeartbeat(topicPartition, callback, leaderMetadataWrapper);
               } else {
                 /**
                  * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -2324,7 +2496,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  // calculate the the replication once per partition, checking Leader instance will make sure we calculate it just once
+  // calculate the replication once per partition, checking Leader instance will make sure we calculate it just once
   // per partition.
   private static final Predicate<? super PartitionConsumptionState> BATCH_REPLICATION_LAG_FILTER =
       pcs -> !pcs.isEndOfPushReceived() && pcs.consumeRemotely() && pcs.getLeaderFollowerState().equals(LEADER);
@@ -2385,6 +2557,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Predicate<? super PartitionConsumptionState> HYBRID_LEADER_OFFSET_LAG_FILTER =
       pcs -> pcs.isEndOfPushReceived() && pcs.isHybrid() && pcs.getLeaderFollowerState().equals(LEADER);
 
+  /** used for metric purposes **/
   private long getLeaderOffsetLag(Predicate<? super PartitionConsumptionState> partitionConsumptionStateFilter) {
 
     StoreVersionState svs = storageEngine.getStoreVersionState();
@@ -3159,6 +3332,78 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionConsumptionStateMap.put(partition, pcs);
   }
 
+  private void sendIngestionHeartbeat(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper) {
+    sendIngestionHeartbeat(
+        topicPartition,
+        callback,
+        leaderMetadataWrapper,
+        false,
+        LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN,
+        System.currentTimeMillis());
+  }
+
+  private void sendIngestionHeartbeat(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      boolean addLeaderCompleteState,
+      LeaderCompleteState leaderCompleteState,
+      long originTimeStampMs) {
+    String topicPartitionName = topicPartition.getPubSubTopic().getName();
+    int partitionId = topicPartition.getPartitionNumber();
+    try {
+      veniceWriter.get()
+          .sendHeartbeat(
+              topicPartition,
+              callback,
+              leaderMetadataWrapper,
+              addLeaderCompleteState,
+              leaderCompleteState,
+              originTimeStampMs)
+          .whenComplete((result, throwable) -> {
+            if (throwable != null) {
+              String errorMessage = String.format(
+                  "Failed to send ingestion heartbeat for topic: %s, partition: %s",
+                  topicPartitionName,
+                  partitionId);
+              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMessage)) {
+                LOGGER.error(errorMessage, throwable);
+              }
+            } else {
+              String message = String.format(
+                  "Ingestion heartbeat successfully sent for topic: %s, partition: %s",
+                  topicPartitionName,
+                  partitionId);
+              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+                LOGGER.info(message);
+              }
+            }
+          });
+    } catch (Exception e) {
+      String errorMessage = String
+          .format("Failed to send ingestion heartbeat for topic: %s, partition: %s", topicPartitionName, partitionId);
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMessage)) {
+        LOGGER.error(errorMessage, e);
+      }
+    }
+  }
+
+  /**
+   * For hybrid stores only, the leader periodically writes a special SOS message to the RT topic with the following properties: <br>
+   * 1. Special key: This key contains constant bytes, allowing for compaction. <br>
+   * 2. Fixed/known producer GUID: This GUID is dedicated to heartbeats and prevents DIV from breaking. <br>
+   * 3. Special segment: This segment never contains data, eliminating the need for an EOS message. <br>
+   * <p>
+   * Upon consuming the SOS message, the leader writes it to its local VT. Once the drainer processes the record, the leader updates
+   * its latest processed upstream RT topic offset. At this point, the offset reflects the correct position, regardless of trailing
+   * CMs or skippable data records due to DCR.
+   * <p>
+   * This heartbeat message does not include a leader completion header. This maintains the leader completion states only in VTs and not
+   * in the RT, avoiding the need to differentiate between heartbeats from leaders of different versions (backup/current/future) and colos.
+   */
   @Override
   protected void maybeSendIngestionHeartbeat() {
     if (!isHybridMode() || isDaVinciClient) {
@@ -3166,7 +3411,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
     long currentTimestamp = System.currentTimeMillis();
-    if (lastSendIngestionHeartbeatTimestamp + serverConfig.getIngestionHeartbeatIntervalMs() > currentTimestamp) {
+    if (lastSendIngestionHeartbeatTimestamp.get() + serverConfig.getIngestionHeartbeatIntervalMs() > currentTimestamp) {
       // Not time for another heartbeat yet.
       return;
     }
@@ -3180,18 +3425,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Do not send heartbeat if we detected a topic switch is happening since TS requires the leader to be idle.
           continue;
         }
-        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(leaderTopic, pcs.getPartition());
-        try {
-          veniceWriter.get().sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER);
-        } catch (Exception e) {
-          String errorMessage = String.format(
-              "Failed to send ingestion heartbeat for topic: %s, partition: %s",
-              topicPartition.getPubSubTopic().getName(),
-              topicPartition.getPartitionNumber());
-          LOGGER.error(errorMessage, e);
-        }
+        sendIngestionHeartbeat(
+            new PubSubTopicPartitionImpl(leaderTopic, pcs.getUserPartition()),
+            null,
+            DEFAULT_LEADER_METADATA_WRAPPER);
       }
     }
-    lastSendIngestionHeartbeatTimestamp = currentTimestamp;
+    lastSendIngestionHeartbeatTimestamp.set(currentTimestamp);
+  }
+
+  /**
+   * Once leader is marked completed, immediately reset {@link #lastSendIngestionHeartbeatTimestamp}
+   * such that {@link #maybeSendIngestionHeartbeat()} will send HB SOS to the respective RT topics
+   * rather than waiting for the timer to send HB SOS.
+   */
+  @Override
+  void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
+    super.reportCompleted(partitionConsumptionState, forceCompletion);
+    if (isHybridMode() && partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      // reset lastSendIngestionHeartbeatTimestamp to force sending HB SOS to the respective RT topics.
+      lastSendIngestionHeartbeatTimestamp.set(0);
+    }
   }
 }

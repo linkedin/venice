@@ -127,7 +127,7 @@ public class ConsumerSubscriptionCleaner {
     }
     Set<String> topicsToUnsubscribe = new HashSet<>(nonExistingTopics);
     if (!nonExistingTopics.isEmpty()) {
-      LOGGER.error("Detected the following non-existing topics: {}", nonExistingTopics);
+      LOGGER.warn("Detected the following non-existing topics: {}", nonExistingTopics);
       for (String topic: nonExistingTopics) {
         long firstDetectedTimestamp = nonExistingTopicDiscoverTimestampMap.getLong(topic);
         if (firstDetectedTimestamp == nonExistingTopicDiscoverTimestampMap.defaultReturnValue()) {

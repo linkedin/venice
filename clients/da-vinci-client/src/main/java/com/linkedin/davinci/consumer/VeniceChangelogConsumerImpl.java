@@ -20,6 +20,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
@@ -42,7 +43,9 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
+import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -80,7 +83,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final CompressorFactory compressorFactory = new CompressorFactory();
 
   protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
-  protected AvroStoreDeserializerCache<V> storeDeserializerCache;
+  protected StoreDeserializerCache<V> storeDeserializerCache;
   private final AvroStoreDeserializerCache<RecordChangeEvent> recordChangeEventDeserializerCache;
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
@@ -156,7 +159,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // If a value class is supplied, we'll use a Specific record adapter
       Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
       this.userEventChunkingAdapter = new SpecificRecordChunkingAdapter();
-      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, valueClass);
+      this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(storeRepository, storeName, valueClass);
     } else {
       this.userEventChunkingAdapter = GenericChunkingAdapter.INSTANCE;
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
@@ -204,6 +207,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
 
         for (PubSubTopicPartition topicPartition: topicPartitionList) {
+          // TODO: we do this because we don't populate the compressor into the change capture view topic, so we
+          // take this opportunity to populate it. This could be worth revisiting by either populating the compressor
+          // into view topics and consuming, or, expanding the interface to this function to have a compressor provider
+          // (and thereby let other view implementations figure out what would be right).
           if (!topicPartition.getPubSubTopic().getName().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
             compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
           }
@@ -316,9 +323,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
+    return internalSeekToTail(partitions, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+  }
+
+  public CompletableFuture<Void> internalSeekToTail(Set<Integer> partitions, String topicSuffix) {
     // Get the latest change capture topic
-    PubSubTopic topic =
-        pubSubTopicRepository.getTopic(getCurrentServingVersionTopic() + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+    PubSubTopic topic = pubSubTopicRepository.getTopic(getCurrentServingVersionTopic() + topicSuffix);
     return internalSeek(partitions, topic, p -> {
       Long partitionEndOffset = pubSubConsumer.endOffset(p);
       pubSubConsumerSeek(p, partitionEndOffset);
@@ -376,12 +386,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
+    return internalSeekToTimestamps(timestamps, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+  }
+
+  public CompletableFuture<Void> internalSeekToTimestamps(Map<Integer, Long> timestamps, String topicSuffix) {
     // Get the latest change capture topic
     storeRepository.refresh();
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
-    String topicName =
-        Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    String topicName = Version.composeKafkaTopic(storeName, currentVersion) + topicSuffix;
     PubSubTopic topic = pubSubTopicRepository.getTopic(topicName);
     Map<PubSubTopicPartition, Long> topicPartitionLongMap = new HashMap<>();
     for (Map.Entry<Integer, Long> timestampPair: timestamps.entrySet()) {
@@ -408,7 +421,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return this.seekToTimestamps(partitionsToSeek);
   }
 
-  public CompletableFuture<Void> internalSeek(
+  protected CompletableFuture<Void> internalSeek(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
       SeekFunction seekAction) {
@@ -531,25 +544,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           Version.parseVersionFromKafkaTopicName(pubSubTopicPartition.getPubSubTopic().getName()),
           storeName);
       // Jump to next topic
-      // TODO: Today we don't publish the version swap message to the version topic. This necessitates relying on the
-      // change capture topic in order to navigate version pushes. We should pass the topicSuffix argument here once
-      // that
-      // support lands.
-      switchToNewTopic(
-          pubSubTopicPartition.getPubSubTopic(),
-          ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX,
-          pubSubTopicPartition.getPartitionNumber());
+      switchToNewTopic(pubSubTopicPartition.getPubSubTopic(), topicSuffix, pubSubTopicPartition.getPartitionNumber());
       return true;
     }
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      // TODO: Today we don't publish the version swap message to the version topic. This necessitates relying on the
-      // change capture topic in order to navigate version pushes. We should pass the topicSuffix argument here once
-      // that
-      // support lands.
-      return handleVersionSwapControlMessage(
-          controlMessage,
-          pubSubTopicPartition,
-          ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+      return handleVersionSwapControlMessage(controlMessage, pubSubTopicPartition, topicSuffix);
     }
     return false;
   }
@@ -562,7 +561,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long recordOffset,
       AbstractAvroChunkingAdapter<T> chunkingAdapter,
       Lazy<RecordDeserializer<T>> recordDeserializer,
-      AvroStoreDeserializerCache<T> deserializerCache,
+      StoreDeserializerCache<T> deserializerCache,
       int readerSchemaId) {
     T assembledRecord = null;
     // Select compressor. We'll only construct compressors for version topics so this will return null for
@@ -663,16 +662,35 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     byte[] keyBytes = message.getKey().getKey();
     MessageType messageType = MessageType.valueOf(message.getValue());
     RecordChangeEvent recordChangeEvent;
-    // Internal store ingestion tasks only persist PUT messages to either VT or view topics
+    Object assembledObject = null;
+    List<Long> replicationCheckpoint = null;
+    if (messageType.equals(MessageType.DELETE)) {
+      Delete delete = (Delete) message.getValue().payloadUnion;
+
+      // Deletes have a previous and current value of null. So just fill it in!
+      ChangeEvent<V> changeEvent = new ChangeEvent<>(null, null);
+      pubSubChangeEventMessage = Optional.of(
+          new ImmutableChangeCapturePubSubMessage<>(
+              keyDeserializer.deserialize(keyBytes),
+              changeEvent,
+              pubSubTopicPartition,
+              message.getOffset(),
+              message.getPubSubMessageTime(),
+              message.getPayloadSize(),
+              false));
+
+      replicationCheckpoint = extractOffsetVectorFromMessage(
+          delete.getReplicationMetadataVersionId(),
+          delete.getReplicationMetadataPayload());
+    }
     if (messageType.equals(MessageType.PUT)) {
       Put put = (Put) message.getValue().payloadUnion;
       // Select appropriate deserializers
       Lazy deserializerProvider;
-      Object assembledObject = null;
       AbstractAvroChunkingAdapter chunkingAdapter;
       int readerSchemaId;
       ReadOnlySchemaRepository schemaRepo;
-      AvroStoreDeserializerCache deserializerCache;
+      StoreDeserializerCache deserializerCache;
       if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
         Schema valueSchema = schemaReader.getValueSchema(put.schemaId);
         deserializerProvider =
@@ -702,14 +720,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         return Optional.empty();
       }
 
-      // Now that we've assembled the object, we need to extract the replication vector depending on if it's from VT
-      // or from the record change event. Records from VT 'typically' don't have an offset vector, but they will in
-      // repush scenarios (which we want to be opaque to the user and filter accordingly).
-      List<Long> replicationCheckpoint;
-      int payloadSize = message.getPayloadSize();
       if (assembledObject instanceof RecordChangeEvent) {
         recordChangeEvent = (RecordChangeEvent) assembledObject;
         replicationCheckpoint = recordChangeEvent.replicationCheckpointVector;
+      } else {
+        replicationCheckpoint =
+            extractOffsetVectorFromMessage(put.getReplicationMetadataVersionId(), put.getReplicationMetadataPayload());
+      }
+
+      // Now that we've assembled the object, we need to extract the replication vector depending on if it's from VT
+      // or from the record change event. Records from VT 'typically' don't have an offset vector, but they will in
+      // repush scenarios (which we want to be opaque to the user and filter accordingly).
+      int payloadSize = message.getPayloadSize();
+      if (assembledObject instanceof RecordChangeEvent) {
+        recordChangeEvent = (RecordChangeEvent) assembledObject;
         pubSubChangeEventMessage = Optional.of(
             convertChangeEventToPubSubMessage(
                 recordChangeEvent,
@@ -719,8 +743,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 message.getPubSubMessageTime(),
                 payloadSize));
       } else {
-        replicationCheckpoint =
-            extractOffsetVectorFromMessage(put.getReplicationMetadataVersionId(), put.getReplicationMetadataPayload());
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, (V) assembledObject);
         pubSubChangeEventMessage = Optional.of(
             new ImmutableChangeCapturePubSubMessage<>(
@@ -732,12 +754,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 payloadSize,
                 false));
       }
-
-      // Determine if the event should be filtered or not
-      if (filterRecordByVersionSwapHighWatermarks(replicationCheckpoint, pubSubTopicPartition)) {
-        pubSubChangeEventMessage = Optional.empty();
-      }
     }
+
+    // Determine if the event should be filtered or not
+    if (filterRecordByVersionSwapHighWatermarks(replicationCheckpoint, pubSubTopicPartition)) {
+      return Optional.empty();
+    }
+
     return pubSubChangeEventMessage;
   }
 
@@ -852,6 +875,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected void switchToNewTopic(PubSubTopic newTopic, String topicSuffix, Integer partition) {
     PubSubTopic mergedTopicName = pubSubTopicRepository.getTopic(newTopic.getName() + topicSuffix);
     Set<Integer> partitions = Collections.singleton(partition);
+    for (PubSubTopicPartition currentSubscribedPartition: pubSubConsumer.getAssignment()) {
+      if (partition.equals(currentSubscribedPartition.getPartitionNumber())) {
+        if (mergedTopicName.getName().equals(currentSubscribedPartition.getPubSubTopic().getName())) {
+          // We're being asked to switch to a topic that we're already subscribed to, NoOp this
+          return;
+        }
+      }
+    }
     unsubscribe(partitions);
     try {
       internalSubscribe(partitions, mergedTopicName).get();
@@ -872,7 +903,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
       Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
-      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, valueClass);
+      this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(storeRepository, storeName, valueClass);
     } else {
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
     }
@@ -902,5 +933,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
     }
     return topicPartition.get();
+  }
+
+  protected PubSubConsumerAdapter getPubSubConsumer() {
+    return pubSubConsumer;
   }
 }

@@ -47,7 +47,8 @@ public class AggVersionedIngestionStats
         registerConditionalStats(storeName);
       }
     } catch (Exception e) {
-      LOGGER.warn("Failed to set up versioned storage ingestion stats of store: {}, version: {}", storeName, version);
+      LOGGER
+          .warn("Failed to set up versioned storage ingestion stats of store: {}, version: {}", storeName, version, e);
     }
   }
 
