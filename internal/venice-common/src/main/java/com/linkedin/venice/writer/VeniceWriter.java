@@ -371,18 +371,22 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
       this.segments = new Segment[this.numberOfPartitions];
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
-
-      heartBeatMessage = new ControlMessage();
-      heartBeatMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
-      heartBeatMessage.debugInfo = Collections.emptyMap();
-      StartOfSegment sos = new StartOfSegment();
-      sos.checksumType = checkSumType.getValue();
-      sos.upcomingAggregates = new ArrayList<>();
-      heartBeatMessage.controlMessageUnion = sos;
+      heartBeatMessage = generateHeartbeatMessage(checkSumType);
     } catch (Exception e) {
       logger.error("VeniceWriter cannot be constructed with the props: {}", props);
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
     }
+  }
+
+  public static ControlMessage generateHeartbeatMessage(CheckSumType checkSumType) {
+    ControlMessage heartBeatMessage = new ControlMessage();
+    heartBeatMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
+    heartBeatMessage.debugInfo = Collections.emptyMap();
+    StartOfSegment sos = new StartOfSegment();
+    sos.checksumType = checkSumType.getValue();
+    sos.upcomingAggregates = new ArrayList<>();
+    heartBeatMessage.controlMessageUnion = sos;
+    return heartBeatMessage;
   }
 
   /**
@@ -1382,14 +1386,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
         returnPubSubMessageHeaders.add(header);
       }
-      // 1 byte holding 0/1 based on leaderCompleteState
-      byte[] val = new byte[1];
-      val[0] = (byte) (leaderCompleteState.getValue());
-      returnPubSubMessageHeaders.add(new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, val));
+      returnPubSubMessageHeaders.add(getLeaderCompleteStateHeader(leaderCompleteState));
     } else {
       returnPubSubMessageHeaders = pubSubMessageHeaders;
     }
     return returnPubSubMessageHeaders;
+  }
+
+  public static PubSubMessageHeader getLeaderCompleteStateHeader(LeaderCompleteState leaderCompleteState) {
+    // 1 byte holding 0/1 based on leaderCompleteState
+    byte[] val = new byte[1];
+    val[0] = (byte) (leaderCompleteState.getValue());
+    return new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, val);
   }
 
   /**
@@ -1745,41 +1753,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
-  public void sendHeartbeat(
-      PubSubTopicPartition topicPartition,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper) {
-    sendHeartbeat(
-        topicPartition,
-        callback,
-        leaderMetadataWrapper,
-        false,
-        LeaderCompleteState.LEADER_NOT_COMPLETED,
-        time.getMilliseconds());
-  }
-
-  public void sendHeartbeat(
-      PubSubTopicPartition topicPartition,
-      PubSubProducerCallback callback,
+  public static KafkaMessageEnvelope getHeartbeatKME(
+      long originTimeStampMs,
       LeaderMetadataWrapper leaderMetadataWrapper,
-      boolean addLeaderCompleteState,
-      LeaderCompleteState leaderCompleteState) {
-    sendHeartbeat(
-        topicPartition,
-        callback,
-        leaderMetadataWrapper,
-        addLeaderCompleteState,
-        leaderCompleteState,
-        time.getMilliseconds());
-  }
-
-  public void sendHeartbeat(
-      PubSubTopicPartition topicPartition,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      boolean addLeaderCompleteState,
-      LeaderCompleteState leaderCompleteState,
-      long originTimeStampMs) {
+      ControlMessage heartBeatMessage,
+      String writerId) {
     ProducerMetadata producerMetadata = new ProducerMetadata();
     producerMetadata.producerGUID = HeartbeatGuidV3Generator.getInstance().getGuid();
     producerMetadata.segmentNumber = 0;
@@ -1797,12 +1775,25 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     kafkaMessageEnvelope.producerMetadata = producerMetadata;
     kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadataFooter;
     kafkaMessageEnvelope.payloadUnion = heartBeatMessage;
-    producerAdapter.sendMessage(
+
+    return kafkaMessageEnvelope;
+  }
+
+  public CompletableFuture<PubSubProduceResult> sendHeartbeat(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      boolean addLeaderCompleteState,
+      LeaderCompleteState leaderCompleteState,
+      long originTimeStampMs) {
+    KafkaMessageEnvelope kafkaMessageEnvelope =
+        getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
+    return producerAdapter.sendMessage(
         topicPartition.getPubSubTopic().getName(),
         topicPartition.getPartitionNumber(),
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        getHeaders(producerMetadata, addLeaderCompleteState, leaderCompleteState),
+        getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState),
         callback);
   }
 

@@ -23,6 +23,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -37,15 +38,19 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -127,7 +132,7 @@ public class TestStuckConsumerRepair {
     }
   }
 
-  @Test(timeOut = 120 * 000)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testStuckConsumerRepair() throws Exception {
     SystemProducer veniceProducer = null;
 
@@ -228,14 +233,44 @@ public class TestStuckConsumerRepair {
             throw new VeniceException(e);
           }
         });
+
         // Verify that the stuck consumer repair logic does kick in
-        MetricsRepository serverRepo = venice.getVeniceServers().get(0).getMetricsRepository();
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          assertTrue(
-              serverRepo.metrics().get(".StuckConsumerRepair--stuck_consumer_found.OccurrenceRate").value() > 0f);
-          assertTrue(
-              serverRepo.metrics().get(".StuckConsumerRepair--ingestion_task_repair.OccurrenceRate").value() > 0f);
-          assertTrue(serverRepo.metrics().get(".StuckConsumerRepair--repair_failure.OccurrenceRate").value() == 0.0f);
+        List<MetricsRepository> serverMetricRepos = new ArrayList<>();
+        for (VeniceServerWrapper server: venice.getVeniceServers()) {
+          serverMetricRepos.add(server.getMetricsRepository());
+        }
+        List<Boolean> serversHasStuckConsumerRepair = new ArrayList<>(serverMetricRepos.size());
+        List<Boolean> serversHasIngestionTaskRepair = new ArrayList<>(serverMetricRepos.size());
+        List<Boolean> serversHasRepairFailure = new ArrayList<>(serverMetricRepos.size());
+        for (int i = 0; i < serverMetricRepos.size(); i++) {
+          serversHasStuckConsumerRepair.add(false);
+          serversHasIngestionTaskRepair.add(false);
+          serversHasRepairFailure.add(false);
+        }
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          for (int i = 0; i < serverMetricRepos.size(); i++) {
+            if (serverMetricRepos.get(i)
+                .metrics()
+                .get(".StuckConsumerRepair--stuck_consumer_found.OccurrenceRate")
+                .value() > 0f) {
+              serversHasStuckConsumerRepair.set(i, true);
+            }
+            if (serverMetricRepos.get(i)
+                .metrics()
+                .get(".StuckConsumerRepair--ingestion_task_repair.OccurrenceRate")
+                .value() > 0f) {
+              serversHasIngestionTaskRepair.set(i, true);
+            }
+            if (serverMetricRepos.get(i)
+                .metrics()
+                .get(".StuckConsumerRepair--repair_failure.OccurrenceRate")
+                .value() > 0f) {
+              serversHasRepairFailure.set(i, true);
+            }
+            assertTrue(serversHasStuckConsumerRepair.get(i), "Server " + i + " do not have stuck consumer");
+            assertTrue(serversHasIngestionTaskRepair.get(i), "Server " + i + " did not repair ingestion task");
+            assertFalse(serversHasRepairFailure.get(i), "Server " + i + " failed during ingestion task repair");
+          }
         });
       }
     } finally {

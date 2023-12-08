@@ -445,7 +445,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) throws InterruptedException {
+      long beforeProcessingRecordTimestampNs) {
     ingestionTask.processConsumerRecord(
         consumerRecord,
         leaderProducedRecordContext,
