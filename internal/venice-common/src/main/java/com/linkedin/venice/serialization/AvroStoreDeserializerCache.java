@@ -1,6 +1,7 @@
 package com.linkedin.venice.serialization;
 
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -27,6 +28,10 @@ public class AvroStoreDeserializerCache<T> implements StoreDeserializerCache<T> 
             : SerializerDeserializerFactory::getAvroGenericDeserializer);
   }
 
+  public AvroStoreDeserializerCache(SchemaReader schemaReader) {
+    this(schemaReader::getValueSchema, FastSerializerDeserializerFactory::getFastAvroGenericDeserializer);
+  }
+
   private AvroStoreDeserializerCache(
       IntFunction<Schema> schemaGetter,
       BiFunction<Schema, Schema, RecordDeserializer<T>> deserializerGetter) {
@@ -34,17 +39,13 @@ public class AvroStoreDeserializerCache<T> implements StoreDeserializerCache<T> 
         (writerId, readerId) -> deserializerGetter.apply(schemaGetter.apply(writerId), schemaGetter.apply(readerId)));
   }
 
-  public AvroStoreDeserializerCache(
-      ReadOnlySchemaRepository schemaRepository,
-      String storeName,
-      Class specificRecordClass) {
-    this(
-        id -> schemaRepository.getValueSchema(storeName, id).getSchema(),
-        (writerSchema, readerSchema) -> FastSerializerDeserializerFactory
-            .getFastAvroSpecificDeserializer(writerSchema, specificRecordClass));
-  }
-
   public RecordDeserializer<T> getDeserializer(int writerSchemaId, int readerSchemaId) {
     return this.cache.get(writerSchemaId, readerSchemaId);
+  }
+
+  @Override
+  public RecordDeserializer<T> getDeserializer(int writerSchemaId) {
+    throw new UnsupportedOperationException(
+        "getDeserializer by only writeSchemaId is not supported by " + this.getClass().getSimpleName());
   }
 }

@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -362,7 +363,7 @@ public class StoreBackend {
     setDaVinciCurrentVersion(version);
   }
 
-  public AvroStoreDeserializerCache getStoreDeserializerCache() {
+  public StoreDeserializerCache getStoreDeserializerCache() {
     return storeDeserializerCache;
   }
 }

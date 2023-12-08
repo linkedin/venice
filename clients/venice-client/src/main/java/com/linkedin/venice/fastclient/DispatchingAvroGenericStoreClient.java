@@ -32,6 +32,8 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -82,6 +84,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   // Key serializer
   private RecordSerializer<K> keySerializer;
+  protected StoreDeserializerCache<V> storeDeserializerCache;
+
   private static final RecordSerializer<MultiGetRouterRequestKeyV1> MULTI_GET_REQUEST_SERIALIZER =
       FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
   private static final RecordSerializer<ComputeRouterRequestKeyV1> COMPUTE_REQUEST_SERIALIZER =
@@ -128,6 +132,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     String storeName = metadata.getStoreName();
     BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "BatchGet Transport Exception for " + storeName;
     COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "Compute Transport Exception for " + storeName;
+    this.storeDeserializerCache = new AvroStoreDeserializerCache<>(metadata);
   }
 
   protected StoreMetadata getStoreMetadata() {
@@ -570,9 +575,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     long totalDecompressionTimeForResponse = 0;
     VeniceCompressor compressor =
         metadata.getCompressor(transportClientResponse.getCompressionStrategy(), requestContext.currentVersion);
-    // Despite FastSerializerDeserializerFactory is caching deserializers by reader, writer and object class.
-    // Retrieving the corresponding deserializer still requires constructing some container object which could add up.
-    Map<Integer, RecordDeserializer<V>> recordDeserializerMap = new HashMap<>();
     for (MultiGetResponseRecordV1 r: records) {
       long nanoTsBeforeDecompression = System.nanoTime();
 
@@ -584,8 +586,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
       long nanoTsBeforeDeserialization = System.nanoTime();
       totalDecompressionTimeForResponse += nanoTsBeforeDeserialization - nanoTsBeforeDecompression;
-      RecordDeserializer<V> dataRecordDeserializer =
-          recordDeserializerMap.computeIfAbsent(r.getSchemaId(), this::getDataRecordDeserializer);
+      RecordDeserializer<V> dataRecordDeserializer = getDataRecordDeserializer(r.getSchemaId());
       V deserializedValue = dataRecordDeserializer.deserialize(decompressRecord);
       requestContext.recordRecordDeserializationTime(
           transportClientResponse.getRouteId(),
@@ -765,16 +766,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   protected RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
-    Schema readerSchema = metadata.getLatestValueSchema();
-    if (readerSchema == null) {
-      throw new VeniceClientException("Failed to get latest value schema for store: " + metadata.getStoreName());
-    }
-    Schema writerSchema = metadata.getValueSchema(schemaId);
-    if (writerSchema == null) {
-      throw new VeniceClientException(
-          "Failed to get writer schema with id: " + schemaId + " from store: " + metadata.getStoreName());
-    }
-    return getValueDeserializer(writerSchema, readerSchema);
+    return storeDeserializerCache.getDeserializer(schemaId, metadata.getLatestValueSchemaId());
   }
 
   private RecordDeserializer<GenericRecord> getComputeResultRecordDeserializer(Schema resultSchema) {
