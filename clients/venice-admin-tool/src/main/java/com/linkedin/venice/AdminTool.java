@@ -1619,10 +1619,6 @@ public class AdminTool {
     void apply(String message);
   }
 
-  // private static void printMigrationStatus(ControllerClient controller, String storeName) {
-  // printMigrationStatus(controller, storeName, System.err::println);
-  // }
-
   private static void printMigrationStatus(ControllerClient controller, String storeName, PrintFunction printFunction) {
     StoreInfo store = controller.getStore(storeName).getStore();
 
