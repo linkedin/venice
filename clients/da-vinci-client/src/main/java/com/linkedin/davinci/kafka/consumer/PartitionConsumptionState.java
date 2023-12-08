@@ -194,9 +194,9 @@ public class PartitionConsumptionState {
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
   /**
-   * In case of hybrid store, wait until the first HB is received, which might have the leader completed header and base
-   * the decision on that. This will be used only during the transition phase to avoid 2 phase deployment and once all
-   * servers are running the latest code, this can be removed.
+   * In case of hybrid store, wait until the first HB is received, which might have the leader completed header and base the
+   * decision on that. Check {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED} for
+   * more details.
    */
   private boolean firstHeartBeatSOSReceived;
 

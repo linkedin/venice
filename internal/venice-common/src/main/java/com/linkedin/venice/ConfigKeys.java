@@ -2020,6 +2020,8 @@ public class ConfigKeys {
    * Whether to check LeaderCompleteState in the follower replica and davinci replica before marking the follower
    * completed. This is to avoid the case that the follower replica is marked completed before the leader replica
    * and transitions to leader if the leader replicas goes down.
+   * <p>
+   * Default to false. Should be enabled only after Venice tag 0.4.154 is fully rolled out.
    */
   public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED =
       "server.leader.complete.state.check.in.follower.enabled";
