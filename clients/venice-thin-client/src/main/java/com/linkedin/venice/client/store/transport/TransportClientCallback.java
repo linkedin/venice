@@ -18,7 +18,7 @@ public class TransportClientCallback {
     this.valueFuture = valueFuture;
   }
 
-  protected CompletableFuture<TransportClientResponse> getValueFuture() {
+  public CompletableFuture<TransportClientResponse> getValueFuture() {
     return valueFuture;
   }
 
