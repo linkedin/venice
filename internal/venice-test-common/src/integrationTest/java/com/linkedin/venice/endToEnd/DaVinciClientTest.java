@@ -34,7 +34,6 @@ import com.linkedin.davinci.DaVinciUserApp;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.NonLocalAccessException;
 import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
@@ -205,7 +204,7 @@ public class DaVinciClientTest {
     MetricsRepository metricsRepository = new MetricsRepository();
 
     // Test record transformation
-    DaVinciRecordTransformer recordTransformer = new TestRecordTransformer();
+    TestRecordTransformer recordTransformer = new TestRecordTransformer();
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
@@ -213,6 +212,7 @@ public class DaVinciClientTest {
         backendConfig)) {
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
           factory.getAndStartGenericAvroClient(storeName1, clientConfig.setRecordTransformer(recordTransformer));
+      recordTransformer.setOriginalSchema(Schema.parse(DEFAULT_VALUE_SCHEMA));
 
       // Test non-existent key access
       clientWithRecordTransformer.subscribeAll().get();

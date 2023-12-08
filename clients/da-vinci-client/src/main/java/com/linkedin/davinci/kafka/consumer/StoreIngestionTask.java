@@ -3013,7 +3013,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
           Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(put.putValue, valueSchema));
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
-          ByteBuffer transformedBytes = transformedRecord.getValueBytes(valueSchema.getSchema());
+          ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
           put.putValue.position(originalPosition);
           put.putValue.put(transformedBytes);
           put.putValue.position(originalPosition + transformedBytes.remaining());

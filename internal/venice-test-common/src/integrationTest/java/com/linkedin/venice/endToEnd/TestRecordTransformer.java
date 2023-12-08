@@ -4,19 +4,21 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.TransformedRecord;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
-import org.apache.avro.SchemaBuilder;
 
 
 public class TestRecordTransformer implements DaVinciRecordTransformer<Integer, Integer, TransformedRecord> {
-  Schema dummySchema =
-      SchemaBuilder.record("DummyRecord").fields().name("field1").type().intType().noDefault().endRecord();
+  Schema originalSchema;
 
   public Schema getKeyOutputSchema() {
-    return dummySchema;
+    return originalSchema;
   }
 
   public Schema getValueOutputSchema() {
-    return dummySchema;
+    return originalSchema;
+  }
+
+  public void setOriginalSchema(Schema schema) {
+    this.originalSchema = schema;
   }
 
   public TransformedRecord put(Lazy<Integer> key, Lazy<Integer> value) {
