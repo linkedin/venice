@@ -128,7 +128,6 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -3010,14 +3009,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (recordTransformer != null) {
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, put.schemaId);
-          Lazy<GenericRecord> lazyKey =
-              Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          Lazy<GenericRecord> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(put.putValue, valueSchema));
+          int originalPosition = put.putValue.position();
+          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
+          Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(put.putValue, valueSchema));
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
-          put.putValue = transformedRecord.getValueBytes(valueSchema.getSchema());
-          byte[] newKeyBytes = transformedRecord.getKeyBytes(keySchema.getSchema());
-          int newProducedPartition = venicePartitioner.getPartitionId(newKeyBytes, subPartitionCount);
-          prependHeaderAndWriteToStorageEngine(newProducedPartition, newKeyBytes, put, currentTimeMs);
+          ByteBuffer transformedBytes = transformedRecord.getValueBytes(valueSchema.getSchema());
+          put.putValue.position(originalPosition);
+          put.putValue.put(transformedBytes);
+          put.putValue.position(originalPosition + transformedBytes.remaining());
+          prependHeaderAndWriteToStorageEngine(producedPartition, keyBytes, put, currentTimeMs);
         } else {
 
           prependHeaderAndWriteToStorageEngine(
@@ -3046,18 +3046,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
         keyLen = keyBytes.length;
-
-        if (recordTransformer != null) {
-          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          Lazy<GenericRecord> lazyKey =
-              Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          TransformedRecord keptRecord = recordTransformer.delete(lazyKey);
-          byte[] newKeyBytes = keptRecord.getKeyBytes(keySchema.getSchema());
-          int newProducedPartition = venicePartitioner.getPartitionId(newKeyBytes, subPartitionCount);
-          removeFromStorageEngine(newProducedPartition, newKeyBytes, delete);
-        } else {
-          removeFromStorageEngine(producedPartition, keyBytes, delete);
-        }
+        // Commenting out, since only supporting value transformation for now deleting a key should be the same
+        // if (recordTransformer != null) {
+        // SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
+        // Lazy<Object> lazyKey =
+        // Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
+        // TransformedRecord keptRecord = recordTransformer.delete(lazyKey);
+        // int newProducedPartition = venicePartitioner.getPartitionId(keyBytes, subPartitionCount);
+        // removeFromStorageEngine(newProducedPartition, keyBytes, delete);
+        // } else {
+        removeFromStorageEngine(producedPartition, keyBytes, delete);
+        // }
         if (cacheBackend.isPresent()) {
           if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
             cacheBackend.get().getStorageEngine(kafkaVersionTopic).delete(producedPartition, keyBytes);
@@ -3259,9 +3258,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private GenericRecord deserializeAvroObjectAndReturn(ByteBuffer input, SchemaEntry schemaEntry) {
-    return new AvroGenericDeserializer<GenericRecord>(schemaEntry.getSchema(), schemaEntry.getSchema())
-        .deserialize(input);
+  private Object deserializeAvroObjectAndReturn(ByteBuffer input, SchemaEntry schemaEntry) {
+    return new AvroGenericDeserializer<>(schemaEntry.getSchema(), schemaEntry.getSchema()).deserialize(input);
   }
 
   private void maybeCloseInactiveIngestionTask() {

@@ -34,6 +34,7 @@ import com.linkedin.davinci.DaVinciUserApp;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.NonLocalAccessException;
 import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
@@ -202,6 +203,31 @@ public class DaVinciClientTest {
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
+
+    // Test record transformation
+    DaVinciRecordTransformer recordTransformer = new TestRecordTransformer();
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
+      DaVinciClient<Integer, Object> clientWithRecordTransformer =
+          factory.getAndStartGenericAvroClient(storeName1, clientConfig.setRecordTransformer(recordTransformer));
+
+      // Test non-existent key access
+      clientWithRecordTransformer.subscribeAll().get();
+      assertNull(clientWithRecordTransformer.get(KEY_COUNT + 1).get());
+
+      // Test single-get access
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(clientWithRecordTransformer.get(k).get(), 5);
+      }
+      clientWithRecordTransformer.unsubscribeAll();
+    }
+
+    if (clientConfig.isRecordTransformerEnabled()) {
+      clientConfig.setRecordTransformer(null);
+    }
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
