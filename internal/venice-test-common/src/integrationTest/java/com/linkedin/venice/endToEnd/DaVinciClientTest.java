@@ -220,7 +220,7 @@ public class DaVinciClientTest {
 
       // Test single-get access
       for (int k = 0; k < KEY_COUNT; ++k) {
-        assertEquals(clientWithRecordTransformer.get(k).get(), 5);
+        assertEquals(clientWithRecordTransformer.get(k).get(), 100);
       }
       clientWithRecordTransformer.unsubscribeAll();
     }

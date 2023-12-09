@@ -30,7 +30,12 @@ public class TransformedRecord<K, V> {
   }
 
   public ByteBuffer getValueBytes(Schema schema) {
-    return ByteBuffer.wrap(new AvroSerializer(schema).serialize(value));
+    ByteBuffer transformedBytes = ByteBuffer.wrap(new AvroSerializer(schema).serialize(value));
+    ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + transformedBytes.remaining());
+    newBuffer.putInt(1);
+    newBuffer.put(transformedBytes);
+    newBuffer.flip();
+    return newBuffer;
   }
 
 }
