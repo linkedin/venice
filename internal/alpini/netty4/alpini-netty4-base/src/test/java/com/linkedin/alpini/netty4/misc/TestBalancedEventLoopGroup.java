@@ -4,6 +4,7 @@ import com.linkedin.alpini.netty4.handlers.AllChannelsHandler;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelException;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.DefaultEventLoop;
 import io.netty.channel.EventLoop;
@@ -75,73 +76,88 @@ public class TestBalancedEventLoopGroup {
 
   private void testBalanceLocal(LocalAddress bindAddress, boolean balanceServer, boolean balanceClient)
       throws Exception {
+    int currentAttempt = 0;
+    int maxAttempts = 100;
+    while (currentAttempt++ < maxAttempts) {
+      try {
+        AllChannelsHandler allClientConnections = new AllChannelsHandler();
+        AllChannelsHandler allServerConnections = new AllChannelsHandler();
+        Map<EventLoop, Integer> clientDist = new IdentityHashMap<>();
+        Map<EventLoop, Integer> serverDist = new IdentityHashMap<>();
 
-    AllChannelsHandler allClientConnections = new AllChannelsHandler();
-    AllChannelsHandler allServerConnections = new AllChannelsHandler();
-    Map<EventLoop, Integer> clientDist = new IdentityHashMap<>();
-    Map<EventLoop, Integer> serverDist = new IdentityHashMap<>();
+        ServerBootstrap serverBootstrap = new ServerBootstrap().channel(LocalServerChannel.class)
+            .group(
+                balanceServer
+                    ? new BalancedEventLoopGroup(_unbalancedEventLoopGroup, allServerConnections)
+                    : _unbalancedEventLoopGroup)
+            .childHandler(new ChannelInitializer<LocalChannel>() {
+              @Override
+              protected void initChannel(LocalChannel ch) throws Exception {
+                ch.pipeline().addLast(allServerConnections);
+                synchronized (serverDist) {
+                  serverDist.compute(ch.eventLoop(), (eventLoop, integer) -> integer != null ? integer + 1 : 1);
 
-    ServerBootstrap serverBootstrap = new ServerBootstrap().channel(LocalServerChannel.class)
-        .group(
-            balanceServer
-                ? new BalancedEventLoopGroup(_unbalancedEventLoopGroup, allServerConnections)
-                : _unbalancedEventLoopGroup)
-        .childHandler(new ChannelInitializer<LocalChannel>() {
-          @Override
-          protected void initChannel(LocalChannel ch) throws Exception {
-            ch.pipeline().addLast(allServerConnections);
-            synchronized (serverDist) {
-              serverDist.compute(ch.eventLoop(), (eventLoop, integer) -> integer != null ? integer + 1 : 1);
+                }
+              }
+            });
 
-            }
+        Channel server = serverBootstrap.bind(bindAddress).sync().channel();
+
+        try {
+
+          Bootstrap bootstrap = new Bootstrap().channel(LocalChannel.class)
+              .group(
+                  balanceClient
+                      ? new BalancedEventLoopGroup(_unbalancedEventLoopGroup, allClientConnections)
+                      : _unbalancedEventLoopGroup)
+              .handler(new ChannelInitializer<LocalChannel>() {
+                @Override
+                protected void initChannel(LocalChannel ch) throws Exception {
+                  ch.pipeline().addLast(allClientConnections);
+                }
+              });
+
+          final int iterations = 10000;
+          final int thread = (int) StreamSupport.stream(_unbalancedEventLoopGroup.spliterator(), false).count();
+          final int expect = iterations / thread;
+
+          for (int i = iterations; i > 0; i--) {
+            Channel ch = bootstrap.connect(server.localAddress()).sync().channel();
+
+            clientDist.compute(ch.eventLoop(), (eventLoop, integer) -> integer != null ? integer + 1 : 1);
           }
-        });
 
-    Channel server = serverBootstrap.bind(bindAddress).sync().channel();
+          IntSummaryStatistics serverStats =
+              serverDist.values().stream().mapToInt(Integer::intValue).summaryStatistics();
+          IntSummaryStatistics clientStats =
+              clientDist.values().stream().mapToInt(Integer::intValue).summaryStatistics();
 
-    try {
+          _log.info("Expected average = {}", expect);
+          _log.info("Server Stats = {}", serverStats);
+          _log.info("Client Stats = {}", clientStats);
 
-      Bootstrap bootstrap = new Bootstrap().channel(LocalChannel.class)
-          .group(
-              balanceClient
-                  ? new BalancedEventLoopGroup(_unbalancedEventLoopGroup, allClientConnections)
-                  : _unbalancedEventLoopGroup)
-          .handler(new ChannelInitializer<LocalChannel>() {
-            @Override
-            protected void initChannel(LocalChannel ch) throws Exception {
-              ch.pipeline().addLast(allClientConnections);
-            }
-          });
+          // We check that the average is as expected
+          // Also check that the difference between min and max is less than or equal to 2
 
-      final int iterations = 10000;
-      final int thread = (int) StreamSupport.stream(_unbalancedEventLoopGroup.spliterator(), false).count();
-      final int expect = iterations / thread;
+          Assert.assertEquals(serverStats.getAverage(), expect, 1.0, "Server Unbalanced");
+          Assert.assertTrue(serverStats.getMax() - serverStats.getMin() <= 2, "Server Unbalanced");
 
-      for (int i = iterations; i > 0; i--) {
-        Channel ch = bootstrap.connect(server.localAddress()).sync().channel();
+          Assert.assertEquals(clientStats.getAverage(), expect, 1.0, "Client Unbalanced");
+          Assert.assertTrue(clientStats.getMax() - clientStats.getMin() <= 2, "Client Unbalanced");
 
-        clientDist.compute(ch.eventLoop(), (eventLoop, integer) -> integer != null ? integer + 1 : 1);
+        } finally {
+          server.close().syncUninterruptibly();
+        }
+        return;
+      } catch (ChannelException e) {
+        if (e.getMessage().startsWith("address already in use by")) {
+          _log.warn("Failed attempt {}/{}", currentAttempt, maxAttempts, e);
+        } else {
+          throw e;
+        }
       }
-
-      IntSummaryStatistics serverStats = serverDist.values().stream().mapToInt(Integer::intValue).summaryStatistics();
-      IntSummaryStatistics clientStats = clientDist.values().stream().mapToInt(Integer::intValue).summaryStatistics();
-
-      _log.info("Expected average = {}", expect);
-      _log.info("Server Stats = {}", serverStats);
-      _log.info("Client Stats = {}", clientStats);
-
-      // We check that the average is as expected
-      // Also check that the difference between min and max is less than or equal to 2
-
-      Assert.assertEquals(serverStats.getAverage(), expect, 1.0, "Server Unbalanced");
-      Assert.assertTrue(serverStats.getMax() - serverStats.getMin() <= 2, "Server Unbalanced");
-
-      Assert.assertEquals(clientStats.getAverage(), expect, 1.0, "Client Unbalanced");
-      Assert.assertTrue(clientStats.getMax() - clientStats.getMin() <= 2, "Client Unbalanced");
-
-    } finally {
-      server.close().syncUninterruptibly();
     }
+    Assert.fail("Failed to get an address after " + maxAttempts + " attempts.");
   }
 
   private static class UnbalancedChooser implements EventExecutorChooserFactory {

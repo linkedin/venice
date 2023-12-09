@@ -193,11 +193,19 @@ public final class TestRequestLogHandler extends AbstractLeakDetect {
     verify(_mockLog, times(3)).debug(eq("{}"), any(Object.class)); // 3 INFO messages - request+response pair x 3
   }
 
+  /**
+   * The way the address is formatted varies by JDK...
+   */
+  private String getLoggedRemoteAddress(String address) {
+    return System.getProperty("java.version").startsWith("17") ? address + "/<unresolved>" : address;
+  }
+
   @Test
   public void testHappyPath2() throws InterruptedException {
     // Set up our mock request/response and constants
     String pipeline = "myPipeline";
-    SocketAddress remoteAddress = InetSocketAddress.createUnresolved("remoteAddress", 0);
+    String remoteAddressString = "remoteAddress";
+    SocketAddress remoteAddress = InetSocketAddress.createUnresolved(remoteAddressString, 0);
     HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/foo/bar?query=123");
     HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     HttpUtil.setContentLength(response, 100);
@@ -238,7 +246,10 @@ public final class TestRequestLogHandler extends AbstractLeakDetect {
     Assert.assertTrue(
         messageCaptor.getValue()
             .toString()
-            .startsWith("myPipeline remoteAddress:0 HTTP/1.1 GET /foo/bar?query=123 3--> 200 OK 100 /foo "));
+            .startsWith(
+                "myPipeline " + getLoggedRemoteAddress(remoteAddressString)
+                    + ":0 HTTP/1.1 GET /foo/bar?query=123 3--> 200 OK 100 /foo "),
+        messageCaptor.getValue().toString());
 
     ch.releaseInbound();
     ch.releaseOutbound();
@@ -279,7 +290,8 @@ public final class TestRequestLogHandler extends AbstractLeakDetect {
   public void testHappyPath3() throws InterruptedException {
     // Set up our mock request/response and constants
     String pipeline = "myPipeline";
-    SocketAddress remoteAddress = InetSocketAddress.createUnresolved("remoteAddress", 0);
+    String remoteAddressString = "remoteAddress";
+    SocketAddress remoteAddress = InetSocketAddress.createUnresolved(remoteAddressString, 0);
     HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/foo/bar?query=123");
     HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     HttpUtil.setContentLength(response, 100);
@@ -320,7 +332,9 @@ public final class TestRequestLogHandler extends AbstractLeakDetect {
     Assert.assertTrue(
         messageCaptor.getValue()
             .toString()
-            .startsWith("myPipeline remoteAddress:0 HTTP/1.1 GET /foo/bar?query=123 3--> 200 OK 100 /foo "),
+            .startsWith(
+                "myPipeline " + getLoggedRemoteAddress(remoteAddressString)
+                    + ":0 HTTP/1.1 GET /foo/bar?query=123 3--> 200 OK 100 /foo "),
         messageCaptor.getValue().toString());
 
     ch.disconnect().sync();
