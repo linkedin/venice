@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -16,15 +18,26 @@ public class DisabledPartitionEnablerService extends AbstractVeniceService {
   private final Set<String> allClusters;
   private final Thread cleanupThread;
   private final long sleepInterval;
+
+  private final Time time;
+
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
   public DisabledPartitionEnablerService(
       VeniceHelixAdmin admin,
       VeniceControllerMultiClusterConfig multiClusterConfig) {
+    this(admin, multiClusterConfig, new SystemTime());
+  }
+
+  public DisabledPartitionEnablerService(
+      VeniceHelixAdmin admin,
+      VeniceControllerMultiClusterConfig multiClusterConfig,
+      Time time) {
     this.admin = admin;
     this.multiClusterConfig = multiClusterConfig;
     this.allClusters = multiClusterConfig.getClusters();
     this.sleepInterval = TimeUnit.HOURS.toMillis(10);
+    this.time = time;
     this.cleanupThread = new Thread(new DisabledPartitionEnablerTask(), "StoreBackupVersionCleanupTask");
   }
 
@@ -45,7 +58,7 @@ public class DisabledPartitionEnablerService extends AbstractVeniceService {
     public void run() {
       while (!stop.get()) {
         try {
-          Thread.sleep(sleepInterval);
+          time.sleep(sleepInterval);
         } catch (InterruptedException e) {
           LOGGER.error("Received InterruptedException during sleep in DisabledPartitionEnablerTask thread");
           break;
