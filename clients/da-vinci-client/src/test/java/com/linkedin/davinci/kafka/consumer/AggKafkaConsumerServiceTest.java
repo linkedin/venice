@@ -17,7 +17,7 @@ import org.testng.annotations.Test;
 public class AggKafkaConsumerServiceTest {
   @Test
   public void testGetStuckConsumerDetectionAndRepairRunnable() {
-    Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
+    Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
     Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new HashMap<>();
     long stuckConsumerRepairThresholdMs = 100;
     long nonExistingTopicIngestionTaskKillThresholdMs = 1000;
@@ -51,7 +51,7 @@ public class AggKafkaConsumerServiceTest {
 
   @Test
   public void testGetStuckConsumerDetectionAndRepairRunnableForTransientNonExistingTopic() {
-    Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
+    Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
     Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new HashMap<>();
     long stuckConsumerRepairThresholdMs = 100;
     long nonExistingTopicIngestionTaskKillThresholdMs = 1000;
@@ -85,7 +85,7 @@ public class AggKafkaConsumerServiceTest {
 
   @Test
   public void testGetStuckConsumerDetectionAndRepairRunnableForNonExistingTopic() {
-    Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
+    Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
     Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new HashMap<>();
     long stuckConsumerRepairThresholdMs = 100;
     long nonExistingTopicIngestionTaskKillThresholdMs = 1000;

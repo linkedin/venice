@@ -1,16 +1,36 @@
 package com.linkedin.venice.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controller.stats.StoreBackupVersionCleanupServiceStats;
+import com.linkedin.venice.controllerapi.CurrentVersionResponse;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -26,7 +46,10 @@ import org.apache.logging.log4j.Logger;
  * to accommodate the delay between Controller and Router.
  */
 public class StoreBackupVersionCleanupService extends AbstractVeniceService {
+  public static final String TYPE_CURRENT_VERSION = "current_version";
   private static final Logger LOGGER = LogManager.getLogger(StoreBackupVersionCleanupService.class);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+
   /**
    * The minimum delay to clean up backup version, and this is used to make sure all the Routers have enough
    * time to switch to the new promoted version.
@@ -39,20 +62,31 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Thread cleanupThread;
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
+
+  private final Map<String, String> urlMap = new HashMap<>();
   private final AtomicBoolean stop = new AtomicBoolean(false);
+
+  private final Map<String, StoreBackupVersionCleanupServiceStats> clusterNameCleanupStatsMap =
+      new VeniceConcurrentHashMap<>();
+
+  private final MetricsRepository metricsRepository;
+
+  private final CloseableHttpAsyncClient httpAsyncClient;
 
   private final Time time;
 
   public StoreBackupVersionCleanupService(
       VeniceHelixAdmin admin,
-      VeniceControllerMultiClusterConfig multiClusterConfig) {
-    this(admin, multiClusterConfig, new SystemTime());
+      VeniceControllerMultiClusterConfig multiClusterConfig,
+      MetricsRepository metricsRepository) {
+    this(admin, multiClusterConfig, new SystemTime(), metricsRepository);
   }
 
   protected StoreBackupVersionCleanupService(
       VeniceHelixAdmin admin,
       VeniceControllerMultiClusterConfig multiClusterConfig,
-      Time time) {
+      Time time,
+      MetricsRepository metricsRepository) {
     this.admin = admin;
     this.multiClusterConfig = multiClusterConfig;
     this.allClusters = multiClusterConfig.getClusters();
@@ -60,14 +94,23 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.sleepInterval = TimeUnit.MINUTES.toMillis(5);
     this.defaultBackupVersionRetentionMs = multiClusterConfig.getBackupVersionDefaultRetentionMs();
     this.time = time;
+    this.metricsRepository = metricsRepository;
+    allClusters.forEach(clusterName -> {
+      clusterNameCleanupStatsMap
+          .put(clusterName, new StoreBackupVersionCleanupServiceStats(metricsRepository, clusterName));
+    });
+    this.httpAsyncClient = HttpAsyncClients.custom()
+        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
+        .build();
   }
 
   /**
    * @see AbstractVeniceService#startInner()
    */
   @Override
-  public boolean startInner() throws Exception {
+  public boolean startInner() {
     cleanupThread.start();
+    this.httpAsyncClient.start();
     return true;
   }
 
@@ -75,9 +118,14 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
    * @see AbstractVeniceService#stopInner()
    */
   @Override
-  public void stopInner() throws Exception {
+  public void stopInner() throws IOException {
     stop.set(true);
+    httpAsyncClient.close();
     cleanupThread.interrupt();
+  }
+
+  CloseableHttpAsyncClient getHttpAsyncClient() {
+    return httpAsyncClient;
   }
 
   protected static boolean whetherStoreReadyToBeCleanup(Store store, long defaultBackupVersionRetentionMs, Time time) {
@@ -89,6 +137,73 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       backupVersionRetentionMs = MINIMAL_BACKUP_VERSION_CLEANUP_DELAY;
     }
     return store.getLatestVersionPromoteToCurrentTimestamp() + backupVersionRetentionMs < time.getMilliseconds();
+  }
+
+  private boolean validateAllRouterOnCurrentVersion(Store store, String clusterName, int versionToValidate) {
+    Set<Instance> liveRouterInstances =
+        admin.getHelixVeniceClusterResources(clusterName).getRoutersClusterManager().getLiveRouterInstances();
+
+    for (Instance routerInstance: liveRouterInstances) {
+      try {
+        HttpGet routerRequest =
+            new HttpGet(routerInstance.getUrl() + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
+        HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
+        if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
+          LOGGER.warn(
+              "Got status code {} from host {} while querying current version for store {}",
+              response.getStatusLine().getStatusCode(),
+              routerInstance,
+              store.getName());
+          return false;
+        }
+        String responseBody;
+        try (InputStream bodyStream = response.getEntity().getContent()) {
+          responseBody = IOUtils.toString(bodyStream);
+        }
+        CurrentVersionResponse currentVersionResponse =
+            OBJECT_MAPPER.readValue(responseBody.getBytes(), CurrentVersionResponse.class);
+        if (currentVersionResponse.getCurrentVersion() != versionToValidate) {
+          return false;
+        }
+      } catch (Exception e) {
+        LOGGER.error("Got exception while getting current version for store {}", store.getName(), e);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private boolean validateAllServerOnCurrentVersion(Store store, String clusterName, int versionToValidate) {
+    Set<Instance> instances = admin.getLiveInstanceMonitor(clusterName).getAllLiveInstances();
+
+    for (Instance instance: instances) {
+      try {
+        HttpGet routerRequest = new HttpGet(
+            instance.getUrl() + "/" + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + store.getName());
+        HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
+        if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
+          LOGGER.warn(
+              "Got status code {} from host {} while querying current version for store {}",
+              response.getStatusLine().getStatusCode(),
+              instance,
+              store.getName());
+          return false;
+        }
+        byte[] responseBody;
+        try (InputStream bodyStream = response.getEntity().getContent()) {
+          responseBody = IOUtils.toByteArray(bodyStream);
+        }
+        ServerCurrentVersionResponse currentVersionResponse =
+            OBJECT_MAPPER.readValue(responseBody, ServerCurrentVersionResponse.class);
+        if (currentVersionResponse.getCurrentVersion() != versionToValidate) {
+          return false;
+        }
+      } catch (Exception e) {
+        LOGGER.error("Got exception while getting server current version for store {}", store.getName(), e);
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -104,6 +219,17 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     List<Version> versions = store.getVersions();
     List<Version> readyToBeRemovedVersions = new ArrayList<>();
     int currentVersion = store.getCurrentVersion();
+
+    // Do not delete version unless all routers and all servers are on same current version
+    if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionMetadataFetchBasedCleanupEnabled()
+        && (!validateAllRouterOnCurrentVersion(store, clusterName, currentVersion)
+            || !validateAllServerOnCurrentVersion(store, clusterName, currentVersion))) {
+      StoreBackupVersionCleanupServiceStats stats = clusterNameCleanupStatsMap
+          .computeIfAbsent(clusterName, k -> new StoreBackupVersionCleanupServiceStats(metricsRepository, k));
+      stats.recordBackupVersionMismatch();
+      return false;
+    }
+
     versions.forEach(v -> {
       if (v.getNumber() < currentVersion) {
         readyToBeRemovedVersions.add(v);

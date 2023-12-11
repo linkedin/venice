@@ -89,7 +89,8 @@ embedded in the docs with a relative link like this:
 ![](../assets/images/vip_3_read_path.drawio.svg)
 ```
 
-The [draw.io](https://draw.io) service makes it easy to generate such assets.
+The [draw.io](https://draw.io) service makes it easy to generate such assets. If using [PlantUML](https://plantuml.com/starting), 
+it's recommended to generate diagrams into svg format by following this [guide](https://plantuml.com/svg).
 
 ### Binary Assets
 

@@ -55,7 +55,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   protected static final int MAX_ALLOWED_KEY_COUNT_IN_BATCHGET = 150;
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   private final AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
+  /**
+   * The interval in seconds to refresh metadata. If not configured, it will be set to
+   * {@link com.linkedin.venice.fastclient.meta.RequestBasedMetadata#DEFAULT_REFRESH_INTERVAL_IN_SECONDS} by default.
+   */
   private final long metadataRefreshIntervalInSeconds;
+  /**
+   * The timeout in seconds to wait to warm up connection to metadata instances. If not configured, it will be set to
+   * {@link com.linkedin.venice.fastclient.meta.RequestBasedMetadata#DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT} by default.
+   */
+  private final long metadataConnWarmupTimeoutInSeconds;
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
   private final boolean longTailRetryEnabledForCompute;
@@ -106,6 +115,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
       AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore,
       long metadataRefreshIntervalInSeconds,
+      long metadataConnWarmupTimeoutInSeconds,
       boolean longTailRetryEnabledForSingleGet,
       int longTailRetryThresholdForSingleGetInMicroSeconds,
       boolean longTailRetryEnabledForBatchGet,
@@ -190,6 +200,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.daVinciClientForMetaStore = daVinciClientForMetaStore;
     this.thinClientForMetaStore = thinClientForMetaStore;
     this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
+    this.metadataConnWarmupTimeoutInSeconds = metadataConnWarmupTimeoutInSeconds;
 
     this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
     this.longTailRetryThresholdForSingleGetInMicroSeconds = longTailRetryThresholdForSingleGetInMicroSeconds;
@@ -330,6 +341,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return metadataRefreshIntervalInSeconds;
   }
 
+  public long getMetadataConnWarmupTimeoutInSeconds() {
+    return metadataConnWarmupTimeoutInSeconds;
+  }
+
   public boolean isLongTailRetryEnabledForSingleGet() {
     return longTailRetryEnabledForSingleGet;
   }
@@ -429,6 +444,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
 
     private long metadataRefreshIntervalInSeconds = -1;
+    private long metadataConnWarmupTimeoutInSeconds = -1;
 
     private boolean longTailRetryEnabledForSingleGet = false;
     private int longTailRetryThresholdForSingleGetInMicroSeconds = 1000; // 1ms.
@@ -552,6 +568,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setMetadataConnWarmupTimeoutInSeconds(long metadataConnWarmupTimeoutInSeconds) {
+      this.metadataConnWarmupTimeoutInSeconds = metadataConnWarmupTimeoutInSeconds;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> setMaxAllowedKeyCntInBatchGetReq(int maxAllowedKeyCntInBatchGetReq) {
       this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
       return this;
@@ -652,6 +673,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
           .setThinClientForMetaStore(thinClientForMetaStore)
           .setMetadataRefreshIntervalInSeconds(metadataRefreshIntervalInSeconds)
+          .setMetadataConnWarmupTimeoutInSeconds(metadataConnWarmupTimeoutInSeconds)
           .setLongTailRetryEnabledForSingleGet(longTailRetryEnabledForSingleGet)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroSeconds)
           .setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet)
@@ -690,6 +712,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           daVinciClientForMetaStore,
           thinClientForMetaStore,
           metadataRefreshIntervalInSeconds,
+          metadataConnWarmupTimeoutInSeconds,
           longTailRetryEnabledForSingleGet,
           longTailRetryThresholdForSingleGetInMicroSeconds,
           longTailRetryEnabledForBatchGet,

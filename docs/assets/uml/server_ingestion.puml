@@ -1,0 +1,46 @@
+@startuml
+
+' ### Description
+' This diagram describes how the store ingestion task is created and
+' and how the status signal is consumed by other components
+
+scale 3840*2160
+
+box "  HelixParticipantService\n(a dedicated thread pool)" #White
+participant Helix as helix
+end box
+box "IngestionBackend"#White
+participant KafkaStoreIngestionService as KIS
+end box
+box "       A group of SITs\n(a dedicated thread pool)" #White
+collections StoreIngestionTasks as SITs
+end box
+queue "Source Kafka Topic" as remote
+queue "Local Kafka Version Topic" as VT
+box "  KafkaConsumerService\n(a dedicated thread pool)" #White
+collections  KafkaConsumptionTasks as KCTS
+end box
+box "      StoreBufferService\n(a dedicated thread pool)" #White
+collections  StoreBufferDrainers as SBDS
+end box
+database "StorageEngine" as db
+
+helix -> KIS:Issue state transitions \naccording to partition assignments
+KIS -> SITs:Manage lifecycle and \nsend commands for SITs
+
+
+' # leader behavior
+SITs -[#red]> remote:Leaders subscribe to \nsource kafka topics \n(a remote Version Topic or Real-time Topic) \nwhen consuming remotely
+remote -[#red]> KCTS:Pull msgs from kafka
+KCTS -[#red]> VT:Produce msgs to local VT \nwhen leader consumes remotely
+VT -[#red]> SBDS:Msgs Acked by Kafka \nthen records queued up into drainers
+
+' # follower behavior
+SITs -[#green]> VT:Followers subscribe to local VT
+VT -[#green]> KCTS:Pull msgs from kafka
+KCTS -[#green]> SBDS:Records queued into drainers
+
+SBDS -> SITs:Dequeue the records and invoke methods from SITs to persist
+SITs -> db:Persist records into storage engine
+
+@enduml

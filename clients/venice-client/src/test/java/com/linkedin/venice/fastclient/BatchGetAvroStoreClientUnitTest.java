@@ -54,6 +54,7 @@ public class BatchGetAvroStoreClientUnitTest {
 
     TestClientSimulator client = new TestClientSimulator();
     client.generateKeyValues(0, 1000)
+        .setExpectedValueSchemaId(5)
         .partitionKeys(1)
         .assignRouteToPartitions("https://host1.linkedin.com", 0)
         .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0)

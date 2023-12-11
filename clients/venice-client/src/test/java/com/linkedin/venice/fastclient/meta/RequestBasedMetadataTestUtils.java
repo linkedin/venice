@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient.meta;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -11,7 +12,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.common.callback.Callback;
+import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -24,6 +28,7 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
+import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
@@ -52,14 +57,68 @@ public class RequestBasedMetadataTestUtils {
   private static final byte[] DICTIONARY = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
 
   public static ClientConfig getMockClientConfig(String storeName) {
+    return getMockClientConfig(storeName, false);
+  }
+
+  public static ClientConfig getMockClientConfig(String storeName, boolean firstConnWarmupFails) {
     ClientConfig clientConfig = mock(ClientConfig.class);
     ClusterStats clusterStats = new ClusterStats(new MetricsRepository(), storeName);
+    doReturn(getMockR2Client(firstConnWarmupFails)).when(clientConfig).getR2Client();
     doReturn(1L).when(clientConfig).getMetadataRefreshIntervalInSeconds();
+    doReturn(1L).when(clientConfig).getMetadataConnWarmupTimeoutInSeconds();
     doReturn(storeName).when(clientConfig).getStoreName();
     doReturn(clusterStats).when(clientConfig).getClusterStats();
     doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
     doReturn(mock(FastClientStats.class)).when(clientConfig).getStats(RequestType.SINGLE_GET);
     return clientConfig;
+  }
+
+  /**
+   * This r2Client is used for warmup conns to instances as part of metadata update
+   */
+  public static Client getMockR2Client(boolean firstConnWarmupFails) {
+    Client r2Client = mock(Client.class);
+    if (!firstConnWarmupFails) {
+      doAnswer(invocation -> {
+        R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+        callback.getValueFuture().complete(null);
+        return null;
+      }).when(r2Client)
+          .restRequest(
+              argThat(
+                  argument -> argument.getURI().getPath().endsWith("/" + QueryAction.HEALTH.toString().toLowerCase())),
+              any(Callback.class));
+    } else {
+      // for REPLICA1_NAME: first request fails and other succeeds
+      doAnswer(invocation -> {
+        R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+        callback.getValueFuture().completeExceptionally(new VeniceClientHttpException(500));
+        return null;
+      }).doAnswer(invocation -> {
+        R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+        callback.getValueFuture().complete(null);
+        return null;
+      })
+          .when(r2Client)
+          .restRequest(
+              argThat(
+                  argument -> (argument.getURI().getPath().endsWith("/" + QueryAction.HEALTH.toString().toLowerCase())
+                      && argument.getURI().getPath().contains(REPLICA1_NAME))),
+              any(Callback.class));
+
+      // for other replicas: all request succeeds
+      doAnswer(invocation -> {
+        R2TransportClient.R2TransportClientCallback callback = invocation.getArgument(1);
+        callback.getValueFuture().complete(null);
+        return null;
+      }).when(r2Client)
+          .restRequest(
+              argThat(
+                  argument -> (argument.getURI().getPath().endsWith("/" + QueryAction.HEALTH.toString().toLowerCase())
+                      && !argument.getURI().getPath().contains(REPLICA1_NAME))),
+              any(Callback.class));
+    }
+    return r2Client;
   }
 
   public static D2TransportClient getMockD2TransportClient(
@@ -233,20 +292,14 @@ public class RequestBasedMetadataTestUtils {
     RequestBasedMetadata requestBasedMetadata;
     if (mockMetadataUpdateFailure) {
       requestBasedMetadata = mock(RequestBasedMetadata.class);
-      doAnswer(invocation -> {
-        return null;
-      }).when(requestBasedMetadata).discoverD2Service();
+      doAnswer(invocation -> null).when(requestBasedMetadata).discoverD2Service();
 
       if (firstUpdateFails) {
         doAnswer(invocation -> {
           throw new VeniceClientException("update cache exception");
-        }).doAnswer(invocation -> {
-          return null;
-        }).when(requestBasedMetadata).updateCache(anyBoolean());
+        }).doAnswer(invocation -> null).when(requestBasedMetadata).updateCache(anyBoolean());
       } else {
-        doAnswer(invocation -> {
-          return null;
-        }).when(requestBasedMetadata).updateCache(anyBoolean());
+        doAnswer(invocation -> null).when(requestBasedMetadata).updateCache(anyBoolean());
       }
 
       doCallRealMethod().when(requestBasedMetadata).setIsReadyLatch(any());

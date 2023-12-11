@@ -1165,16 +1165,7 @@ public class TestHybrid {
 
       try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          TopicManager topicManager =
-              IntegrationTestPushUtils
-                  .getTopicManagerRepo(
-                      DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-                      100L,
-                      MIN_COMPACTION_LAG,
-                      venice.getPubSubBrokerWrapper(),
-                      sharedVenice.getPubSubTopicRepository())
-                  .getTopicManager()) {
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
 
         ControllerResponse response = controllerClient.updateStore(
             storeName,

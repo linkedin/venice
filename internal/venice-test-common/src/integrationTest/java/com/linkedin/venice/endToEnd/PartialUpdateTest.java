@@ -381,7 +381,7 @@ public class PartialUpdateTest {
       assertEquals(response.getVersion(), 1);
       assertFalse(response.isError(), "Empty push to parent colo should succeed");
       TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
+          response.getKafkaTopic(),
           parentControllerClient,
           30,
           TimeUnit.SECONDS);

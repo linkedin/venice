@@ -23,6 +23,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -190,7 +191,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private ParticipantStoreConsumptionTask participantStoreConsumptionTask;
 
-  private boolean metaSystemStoreReplicaStatusNotifierQueued = false;
   // TODO: This could be a composite storage engine which keeps secondary storage engines updated in lockstep with a
   // primary
   // source. This could be a view of the data, or in our case a cache, or both potentially.
@@ -449,7 +449,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metricsRepository,
         new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()),
         pubSubDeserializer,
-        (topicName) -> this.killConsumptionTask(topicName));
+        (topicName) -> this.killConsumptionTask(topicName),
+        vt -> {
+          String storeName = Version.parseStoreFromKafkaTopicName(vt);
+          int versionNumber = Version.parseVersionFromKafkaTopicName(vt);
+          Store store = metadataRepo.getStore(storeName);
+          if (null == store) {
+            return false;
+          }
+          Optional<Version> version = store.getVersion(versionNumber);
+          if (!version.isPresent()) {
+            return false;
+          }
+          return version.get().isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
+        });
     /**
      * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
      * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.
@@ -1186,6 +1199,26 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           + " admin command";
       LOGGER.warn(msg);
       response.setMessage(msg);
+    }
+    return response;
+  }
+
+  @Override
+  public ServerCurrentVersionResponse getCurrentVersionResponse(String storeName) {
+    ServerCurrentVersionResponse response = new ServerCurrentVersionResponse();
+    try {
+      Store store = metadataRepo.getStoreOrThrow(storeName);
+      // Version metadata
+      int currentVersionNumber = store.getCurrentVersion();
+      if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
+        throw new VeniceException(
+            "No valid store version available to read for store: " + storeName
+                + ". Please push data to the store before consuming");
+      }
+      response.setCurrentVersion(currentVersionNumber);
+    } catch (VeniceException e) {
+      response.setMessage("Failed to get current version for store: " + storeName + " due to: " + e.getMessage());
+      response.setError(true);
     }
     return response;
   }

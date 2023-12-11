@@ -51,6 +51,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEBUG_LOGGING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DELAY_REPORT_READY_TO_SERVE_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
@@ -75,6 +77,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUN
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
@@ -449,12 +453,15 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int metaStoreWriterCloseConcurrency;
 
   private final long ingestionHeartbeatIntervalMs;
-
+  private final boolean leaderCompleteStateCheckInFollowerEnabled;
+  private final long leaderCompleteStateCheckInFollowerValidIntervalMs;
   private final boolean stuckConsumerRepairEnabled;
   private final int stuckConsumerRepairIntervalSecond;
   private final int stuckConsumerDetectionRepairThresholdSecond;
   private final int nonExistingTopicIngestionTaskKillThresholdSecond;
   private final int nonExistingTopicCheckRetryIntervalSecond;
+  private final boolean dedicatedConsumerPoolForAAWCLeaderEnabled;
+  private final int dedicatedConsumerPoolSizeForAAWCLeader;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -757,6 +764,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND, 15 * 60); // 15 mins
     nonExistingTopicCheckRetryIntervalSecond =
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND, 60); // 1min
+    leaderCompleteStateCheckInFollowerEnabled =
+        serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, false);
+    leaderCompleteStateCheckInFollowerValidIntervalMs = serverProperties
+        .getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(5));
+    dedicatedConsumerPoolForAAWCLeaderEnabled =
+        serverProperties.getBoolean(SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED, false);
+    dedicatedConsumerPoolSizeForAAWCLeader =
+        serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
   }
 
   long extractIngestionMemoryLimit(
@@ -1311,6 +1326,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return ingestionHeartbeatIntervalMs;
   }
 
+  public boolean isLeaderCompleteStateCheckInFollowerEnabled() {
+    return leaderCompleteStateCheckInFollowerEnabled;
+  }
+
+  public long getLeaderCompleteStateCheckInFollowerValidIntervalMs() {
+    return leaderCompleteStateCheckInFollowerValidIntervalMs;
+  }
+
   public boolean isStuckConsumerRepairEnabled() {
     return stuckConsumerRepairEnabled;
   }
@@ -1329,5 +1352,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getNonExistingTopicCheckRetryIntervalSecond() {
     return nonExistingTopicCheckRetryIntervalSecond;
+  }
+
+  public boolean isDedicatedConsumerPoolForAAWCLeaderEnabled() {
+    return dedicatedConsumerPoolForAAWCLeaderEnabled;
+  }
+
+  public int getDedicatedConsumerPoolSizeForAAWCLeader() {
+    return dedicatedConsumerPoolSizeForAAWCLeader;
   }
 }

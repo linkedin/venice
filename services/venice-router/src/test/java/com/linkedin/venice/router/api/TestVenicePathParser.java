@@ -84,7 +84,8 @@ public class TestVenicePathParser {
         storeConfigRepo,
         clusterToD2Map,
         CLUSTER,
-        compressorFactory);
+        compressorFactory,
+        null);
   }
 
   RouterStats<AggRouterHttpRequestStats> getMockedStats() {

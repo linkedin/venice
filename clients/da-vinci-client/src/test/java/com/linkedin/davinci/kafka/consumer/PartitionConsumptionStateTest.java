@@ -1,6 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -8,6 +11,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
@@ -118,5 +122,21 @@ public class PartitionConsumptionStateTest {
     Assert.assertNull(tr2);
     Assert.assertEquals(pcs.getTransientRecordMapSize(), 1);
 
+  }
+
+  @Test
+  public void testIsLeaderCompleted() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false);
+    // default is LEADER_COMPLETE_STATE_UNKNOWN
+    assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN);
+    assertFalse(pcs.isLeaderCompleted());
+
+    // test with LEADER_NOT_COMPLETED
+    pcs.setLeaderCompleteState(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    assertFalse(pcs.isLeaderCompleted());
+
+    // test with LEADER_COMPLETED
+    pcs.setLeaderCompleteState(LeaderCompleteState.LEADER_COMPLETED);
+    assertTrue(pcs.isLeaderCompleted());
   }
 }

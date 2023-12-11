@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:

@@ -4,6 +4,7 @@ import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_F
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.KEY_SCHEMA;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA1_NAME;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA2_NAME;
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockR2Client;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader;
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
 import static org.mockito.ArgumentMatchers.any;
@@ -19,7 +20,6 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
-import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
@@ -162,8 +162,9 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean transportClientPartialIncomplete, // only applicable for useStreamingBatchGetAsDefault
       boolean mockTransportClient,
       long routingLeakedRequestCleanupThresholdMS) throws InterruptedException {
+
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
-        .setR2Client(mock(Client.class))
+        .setR2Client(getMockR2Client(false))
         .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
         .setMetadataRefreshIntervalInSeconds(1L)
         .setRoutingLeakedRequestCleanupThresholdMS(routingLeakedRequestCleanupThresholdMS)
@@ -197,20 +198,8 @@ public class DispatchingAvroGenericStoreClientTest {
     }
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(dispatchingAvroGenericStoreClient, clientConfig);
     statsAvroGenericStoreClient.start();
-
-    // Wait till metadata is initialized
-    while (true) {
-      try {
-        dispatchingAvroGenericStoreClient.verifyMetadataInitialized();
-        break;
-      } catch (VeniceClientException e) {
-        if (e.getMessage().endsWith("metadata is not ready, attempting to re-initialize")) {
-          // retry until its initialized
-          continue;
-        }
-        throw e;
-      }
-    }
+    // metadata should be initialized after start()
+    dispatchingAvroGenericStoreClient.verifyMetadataInitialized();
 
     if (mockTransportClient) {
       // mock get()
@@ -557,6 +546,7 @@ public class DispatchingAvroGenericStoreClientTest {
       routerRequestValue.setValue(valueByteBuffer);
       routerRequestValue.keyIndex = count.getAndIncrement();
       routerRequestValues.add(routerRequestValue);
+      routerRequestValue.setSchemaId(1);
     });
     return MULTI_GET_RESPONSE_SERIALIZER.serializeObjects(routerRequestValues);
   }
