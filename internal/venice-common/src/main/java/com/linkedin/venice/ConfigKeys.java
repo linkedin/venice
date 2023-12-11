@@ -379,8 +379,7 @@ public class ConfigKeys {
   /**
    * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
    */
-  public static final String CONTROLLER_RENABLE_DISABLED_REPLICA_ENABLED =
-      "controller.renable.disabled.replica.enabled";
+  public static final String CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED = "controller.enable.disabled.replica.enabled";
 
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";

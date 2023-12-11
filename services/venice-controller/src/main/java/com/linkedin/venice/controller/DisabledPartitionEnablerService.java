@@ -43,7 +43,6 @@ public class DisabledPartitionEnablerService extends AbstractVeniceService {
   private class DisabledPartitionEnablerTask implements Runnable {
     @Override
     public void run() {
-      boolean interruptReceived = false;
       while (!stop.get()) {
         try {
           Thread.sleep(sleepInterval);
@@ -57,24 +56,11 @@ public class DisabledPartitionEnablerService extends AbstractVeniceService {
               || !admin.isLeaderControllerFor(clusterName)) {
             continue;
           }
-          boolean didEnable = false;
           try {
-            didEnable = admin.enableDisabledPartition(clusterName, "", true);
+            admin.enableDisabledPartition(clusterName, "", true);
           } catch (Exception e) {
             LOGGER.error("Encountered exception while enabling disabled partition in cluster: {}", clusterName, e);
           }
-          if (didEnable) {
-            try {
-              Thread.sleep(sleepInterval);
-            } catch (InterruptedException e) {
-              interruptReceived = true;
-              LOGGER.error("Received InterruptedException during sleep in DisabledPartitionEnablerTask thread");
-              break;
-            }
-          }
-        }
-        if (interruptReceived) {
-          break;
         }
       }
       LOGGER.info("DisabledPartitionEnablerTask stopped.");

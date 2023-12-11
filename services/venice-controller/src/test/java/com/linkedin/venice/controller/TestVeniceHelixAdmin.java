@@ -49,7 +49,7 @@ public class TestVeniceHelixAdmin {
     doCallRealMethod().when(veniceHelixAdmin).deleteHelixResource(anyString(), anyString());
 
     veniceHelixAdmin.deleteHelixResource(clusterName, kafkaTopic);
-    verify(adminClient, times(1)).enablePartition(true, clusterName, "node_1", kafkaTopic, partitions);
+    verify(veniceHelixAdmin, times(1)).enableDisabledPartition(clusterName, kafkaTopic, false);
 
   }
 
