@@ -55,11 +55,12 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -328,18 +329,28 @@ public class TestStoreMigration {
 
       startMigration(parentControllerUrl, storeName);
 
-      // Store migration status output in ArrayList via closure PrintFunction
-      ArrayList<String> statusOutput = new ArrayList<>();
+      // Store migration status output via closure PrintFunction
+      Set<String> statusOutput = new HashSet<String>();
       PrintFunction printFunction = (message) -> {
-        statusOutput.add(message);
+        statusOutput.add(message.trim());
         System.err.println(message);
       };
 
       checkMigrationStatus(parentControllerUrl, storeName, printFunction);
 
-      // Check that the store and system store appear in the migration status output
-      Assert.assertTrue(statusOutput.stream().filter(message -> message.contains(storeName)).count() >= 1);
-      Assert.assertTrue(statusOutput.stream().filter(message -> message.contains(systemStoreName)).count() >= 1);
+      // Check that store and system store exists in both source and destination cluster
+      Assert.assertTrue(
+          statusOutput.contains(
+              String.format(
+                  "%s belongs to cluster venice-cluster0 according to cluster discovery",
+                  storeName,
+                  srcClusterName)));
+      Assert
+          .assertTrue(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, destClusterName)));
+      Assert.assertTrue(
+          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, srcClusterName)));
+      Assert.assertTrue(
+          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, destClusterName)));
 
       completeMigration(parentControllerUrl, storeName);
 
@@ -349,6 +360,20 @@ public class TestStoreMigration {
           TimeUnit.SECONDS,
           () -> Assert
               .assertEquals(pushStatusStoreReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
+
+      // Verify that store and system store only exist in destination cluster after ending migration
+      statusOutput.clear();
+      endMigration(parentControllerUrl, storeName);
+      checkMigrationStatus(parentControllerUrl, storeName, printFunction);
+
+      Assert
+          .assertFalse(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, srcClusterName)));
+      Assert
+          .assertTrue(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, destClusterName)));
+      Assert.assertFalse(
+          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, srcClusterName)));
+      Assert.assertTrue(
+          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, destClusterName)));
     } finally {
       Utils.closeQuietlyWithErrorLogged(pushStatusStoreReader);
       D2ClientUtils.shutdownClient(d2Client);
