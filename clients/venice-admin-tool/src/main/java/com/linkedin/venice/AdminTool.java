@@ -558,7 +558,7 @@ public class AdminTool {
     }
   }
 
-  static CommandLine getCommandLine(String[] args) throws ParseException, IOException {
+  public static CommandLine getCommandLine(String[] args) throws ParseException, IOException {
     /**
      * Command Options are split up for help text formatting, see printUsageAndExit()
      *
@@ -1614,29 +1614,67 @@ public class AdminTool {
             + "To complete migration fabric by fabric, use admin-tool command --complete-migration.");
   }
 
-  private static void printMigrationStatus(ControllerClient controller, String storeName) {
+  @FunctionalInterface
+  public interface PrintFunction {
+    void apply(String message);
+  }
+
+  private static void printMigrationStatus(ControllerClient controller, String storeName, PrintFunction printFunction) {
     StoreInfo store = controller.getStore(storeName).getStore();
 
-    System.err.println("\n" + controller.getClusterName() + "\t" + controller.getLeaderControllerUrl());
+    printFunction.apply("\n" + controller.getClusterName() + "\t" + controller.getLeaderControllerUrl());
 
     if (store == null) {
-      System.err.println(storeName + " DOES NOT EXIST in this cluster " + controller.getClusterName());
+      printFunction.apply(storeName + " DOES NOT EXIST in this cluster " + controller.getClusterName());
     } else {
-      System.err.println(storeName + " exists in this cluster " + controller.getClusterName());
-      System.err.println("\t" + storeName + ".isMigrating = " + store.isMigrating());
-      System.err.println("\t" + storeName + ".largestUsedVersion = " + store.getLargestUsedVersionNumber());
-      System.err.println("\t" + storeName + ".currentVersion = " + store.getCurrentVersion());
-      System.err.println("\t" + storeName + ".versions = ");
-      store.getVersions().stream().forEach(version -> System.err.println("\t\t" + version.toString()));
+      printFunction.apply(storeName + " exists in this cluster " + controller.getClusterName());
+      printFunction.apply("\t" + storeName + ".isMigrating = " + store.isMigrating());
+      printFunction.apply("\t" + storeName + ".largestUsedVersion = " + store.getLargestUsedVersionNumber());
+      printFunction.apply("\t" + storeName + ".currentVersion = " + store.getCurrentVersion());
+      printFunction.apply("\t" + storeName + ".versions = ");
+      store.getVersions().stream().forEach(version -> printFunction.apply("\t\t" + version.toString()));
     }
 
-    System.err.println(
+    printFunction.apply(
         "\t" + storeName + " belongs to cluster " + controller.discoverCluster(storeName).getCluster()
             + " according to cluster discovery");
   }
 
+  private static void printSystemStoreMigrationStatus(
+      ControllerClient controller,
+      String storeName,
+      PrintFunction printFunction) {
+    MultiStoreResponse clusterStores = controller.queryStoreList();
+
+    for (String currStoreName: clusterStores.getStores()) {
+      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(currStoreName);
+
+      if (systemStoreType != null && systemStoreType.extractRegularStoreName(currStoreName).equals(storeName)) {
+        printMigrationStatus(controller, currStoreName, printFunction);
+      }
+    }
+  }
+
   private static void checkMigrationStatus(CommandLine cmd) {
-    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
+    checkMigrationStatus(cmd, System.err::println);
+  }
+
+  public static void checkMigrationStatus(CommandLine cmd, PrintFunction printFunction) {
+    checkMigrationStatus(
+        cmd,
+        printFunction,
+        new ControllerClient(getRequiredArgument(cmd, Arg.CLUSTER_SRC), getRequiredArgument(cmd, Arg.URL), sslFactory),
+        new ControllerClient(
+            getRequiredArgument(cmd, Arg.CLUSTER_DEST),
+            getRequiredArgument(cmd, Arg.URL),
+            sslFactory));
+  }
+
+  public static void checkMigrationStatus(
+      CommandLine cmd,
+      PrintFunction printFunction,
+      ControllerClient srcControllerClient,
+      ControllerClient destControllerClient) {
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
     String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
@@ -1644,27 +1682,38 @@ public class AdminTool {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
 
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
-
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
+
     if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
       // This is a controller in single datacenter setup
-      printMigrationStatus(srcControllerClient, storeName);
-      printMigrationStatus(destControllerClient, storeName);
+      printMigrationStatus(srcControllerClient, storeName, printFunction);
+      printMigrationStatus(destControllerClient, storeName, printFunction);
+
+      printSystemStoreMigrationStatus(srcControllerClient, storeName, printFunction);
+      printSystemStoreMigrationStatus(destControllerClient, storeName, printFunction);
     } else {
       // This is a parent controller
       System.err.println("\n=================== Parent Controllers ====================");
-      printMigrationStatus(srcControllerClient, storeName);
-      printMigrationStatus(destControllerClient, storeName);
+      printMigrationStatus(srcControllerClient, storeName, printFunction);
+      printMigrationStatus(destControllerClient, storeName, printFunction);
+
+      printSystemStoreMigrationStatus(srcControllerClient, storeName, printFunction);
+      printSystemStoreMigrationStatus(destControllerClient, storeName, printFunction);
 
       Map<String, ControllerClient> srcChildControllerClientMap = getControllerClientMap(srcClusterName, response);
       Map<String, ControllerClient> destChildControllerClientMap = getControllerClientMap(destClusterName, response);
 
       for (Map.Entry<String, ControllerClient> entry: srcChildControllerClientMap.entrySet()) {
         System.err.println("\n\n=================== Child Datacenter " + entry.getKey() + " ====================");
-        printMigrationStatus(entry.getValue(), storeName);
-        printMigrationStatus(destChildControllerClientMap.get(entry.getKey()), storeName);
+
+        ControllerClient srcChildController = entry.getValue();
+        ControllerClient destChildController = destChildControllerClientMap.get(entry.getKey());
+
+        printMigrationStatus(srcChildController, storeName, printFunction);
+        printMigrationStatus(destChildController, storeName, printFunction);
+
+        printSystemStoreMigrationStatus(srcChildController, storeName, printFunction);
+        printSystemStoreMigrationStatus(destChildController, storeName, printFunction);
       }
     }
   }
