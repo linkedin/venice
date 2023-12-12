@@ -48,6 +48,17 @@ public class StoreAclHandlerTest {
   private boolean[] isHealthCheck = { false };
   private boolean[] isBadUri = { false };
 
+  private void resetAllConditions() {
+    hasAccess[0] = false;
+    hasAcl[0] = false;
+    hasStore[0] = false;
+    isSystemStore[0] = false;
+    isFailOpen[0] = false;
+    isMetadata[0] = false;
+    isHealthCheck[0] = false;
+    isBadUri[0] = false;
+  }
+
   @BeforeMethod
   public void setUp() throws Exception {
     accessController = mock(DynamicAccessController.class);
@@ -206,10 +217,10 @@ public class StoreAclHandlerTest {
 
   @Test
   public void testAllCases() throws Exception {
-    enumerate(hasAcl, hasStore, hasAccess, isSystemStore, isFailOpen, isMetadata, isHealthCheck);
+    enumerate(hasAcl, hasStore, hasAccess, isSystemStore, isFailOpen, isMetadata, isHealthCheck, isBadUri);
 
     verify(ctx, times(108)).fireChannelRead(req);
-    verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    verify(ctx, times(144)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
     // One of the cases is impossible in reality. See StoreAclHandler.java comments
     verify(ctx, times(3)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
@@ -238,9 +249,11 @@ public class StoreAclHandlerTest {
   }
 
   /**
-   * Generate every possible combination for a given list of booleans
+   * Generate every possible combination for a given list of booleans based on variables passed
+   * to boolean[]... conditions. If all variables (8 in count) are passed, then there will be 256
+   * combinations:
    *
-   * for (int i = 0; i < 32; i++) {        | i= 0   1   2   3   4 ...
+   * for (int i = 0; i < 256; i++) {        | i= 0   1   2   3   4 ...
    *   _hasAccess=          (i>>0) % 2 == 1|    F   T   F   T   F ...
    *   _hasAcl=             (i>>1) % 2 == 1|    F   F   T   T   F ...
    *   _hasStore=           (i>>2) % 2 == 1|    F   F   F   F   T ...
@@ -248,9 +261,11 @@ public class StoreAclHandlerTest {
    *   _isFailOpen=         (i>>4) % 2 == 1|    F   F   F   F   F ...
    *   _isMetadata=         (i>>5) % 2 == 1|    F   F   F   F   F ...
    *   _isHealthCheck=      (i>>6) % 2 == 1|    F   F   F   F   F ...
+   *   _isBadUri=           (i>>7) % 2 == 1|    F   F   F   F   F ...
    * }
    */
   private void enumerate(boolean[]... conditions) throws Exception {
+    // enumerate for all possible combinations
     int len = conditions.length;
     for (int i = 0; i < Math.pow(2, len); i++) {
       for (int j = 0; j < len; j++) {
@@ -262,6 +277,9 @@ public class StoreAclHandlerTest {
       update();
       aclHandler.channelRead0(ctx, req);
     }
+
+    // reset all supported conditions to the default to remove changes from this test
+    resetAllConditions();
   }
 
   public static class ContextMatcher implements ArgumentMatcher<FullHttpResponse> {
