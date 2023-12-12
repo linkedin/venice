@@ -46,6 +46,7 @@ public class StoreAclHandlerTest {
   private boolean[] isFailOpen = { false };
   private boolean[] isMetadata = { false };
   private boolean[] isHealthCheck = { false };
+  private boolean[] isBadUri = { false };
 
   @BeforeMethod
   public void setUp() throws Exception {
@@ -171,6 +172,15 @@ public class StoreAclHandlerTest {
   }
 
   @Test
+  public void isBadUri() throws Exception {
+    isBadUri[0] = true;
+    enumerate(hasAcl, hasStore, hasAccess, isSystemStore, isFailOpen, isMetadata, isHealthCheck);
+
+    // all 128 times should fail for BAD_REQUEST
+    verify(ctx, times(128)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+  }
+
+  @Test
   public void aclMissing() throws Exception {
     hasAcl[0] = false;
     enumerate(hasStore, hasAccess, isSystemStore, isFailOpen, isMetadata, isHealthCheck);
@@ -195,7 +205,7 @@ public class StoreAclHandlerTest {
   }
 
   @Test
-  public void testChannelRead0() throws Exception {
+  public void testAllCases() throws Exception {
     enumerate(hasAcl, hasStore, hasAccess, isSystemStore, isFailOpen, isMetadata, isHealthCheck);
 
     verify(ctx, times(108)).fireChannelRead(req);
@@ -216,7 +226,9 @@ public class StoreAclHandlerTest {
       when(metadataRepo.getStoreOrThrow(any())).thenThrow(new VeniceNoStoreException("storename"));
     }
     when(store.isSystemStore()).thenReturn(isSystemStore[0]);
-    if (isMetadata[0]) {
+    if (isBadUri[0]) {
+      when(req.uri()).thenReturn("/badUri");
+    } else if (isMetadata[0]) {
       when(req.uri()).thenReturn("/metadata/storename/random");
     } else if (isHealthCheck[0]) {
       when(req.uri()).thenReturn("/health");

@@ -93,6 +93,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
     String uri = req.uri();
     // Parse resource type and store name
     String[] requestParts = URI.create(uri).getPath().split("/");
+    // invalid request if requestParts.length < 3 except for HEALTH check from venice client
     if (requestParts.length < 3
         && !(requestParts.length == 2 && requestParts[1].toUpperCase().equals(QueryAction.HEALTH.toString()))) {
       NettyUtils.setupResponseAndFlush(
@@ -100,6 +101,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
           ("Invalid request uri: " + uri).getBytes(),
           false,
           ctx);
+      return;
     }
 
     /**
