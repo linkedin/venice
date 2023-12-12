@@ -1252,9 +1252,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       throw new VeniceException(
           String.format(
               "No Kafka cluster ID found in the cluster ID to Kafka URL map. "
-                  + "Got cluster ID %d and ID to cluster URL map %s",
+                  + "Got cluster ID %d and ID to cluster URL map %s. "
+                  + "Message type: %d; ProducerMetadata: %s; LeaderMetadataFooter: %s",
               kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId,
-              kafkaClusterIdToUrlMap));
+              kafkaClusterIdToUrlMap,
+              kafkaValue.messageType,
+              kafkaValue.producerMetadata,
+              kafkaValue.leaderMetadataFooter));
     }
     return upstreamKafkaURL;
   }
