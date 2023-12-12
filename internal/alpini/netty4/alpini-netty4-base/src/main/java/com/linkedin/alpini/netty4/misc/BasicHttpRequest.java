@@ -20,7 +20,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -231,7 +230,10 @@ public class BasicHttpRequest extends DefaultHttpRequest implements BasicRequest
   }
 
   AttributeMap attributeMap() {
-    return Optional.ofNullable(_attributes).orElseGet(() -> _attributes = new DefaultAttributeMap());
+    if (_attributes == null) {
+      _attributes = new DefaultAttributeMap();
+    }
+    return _attributes;
   }
 
   @SuppressWarnings("unchecked")
