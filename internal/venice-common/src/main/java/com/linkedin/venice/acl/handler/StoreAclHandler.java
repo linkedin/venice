@@ -93,21 +93,22 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
     String uri = req.uri();
     // Parse resource type and store name
     String[] requestParts = URI.create(uri).getPath().split("/");
-    if (requestParts.length < 3) {
+    if (requestParts.length < 3
+        && !(requestParts.length == 2 && requestParts[1].toUpperCase().equals(QueryAction.HEALTH.toString()))) {
       NettyUtils.setupResponseAndFlush(
           HttpResponseStatus.BAD_REQUEST,
-          ("Invalid request  uri: " + uri).getBytes(),
+          ("Invalid request uri: " + uri).getBytes(),
           false,
           ctx);
-      return;
     }
 
     /**
-     *  Skip ACL for requests to /metadata and /admin as there's no sensitive information in the response.
+     *  Skip ACL for requests to /metadata, /admin and /health as there's no sensitive information in the response.
      */
     try {
       QueryAction queryAction = QueryAction.valueOf(requestParts[1].toUpperCase());
-      if (queryAction.equals(QueryAction.METADATA) || queryAction.equals(QueryAction.ADMIN)) {
+      if (queryAction.equals(QueryAction.METADATA) || queryAction.equals(QueryAction.ADMIN)
+          || queryAction.equals(QueryAction.HEALTH)) {
         ReferenceCountUtil.retain(req);
         ctx.fireChannelRead(req);
         return;
