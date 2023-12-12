@@ -33,6 +33,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
@@ -55,6 +56,7 @@ import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -1194,7 +1196,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
          */
         upstreamKafkaURL = localKafkaServer;
       } else {
-        upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(kafkaValue);
+        upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(consumerRecord, this.kafkaClusterIdToUrlMap);
       }
     }
     return upstreamKafkaURL;
@@ -1243,20 +1245,31 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     pcs.updateLeaderConsumedUpstreamRTOffset(kafkaUrl, offset);
   }
 
-  private String getUpstreamKafkaUrlFromKafkaValue(KafkaMessageEnvelope kafkaValue) {
+  /**
+   * N.B. package-private for testing purposes.
+   */
+  static String getUpstreamKafkaUrlFromKafkaValue(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      Int2ObjectMap<String> kafkaClusterIdToUrlMap) {
+    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     if (kafkaValue.leaderMetadataFooter == null) {
       throw new VeniceException("leaderMetadataFooter field in KME should have been set.");
     }
-    String upstreamKafkaURL = this.kafkaClusterIdToUrlMap.get(kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId);
+    String upstreamKafkaURL = kafkaClusterIdToUrlMap.get(kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId);
     if (upstreamKafkaURL == null) {
+      MessageType type = MessageType.valueOf(kafkaValue.messageType);
       throw new VeniceException(
           String.format(
               "No Kafka cluster ID found in the cluster ID to Kafka URL map. "
                   + "Got cluster ID %d and ID to cluster URL map %s. "
-                  + "Message type: %d; ProducerMetadata: %s; LeaderMetadataFooter: %s",
+                  + "%s; Offset: %d; Message type: %s; ProducerMetadata: %s; LeaderMetadataFooter: %s",
               kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId,
               kafkaClusterIdToUrlMap,
-              kafkaValue.messageType,
+              consumerRecord.getTopicPartition(),
+              consumerRecord.getOffset(),
+              type.toString() + (type == MessageType.CONTROL_MESSAGE
+                  ? "/" + ControlMessageType.valueOf((ControlMessage) kafkaValue.getPayloadUnion())
+                  : ""),
               kafkaValue.producerMetadata,
               kafkaValue.leaderMetadataFooter));
     }
