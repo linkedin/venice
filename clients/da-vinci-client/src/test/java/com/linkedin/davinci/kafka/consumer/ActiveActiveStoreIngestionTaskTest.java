@@ -561,6 +561,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     long offset = 100;
     long timestamp = System.currentTimeMillis();
     int payloadSize = 200;
+    String sourceKafka = "sourceKafkaURL";
 
     Int2ObjectMap<String> kafkaClusterIdToUrlMap = new Int2ObjectArrayMap<>(2);
     kafkaClusterIdToUrlMap.put(0, "url0");
@@ -577,7 +578,7 @@ public class ActiveActiveStoreIngestionTaskTest {
             payloadSize);
     try {
       ActiveActiveStoreIngestionTask
-          .getUpstreamKafkaUrlFromKafkaValue(pubSubMessageWithNullLeaderMetadata, kafkaClusterIdToUrlMap);
+          .getUpstreamKafkaUrlFromKafkaValue(pubSubMessageWithNullLeaderMetadata, sourceKafka, kafkaClusterIdToUrlMap);
     } catch (VeniceException e) {
       LOGGER.info("kmeWithNullLeaderMetadata", e);
       assertEquals(e.getMessage(), "leaderMetadataFooter field in KME should have been set.");
@@ -597,7 +598,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         payloadSize);
     try {
       ActiveActiveStoreIngestionTask
-          .getUpstreamKafkaUrlFromKafkaValue(msgWithAbsentUpstreamCluster, kafkaClusterIdToUrlMap);
+          .getUpstreamKafkaUrlFromKafkaValue(msgWithAbsentUpstreamCluster, sourceKafka, kafkaClusterIdToUrlMap);
     } catch (VeniceException e) {
       LOGGER.info("kmeWithAbsentUpstreamCluster", e);
       assertTrue(e.getMessage().startsWith("No Kafka cluster ID found in the cluster ID to Kafka URL map."));
@@ -620,7 +621,8 @@ public class ActiveActiveStoreIngestionTaskTest {
         timestamp,
         payloadSize);
     try {
-      ActiveActiveStoreIngestionTask.getUpstreamKafkaUrlFromKafkaValue(msgForControlMessage, kafkaClusterIdToUrlMap);
+      ActiveActiveStoreIngestionTask
+          .getUpstreamKafkaUrlFromKafkaValue(msgForControlMessage, sourceKafka, kafkaClusterIdToUrlMap);
     } catch (VeniceException e) {
       LOGGER.info("kmeForControlMessage", e);
       assertTrue(e.getMessage().startsWith("No Kafka cluster ID found in the cluster ID to Kafka URL map."));
@@ -641,7 +643,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         timestamp,
         payloadSize);
     assertEquals(
-        ActiveActiveStoreIngestionTask.getUpstreamKafkaUrlFromKafkaValue(validMsg, kafkaClusterIdToUrlMap),
+        ActiveActiveStoreIngestionTask.getUpstreamKafkaUrlFromKafkaValue(validMsg, sourceKafka, kafkaClusterIdToUrlMap),
         "url0");
   }
 

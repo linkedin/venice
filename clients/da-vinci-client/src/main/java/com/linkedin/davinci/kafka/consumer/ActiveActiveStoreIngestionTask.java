@@ -1196,7 +1196,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
          */
         upstreamKafkaURL = localKafkaServer;
       } else {
-        upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(consumerRecord, this.kafkaClusterIdToUrlMap);
+        upstreamKafkaURL =
+            getUpstreamKafkaUrlFromKafkaValue(consumerRecord, recordSourceKafkaUrl, this.kafkaClusterIdToUrlMap);
       }
     }
     return upstreamKafkaURL;
@@ -1250,6 +1251,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    */
   static String getUpstreamKafkaUrlFromKafkaValue(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      String recordSourceKafkaUrl,
       Int2ObjectMap<String> kafkaClusterIdToUrlMap) {
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     if (kafkaValue.leaderMetadataFooter == null) {
@@ -1261,10 +1263,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       throw new VeniceException(
           String.format(
               "No Kafka cluster ID found in the cluster ID to Kafka URL map. "
-                  + "Got cluster ID %d and ID to cluster URL map %s. "
+                  + "Got cluster ID %d and ID to cluster URL map %s. Source Kafka: %s; "
                   + "%s; Offset: %d; Message type: %s; ProducerMetadata: %s; LeaderMetadataFooter: %s",
               kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId,
               kafkaClusterIdToUrlMap,
+              recordSourceKafkaUrl,
               consumerRecord.getTopicPartition(),
               consumerRecord.getOffset(),
               type.toString() + (type == MessageType.CONTROL_MESSAGE
