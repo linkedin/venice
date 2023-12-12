@@ -230,10 +230,10 @@ public class BasicHttpRequest extends DefaultHttpRequest implements BasicRequest
   }
 
   AttributeMap attributeMap() {
-    if (_attributes != null) {
-      return _attributes;
+    if (_attributes == null) {
+      _attributes = new DefaultAttributeMap();
     }
-    return _attributes = new DefaultAttributeMap();
+    return _attributes;
   }
 
   @SuppressWarnings("unchecked")
