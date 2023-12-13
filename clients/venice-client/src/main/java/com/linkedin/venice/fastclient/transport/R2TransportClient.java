@@ -57,7 +57,7 @@ public class R2TransportClient extends InternalTransportClient {
 
   }
 
-  private static class R2TransportClientCallback extends TransportClientCallback implements Callback<RestResponse> {
+  public static class R2TransportClientCallback extends TransportClientCallback implements Callback<RestResponse> {
     private final Logger logger = LogManager.getLogger(R2TransportClientCallback.class);
 
     public R2TransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {

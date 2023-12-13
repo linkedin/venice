@@ -13,13 +13,19 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.MAP_
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.MAP_UNION;
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_DIFF;
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_UNION;
+import static org.apache.avro.Schema.Type.INT;
+import static org.apache.avro.Schema.Type.LONG;
+import static org.apache.avro.Schema.Type.NULL;
+import static org.apache.avro.Schema.Type.UNION;
+import static org.testng.Assert.assertTrue;
 
-import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.Arrays;
@@ -152,12 +158,50 @@ public class TestSchemaUtils {
     Assert.assertEquals(mapFieldTsRecord.get(DELETED_ELEM_FIELD_NAME), Collections.singletonList("key2"));
   }
 
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "All-Avro-Schemas-Except-Null-And-Union")
+  public void testUnwrapOptionalUnion(Schema type) {
+    Schema nullAndTypeUnion = Schema.createUnion(Schema.create(NULL), type);
+    assertTrue(SchemaUtils.unwrapOptionalUnion(nullAndTypeUnion) == type.getType());
+
+    Schema typeAndNullUnion = Schema.createUnion(type, Schema.create(NULL));
+    assertTrue(SchemaUtils.unwrapOptionalUnion(typeAndNullUnion) == type.getType());
+
+    Schema singleTypeOnlyUnion = Schema.createUnion(type);
+    assertTrue(SchemaUtils.unwrapOptionalUnion(singleTypeOnlyUnion) == type.getType());
+
+    Schema other = Schema.create(type.getType() == INT ? LONG : INT);
+    Schema typeAndOtherTypeUnion = Schema.createUnion(type, other);
+    assertTrue(SchemaUtils.unwrapOptionalUnion(typeAndOtherTypeUnion) == UNION);
+
+    Schema nullAndTypeAndOtherTypeUnion = Schema.createUnion(Schema.create(NULL), type, other);
+    assertTrue(SchemaUtils.unwrapOptionalUnion(nullAndTypeAndOtherTypeUnion) == UNION);
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "All-Avro-Schemas-Except-Null-And-Union")
+  public void testValidateFieldSchemaType(Schema type) {
+    Schema nullAndTypeUnion = Schema.createUnion(Schema.create(NULL), type);
+    SchemaUtils.validateFieldSchemaType("field", nullAndTypeUnion, type.getType());
+
+    Schema typeAndNullUnion = Schema.createUnion(type, Schema.create(NULL));
+    SchemaUtils.validateFieldSchemaType("field", typeAndNullUnion, type.getType());
+
+    Schema singleTypeOnlyUnion = Schema.createUnion(type);
+    SchemaUtils.validateFieldSchemaType("field", singleTypeOnlyUnion, type.getType());
+
+    Schema other = Schema.create(type.getType() == INT ? LONG : INT);
+    Schema typeAndOtherTypeUnion = Schema.createUnion(type, other);
+    Assert.assertThrows(() -> SchemaUtils.validateFieldSchemaType("field", typeAndOtherTypeUnion, type.getType()));
+
+    Schema nullAndTypeAndOtherTypeUnion = Schema.createUnion(Schema.create(NULL), type, other);
+    Assert
+        .assertThrows(() -> SchemaUtils.validateFieldSchemaType("field", nullAndTypeAndOtherTypeUnion, type.getType()));
+  }
+
   protected RecordSerializer<GenericRecord> getSerializer(Schema writerSchema) {
-    return MapOrderingPreservingSerDeFactory.getAvroGenericSerializer(writerSchema);
+    return MapOrderPreservingSerDeFactory.getAvroGenericSerializer(writerSchema);
   }
 
   protected RecordDeserializer<GenericRecord> getDeserializer(Schema writerSchema, Schema readerSchema) {
-    return MapOrderingPreservingSerDeFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
+    return MapOrderPreservingSerDeFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
   }
-
 }

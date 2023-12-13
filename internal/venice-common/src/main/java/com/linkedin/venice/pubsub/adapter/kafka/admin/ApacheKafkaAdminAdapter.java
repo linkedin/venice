@@ -69,16 +69,15 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         pubSubTopicRepository);
   }
 
-  // used for testing
   ApacheKafkaAdminAdapter(
       AdminClient internalKafkaAdminClient,
       ApacheKafkaAdminConfig apacheKafkaAdminConfig,
       PubSubTopicRepository pubSubTopicRepository) {
-    this.apacheKafkaAdminConfig = apacheKafkaAdminConfig;
+    this.apacheKafkaAdminConfig = Objects.requireNonNull(apacheKafkaAdminConfig, "Kafka admin config cannot be null!");
     this.internalKafkaAdminClient =
         Objects.requireNonNull(internalKafkaAdminClient, "Kafka admin client cannot be null!");
     this.pubSubTopicRepository = pubSubTopicRepository;
-    LOGGER.debug("Created KafkaAdminClient with properties: {}", apacheKafkaAdminConfig.getAdminProperties());
+    LOGGER.info("Created ApacheKafkaAdminAdapter with config: {}", apacheKafkaAdminConfig);
   }
 
   /**
@@ -108,13 +107,13 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     topicProperties.stringPropertyNames().forEach(key -> topicPropertiesMap.put(key, topicProperties.getProperty(key)));
     Collection<NewTopic> newTopics = Collections.singleton(
         new NewTopic(pubSubTopic.getName(), numPartitions, (short) replicationFactor).configs(topicPropertiesMap));
+    LOGGER.info(
+        "Creating kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
+        pubSubTopic.getName(),
+        numPartitions,
+        replicationFactor,
+        topicProperties);
     try {
-      LOGGER.debug(
-          "Creating kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
-          pubSubTopic.getName(),
-          numPartitions,
-          replicationFactor,
-          topicProperties);
       CreateTopicsResult createTopicsResult = internalKafkaAdminClient.createTopics(newTopics);
       KafkaFuture<Void> topicCreationFuture = createTopicsResult.all();
       topicCreationFuture.get(); // block until topic creation is complete
@@ -131,7 +130,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
                 numPartitions,
                 actualNumPartitions));
       }
-      LOGGER.debug(
+      LOGGER.info(
           "Successfully created kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
           pubSubTopic.getName(),
           actualNumPartitions,
@@ -404,7 +403,15 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     Long minLogCompactionLagMs = properties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
         ? Long.parseLong((String) properties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
         : 0L;
-    return new PubSubTopicConfiguration(retentionMs, isLogCompacted, minInSyncReplicas, minLogCompactionLagMs);
+    Optional<Long> maxLogCompactionLagMs = properties.containsKey(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG)
+        ? Optional.of(Long.parseLong(properties.getProperty(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG)))
+        : Optional.empty();
+    return new PubSubTopicConfiguration(
+        retentionMs,
+        isLogCompacted,
+        minInSyncReplicas,
+        minLogCompactionLagMs,
+        maxLogCompactionLagMs);
   }
 
   private Properties unmarshallProperties(PubSubTopicConfiguration pubSubTopicConfiguration) {
@@ -418,6 +425,11 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       topicProperties.put(
           TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG,
           Long.toString(pubSubTopicConfiguration.minLogCompactionLagMs()));
+      if (pubSubTopicConfiguration.getMaxLogCompactionLagMs().isPresent()) {
+        topicProperties.put(
+            TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG,
+            Long.toString(pubSubTopicConfiguration.getMaxLogCompactionLagMs().get()));
+      }
     } else {
       topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
     }

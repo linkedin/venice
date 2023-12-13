@@ -66,6 +66,7 @@ public class StoreInfo {
     storeInfo.setViewConfigs(store.getViewConfigs());
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
+    storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     return storeInfo;
   }
 
@@ -305,6 +306,8 @@ public class StoreInfo {
   private boolean storageNodeReadQuotaEnabled;
 
   private long minCompactionLagSeconds;
+
+  private long maxCompactionLagSeconds;
 
   public StoreInfo() {
   }
@@ -762,5 +765,13 @@ public class StoreInfo {
 
   public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
     this.minCompactionLagSeconds = minCompactionLagSeconds;
+  }
+
+  public long getMaxCompactionLagSeconds() {
+    return maxCompactionLagSeconds;
+  }
+
+  public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
+    this.maxCompactionLagSeconds = maxCompactionLagSeconds;
   }
 }

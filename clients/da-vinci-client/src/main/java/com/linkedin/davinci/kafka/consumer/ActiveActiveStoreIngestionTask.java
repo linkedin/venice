@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
+import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -19,6 +20,7 @@ import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
@@ -32,6 +34,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
@@ -54,6 +57,7 @@ import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -138,13 +142,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
         new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
 
-    this.rmdSerDe = new RmdSerDe(annotatedReadOnlySchemaRepository, rmdProtocolVersionId);
+    this.rmdSerDe = new RmdSerDe(
+        annotatedReadOnlySchemaRepository,
+        rmdProtocolVersionId,
+        getServerConfig().isComputeFastAvroEnabled());
     this.mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             annotatedReadOnlySchemaRepository,
             rmdSerDe,
             getStoreName(),
-            isWriteComputationEnabled);
+            isWriteComputationEnabled,
+            getServerConfig().isComputeFastAvroEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
   }
 
@@ -408,7 +416,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    Lazy<ByteBuffer> oldValueProvider = Lazy.of(
+    Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
         () -> getValueBytesForKey(
             partitionConsumptionState,
             keyBytes,
@@ -431,10 +439,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     aggVersionedIngestionStats.recordTotalDCR(storeName, versionNumber);
 
+    Lazy<ByteBuffer> oldValueByteBufferProvider = unwrapByteBufferFromOldValueProvider(oldValueProvider);
+
+    long beforeDCRTimestampInNs = System.nanoTime();
     switch (msgType) {
       case PUT:
         mergeConflictResult = mergeConflictResolver.put(
-            oldValueProvider,
+            unwrapByteBufferFromOldValueProvider(oldValueProvider),
             rmdWithValueSchemaID,
             ((Put) kafkaValue.payloadUnion).putValue,
             writeTimestamp,
@@ -445,21 +456,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                            // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
                            // config to represent the mapping from Kafka server URLs to colo ID.
         );
+        getHostLevelIngestionStats()
+            .recordIngestionActiveActivePutLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
         break;
 
       case DELETE:
         mergeConflictResult = mergeConflictResolver.delete(
-            oldValueProvider,
+            oldValueByteBufferProvider,
             rmdWithValueSchemaID,
             writeTimestamp,
             sourceOffset,
             kafkaClusterId,
             kafkaClusterId);
+        getHostLevelIngestionStats()
+            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
         break;
 
       case UPDATE:
         mergeConflictResult = mergeConflictResolver.update(
-            oldValueProvider,
+            oldValueByteBufferProvider,
             rmdWithValueSchemaID,
             ((Update) kafkaValue.payloadUnion).updateValue,
             incomingValueSchemaId,
@@ -468,17 +483,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             sourceOffset,
             kafkaClusterId,
             kafkaClusterId);
+        getHostLevelIngestionStats()
+            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
         break;
       default:
         throw new VeniceMessageException(
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
-
-    aggVersionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
-        storeName,
-        versionNumber,
-        LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestampNs),
-        currentTimeForMetricsMs);
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
@@ -494,8 +505,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // only extension of IngestionTask which does a read from disk before applying the record. This makes the
       // following function
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
-      int valueSchemaId =
-          rmdWithValueSchemaID != null ? rmdWithValueSchemaID.getValueSchemaId() : incomingValueSchemaId;
 
       // Write to views
       if (this.viewWriters.size() > 0) {
@@ -512,14 +521,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         int index = 0;
         // The first future is for the previous write to VT
         viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
+        ByteBuffer oldValueBB = oldValueByteBufferProvider.get();
+        int oldValueSchemaId = oldValueBB == null ? -1 : oldValueProvider.get().writerSchemaId();
         for (VeniceViewWriter writer: viewWriters.values()) {
           viewWriterFutures[index++] = writer.processRecord(
               mergeConflictResult.getNewValue(),
-              oldValueProvider.get(),
+              oldValueBB,
               keyBytes,
               versionNumber,
-              incomingValueSchemaId,
-              valueSchemaId,
+              mergeConflictResult.getValueSchemaId(),
+              oldValueSchemaId,
               mergeConflictResult.getRmdRecord());
         }
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
@@ -561,7 +572,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
       }
     }
+  }
 
+  /**
+   * Package private for testing purposes.
+   */
+  static Lazy<ByteBuffer> unwrapByteBufferFromOldValueProvider(
+      Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider) {
+    return Lazy.of(() -> {
+      ByteBufferValueRecord<ByteBuffer> bbValueRecord = oldValueProvider.get();
+      return bbValueRecord == null ? null : bbValueRecord.value();
+    });
   }
 
   private long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {
@@ -615,13 +636,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param topicPartition The {@link PubSubTopicPartition} from which the incoming record was consumed
    * @return
    */
-  private ByteBuffer getValueBytesForKey(
+  private ByteBufferValueRecord<ByteBuffer> getValueBytesForKey(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer valueManifestContainer,
       long currentTimeForMetricsMs) {
-    ByteBuffer originalValue = null;
+    ByteBufferValueRecord<ByteBuffer> originalValue = null;
     // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
     // get it from DB.
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
@@ -630,16 +651,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
       BinaryDecoder binaryDecoder = reusableObjects.binaryDecoder;
-
-      originalValue = RawBytesChunkingAdapter.INSTANCE.get(
+      originalValue = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
           storageEngine,
           getSubPartitionId(key, topicPartition),
           ByteBuffer.wrap(key),
           isChunked,
           reusedRawValue,
           binaryDecoder,
-          null,
-          schemaRepository.getSupersetOrLatestValueSchema(storeName).getId(),
           RawBytesStoreDeserializerCache.getInstance(),
           compressor.get(),
           valueManifestContainer);
@@ -653,7 +671,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         if (valueManifestContainer != null) {
           valueManifestContainer.setManifest(transientRecord.getValueManifest());
         }
-        originalValue = getCurrentValueFromTransientRecord(transientRecord);
+        originalValue = new ByteBufferValueRecord<>(
+            getCurrentValueFromTransientRecord(transientRecord),
+            transientRecord.getValueSchemaId());
       }
     }
     return originalValue;
@@ -1179,7 +1199,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
          */
         upstreamKafkaURL = localKafkaServer;
       } else {
-        upstreamKafkaURL = getUpstreamKafkaUrlFromKafkaValue(kafkaValue);
+        upstreamKafkaURL =
+            getUpstreamKafkaUrlFromKafkaValue(consumerRecord, recordSourceKafkaUrl, this.kafkaClusterIdToUrlMap);
       }
     }
     return upstreamKafkaURL;
@@ -1228,18 +1249,35 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     pcs.updateLeaderConsumedUpstreamRTOffset(kafkaUrl, offset);
   }
 
-  private String getUpstreamKafkaUrlFromKafkaValue(KafkaMessageEnvelope kafkaValue) {
+  /**
+   * N.B. package-private for testing purposes.
+   */
+  static String getUpstreamKafkaUrlFromKafkaValue(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      String recordSourceKafkaUrl,
+      Int2ObjectMap<String> kafkaClusterIdToUrlMap) {
+    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     if (kafkaValue.leaderMetadataFooter == null) {
       throw new VeniceException("leaderMetadataFooter field in KME should have been set.");
     }
-    String upstreamKafkaURL = this.kafkaClusterIdToUrlMap.get(kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId);
+    String upstreamKafkaURL = kafkaClusterIdToUrlMap.get(kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId);
     if (upstreamKafkaURL == null) {
+      MessageType type = MessageType.valueOf(kafkaValue.messageType);
       throw new VeniceException(
           String.format(
               "No Kafka cluster ID found in the cluster ID to Kafka URL map. "
-                  + "Got cluster ID %d and ID to cluster URL map %s",
+                  + "Got cluster ID %d and ID to cluster URL map %s. Source Kafka: %s; "
+                  + "%s; Offset: %d; Message type: %s; ProducerMetadata: %s; LeaderMetadataFooter: %s",
               kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId,
-              kafkaClusterIdToUrlMap));
+              kafkaClusterIdToUrlMap,
+              recordSourceKafkaUrl,
+              consumerRecord.getTopicPartition(),
+              consumerRecord.getOffset(),
+              type.toString() + (type == MessageType.CONTROL_MESSAGE
+                  ? "/" + ControlMessageType.valueOf((ControlMessage) kafkaValue.getPayloadUnion())
+                  : ""),
+              kafkaValue.producerMetadata,
+              kafkaValue.leaderMetadataFooter));
     }
     return upstreamKafkaURL;
   }
@@ -1251,6 +1289,67 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   public boolean isTransientRecordBufferUsed() {
     return true;
+  }
+
+  /**
+   * Checks whether the lag is acceptable for hybrid stores
+   * <p>
+   * If the instance is a standby or DaVinciClient: Also check if <br>
+   * 1. the feature is enabled <br>
+   * 2. first HB SOS is received and <br>
+   * 3. leaderCompleteStatus header has been received and <br>
+   * 4. leader was completed and <br>
+   * 5. the last update time was within the configured time interval
+   */
+  @Override
+  protected boolean checkAndLogIfLagIsAcceptableForHybridStore(
+      PartitionConsumptionState pcs,
+      long offsetLag,
+      long offsetThreshold,
+      boolean shouldLogLag,
+      boolean isOffsetBasedLag,
+      long latestConsumedProducerTimestamp) {
+    boolean isLagAcceptable = offsetLag <= offsetThreshold;
+
+    if (isLagAcceptable && isHybridFollower(pcs)) {
+      if (!getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled()) {
+        isLagAcceptable = true;
+      } else if (!pcs.isFirstHeartBeatSOSReceived()) {
+        // wait for the first HB to know if the leader supports sending LeaderCompleteState or not
+        isLagAcceptable = false;
+      } else if (pcs.getLeaderCompleteState().equals(LEADER_COMPLETE_STATE_UNKNOWN)) {
+        // if the leader don't support LeaderCompleteState
+        isLagAcceptable = true;
+      } else {
+        // check if the leader is completed and the last update time was within the configured time
+        isLagAcceptable = pcs.isLeaderCompleted()
+            && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
+                .getLeaderCompleteStateCheckInFollowerValidIntervalMs());
+      }
+    }
+
+    if (shouldLogLag) {
+      String lagLogFooter;
+      if (isHybridFollower(pcs)) {
+        lagLogFooter = ". Leader Complete State: {" + pcs.getLeaderCompleteState().toString()
+            + "}, Last update In Ms: {" + pcs.getLastLeaderCompleteStateUpdateInMs() + "}.";
+      } else {
+        lagLogFooter = "";
+      }
+      LOGGER.info(
+          "{} [{} lag] partition {} is {}lagging. {}Lag: [{}] {} Threshold [{}]{}",
+          isOffsetBasedLag ? "Offset" : "Time",
+          consumerTaskId,
+          pcs.getPartition(),
+          (isLagAcceptable ? "not " : ""),
+          (isOffsetBasedLag ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+          offsetLag,
+          (isLagAcceptable ? "<" : ">"),
+          offsetThreshold,
+          lagLogFooter);
+    }
+
+    return isLagAcceptable;
   }
 
   @Override
@@ -1378,6 +1477,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
+  /** used for metric purposes **/
   @Override
   public boolean isReadyToServeAnnouncedWithRTLag() {
     if (!hybridStoreConfig.isPresent() || partitionConsumptionStateMap.isEmpty()) {

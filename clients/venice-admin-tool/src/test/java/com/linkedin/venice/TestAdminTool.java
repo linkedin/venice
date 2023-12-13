@@ -75,7 +75,7 @@ public class TestAdminTool {
     final String K1 = "k1", V1 = "v1", K2 = "k2", V2 = "v2", K3 = "k3", V3 = "v3";
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
         "testStore", "--rmd-chunking-enabled", "true", "--partitioner-params",
-        K1 + "=" + V1 + "," + K2 + "=" + V2 + "," + K3 + "=" + V3 };
+        "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}" };
 
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
@@ -293,7 +293,7 @@ public class TestAdminTool {
     // Case 1: Happy path to setup a view.
     String[] args = { "--configure-store-view", "--url", "http://localhost:7036", "--cluster", "test-cluster",
         "--store", "testStore", "--view-name", "testView", "--view-class", ChangeCaptureView.class.getCanonicalName(),
-        "--view-params", K1 + "=" + V1 + "," + K2 + "=" + V2 };
+        "--view-params", "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\"}" };
 
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateStoreQueryParams params = AdminTool.getConfigureStoreViewQueryParams(commandLine);

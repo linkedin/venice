@@ -199,10 +199,9 @@ public class IngestionStats {
     if (!hasActiveIngestionTask()) {
       return 0;
     }
-    boolean anyErrorReported =
-        ingestionTask.hasAnyPartitionConsumptionState(PartitionConsumptionState::isErrorReported);
+    int totalFailedIngestionPartitions = ingestionTask.getFailedIngestionPartitionCount();
     boolean anyCompleted = ingestionTask.hasAnyPartitionConsumptionState(PartitionConsumptionState::isComplete);
-    return anyCompleted && anyErrorReported ? 1 : 0;
+    return anyCompleted ? totalFailedIngestionPartitions : 0;
   }
 
   public long getBatchReplicationLag() {

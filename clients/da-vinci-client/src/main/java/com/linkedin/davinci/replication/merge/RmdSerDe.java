@@ -1,7 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
-import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.fast.MapOrderPreservingFastSerDeFactory;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -30,16 +31,27 @@ public class RmdSerDe {
   private final SparseConcurrentList<Schema> rmdSchemaIndexedByValueSchemaId;
   private final SparseConcurrentList<RecordSerializer<GenericRecord>> rmdSerializerIndexedByValueSchemaId;
   private final BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache;
+  private final boolean fastAvroEnabled;
 
   public RmdSerDe(StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache, int rmdVersionId) {
+    this(annotatedStoreSchemaCache, rmdVersionId, true);
+  }
+
+  public RmdSerDe(
+      StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache,
+      int rmdVersionId,
+      boolean fastAvroEnabled) {
     this.annotatedStoreSchemaCache = annotatedStoreSchemaCache;
     this.rmdVersionId = rmdVersionId;
     this.rmdSchemaIndexedByValueSchemaId = new SparseConcurrentList<>();
     this.rmdSerializerIndexedByValueSchemaId = new SparseConcurrentList<>();
+    this.fastAvroEnabled = fastAvroEnabled;
     this.deserializerCache = new BiIntKeyCache<>((writerSchemaId, readerSchemaId) -> {
       Schema rmdWriterSchema = getRmdSchema(writerSchemaId);
       Schema rmdReaderSchema = getRmdSchema(readerSchemaId);
-      return MapOrderingPreservingSerDeFactory.getDeserializer(rmdWriterSchema, rmdReaderSchema);
+      return this.fastAvroEnabled
+          ? MapOrderPreservingFastSerDeFactory.getDeserializer(rmdWriterSchema, rmdReaderSchema)
+          : MapOrderPreservingSerDeFactory.getDeserializer(rmdWriterSchema, rmdReaderSchema);
     });
   }
 
@@ -98,6 +110,8 @@ public class RmdSerDe {
 
   private RecordSerializer<GenericRecord> generateRmdSerializer(int valueSchemaId) {
     Schema replicationMetadataSchema = getRmdSchema(valueSchemaId);
-    return MapOrderingPreservingSerDeFactory.getSerializer(replicationMetadataSchema);
+    return fastAvroEnabled
+        ? MapOrderPreservingFastSerDeFactory.getSerializer(replicationMetadataSchema)
+        : MapOrderPreservingSerDeFactory.getSerializer(replicationMetadataSchema);
   }
 }

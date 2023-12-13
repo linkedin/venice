@@ -59,13 +59,16 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor successRequestKeyRatioSensor, successRequestRatioSensor;
   private final Sensor misroutedStoreVersionSensor;
 
+  private static final MetricsRepository dummySystemStoreMetricRepo = new MetricsRepository();
+
   public ServerHttpRequestStats(
       MetricsRepository metricsRepository,
       String storeName,
       RequestType requestType,
       boolean isKeyValueProfilingEnabled,
-      ServerHttpRequestStats totalStats) {
-    super(metricsRepository, storeName, requestType);
+      ServerHttpRequestStats totalStats,
+      boolean isDaVinciClient) {
+    super(isDaVinciClient ? dummySystemStoreMetricRepo : metricsRepository, storeName, requestType);
 
     /**
      * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of

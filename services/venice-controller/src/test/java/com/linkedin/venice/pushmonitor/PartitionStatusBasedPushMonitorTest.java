@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.CachedReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixState;
@@ -61,7 +62,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         Collections.emptyList(),
         helixAdminClient,
         getMockControllerConfig(),
-        null);
+        null,
+        mock(DisabledPartitionStats.class));
   }
 
   @Override
@@ -79,7 +81,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         Collections.emptyList(),
         mock(HelixAdminClient.class),
         getMockControllerConfig(),
-        null);
+        null,
+        mock(DisabledPartitionStats.class));
   }
 
   @Test

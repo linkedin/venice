@@ -4,7 +4,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.replication.merge.helper.utils.ValueAndDerivedSchemas;
-import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.rmd.RmdConstants;
@@ -123,10 +123,10 @@ public class TestMergeBase {
   }
 
   protected RecordSerializer<GenericRecord> getSerializer(Schema writerSchema) {
-    return MapOrderingPreservingSerDeFactory.getAvroGenericSerializer(writerSchema);
+    return MapOrderPreservingSerDeFactory.getAvroGenericSerializer(writerSchema);
   }
 
   protected RecordDeserializer<GenericRecord> getDeserializer(Schema writerSchema, Schema readerSchema) {
-    return MapOrderingPreservingSerDeFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
+    return MapOrderPreservingSerDeFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
   }
 }

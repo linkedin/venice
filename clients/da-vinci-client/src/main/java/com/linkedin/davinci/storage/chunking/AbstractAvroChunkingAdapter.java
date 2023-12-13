@@ -2,6 +2,7 @@ package com.linkedin.davinci.storage.chunking;
 
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -9,7 +10,6 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -127,6 +127,32 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         manifestContainer);
   }
 
+  public ByteBufferValueRecord<T> getWithSchemaId(
+      AbstractStorageEngine store,
+      int partition,
+      ByteBuffer key,
+      boolean isChunked,
+      T reusedValue,
+      BinaryDecoder reusedDecoder,
+      StoreDeserializerCache<T> storeDeserializerCache,
+      VeniceCompressor compressor,
+      ChunkedValueManifestContainer manifestContainer) {
+    if (isChunked) {
+      key = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
+    }
+    return ChunkingUtils.getValueAndSchemaIdFromStorage(
+        this,
+        store,
+        partition,
+        key,
+        reusedValue,
+        reusedDecoder,
+        storeDeserializerCache,
+        compressor,
+        false,
+        manifestContainer);
+  }
+
   public T get(
       AbstractStorageEngine store,
       int partition,
@@ -201,7 +227,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean isChunked,
       ReadResponse response,
       int readerSchemaId,
-      AvroStoreDeserializerCache<T> storeDeserializerCache,
+      StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor,
       StreamingCallback<GenericRecord, GenericRecord> computingCallback) {
 

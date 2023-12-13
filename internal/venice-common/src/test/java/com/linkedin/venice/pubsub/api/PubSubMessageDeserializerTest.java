@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
-import static com.linkedin.venice.pubsub.api.PubSubMessageDeserializer.VENICE_TRANSPORT_PROTOCOL_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -17,6 +17,7 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.nio.ByteBuffer;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -41,6 +42,11 @@ public class PubSubMessageDeserializerTest {
     topicPartition = new PubSubTopicPartitionImpl(topicRepository.getTopic("test"), 42);
     keySerializer = new KafkaKeySerializer();
     valueSerializer = new OptimizedKafkaValueSerializer();
+  }
+
+  @AfterMethod
+  public void cleanUp() {
+    messageDeserializer.close();
   }
 
   @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*Illegal key header byte.*")

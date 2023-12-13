@@ -401,7 +401,6 @@ public class VeniceServer {
         remoteIngestionRepairService,
         pubSubClientsFactory,
         sslFactory);
-    this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
@@ -460,6 +459,7 @@ public class VeniceServer {
         storageMetadataService,
         veniceConfigLoader,
         metadataRepo,
+        schemaRepo,
         metricsRepository,
         clusterConfig.getZookeeperAddress(),
         clusterConfig.getClusterName(),

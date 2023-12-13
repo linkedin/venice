@@ -453,7 +453,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         storeMetadataFetchMode);
   }
 
-  @Test(dataProvider = "FastClient-Request-Types-Small", timeOut = TIME_OUT)
+  @Test(groups = { "flaky" }, dataProvider = "FastClient-Request-Types-Small", timeOut = TIME_OUT)
   public void testFastClientWithLongTailRetry(RequestType requestType) throws Exception {
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
     boolean compute = requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING;

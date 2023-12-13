@@ -3,6 +3,7 @@ package com.linkedin.davinci.storage.chunking;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -240,6 +241,39 @@ public class ChunkingUtils {
         compressor,
         isRmdValue,
         manifestContainer);
+  }
+
+  static <VALUE, CHUNKS_CONTAINER> ByteBufferValueRecord<VALUE> getValueAndSchemaIdFromStorage(
+      ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
+      AbstractStorageEngine store,
+      int partition,
+      ByteBuffer keyBuffer,
+      VALUE reusedValue,
+      BinaryDecoder reusedDecoder,
+      StoreDeserializerCache<VALUE> storeDeserializerCache,
+      VeniceCompressor compressor,
+      boolean isRmdValue,
+      ChunkedValueManifestContainer manifestContainer) {
+    byte[] value =
+        isRmdValue ? store.getReplicationMetadata(partition, keyBuffer.array()) : store.get(partition, keyBuffer);
+    int writerSchemaId = value == null ? 0 : ValueRecord.parseSchemaId(value);
+    return new ByteBufferValueRecord<>(
+        getFromStorage(
+            value,
+            (value == null ? 0 : value.length),
+            0,
+            adapter,
+            store,
+            partition,
+            null,
+            reusedValue,
+            reusedDecoder,
+            -1,
+            storeDeserializerCache,
+            compressor,
+            isRmdValue,
+            manifestContainer),
+        writerSchemaId);
   }
 
   public static ChunkedValueManifest getChunkValueManifestFromStorage(

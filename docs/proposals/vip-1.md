@@ -1,11 +1,11 @@
 ---
 layout: default
-title: Authentication Service API
+title: VIP-1 Authentication Service API
 parent: Proposals
 permalink: /docs/proposals/vip-1
 ---
 
-# Venice Improvement Proposal Template
+# VIP-1: Authentication Service API
 
 * **Status**: _Accepted_
 * **Author(s)**: _Enrico Olivelli_

@@ -11,7 +11,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
-import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdConstants;
@@ -102,7 +102,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     updateFieldWriteComputeRecord.put("age", 66);
     updateFieldWriteComputeRecord.put("name", "Venice");
     ByteBuffer writeComputeBytes = ByteBuffer.wrap(
-        MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
+        MapOrderPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
     final long valueLevelTimestamp = 10L;
     GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(personRmdSchemaV1, valueLevelTimestamp);
     RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
@@ -155,7 +155,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     stringMap.put("2", "two");
     oldValueRecord.put("stringMap", stringMap);
     ByteBuffer oldValueBytes =
-        ByteBuffer.wrap(MapOrderingPreservingSerDeFactory.getSerializer(personSchemaV1).serialize(oldValueRecord));
+        ByteBuffer.wrap(MapOrderPreservingSerDeFactory.getSerializer(personSchemaV1).serialize(oldValueRecord));
 
     // Set up partial update request.
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV1);
@@ -238,7 +238,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     // Validate updated value.
     Assert.assertNotNull(mergeConflictResult.getNewValue());
     ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
-    GenericRecord updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(personSchemaV1, personSchemaV1)
+    GenericRecord updatedValueRecord = MapOrderPreservingSerDeFactory.getDeserializer(personSchemaV1, personSchemaV1)
         .deserialize(updatedValueBytes.array());
 
     Assert.assertEquals(updatedValueRecord.get("age"), 66);
@@ -266,7 +266,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     stringMap.put("2", "two");
     oldValueRecord.put("stringMap", stringMap);
     ByteBuffer oldValueBytes =
-        ByteBuffer.wrap(MapOrderingPreservingSerDeFactory.getSerializer(personSchemaV1).serialize(oldValueRecord));
+        ByteBuffer.wrap(MapOrderPreservingSerDeFactory.getSerializer(personSchemaV1).serialize(oldValueRecord));
 
     // Set up partial update request.
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV1);
@@ -360,9 +360,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     // Use annotated value schema to deserialize record and the map field will be keyed in Java String type.
     Schema annotatedSchema = annotateValueSchema(personSchemaV1);
-    GenericRecord updatedValueRecord =
-        MapOrderingPreservingSerDeFactory.getDeserializer(annotatedSchema, annotatedSchema)
-            .deserialize(updatedValueBytes.array());
+    GenericRecord updatedValueRecord = MapOrderPreservingSerDeFactory.getDeserializer(annotatedSchema, annotatedSchema)
+        .deserialize(updatedValueBytes.array());
 
     Assert.assertEquals(updatedValueRecord.get("age"), 99);
     Assert.assertEquals(updatedValueRecord.get("name").toString(), "Francisco");
@@ -395,7 +394,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         1,
         newColoID);
     ByteBuffer updatedValueBytes2 = mergeConflictResult2.getNewValue();
-    updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(annotatedSchema, annotatedSchema)
+    updatedValueRecord = MapOrderPreservingSerDeFactory.getDeserializer(annotatedSchema, annotatedSchema)
         .deserialize(updatedValueBytes2.array());
     updatedMapField = (Map<String, Object>) updatedValueRecord.get("stringMap");
     Assert.assertEquals(updatedMapField.size(), 2);
@@ -418,7 +417,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));
     ByteBuffer oldValueBytes =
-        ByteBuffer.wrap(MapOrderingPreservingSerDeFactory.getSerializer(personSchemaV1).serialize(oldValueRecord));
+        ByteBuffer.wrap(MapOrderPreservingSerDeFactory.getSerializer(personSchemaV1).serialize(oldValueRecord));
 
     // Set up Write Compute request.
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
@@ -430,7 +429,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     updateFieldWriteComputeRecord.put("favoritePet", "a random stray cat");
     updateFieldWriteComputeRecord.put("stringArray", Arrays.asList("one", "two", "three"));
     ByteBuffer writeComputeBytes = ByteBuffer.wrap(
-        MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
+        MapOrderPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
 
     // Set up current replication metadata.
     final long valueLevelTimestamp = 10L;
@@ -536,7 +535,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     // Validate updated value.
     Assert.assertNotNull(mergeConflictResult.getNewValue());
     ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
-    GenericRecord updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(personSchemaV3, personSchemaV3)
+    GenericRecord updatedValueRecord = MapOrderPreservingSerDeFactory.getDeserializer(personSchemaV3, personSchemaV3)
         .deserialize(updatedValueBytes.array());
 
     Assert.assertEquals(updatedValueRecord.get("age"), 66);
@@ -565,7 +564,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));
     ByteBuffer oldValueBytes =
-        ByteBuffer.wrap(MapOrderingPreservingSerDeFactory.getSerializer(personSchemaV1).serialize(oldValueRecord));
+        ByteBuffer.wrap(MapOrderPreservingSerDeFactory.getSerializer(personSchemaV1).serialize(oldValueRecord));
 
     // Set up Write Compute request.
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
@@ -576,8 +575,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     updateBuilder.setElementsToRemoveFromListField("stringArray", Arrays.asList("four", "five", "six"));
     GenericRecord updateFieldRecord = updateBuilder.build();
 
-    ByteBuffer writeComputeBytes = ByteBuffer
-        .wrap(MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldRecord));
+    ByteBuffer writeComputeBytes =
+        ByteBuffer.wrap(MapOrderPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldRecord));
 
     // Set up current replication metadata.
     final long valueLevelTimestamp = 10L;
@@ -694,7 +693,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     // Validate updated value.
     Assert.assertNotNull(mergeConflictResult.getNewValue());
     ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
-    GenericRecord updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(personSchemaV3, personSchemaV3)
+    GenericRecord updatedValueRecord = MapOrderPreservingSerDeFactory.getDeserializer(personSchemaV3, personSchemaV3)
         .deserialize(updatedValueBytes.array());
 
     Assert.assertEquals(updatedValueRecord.get("age"), 30);

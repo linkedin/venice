@@ -8,6 +8,7 @@ import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.ssl.ClientTlsStrategyBuilder;
+import org.apache.hc.core5.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.hc.core5.http.nio.ssl.TlsStrategy;
 import org.apache.hc.core5.http.ssl.TLS;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
@@ -111,6 +112,7 @@ public class HttpClient5Utils {
         return HttpAsyncClients.custom()
             .setVersionPolicy(HttpVersionPolicy.FORCE_HTTP_1)
             .setIOReactorConfig(ioReactorConfig)
+            .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())
             .setConnectionManager(
                 PoolingAsyncClientConnectionManagerBuilder.create()
                     .setMaxConnTotal(http1MaxConnectionsTotal)
@@ -126,7 +128,9 @@ public class HttpClient5Utils {
                 RequestConfig.custom()
                     .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
                     .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                    .setDefaultKeepAlive(1, TimeUnit.HOURS)
                     .build())
+            .setUserTokenHandler((route, context) -> null)
             .build();
       } else {
         return HttpAsyncClients.customHttp2()

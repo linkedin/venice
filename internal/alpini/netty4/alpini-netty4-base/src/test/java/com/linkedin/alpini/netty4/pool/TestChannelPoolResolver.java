@@ -1,5 +1,6 @@
 package com.linkedin.alpini.netty4.pool;
 
+import com.linkedin.alpini.util.TestNettyUtil;
 import io.netty.channel.epoll.EpollDatagramChannel;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -58,7 +59,7 @@ public class TestChannelPoolResolver {
 
   @Test(groups = "unit")
   public void testNettyDnsResolverEPOLL() throws InterruptedException {
-    EpollEventLoopGroup eventLoop = new EpollEventLoopGroup(4);
+    EpollEventLoopGroup eventLoop = TestNettyUtil.skipEpollIfNotFound(() -> new EpollEventLoopGroup(4));
     try {
       testNettyDnsResolver(new NettyDnsResolver(EpollDatagramChannel.class, eventLoop));
     } finally {
@@ -90,14 +91,7 @@ public class TestChannelPoolResolver {
 
     Assert.assertTrue(result.await().isDone());
     Assert.assertFalse(result.isSuccess());
-    String str = result.cause()
-        .getMessage()
-        .trim()
-        .replaceAll(" \\d+ queries", " X queries")
-        .replaceAll("failed to resolve .* after", "failed to resolve XX after");
-    Assert.assertEquals(
-        str,
-        "Search domain query failed. Original hostname: 'unresolved.linkedin.com' failed to resolve XX after X queries");
+    Assert.assertTrue(result.cause().getMessage().startsWith("Failed to resolve 'unresolved.linkedin.com'"));
   }
 
 }

@@ -620,6 +620,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public long getMaxCompactionLagSeconds() {
+    return zkSharedStore.getMaxCompactionLagSeconds();
+  }
+
+  @Override
+  public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
+    throwUnsupportedOperationException("setMaxCompactionLagSeconds");
+  }
+
+  @Override
   public Store cloneStore() {
     return new SystemStore(zkSharedStore.cloneStore(), systemStoreType, veniceStore.cloneStore());
   }

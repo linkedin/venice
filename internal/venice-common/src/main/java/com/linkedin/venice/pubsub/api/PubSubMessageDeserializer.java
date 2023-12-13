@@ -1,5 +1,7 @@
 package com.linkedin.venice.pubsub.api;
 
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -7,6 +9,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.utils.pools.ObjectPool;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -18,9 +21,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class PubSubMessageDeserializer {
   private static final Logger LOGGER = LogManager.getLogger(PubSubMessageDeserializer.class);
-
-  public static final String VENICE_TRANSPORT_PROTOCOL_HEADER = "vtp";
-
   private final KafkaKeySerializer keySerializer = new KafkaKeySerializer();
   private final KafkaValueSerializer valueSerializer;
   private final ObjectPool<KafkaMessageEnvelope> putEnvelopePool;
@@ -58,6 +58,8 @@ public class PubSubMessageDeserializer {
     KafkaMessageEnvelope value = null;
     if (key.isControlMessage()) {
       for (PubSubMessageHeader header: headers.toList()) {
+        // only process VENICE_TRANSPORT_PROTOCOL_HEADER here. Other headers will be stored in
+        // ImmutablePubSubMessage and used down the ingestion path later
         if (header.key().equals(VENICE_TRANSPORT_PROTOCOL_HEADER)) {
           try {
             Schema providedProtocolSchema = AvroCompatibilityHelper.parse(new String(header.value()));
@@ -84,7 +86,8 @@ public class PubSubMessageDeserializer {
         topicPartition,
         position,
         timestamp,
-        keyBytes.length + valueBytes.length);
+        keyBytes.length + valueBytes.length,
+        headers);
   }
 
   private KafkaMessageEnvelope getEnvelope(byte keyHeaderByte) {
@@ -101,8 +104,21 @@ public class PubSubMessageDeserializer {
     }
   }
 
+  public void close() {
+    if (valueSerializer != null) {
+      valueSerializer.close();
+    }
+  }
+
   // For testing only.
   public KafkaValueSerializer getValueSerializer() {
     return valueSerializer;
+  }
+
+  public static PubSubMessageDeserializer getInstance() {
+    return new PubSubMessageDeserializer(
+        new KafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
   }
 }

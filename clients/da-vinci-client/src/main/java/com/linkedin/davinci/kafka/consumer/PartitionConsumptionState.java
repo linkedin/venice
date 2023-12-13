@@ -12,9 +12,11 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -189,6 +191,15 @@ public class PartitionConsumptionState {
    */
   private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
+  private LeaderCompleteState leaderCompleteState;
+  private long lastLeaderCompleteStateUpdateInMs;
+  /**
+   * In case of hybrid store, wait until the first HB is received, which might have the leader completed header and base the
+   * decision on that. Check {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED} for
+   * more details.
+   */
+  private boolean firstHeartBeatSOSReceived;
+
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid) {
     this.partition = partition;
     this.amplificationFactor = amplificationFactor;
@@ -233,6 +244,9 @@ public class PartitionConsumptionState {
     // On start we haven't sent anything
     this.latestRTOffsetTriedToProduceToVTMap = new HashMap<>();
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
+    this.leaderCompleteState = LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
+    this.lastLeaderCompleteStateUpdateInMs = 0;
+    this.firstHeartBeatSOSReceived = false;
   }
 
   public int getPartition() {
@@ -440,6 +454,15 @@ public class PartitionConsumptionState {
    */
   public void maybeUpdateExpectedChecksum(byte[] key, Put put) {
     if (this.expectedSSTFileChecksum == null) {
+      return;
+    }
+    /**
+     * 1. For regular value and value chunk, we will take the value payload.
+     * 2. When A/A partial update is enabled, RMD chunking is turned on, we should skip the RMD chunk.
+     * 3. For chunk manifest, if RMD chunking is enabled, RMD manifest will be in the RMD payload. No matter it is RMD
+     * chunking or not, we should only take the value manifest part.
+     */
+    if (put.schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion() && put.putValue.remaining() == 0) {
       return;
     }
     this.expectedSSTFileChecksum.update(key);
@@ -790,5 +813,33 @@ public class PartitionConsumptionState {
 
   public void setLeaderHostId(String hostId) {
     this.leaderHostId = hostId;
+  }
+
+  public boolean isLeaderCompleted() {
+    return getLeaderCompleteState() == LeaderCompleteState.LEADER_COMPLETED;
+  }
+
+  public LeaderCompleteState getLeaderCompleteState() {
+    return leaderCompleteState;
+  }
+
+  public void setLeaderCompleteState(LeaderCompleteState leaderCompleteState) {
+    this.leaderCompleteState = leaderCompleteState;
+  }
+
+  public long getLastLeaderCompleteStateUpdateInMs() {
+    return lastLeaderCompleteStateUpdateInMs;
+  }
+
+  public void setLastLeaderCompleteStateUpdateInMs(long lastLeaderCompleteStateUpdateInMs) {
+    this.lastLeaderCompleteStateUpdateInMs = lastLeaderCompleteStateUpdateInMs;
+  }
+
+  public boolean isFirstHeartBeatSOSReceived() {
+    return firstHeartBeatSOSReceived;
+  }
+
+  public void setFirstHeartBeatSOSReceived(boolean firstHeartBeatSOSReceived) {
+    this.firstHeartBeatSOSReceived = firstHeartBeatSOSReceived;
   }
 }

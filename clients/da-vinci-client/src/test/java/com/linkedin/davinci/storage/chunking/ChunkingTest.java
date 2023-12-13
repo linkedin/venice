@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -159,7 +160,8 @@ public class ChunkingTest {
       GenericRecord record,
       AbstractAvroChunkingAdapter chunkingAdapter,
       boolean rawBytesStoreDeserializerCache,
-      Function<Object, Void> assertions) {
+      Function<Object, Void> assertions,
+      boolean getWithSchemaId) {
     int partition = 9;
     String storeName = "test";
     byte[] keyBytes = ByteUtils.fromHexString("040647454ff4baf2630a5449544c45440010494d504c49434954");
@@ -220,19 +222,33 @@ public class ChunkingTest {
         new StorageEngineBackedCompressorFactory(mock(StorageMetadataService.class))) {
       VeniceCompressor compressor =
           compressorFactory.getCompressor(CompressionStrategy.NO_OP, storageEngine.getStoreName());
-      assertions.apply(
-          chunkingAdapter.get(
-              storageEngine,
-              partition,
-              ByteBuffer.wrap(keyBytes),
-              true,
-              null,
-              null,
-              null,
-              readerSchemaId,
-              storeDeserializerCache,
-              compressor,
-              null));
+      Object retrievedObject;
+      if (getWithSchemaId) {
+        retrievedObject = chunkingAdapter.getWithSchemaId(
+            storageEngine,
+            partition,
+            ByteBuffer.wrap(keyBytes),
+            true,
+            null,
+            null,
+            storeDeserializerCache,
+            compressor,
+            null);
+      } else {
+        retrievedObject = chunkingAdapter.get(
+            storageEngine,
+            partition,
+            ByteBuffer.wrap(keyBytes),
+            true,
+            null,
+            null,
+            null,
+            readerSchemaId,
+            storeDeserializerCache,
+            compressor,
+            null);
+      }
+      assertions.apply(retrievedObject);
     }
   }
 
@@ -242,7 +258,7 @@ public class ChunkingTest {
       Assert.assertTrue(valueFromStorageEngine instanceof GenericRecord);
       Assert.assertEquals(valueFromStorageEngine, record);
       return null;
-    });
+    }, false);
   }
 
   @Test(dataProvider = "recordProvider")
@@ -253,6 +269,19 @@ public class ChunkingTest {
       Assert.assertTrue(valueFromStorageEngine instanceof ByteBuffer);
       Assert.assertEquals(ByteUtils.extractByteArray((ByteBuffer) valueFromStorageEngine), serializedRecord);
       return null;
-    });
+    }, false);
+  }
+
+  @Test(dataProvider = "recordProvider")
+  public void testRawBytesChunkingAdapterWithSchemaId(GenericRecord record) {
+    byte[] serializedRecord =
+        SerializerDeserializerFactory.getAvroGenericSerializer(record.getSchema()).serialize(record);
+    runTest(record, RawBytesChunkingAdapter.INSTANCE, true, (valueFromStorageEngine) -> {
+      Assert.assertTrue(valueFromStorageEngine instanceof ByteBufferValueRecord<?>);
+      Object value = ((ByteBufferValueRecord) valueFromStorageEngine).value();
+      Assert.assertTrue(value instanceof ByteBuffer);
+      Assert.assertEquals(ByteUtils.extractByteArray((ByteBuffer) value), serializedRecord);
+      return null;
+    }, true);
   }
 }

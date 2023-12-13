@@ -2,6 +2,7 @@ package io.netty.bootstrap;
 
 import com.linkedin.alpini.base.monitoring.CallCompletion;
 import com.linkedin.alpini.base.monitoring.CallTracker;
+import com.linkedin.alpini.util.TestNettyUtil;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollSocketChannel;
@@ -26,7 +27,7 @@ public class TestResolveAllBootstrap {
 
   @BeforeClass(groups = "unit")
   public void beforeClass() {
-    _group = new EpollEventLoopGroup();
+    _group = TestNettyUtil.skipEpollIfNotFound(() -> new EpollEventLoopGroup());
   }
 
   @AfterClass(groups = "unit")

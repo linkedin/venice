@@ -141,7 +141,8 @@ def integrationTestBuckets = [
   "G": [
       "com.linkedin.venice.router.*",
       "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
-      "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest"],
+      "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest",
+      "com.linkedin.venice.ingestionHeartBeat.*"],
   "H": [
       "com.linkedin.venice.fastclient.BatchGet*",
       "com.linkedin.venice.fastclient.schema.*",
@@ -167,7 +168,8 @@ def integrationTestBuckets = [
   "N": [
       "com.linkedin.venice.endToEnd.StoragePersona*",
       "com.linkedin.venice.endToEnd.TestStoreUpdateStoragePersona",
-      "com.linkedin.venice.persona.*"],
+      "com.linkedin.venice.persona.*",
+      "com.linkedin.venice.pubsub.*"],
   "O": [
       "com.linkedin.venice.endToEnd.TestHybrid*"],
   "P": [

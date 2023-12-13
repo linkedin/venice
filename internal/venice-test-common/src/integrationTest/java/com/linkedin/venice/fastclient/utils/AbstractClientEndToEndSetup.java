@@ -113,10 +113,16 @@ public abstract class AbstractClientEndToEndSetup {
   protected static final int TIME_OUT = 60 * Time.MS_PER_SECOND;
   protected static final String KEY_SCHEMA_STR = "\"string\"";
   protected static final String VALUE_FIELD_NAME = "int_field";
+  protected static final String SECOND_VALUE_FIELD_NAME = "opt_int_field";
   protected static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n"
       + "\"name\": \"TestValueSchema\",\n" + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n"
       + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
   protected static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
+  protected static final String VALUE_SCHEMA_V2_STR = "{\n" + "\"type\": \"record\",\n"
+      + "\"name\": \"TestValueSchema\",\n" + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n"
+      + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"},\n" + "{\"name\": \""
+      + SECOND_VALUE_FIELD_NAME + "\", \"type\": [\"null\", \"int\"], \"default\": null}]\n" + "}";
+  protected static final Schema VALUE_SCHEMA_V2 = new Schema.Parser().parse(VALUE_SCHEMA_V2_STR);
 
   protected static final String keyPrefix = "key_";
   protected static final int recordCnt = 100;

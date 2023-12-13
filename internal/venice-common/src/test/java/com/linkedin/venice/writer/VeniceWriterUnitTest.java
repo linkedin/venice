@@ -1,5 +1,9 @@
 package com.linkedin.venice.writer;
 
+import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
+import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
+import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
@@ -10,8 +14,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
@@ -27,6 +33,8 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -46,10 +54,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -91,12 +98,12 @@ public class VeniceWriterUnitTest {
     verify(mockedProducer, atLeast(2))
         .sendMessage(anyString(), updatePartitionArgumentCaptor.capture(), any(), any(), any(), any());
 
-    Assert.assertEquals(putPartitionArgumentCaptor.getValue(), deletePartitionArgumentCaptor.getValue());
-    Assert.assertEquals(putPartitionArgumentCaptor.getValue(), updatePartitionArgumentCaptor.getValue());
+    assertEquals(putPartitionArgumentCaptor.getValue(), deletePartitionArgumentCaptor.getValue());
+    assertEquals(putPartitionArgumentCaptor.getValue(), updatePartitionArgumentCaptor.getValue());
   }
 
   @Test
-  public void testDeleteDeprecatedChunk() throws ExecutionException, InterruptedException, TimeoutException {
+  public void testDeleteDeprecatedChunk() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
@@ -130,25 +137,25 @@ public class VeniceWriterUnitTest {
     ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
     verify(mockedProducer, atLeast(3))
         .sendMessage(any(), any(), keyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
-    Assert.assertEquals(kmeArgumentCaptor.getAllValues().size(), 3);
+    assertEquals(kmeArgumentCaptor.getAllValues().size(), 3);
     KafkaMessageEnvelope actualValue1 = kmeArgumentCaptor.getAllValues().get(1);
-    Assert.assertEquals(actualValue1.messageType, MessageType.DELETE.getValue());
-    Assert.assertEquals(((Delete) actualValue1.payloadUnion).schemaId, -10);
-    Assert.assertEquals(((Delete) actualValue1.payloadUnion).replicationMetadataVersionId, -1);
-    Assert.assertEquals(
+    assertEquals(actualValue1.messageType, MessageType.DELETE.getValue());
+    assertEquals(((Delete) actualValue1.payloadUnion).schemaId, -10);
+    assertEquals(((Delete) actualValue1.payloadUnion).replicationMetadataVersionId, -1);
+    assertEquals(
         ((Delete) actualValue1.payloadUnion).replicationMetadataPayload,
         WriterChunkingHelper.EMPTY_BYTE_BUFFER);
     KafkaMessageEnvelope actualValue2 = kmeArgumentCaptor.getAllValues().get(2);
-    Assert.assertEquals(actualValue2.messageType, MessageType.DELETE.getValue());
-    Assert.assertEquals(((Delete) actualValue2.payloadUnion).schemaId, -10);
-    Assert.assertEquals(((Delete) actualValue2.payloadUnion).replicationMetadataVersionId, 1);
-    Assert.assertEquals(
+    assertEquals(actualValue2.messageType, MessageType.DELETE.getValue());
+    assertEquals(((Delete) actualValue2.payloadUnion).schemaId, -10);
+    assertEquals(((Delete) actualValue2.payloadUnion).replicationMetadataVersionId, 1);
+    assertEquals(
         ((Delete) actualValue2.payloadUnion).replicationMetadataPayload,
         WriterChunkingHelper.EMPTY_BYTE_BUFFER);
   }
 
   @Test(timeOut = 10000)
-  public void testReplicationMetadataChunking() throws ExecutionException, InterruptedException, TimeoutException {
+  public void testReplicationMetadataChunking() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
@@ -206,8 +213,8 @@ public class VeniceWriterUnitTest {
 
     Assert.assertNotNull(transientRecord.getValueManifest());
     Assert.assertNotNull(transientRecord.getRmdManifest());
-    Assert.assertEquals(transientRecord.getValueManifest().getKeysWithChunkIdSuffix().size(), 2);
-    Assert.assertEquals(transientRecord.getRmdManifest().getKeysWithChunkIdSuffix().size(), 1);
+    assertEquals(transientRecord.getValueManifest().getKeysWithChunkIdSuffix().size(), 2);
+    assertEquals(transientRecord.getRmdManifest().getKeysWithChunkIdSuffix().size(), 1);
 
     KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     byte[] serializedKey = serializer.serialize(testTopic, Integer.toString(1));
@@ -216,27 +223,27 @@ public class VeniceWriterUnitTest {
     int availableMessageSize = DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES - serializedKey.length;
 
     // The order should be SOS, valueChunk1, valueChunk2, replicationMetadataChunk1, manifest for value and RMD.
-    Assert.assertEquals(kmeArgumentCaptor.getAllValues().size(), 5);
+    assertEquals(kmeArgumentCaptor.getAllValues().size(), 5);
 
     // Verify value of the 1st chunk.
     KafkaMessageEnvelope actualValue1 = kmeArgumentCaptor.getAllValues().get(1);
-    Assert.assertEquals(actualValue1.messageType, MessageType.PUT.getValue());
-    Assert.assertEquals(((Put) actualValue1.payloadUnion).schemaId, -10);
-    Assert.assertEquals(((Put) actualValue1.payloadUnion).replicationMetadataVersionId, -1);
-    Assert.assertEquals(((Put) actualValue1.payloadUnion).replicationMetadataPayload, ByteBuffer.allocate(0));
-    Assert.assertEquals(((Put) actualValue1.payloadUnion).putValue.array().length, availableMessageSize + 4);
-    Assert.assertEquals(actualValue1.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
+    assertEquals(actualValue1.messageType, MessageType.PUT.getValue());
+    assertEquals(((Put) actualValue1.payloadUnion).schemaId, -10);
+    assertEquals(((Put) actualValue1.payloadUnion).replicationMetadataVersionId, -1);
+    assertEquals(((Put) actualValue1.payloadUnion).replicationMetadataPayload, ByteBuffer.allocate(0));
+    assertEquals(((Put) actualValue1.payloadUnion).putValue.array().length, availableMessageSize + 4);
+    assertEquals(actualValue1.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
 
     // Verify value of the 2nd chunk.
     KafkaMessageEnvelope actualValue2 = kmeArgumentCaptor.getAllValues().get(2);
-    Assert.assertEquals(actualValue2.messageType, MessageType.PUT.getValue());
-    Assert.assertEquals(((Put) actualValue2.payloadUnion).schemaId, -10);
-    Assert.assertEquals(((Put) actualValue2.payloadUnion).replicationMetadataVersionId, -1);
-    Assert.assertEquals(((Put) actualValue2.payloadUnion).replicationMetadataPayload, ByteBuffer.allocate(0));
-    Assert.assertEquals(
+    assertEquals(actualValue2.messageType, MessageType.PUT.getValue());
+    assertEquals(((Put) actualValue2.payloadUnion).schemaId, -10);
+    assertEquals(((Put) actualValue2.payloadUnion).replicationMetadataVersionId, -1);
+    assertEquals(((Put) actualValue2.payloadUnion).replicationMetadataPayload, ByteBuffer.allocate(0));
+    assertEquals(
         ((Put) actualValue2.payloadUnion).putValue.array().length,
         (serializedValue.length - availableMessageSize) + 4);
-    Assert.assertEquals(actualValue2.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
+    assertEquals(actualValue2.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
 
     ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
 
@@ -259,7 +266,7 @@ public class VeniceWriterUnitTest {
     chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey1 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
     KafkaKey actualKey1 = keyArgumentCaptor.getAllValues().get(1);
-    Assert.assertEquals(actualKey1.getKey(), expectedKey1.getKey());
+    assertEquals(actualKey1.getKey(), expectedKey1.getKey());
 
     // Verify key of the 2nd value chunk.
     chunkedKeySuffix.chunkId.chunkIndex = 1;
@@ -267,18 +274,16 @@ public class VeniceWriterUnitTest {
     chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey2 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
     KafkaKey actualKey2 = keyArgumentCaptor.getAllValues().get(2);
-    Assert.assertEquals(actualKey2.getKey(), expectedKey2.getKey());
+    assertEquals(actualKey2.getKey(), expectedKey2.getKey());
 
     // Check value of the 1st RMD chunk.
     KafkaMessageEnvelope actualValue3 = kmeArgumentCaptor.getAllValues().get(3);
-    Assert.assertEquals(actualValue3.messageType, MessageType.PUT.getValue());
-    Assert.assertEquals(((Put) actualValue3.payloadUnion).schemaId, -10);
-    Assert.assertEquals(((Put) actualValue3.payloadUnion).replicationMetadataVersionId, -1);
-    Assert.assertEquals(((Put) actualValue3.payloadUnion).putValue, ByteBuffer.allocate(0));
-    Assert.assertEquals(
-        ((Put) actualValue3.payloadUnion).replicationMetadataPayload.array().length,
-        serializedRmd.length + 4);
-    Assert.assertEquals(actualValue3.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
+    assertEquals(actualValue3.messageType, MessageType.PUT.getValue());
+    assertEquals(((Put) actualValue3.payloadUnion).schemaId, -10);
+    assertEquals(((Put) actualValue3.payloadUnion).replicationMetadataVersionId, -1);
+    assertEquals(((Put) actualValue3.payloadUnion).putValue, ByteBuffer.allocate(0));
+    assertEquals(((Put) actualValue3.payloadUnion).replicationMetadataPayload.array().length, serializedRmd.length + 4);
+    assertEquals(actualValue3.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
 
     // Check key of the 1st RMD chunk.
     ChunkedValueManifest chunkedRmdManifest = new ChunkedValueManifest();
@@ -299,34 +304,33 @@ public class VeniceWriterUnitTest {
     chunkedRmdManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey3 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
     KafkaKey actualKey3 = keyArgumentCaptor.getAllValues().get(3);
-    Assert.assertEquals(actualKey3.getKey(), expectedKey3.getKey());
+    assertEquals(actualKey3.getKey(), expectedKey3.getKey());
 
     // Check key of the manifest.
     byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     KafkaKey expectedKey4 = new KafkaKey(MessageType.PUT, topLevelKey);
     KafkaKey actualKey4 = keyArgumentCaptor.getAllValues().get(4);
-    Assert.assertEquals(actualKey4.getKey(), expectedKey4.getKey());
+    assertEquals(actualKey4.getKey(), expectedKey4.getKey());
 
     // Check manifest for both value and rmd.
     KafkaMessageEnvelope actualValue4 = kmeArgumentCaptor.getAllValues().get(4);
-    Assert.assertEquals(actualValue4.messageType, MessageType.PUT.getValue());
-    Assert.assertEquals(
+    assertEquals(actualValue4.messageType, MessageType.PUT.getValue());
+    assertEquals(
         ((Put) actualValue4.payloadUnion).schemaId,
         AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
-    Assert.assertEquals(((Put) actualValue4.payloadUnion).replicationMetadataVersionId, putMetadata.getRmdVersionId());
-    Assert.assertEquals(
+    assertEquals(((Put) actualValue4.payloadUnion).replicationMetadataVersionId, putMetadata.getRmdVersionId());
+    assertEquals(
         ((Put) actualValue4.payloadUnion).replicationMetadataPayload,
         ByteBuffer.wrap(chunkedValueManifestSerializer.serialize(testTopic, chunkedRmdManifest)));
-    Assert.assertEquals(
+    assertEquals(
         ((Put) actualValue4.payloadUnion).putValue,
         ByteBuffer.wrap(chunkedValueManifestSerializer.serialize(testTopic, chunkedValueManifest)));
-    Assert.assertEquals(actualValue4.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
+    assertEquals(actualValue4.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
 
   }
 
   @Test
-  public void testReplicationMetadataWrittenCorrectly()
-      throws InterruptedException, ExecutionException, TimeoutException {
+  public void testReplicationMetadataWrittenCorrectly() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
@@ -376,53 +380,53 @@ public class VeniceWriterUnitTest {
 
     // first one will be control message SOS, there should not be any aa metadata.
     KafkaMessageEnvelope value0 = kmeArgumentCaptor.getAllValues().get(0);
-    Assert.assertEquals(value0.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
+    assertEquals(value0.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
 
     // verify timestamp is encoded correctly.
     KafkaMessageEnvelope value1 = kmeArgumentCaptor.getAllValues().get(1);
     KafkaMessageEnvelope value3 = kmeArgumentCaptor.getAllValues().get(3);
     KafkaMessageEnvelope value4 = kmeArgumentCaptor.getAllValues().get(4);
     for (KafkaMessageEnvelope kme: Arrays.asList(value1, value3, value4)) {
-      Assert.assertEquals(kme.producerMetadata.logicalTimestamp, ctime);
+      assertEquals(kme.producerMetadata.logicalTimestamp, ctime);
     }
 
     // verify default values for replicationMetadata are written correctly
     Put put = (Put) value1.payloadUnion;
-    Assert.assertEquals(put.schemaId, 1);
-    Assert.assertEquals(put.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
-    Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
+    assertEquals(put.schemaId, 1);
+    assertEquals(put.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
+    assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
 
     Delete delete = (Delete) value4.payloadUnion;
-    Assert.assertEquals(delete.schemaId, VeniceWriter.VENICE_DEFAULT_VALUE_SCHEMA_ID);
-    Assert.assertEquals(delete.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
-    Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
+    assertEquals(delete.schemaId, VeniceWriter.VENICE_DEFAULT_VALUE_SCHEMA_ID);
+    assertEquals(delete.replicationMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
+    assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
 
     // verify replicationMetadata is encoded correctly for Put.
     KafkaMessageEnvelope value2 = kmeArgumentCaptor.getAllValues().get(2);
-    Assert.assertEquals(value2.messageType, MessageType.PUT.getValue());
+    assertEquals(value2.messageType, MessageType.PUT.getValue());
     put = (Put) value2.payloadUnion;
-    Assert.assertEquals(put.schemaId, 1);
-    Assert.assertEquals(put.replicationMetadataVersionId, 1);
-    Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
-    Assert.assertEquals(value2.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
+    assertEquals(put.schemaId, 1);
+    assertEquals(put.replicationMetadataVersionId, 1);
+    assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
+    assertEquals(value2.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
 
     // verify replicationMetadata is encoded correctly for Delete.
     KafkaMessageEnvelope value5 = kmeArgumentCaptor.getAllValues().get(5);
-    Assert.assertEquals(value5.messageType, MessageType.DELETE.getValue());
+    assertEquals(value5.messageType, MessageType.DELETE.getValue());
     delete = (Delete) value5.payloadUnion;
-    Assert.assertEquals(delete.schemaId, 1);
-    Assert.assertEquals(delete.replicationMetadataVersionId, 1);
-    Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
-    Assert.assertEquals(value5.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
+    assertEquals(delete.schemaId, 1);
+    assertEquals(delete.replicationMetadataVersionId, 1);
+    assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
+    assertEquals(value5.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
 
     // verify default logical_ts is encoded correctly
     KafkaMessageEnvelope value6 = kmeArgumentCaptor.getAllValues().get(6);
-    Assert.assertEquals(value6.messageType, MessageType.PUT.getValue());
-    Assert.assertEquals(value6.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
+    assertEquals(value6.messageType, MessageType.PUT.getValue());
+    assertEquals(value6.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
   }
 
   @Test
-  public void testCloseSegmentBasedOnElapsedTime() throws InterruptedException, ExecutionException, TimeoutException {
+  public void testCloseSegmentBasedOnElapsedTime() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
@@ -451,13 +455,19 @@ public class VeniceWriterUnitTest {
         segmentNumber = envelope.producerMetadata.segmentNumber;
       } else {
         // Segment number should not change since we disabled closing segment based on elapsed time.
-        Assert.assertEquals(envelope.producerMetadata.segmentNumber, segmentNumber);
+        assertEquals(envelope.producerMetadata.segmentNumber, segmentNumber);
       }
     }
   }
 
-  @Test
-  public void testSendHeartbeat() throws ExecutionException, InterruptedException, TimeoutException {
+  @DataProvider(name = "Boolean-LeaderCompleteState")
+  public static Object[][] booleanBooleanCompression() {
+    return DataProviderUtils
+        .allPermutationGenerator(DataProviderUtils.BOOLEAN, new Object[] { LEADER_NOT_COMPLETED, LEADER_COMPLETED });
+  }
+
+  @Test(dataProvider = "Boolean-LeaderCompleteState")
+  public void testSendHeartbeat(boolean addLeaderCompleteHeader, LeaderCompleteState leaderCompleteState) {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
@@ -481,23 +491,46 @@ public class VeniceWriterUnitTest {
     when(topicPartition.getPubSubTopic()).thenReturn(topic);
     when(topicPartition.getPartitionNumber()).thenReturn(0);
     for (int i = 0; i < 10; i++) {
-      writer.sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER);
+      writer.sendHeartbeat(
+          topicPartition,
+          null,
+          DEFAULT_LEADER_METADATA_WRAPPER,
+          addLeaderCompleteHeader,
+          leaderCompleteState,
+          System.currentTimeMillis());
     }
     ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
     ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
-    verify(mockedProducer, atLeast(10))
-        .sendMessage(eq(testTopic), eq(0), kafkaKeyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+    ArgumentCaptor<PubSubMessageHeaders> pubSubMessageHeadersArgumentCaptor =
+        ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, times(10)).sendMessage(
+        eq(testTopic),
+        eq(0),
+        kafkaKeyArgumentCaptor.capture(),
+        kmeArgumentCaptor.capture(),
+        pubSubMessageHeadersArgumentCaptor.capture(),
+        any());
     for (KafkaKey key: kafkaKeyArgumentCaptor.getAllValues()) {
-      Assert.assertTrue(Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey()));
+      Assert.assertTrue(Arrays.equals(HEART_BEAT.getKey(), key.getKey()));
     }
     for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
-      Assert.assertEquals(kme.messageType, MessageType.CONTROL_MESSAGE.getValue());
+      assertEquals(kme.messageType, MessageType.CONTROL_MESSAGE.getValue());
       ControlMessage controlMessage = (ControlMessage) kme.payloadUnion;
-      Assert.assertEquals(controlMessage.controlMessageType, ControlMessageType.START_OF_SEGMENT.getValue());
+      assertEquals(controlMessage.controlMessageType, ControlMessageType.START_OF_SEGMENT.getValue());
       ProducerMetadata producerMetadata = kme.producerMetadata;
-      Assert.assertEquals(producerMetadata.producerGUID, HeartbeatGuidV3Generator.getInstance().getGuid());
-      Assert.assertEquals(producerMetadata.segmentNumber, 0);
-      Assert.assertEquals(producerMetadata.messageSequenceNumber, 0);
+      assertEquals(producerMetadata.producerGUID, HeartbeatGuidV3Generator.getInstance().getGuid());
+      assertEquals(producerMetadata.segmentNumber, 0);
+      assertEquals(producerMetadata.messageSequenceNumber, 0);
+    }
+
+    for (PubSubMessageHeaders pubSubMessageHeaders: pubSubMessageHeadersArgumentCaptor.getAllValues()) {
+      assertEquals(pubSubMessageHeaders.toList().size(), addLeaderCompleteHeader ? 2 : 1);
+      if (addLeaderCompleteHeader) {
+        // 0: VENICE_TRANSPORT_PROTOCOL_HEADER, 1: VENICE_LEADER_COMPLETION_STATE_HEADER
+        PubSubMessageHeader leaderCompleteHeader = pubSubMessageHeaders.toList().get(1);
+        assertEquals(leaderCompleteHeader.key(), VENICE_LEADER_COMPLETION_STATE_HEADER);
+        assertEquals(leaderCompleteHeader.value()[0], leaderCompleteState.getValue());
+      }
     }
   }
 }

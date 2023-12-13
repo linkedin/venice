@@ -18,6 +18,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.AdminTool;
+import com.linkedin.venice.AdminTool.PrintFunction;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -56,8 +57,10 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -292,8 +295,8 @@ public class TestStoreMigration {
     createAndPushStore(srcClusterName, storeName);
 
     // DaVinci push status system store is enabled by default. Check if it has online version.
+    String systemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
     try (ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, childControllerUrl0)) {
-      String systemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreResponse storeResponse = srcChildControllerClient.getStore(systemStoreName);
         Assert.assertFalse(storeResponse.isError());
@@ -325,6 +328,30 @@ public class TestStoreMigration {
               .assertEquals(pushStatusStoreReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
 
       startMigration(parentControllerUrl, storeName);
+
+      // Store migration status output via closure PrintFunction
+      Set<String> statusOutput = new HashSet<String>();
+      PrintFunction printFunction = (message) -> {
+        statusOutput.add(message.trim());
+        System.err.println(message);
+      };
+
+      checkMigrationStatus(parentControllerUrl, storeName, printFunction);
+
+      // Check that store and system store exists in both source and destination cluster
+      Assert.assertTrue(
+          statusOutput.contains(
+              String.format(
+                  "%s belongs to cluster venice-cluster0 according to cluster discovery",
+                  storeName,
+                  srcClusterName)));
+      Assert
+          .assertTrue(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, destClusterName)));
+      Assert.assertTrue(
+          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, srcClusterName)));
+      Assert.assertTrue(
+          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, destClusterName)));
+
       completeMigration(parentControllerUrl, storeName);
 
       // Verify the da vinci push status system store is materialized in dest cluster and contains the same value
@@ -333,6 +360,20 @@ public class TestStoreMigration {
           TimeUnit.SECONDS,
           () -> Assert
               .assertEquals(pushStatusStoreReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
+
+      // Verify that store and system store only exist in destination cluster after ending migration
+      statusOutput.clear();
+      endMigration(parentControllerUrl, storeName);
+      checkMigrationStatus(parentControllerUrl, storeName, printFunction);
+
+      Assert
+          .assertFalse(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, srcClusterName)));
+      Assert
+          .assertTrue(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, destClusterName)));
+      Assert.assertFalse(
+          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, srcClusterName)));
+      Assert.assertTrue(
+          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, destClusterName)));
     } finally {
       Utils.closeQuietlyWithErrorLogged(pushStatusStoreReader);
       D2ClientUtils.shutdownClient(d2Client);
@@ -469,6 +510,13 @@ public class TestStoreMigration {
     String[] startMigrationArgs = { "--migrate-store", "--url", controllerUrl, "--store", storeName, "--cluster-src",
         srcClusterName, "--cluster-dest", destClusterName };
     AdminTool.main(startMigrationArgs);
+  }
+
+  private void checkMigrationStatus(String controllerUrl, String storeName, PrintFunction printFunction)
+      throws Exception {
+    String[] checkMigrationStatusArgs = { "--migration-status", "--url", controllerUrl, "--store", storeName,
+        "--cluster-src", srcClusterName, "--cluster-dest", destClusterName };
+    AdminTool.checkMigrationStatus(AdminTool.getCommandLine(checkMigrationStatusArgs), printFunction);
   }
 
   private void completeMigration(String controllerUrl, String storeName) {

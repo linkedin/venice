@@ -25,11 +25,12 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
@@ -42,7 +43,11 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -53,7 +58,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -105,11 +113,14 @@ public class PushStatusStoreTest {
 
   @BeforeMethod
   public void setUpStore() {
-    storeName = Utils.getUniqueString("store");
-    String owner = "test";
-    // set up push status store
-    TestUtils.assertCommand(controllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
+    storeName = createStoreAndSystemStores();
+  }
+
+  private String createStoreAndSystemStores() {
+    String storeName = Utils.getUniqueString("store");
+    TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, "\"string\""));
     cluster.createMetaSystemStore(storeName);
+    cluster.createPushStatusSystemStore(storeName);
     TestUtils.assertCommand(
         controllerClient.updateStore(
             storeName,
@@ -117,19 +128,7 @@ public class PushStatusStoreTest {
                 .setPartitionCount(PARTITION_COUNT)
                 .setAmplificationFactor(1)
                 .setIncrementalPushEnabled(true)));
-    String daVinciPushStatusSystemStoreName =
-        VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-    VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore = controllerClient
-        .emptyPush(daVinciPushStatusSystemStoreName, "test_da_vinci_push_status_system_store_push_1", 10000);
-    assertFalse(
-        versionCreationResponseForDaVinciPushStatusSystemStore.isError(),
-        "New version creation for Da Vinci push status system store: " + daVinciPushStatusSystemStoreName
-            + " should success, but got error: " + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
-    TestUtils.waitForNonDeterministicPushCompletion(
-        versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
-        controllerClient,
-        30,
-        TimeUnit.SECONDS);
+    return storeName;
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS * 2)
@@ -264,12 +263,20 @@ public class PushStatusStoreTest {
         response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
         assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
 
-        PushStatusStoreRecordDeleter statusStoreDeleter = new PushStatusStoreRecordDeleter(
-            cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory());
+        int valueSchemaId = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
+        Schema valueSchema = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema();
+        Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+        SchemaEntry valueSchemaEntry = new SchemaEntry(valueSchemaId, valueSchema);
+        DerivedSchemaEntry updateSchemaEntry = new DerivedSchemaEntry(valueSchemaId, 1, updateSchema);
+        PushStatusStoreWriter statusStoreWriter = new PushStatusStoreWriter(
+            cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory(),
+            "dummyInstance",
+            valueSchemaEntry,
+            updateSchemaEntry);
 
         // After deleting the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status
-        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1).get();
+        statusStoreWriter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1).get();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           // N.B.: Even though we block on the deleter's future, that only means the delete message is persisted into
           // Kafka, but querying the system store may still yield a stale result, hence the need for retrying.
@@ -279,7 +286,7 @@ public class PushStatusStoreTest {
         });
 
         // expect NOT_CREATED when statuses of all partitions are not available in the push status store
-        statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0).get();
+        statusStoreWriter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0).get();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           JobStatusQueryResponse jobStatusQueryResponse =
               controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
@@ -309,6 +316,48 @@ public class PushStatusStoreTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  public void testDeleteUserStoreVersionWhenPushStatusStoreRTIsAbsent() throws Exception {
+    VeniceHelixAdmin admin = (VeniceHelixAdmin) cluster.getVeniceControllers().get(0).getVeniceAdmin();
+    runVPJ(getVPJProperties(), 1, cluster);
+    String storeName2 = createStoreAndSystemStores();
+    runVPJ(getVPJProperties(storeName2), 1, cluster);
+
+    String pushStatusStoreRT =
+        Version.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
+    admin.truncateKafkaTopic(pushStatusStoreRT);
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        true,
+        () -> assertFalse(admin.getTopicManager().containsTopic(pubSubTopicRepository.getTopic(pushStatusStoreRT))));
+
+    VeniceProperties backendConfig = getBackendConfigBuilder().build();
+    try (DaVinciClient daVinciClient =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName2, cluster, new DaVinciConfig(), backendConfig)) {
+      daVinciClient.subscribeAll().get();
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> assertEquals(reader.getPartitionStatus(storeName2, 1, 0, Optional.empty()).size(), 1));
+    }
+
+    ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
+    try {
+      // Delete store1 version in main thread and store2 version in a new thread at the same time.
+      // Store1 version deletion should finish instead of waiting forever even though system store RT does not exist
+      // Store2 da-vinci push status should be deleted successfully
+      asyncExecutor.submit(() -> admin.deleteOneStoreVersion(cluster.getClusterName(), storeName2, 1));
+      admin.deleteOneStoreVersion(cluster.getClusterName(), storeName, 1);
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> assertEquals(reader.getPartitionStatus(storeName2, 1, 0, Optional.empty()).size(), 0));
+    } finally {
+      TestUtils.shutdownExecutor(asyncExecutor);
+    }
+  }
+
   private PropertyBuilder getBackendConfigBuilder() {
     return DaVinciTestContext.getDaVinciPropertyBuilder(cluster.getZk().getAddress())
         .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 5)
@@ -316,6 +365,10 @@ public class PushStatusStoreTest {
   }
 
   private Properties getVPJProperties() throws Exception {
+    return getVPJProperties(storeName);
+  }
+
+  private Properties getVPJProperties(String storeName) throws Exception {
     // Setup VPJ job properties.
     // Produce input data.
     File inputDir = getTempDataDirectory();

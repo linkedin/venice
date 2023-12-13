@@ -16,6 +16,10 @@ import io.tehuti.metrics.stats.Rate;
  * This class offers very basic metrics for client, and right now, it is directly used by DaVinci.
  */
 public class BasicClientStats extends AbstractVeniceHttpStats {
+  private static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
+
+  private static final MetricsRepository dummySystemStoreMetricRepo = new MetricsRepository();
+
   private final Sensor requestSensor;
   private final Sensor healthySensor;
   private final Sensor unhealthySensor;
@@ -38,7 +42,10 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   }
 
   protected BasicClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
-    super(metricsRepository, storeName, requestType);
+    super(
+        storeName.startsWith(SYSTEM_STORE_NAME_PREFIX) ? dummySystemStoreMetricRepo : metricsRepository,
+        storeName,
+        requestType);
     requestSensor = registerSensor("request", requestRate);
     Rate healthyRequestRate = new OccurrenceRate();
     healthySensor = registerSensor("healthy_request", healthyRequestRate);

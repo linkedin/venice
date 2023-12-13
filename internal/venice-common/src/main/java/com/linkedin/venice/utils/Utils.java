@@ -2,6 +2,8 @@ package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.HttpConstants.LOCALHOST;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -306,18 +308,20 @@ public class Utils {
   }
 
   /**
-   * For String-String key-value map config, we expect the command-line interface users to use "key1=value1,key2=value2,..."
+   * For String-String key-value map config, we expect the command-line interface users to use JSON
    * format to represent it. This method deserialize it to String-String map.
    */
-  public static Map<String, String> parseCommaSeparatedStringMapFromString(String value, String fieldName) {
+  public static Map<String, String> parseJsonMapFromString(String value, String fieldName) {
     try {
       Map<String, String> map = new HashMap<>();
       if (!value.isEmpty()) {
-        Arrays.stream(value.split(",")).map(s -> s.split("=")).forEach(strings -> map.put(strings[0], strings[1]));
+        ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
+        return objectMapper.readValue(value, new TypeReference<Map<String, String>>() {
+        });
       }
       return map;
-    } catch (Exception e) {
-      throw new VeniceException(fieldName + " must be key value pairs separated by comma, but value: " + value);
+    } catch (IOException jsonException) {
+      throw new VeniceException(fieldName + " must be a valid JSON object, but value: " + value);
     }
   }
 

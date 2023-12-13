@@ -23,7 +23,7 @@ public class BlackHoleStorageEngine extends AbstractStorageEngine<BlackHoleStora
   }
 
   @Override
-  protected Set<Integer> getPersistedPartitionIds() {
+  public Set<Integer> getPersistedPartitionIds() {
     return Collections.emptySet();
   }
 

@@ -16,9 +16,12 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.router.stats.RouterCurrentVersionStats;
 import com.linkedin.venice.router.stats.StaleVersionReason;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,8 +45,13 @@ public class VeniceVersionFinder {
   private final Map<String, String> clusterToD2Map;
   private final String clusterName;
   private final ConcurrentMap<String, Integer> lastCurrentVersionMap = new ConcurrentHashMap<>();
+
+  protected final Map<String, RouterCurrentVersionStats> storeStats = new VeniceConcurrentHashMap<>();
+
   private final HelixBaseRoutingRepository routingDataRepository;
   private final CompressorFactory compressorFactory;
+
+  private final MetricsRepository metricsRepository;
 
   public VeniceVersionFinder(
       ReadOnlyStoreRepository metadataRepository,
@@ -52,7 +60,8 @@ public class VeniceVersionFinder {
       HelixReadOnlyStoreConfigRepository storeConfigRepo,
       Map<String, String> clusterToD2Map,
       String clusterName,
-      CompressorFactory compressorFactory) {
+      CompressorFactory compressorFactory,
+      MetricsRepository metricsRepository) {
     this.metadataRepository = metadataRepository;
     this.routingDataRepository = routingDataRepository;
     this.stats = stats;
@@ -60,6 +69,7 @@ public class VeniceVersionFinder {
     this.clusterToD2Map = clusterToD2Map;
     this.clusterName = clusterName;
     this.compressorFactory = compressorFactory;
+    this.metricsRepository = metricsRepository;
   }
 
   public int getVersion(String storeName, BasicFullHttpRequest request) throws VeniceException {
@@ -75,7 +85,8 @@ public class VeniceVersionFinder {
       throw new StoreDisabledException(storeName, "read");
     }
     Store storeToCheckMigration = store;
-    if (storeToCheckMigration.isMigrating() && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
+    if (storeToCheckMigration.isMigrating() && request != null
+        && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
       Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
       if (config.isPresent()) {
         String newCluster = config.get().getCluster();
@@ -100,7 +111,11 @@ public class VeniceVersionFinder {
       stats.recordNotStale();
       return metadataCurrentVersion;
     }
-    return maybeServeNewCurrentVersion(store, lastCurrentVersion, metadataCurrentVersion);
+    int currentVersion = maybeServeNewCurrentVersion(store, lastCurrentVersion, metadataCurrentVersion);
+
+    storeStats.computeIfAbsent(storeName, k -> new RouterCurrentVersionStats(metricsRepository, storeName))
+        .updateCurrentVersion(currentVersion);
+    return currentVersion;
   }
 
   private int maybeServeNewCurrentVersion(Store store, int lastCurrentVersion, int newCurrentVersion) {

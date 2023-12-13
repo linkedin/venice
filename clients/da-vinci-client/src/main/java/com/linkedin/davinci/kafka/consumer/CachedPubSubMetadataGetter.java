@@ -59,21 +59,6 @@ class CachedPubSubMetadataGetter {
     }
   }
 
-  long getEarliestOffset(TopicManager topicManager, PubSubTopicPartition pubSubTopicPartition) {
-    final String sourcePubSubServer = topicManager.getPubSubBootstrapServers();
-    try {
-      return fetchMetadata(
-          new PubSubMetadataCacheKey(sourcePubSubServer, pubSubTopicPartition),
-          offsetCache,
-          () -> topicManager.getPartitionEarliestOffsetAndRetry(pubSubTopicPartition, DEFAULT_MAX_RETRY));
-    } catch (PubSubTopicDoesNotExistException e) {
-      // It's observed in production that with java based admin client the topic may not be found temporarily, return
-      // error code
-      LOGGER.error("Failed to get offset for topic partition {}", pubSubTopicPartition, e);
-      return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
-    }
-  }
-
   long getProducerTimestampOfLastDataMessage(TopicManager topicManager, PubSubTopicPartition pubSubTopicPartition) {
     try {
       return fetchMetadata(

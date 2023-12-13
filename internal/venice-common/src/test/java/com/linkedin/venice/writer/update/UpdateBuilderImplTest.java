@@ -1,5 +1,9 @@
 package com.linkedin.venice.writer.update;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+
 import com.linkedin.alpini.io.IOUtils;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -344,6 +348,52 @@ public class UpdateBuilderImplTest {
     // It should throw exception when non-nullable field is set to null.
     UpdateBuilder builder2 = new UpdateBuilderImpl(UPDATE_SCHEMA);
     Assert.assertThrows(VeniceException.class, () -> builder2.setNewFieldValue("name", null));
+  }
+
+  /**
+   * Should return a VeniceException with more information on the unresolved datum type when field is of type union
+   * and the value doesn't match one of the union branches.
+   */
+  @Test
+  public void testValidateUpdateRecordIsSerializable() {
+    GenericRecord record = new GenericData.Record(UPDATE_SCHEMA);
+    UpdateBuilderImpl builder = new UpdateBuilderImpl(UPDATE_SCHEMA);
+
+    // The "name" field is mandatory, so not setting it will leave it null, which is wrong.
+    Exception e = builder.validateUpdateRecordIsSerializable(record);
+    assertTrue(e instanceof VeniceException);
+    assertEquals(e.getMessage(), "The following type does not conform to any branch of the union: null");
+
+    // The "name" field is of type string, so a boolean value is also wrong
+    record.put("name", true);
+    e = builder.validateUpdateRecordIsSerializable(record);
+    assertTrue(e instanceof VeniceException);
+    assertEquals(e.getMessage(), "The following type does not conform to any branch of the union: Boolean");
+
+    // All good values
+    record.put("name", "John Doe");
+    record.put("age", 60);
+    // The "address" field can be omitted since it allows null...
+    record.put("intArray", Collections.emptyList());
+    record.put("recordArray", Collections.emptyList());
+    record.put("stringMap", Collections.emptyMap());
+    record.put("recordMap", Collections.emptyMap());
+    e = builder.validateUpdateRecordIsSerializable(record);
+    assertNull(e);
+
+    // Almost correct record, but with wrong namespace
+    List<Schema.Field> fields = new ArrayList<>(2);
+    fields.add(
+        AvroCompatibilityHelper.createSchemaField("streetaddress", Schema.create(Schema.Type.STRING), "", "unknown"));
+    fields.add(AvroCompatibilityHelper.createSchemaField("city", Schema.create(Schema.Type.STRING), "", "Sunnyvale"));
+    Schema wrongAddressSchema = Schema.createRecord("AddressUSRecord", "", "wrong.namespace", false, fields);
+    GenericRecord wrongAddressRecord = new GenericData.Record(wrongAddressSchema);
+    record.put("address", wrongAddressRecord);
+    e = builder.validateUpdateRecordIsSerializable(record);
+    assertTrue(e instanceof VeniceException);
+    assertEquals(
+        e.getMessage(),
+        "The following type does not conform to any branch of the union: {\"type\":\"record\",\"name\":\"AddressUSRecord\",\"namespace\":\"wrong.namespace\",\"doc\":\"\",\"fields\":[{\"name\":\"streetaddress\",\"type\":\"string\",\"doc\":\"\",\"default\":\"unknown\"},{\"name\":\"city\",\"type\":\"string\",\"doc\":\"\",\"default\":\"Sunnyvale\"}]}");
   }
 
   private GenericRecord createRecordForListField(int number) {

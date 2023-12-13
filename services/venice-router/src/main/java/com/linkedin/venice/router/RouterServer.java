@@ -482,6 +482,25 @@ public class RouterServer extends AbstractVeniceService {
         storageNodeClient,
         compressorFactory);
 
+    VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository, routerStats, healthMonitor);
+
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+        metadataRepository,
+        routingDataRepository,
+        new StaleVersionStats(metricsRepository, "stale_version"),
+        storeConfigRepository,
+        config.getClusterToD2Map(),
+        config.getClusterName(),
+        compressorFactory,
+        metricsRepository);
+    VenicePathParser pathParser = new VenicePathParser(
+        versionFinder,
+        partitionFinder,
+        routerStats,
+        metadataRepository,
+        config,
+        compressorFactory);
+
     MetaDataHandler metaDataHandler = new MetaDataHandler(
         routingDataRepository,
         schemaRepository,
@@ -493,25 +512,8 @@ public class RouterServer extends AbstractVeniceService {
         config.getClusterName(),
         config.getZkConnection(),
         config.getKafkaBootstrapServers(),
-        config.isSslToKafka());
-
-    VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository, routerStats, healthMonitor);
-
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
-        metadataRepository,
-        routingDataRepository,
-        new StaleVersionStats(metricsRepository, "stale_version"),
-        storeConfigRepository,
-        config.getClusterToD2Map(),
-        config.getClusterName(),
-        compressorFactory);
-    VenicePathParser pathParser = new VenicePathParser(
-        versionFinder,
-        partitionFinder,
-        routerStats,
-        metadataRepository,
-        config,
-        compressorFactory);
+        config.isSslToKafka(),
+        versionFinder);
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);

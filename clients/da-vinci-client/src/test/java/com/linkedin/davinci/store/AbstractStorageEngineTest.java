@@ -270,4 +270,11 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
     testStoreEngine.dropPartition(newPartitionId);
   }
+
+  @Test
+  public void testIsMetadataPartition() {
+    Assert.assertTrue(AbstractStorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID));
+    Assert.assertFalse(AbstractStorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID + 1));
+
+  }
 }

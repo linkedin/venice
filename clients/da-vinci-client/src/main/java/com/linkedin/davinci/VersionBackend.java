@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -58,7 +59,7 @@ public class VersionBackend {
   private final Map<Integer, CompletableFuture<Void>> partitionFutures = new VeniceConcurrentHashMap<>();
   private final int stopConsumptionTimeoutInSeconds;
   private final StoreBackendStats storeBackendStats;
-  private final AvroStoreDeserializerCache storeDeserializerCache;
+  private final StoreDeserializerCache storeDeserializerCache;
   private final Lazy<VeniceCompressor> compressor;
 
   /*
@@ -184,7 +185,7 @@ public class VersionBackend {
       int userPartition,
       byte[] keyBytes,
       AbstractAvroChunkingAdapter<V> chunkingAdaptor,
-      AvroStoreDeserializerCache<V> storeDeserializerCache,
+      StoreDeserializerCache<V> storeDeserializerCache,
       int readerSchemaId,
       BinaryDecoder binaryDecoder,
       ByteBuffer reusableRawValue,

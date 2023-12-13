@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -250,8 +251,12 @@ public class TopicManager implements Closeable {
     long startTime = System.currentTimeMillis();
     long deadlineMs =
         startTime + (useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs);
-    PubSubTopicConfiguration pubSubTopicConfiguration =
-        new PubSubTopicConfiguration(Optional.of(retentionTimeMs), logCompaction, minIsr, topicMinLogCompactionLagMs);
+    PubSubTopicConfiguration pubSubTopicConfiguration = new PubSubTopicConfiguration(
+        Optional.of(retentionTimeMs),
+        logCompaction,
+        minIsr,
+        topicMinLogCompactionLagMs,
+        Optional.empty());
     logger.info(
         "Creating topic: {} partitions: {} replication: {}, configuration: {}",
         topicName,
@@ -339,7 +344,7 @@ public class TopicManager implements Closeable {
   }
 
   public synchronized void updateTopicCompactionPolicy(PubSubTopic topic, boolean expectedLogCompacted) {
-    updateTopicCompactionPolicy(topic, expectedLogCompacted, -1);
+    updateTopicCompactionPolicy(topic, expectedLogCompacted, -1, Optional.empty());
   }
 
   /**
@@ -353,31 +358,49 @@ public class TopicManager implements Closeable {
   public synchronized void updateTopicCompactionPolicy(
       PubSubTopic topic,
       boolean expectedLogCompacted,
-      long minLogCompactionLagMs) throws PubSubTopicDoesNotExistException {
+      long minLogCompactionLagMs,
+      Optional<Long> maxLogCompactionLagMs) throws PubSubTopicDoesNotExistException {
     long expectedMinLogCompactionLagMs = 0l;
+    Optional<Long> expectedMaxLogCompactionLagMs = maxLogCompactionLagMs;
+
     if (expectedLogCompacted) {
       if (minLogCompactionLagMs > 0) {
         expectedMinLogCompactionLagMs = minLogCompactionLagMs;
       } else {
         expectedMinLogCompactionLagMs = topicMinLogCompactionLagMs;
       }
+      expectedMaxLogCompactionLagMs = maxLogCompactionLagMs;
+
+      if (expectedMaxLogCompactionLagMs.isPresent()
+          && expectedMaxLogCompactionLagMs.get() < expectedMinLogCompactionLagMs) {
+        throw new VeniceException(
+            "'expectedMaxLogCompactionLagMs': " + expectedMaxLogCompactionLagMs.get()
+                + " shouldn't be smaller than 'expectedMinLogCompactionLagMs': " + expectedMinLogCompactionLagMs
+                + " when updating compaction policy for topic: " + topic);
+      }
     }
 
     PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topic);
     boolean currentLogCompacted = pubSubTopicConfiguration.isLogCompacted();
     long currentMinLogCompactionLagMs = pubSubTopicConfiguration.minLogCompactionLagMs();
+    Optional<Long> currentMaxLogCompactionLagMs = pubSubTopicConfiguration.getMaxLogCompactionLagMs();
     if (expectedLogCompacted != currentLogCompacted
-        || expectedLogCompacted && expectedMinLogCompactionLagMs != currentMinLogCompactionLagMs) {
+        || expectedLogCompacted && (expectedMinLogCompactionLagMs != currentMinLogCompactionLagMs
+            || expectedMaxLogCompactionLagMs.equals(currentMaxLogCompactionLagMs))) {
       pubSubTopicConfiguration.setLogCompacted(expectedLogCompacted);
       pubSubTopicConfiguration.setMinLogCompactionLagMs(expectedMinLogCompactionLagMs);
+      pubSubTopicConfiguration.setMaxLogCompactionLagMs(expectedMaxLogCompactionLagMs);
       pubSubWriteOnlyAdminAdapter.get().setTopicConfig(topic, pubSubTopicConfiguration);
       logger.info(
-          "Kafka compaction policy for topic: {} has been updated from {} to {}, min compaction lag updated from {} to {}",
+          "Kafka compaction policy for topic: {} has been updated from {} to {}, min compaction lag updated from"
+              + " {} to {}, max compaction lag updated from {} to {}",
           topic,
           currentLogCompacted,
           expectedLogCompacted,
           currentMinLogCompactionLagMs,
-          expectedMinLogCompactionLagMs);
+          expectedMinLogCompactionLagMs,
+          currentMaxLogCompactionLagMs.isPresent() ? currentMaxLogCompactionLagMs.get() : " not set",
+          expectedMaxLogCompactionLagMs.isPresent() ? expectedMaxLogCompactionLagMs.get() : " not set");
     }
   }
 
@@ -389,6 +412,11 @@ public class TopicManager implements Closeable {
   public long getTopicMinLogCompactionLagMs(PubSubTopic topicName) {
     PubSubTopicConfiguration topicProperties = getCachedTopicConfig(topicName);
     return topicProperties.minLogCompactionLagMs();
+  }
+
+  public Optional<Long> getTopicMaxLogCompactionLagMs(PubSubTopic topicName) {
+    PubSubTopicConfiguration topicProperties = getCachedTopicConfig(topicName);
+    return topicProperties.getMaxLogCompactionLagMs();
   }
 
   public boolean updateTopicMinInSyncReplica(PubSubTopic topicName, int minISR)
@@ -638,10 +666,6 @@ public class TopicManager implements Closeable {
 
   public long getProducerTimestampOfLastDataRecord(PubSubTopicPartition pubSubTopicPartition, int retries) {
     return partitionOffsetFetcher.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, retries);
-  }
-
-  public long getPartitionEarliestOffsetAndRetry(PubSubTopicPartition pubSubTopicPartition, int retries) {
-    return partitionOffsetFetcher.getPartitionEarliestOffsetAndRetry(pubSubTopicPartition, retries);
   }
 
   /**

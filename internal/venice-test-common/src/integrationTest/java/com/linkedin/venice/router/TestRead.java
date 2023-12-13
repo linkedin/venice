@@ -1,6 +1,7 @@
 package com.linkedin.venice.router;
 
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CURRENT_VERSION;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_HEALTH_CHECK;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
 import static com.linkedin.venice.utils.concurrent.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
@@ -18,6 +19,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -684,6 +686,36 @@ public abstract class TestRead {
       ResourceStateResponse resourceStateResponse =
           mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);
       Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
+      LOGGER.info(responseBody);
+    } catch (Exception e) {
+      fail("Unexpected exception", e);
+    }
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testCurrentVersionLookup() {
+    if (!isTestEnabled()) {
+      return;
+    }
+    String routerURL = veniceCluster.getRandomRouterURL();
+    try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
+        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
+        .build()) {
+      client.start();
+      HttpGet routerRequest = new HttpGet(routerURL + "/" + TYPE_CURRENT_VERSION + "/" + storeName);
+      HttpResponse response = client.execute(routerRequest, null).get();
+      String responseBody;
+      try (InputStream bodyStream = response.getEntity().getContent()) {
+        responseBody = IOUtils.toString(bodyStream);
+      }
+      Assert.assertEquals(
+          response.getStatusLine().getStatusCode(),
+          HttpStatus.SC_OK,
+          "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
+      CurrentVersionResponse currentVersionResponse =
+          mapper.readValue(responseBody.getBytes(), CurrentVersionResponse.class);
+      Assert.assertEquals(currentVersionResponse.getCurrentVersion(), 1);
       LOGGER.info(responseBody);
     } catch (Exception e) {
       fail("Unexpected exception", e);

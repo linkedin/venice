@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
@@ -58,6 +57,7 @@ import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
+import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -118,6 +118,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.LiveInstanceChangedListener;
+import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -165,7 +166,6 @@ import com.linkedin.venice.pushmonitor.PushMonitorUtils;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.GeneratedSchemaID;
@@ -207,6 +207,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
@@ -232,7 +233,12 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
@@ -322,6 +328,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
   private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
+  private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
 
   static final int VERSION_ID_UNSET = -1;
 
@@ -350,9 +357,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final String coloLeaderClusterName;
   private final Optional<SSLFactory> sslFactory;
   private final String pushJobStatusStoreClusterName;
-  private final Optional<PushStatusStoreReader> pushStatusStoreReader;
-  private final Optional<PushStatusStoreWriter> pushStatusStoreWriter;
-  private final Optional<PushStatusStoreRecordDeleter> pushStatusStoreDeleter;
+  private final PushStatusStoreReader pushStatusStoreReader;
+  private final Lazy<PushStatusStoreWriter> pushStatusStoreWriter;
   private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
   private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private final MetaStoreWriter metaStoreWriter;
@@ -377,6 +383,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   // Those variables will be initialized lazily.
   private int pushJobDetailsSchemaId = -1;
+
+  private final Map<String, DisabledPartitionStats> disabledPartitionStatMap = new HashMap<>();
 
   private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
   private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
@@ -527,24 +535,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
     coloLeaderClusterName = commonConfig.getClusterName();
     pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
-    // TODO: We need to consider removing this config, as push status store is rolled out everywhere.
-    if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
-      pushStatusStoreReader = Optional.of(
-          new PushStatusStoreReader(
-              d2Client,
-              commonConfig.getClusterDiscoveryD2ServiceName(),
-              commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
-      pushStatusStoreWriter = Optional.of(
-          new PushStatusStoreWriter(
-              veniceWriterFactory,
-              controllerName,
-              commonConfig.getProps().getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1)));
-      pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(veniceWriterFactory));
-    } else {
-      pushStatusStoreReader = Optional.empty();
-      pushStatusStoreWriter = Optional.empty();
-      pushStatusStoreDeleter = Optional.empty();
-    }
     usePushStatusStoreToReadServerIncrementalPushStatus = commonConfig.usePushStatusStoreForIncrementalPush();
 
     zkSharedSystemStoreRepository = new SharedHelixReadOnlyZKSharedSystemStoreRepository(
@@ -566,6 +556,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getMetaStoreWriterCloseTimeoutInMS(),
         commonConfig.getMetaStoreWriterCloseConcurrency());
     metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
+    pushStatusStoreReader = new PushStatusStoreReader(
+        d2Client,
+        commonConfig.getClusterDiscoveryD2ServiceName(),
+        commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds());
+    pushStatusStoreWriter = Lazy.of(() -> {
+      String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName();
+      SchemaEntry valueSchemaEntry = zkSharedSchemaRepository.getSupersetOrLatestValueSchema(pushStatusStoreName);
+      DerivedSchemaEntry updateSchemaEntry =
+          zkSharedSchemaRepository.getLatestDerivedSchema(pushStatusStoreName, valueSchemaEntry.getId());
+      return new PushStatusStoreWriter(veniceWriterFactory, controllerName, valueSchemaEntry, updateSchemaEntry);
+    });
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
     dataRecoveryManager = new DataRecoveryManager(
@@ -636,6 +637,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       createControllerClusterIfRequired();
     }
+
     controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
         zkClient,
         adapterSerializer,
@@ -652,6 +654,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         continue;
       }
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
+      DisabledPartitionStats disabledPartitionStats = new DisabledPartitionStats(metricsRepository, clusterName);
+      disabledPartitionStatMap.put(clusterName, disabledPartitionStats);
       liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
@@ -664,6 +668,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
               helixAdminClient
                   .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
+              disabledPartitionStats.recordClearDisabledPartition();
               LOGGER.info("Enabled disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
             }
           }
@@ -717,6 +722,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     liveInstanceMonitor.refresh();
+  }
+
+  public LiveInstanceMonitor getLiveInstanceMonitor(String clusterName) {
+    return liveInstanceMonitorMap.get(clusterName);
   }
 
   public void clearInstanceMonitor(String clusterName) {
@@ -1043,7 +1052,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             clusterName,
             store,
             metaStoreWriter,
-            pushStatusStoreDeleter,
             LOGGER);
 
         if (isForcedDelete) {
@@ -3031,14 +3039,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return a new {@linkplain  RepushInfo} object with specified store info.
+   * @return a new {@linkplain RepushInfo} object with specified store info.
    */
   @Override
   public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
     Store store = getStore(clusterName, storeName);
     boolean isSSL = isSSLEnabledForPush(clusterName, storeName);
-    return RepushInfo
-        .createRepushInfo(store.getVersion(store.getCurrentVersion()).get(), getKafkaBootstrapServers(isSSL));
+    String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
+    VeniceControllerConfig systemSchemaClusterConfig = multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
+    String systemSchemaClusterD2Service = systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName);
+    String systemSchemaClusterD2ZkHost = systemSchemaClusterConfig.getChildControllerD2ZkHost(getRegionName());
+    return RepushInfo.createRepushInfo(
+        store.getVersion(store.getCurrentVersion()).get(),
+        getKafkaBootstrapServers(isSSL),
+        systemSchemaClusterD2Service,
+        systemSchemaClusterD2ZkHost);
   }
 
   /**
@@ -3120,7 +3135,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Delete version from cluster, removing all related resources
    */
-  @Override
   public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
     deleteOneStoreVersion(clusterName, storeName, versionNumber, false);
   }
@@ -3158,13 +3172,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
           cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
         }
-        if (store.isDaVinciPushStatusStoreEnabled() && pushStatusStoreDeleter.isPresent()) {
-          pushStatusStoreDeleter.get()
-              .deletePushStatus(
+        if (store.isDaVinciPushStatusStoreEnabled()) {
+          ExecutorService executor = Executors.newSingleThreadExecutor();
+          Future<?> future = executor.submit(
+              () -> getPushStatusStoreWriter().deletePushStatus(
                   storeName,
                   deletedVersion.get().getNumber(),
                   Optional.empty(),
-                  deletedVersion.get().getPartitionCount());
+                  deletedVersion.get().getPartitionCount()));
+          try {
+            future.get(PUSH_STATUS_STORE_WRITER_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            LOGGER.info("Deleted da-vinci push status of {}_v{}", storeName, versionNumber);
+          } catch (InterruptedException e) {
+            LOGGER.error(
+                "Got interrupted while waiting for the completion of {}_v{} da-vinci push status deletion",
+                storeName,
+                versionNumber,
+                e);
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+          } catch (ExecutionException e) {
+            LOGGER.error("Exception thrown when deleting da-vinci push status of {}_v{}", storeName, versionNumber, e);
+          } catch (TimeoutException e) {
+            LOGGER.error("Timed out when deleting da-vinci push status of {}_v{}", storeName, versionNumber);
+            future.cancel(true);
+          } finally {
+            executor.shutdownNow();
+          }
         }
       }
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
@@ -3295,7 +3329,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       long minCompactionLagSeconds = store.getMinCompactionLagSeconds();
       long expectedMinCompactionLagMs =
           minCompactionLagSeconds > 0 ? minCompactionLagSeconds * Time.MS_PER_SECOND : minCompactionLagSeconds;
-      getTopicManager().updateTopicCompactionPolicy(versionTopic, true, expectedMinCompactionLagMs);
+      long maxCompactionLagSeconds = store.getMaxCompactionLagSeconds();
+      long expectedMaxCompactionLagMs =
+          maxCompactionLagSeconds > 0 ? maxCompactionLagSeconds * Time.MS_PER_SECOND : maxCompactionLagSeconds;
+      getTopicManager().updateTopicCompactionPolicy(
+          versionTopic,
+          true,
+          expectedMinCompactionLagMs,
+          expectedMaxCompactionLagMs > 0 ? Optional.of(expectedMaxCompactionLagMs) : Optional.empty());
     }
   }
 
@@ -4229,6 +4270,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
+    Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4479,6 +4521,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (minCompactionLagSeconds.isPresent()) {
         storeMetadataUpdate(clusterName, storeName, store -> {
           store.setMinCompactionLagSeconds(minCompactionLagSeconds.get());
+          return store;
+        });
+      }
+      if (maxCompactionLagSeconds.isPresent()) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+          store.setMaxCompactionLagSeconds(maxCompactionLagSeconds.get());
           return store;
         });
       }
@@ -4833,6 +4881,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (entry.getKey().equals(kafkaTopic)) {
           // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
           getHelixAdminClient().enablePartition(true, clusterName, instance, kafkaTopic, entry.getValue());
+          getDisabledPartitionStats(clusterName).recordClearDisabledPartition();
           LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
         }
       }
@@ -5305,6 +5354,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return helixAdminClient;
   }
 
+  public DisabledPartitionStats getDisabledPartitionStats(String clusterName) {
+    return disabledPartitionStatMap.get(clusterName);
+  }
+
   /**
    * @return a map containing the storage node name and its connectivity status (<code>InstanceStatus</code>).
    */
@@ -5325,6 +5378,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Map<String, List<String>> disabledPartitions = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
         for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
           helixAdminClient.enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
+          getDisabledPartitionStats(clusterName).recordClearDisabledPartition();
           LOGGER.info(
               "Enabled disabled replica of resource {}, partitions {} in cluster {}",
               entry.getKey(),
@@ -5480,12 +5534,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // if status is not SOIP remove incremental push version from the supposedlyOngoingIncrementalPushVersions
     if (incrementalPushVersion.isPresent()
         && (status == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED || status == ExecutionStatus.NOT_CREATED)
-        && usePushStatusStoreToReadServerIncrementalPushStatus && pushStatusStoreWriter.isPresent()) {
-      pushStatusStoreWriter.get()
-          .removeFromSupposedlyOngoingIncrementalPushVersions(
-              store.getName(),
-              versionNumber,
-              incrementalPushVersion.get());
+        && usePushStatusStoreToReadServerIncrementalPushStatus) {
+      getPushStatusStoreWriter().removeFromSupposedlyOngoingIncrementalPushVersions(
+          store.getName(),
+          versionNumber,
+          incrementalPushVersion.get());
     }
     return list.get(0);
   }
@@ -5500,14 +5553,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (!usePushStatusStoreToReadServerIncrementalPushStatus) {
       return monitor.getIncrementalPushStatusAndDetails(kafkaTopic, incrementalPushVersion, cvRepo);
     }
-    if (!pushStatusStoreReader.isPresent()) {
-      throw new VeniceException("Cannot read server incremental push status from the status store.");
-    }
     return monitor.getIncrementalPushStatusFromPushStatusStore(
         kafkaTopic,
         incrementalPushVersion,
         cvRepo,
-        pushStatusStoreReader.get());
+        getPushStatusStoreReader());
   }
 
   private OfflinePushStatusInfo getOfflinePushStatusInfo(
@@ -5563,7 +5613,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (store.getVersion(versionNumber).isPresent()) {
         Version version = store.getVersion(versionNumber).get();
         ExecutionStatusWithDetails daVinciStatusAndDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(
-            pushStatusStoreReader.orElse(null),
+            getPushStatusStoreReader(),
             version.kafkaTopicName(),
             version.getPartitionCount(),
             incrementalPushVersion,
@@ -6619,6 +6669,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void close() {
+    Utils.closeQuietlyWithErrorLogged(getPushStatusStoreReader());
+    pushStatusStoreWriter.ifPresent(PushStatusStoreWriter::close);
+
     helixManager.disconnect();
     Utils.closeQuietlyWithErrorLogged(zkSharedSystemStoreRepository);
     Utils.closeQuietlyWithErrorLogged(zkSharedSchemaRepository);
@@ -6629,9 +6682,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     participantMessageWriterMap.clear();
     dataRecoveryManager.close();
     Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
-    pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
-    pushStatusStoreWriter.ifPresent(PushStatusStoreWriter::close);
-    pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
     Utils.closeQuietlyWithErrorLogged(pushJobDetailsStoreClient);
     Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreClient);
     clusterControllerClientPerColoMap.forEach(
@@ -7356,14 +7406,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getPushStatusStoreRecordDeleter()
-   */
-  @Override
-  public Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter() {
-    return pushStatusStoreDeleter;
-  }
-
-  /**
    * @see Admin#getEmergencySourceRegion(String)
    */
   @Override
@@ -7868,13 +7910,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
+  public PushStatusStoreReader getPushStatusStoreReader() {
     return pushStatusStoreReader;
   }
 
   @Override
-  public Optional<PushStatusStoreWriter> getPushStatusStoreWriter() {
-    return pushStatusStoreWriter;
+  public PushStatusStoreWriter getPushStatusStoreWriter() {
+    return pushStatusStoreWriter.get();
   }
 
   @Override
@@ -7883,8 +7925,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String userStoreName = systemStoreType.extractRegularStoreName(storeName);
     long currentTimestamp = System.currentTimeMillis();
     if (VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.equals(systemStoreType)) {
-      // Push status store is fully rolled out in controller. It will be cleaned up to become non-optional argument.
-      getPushStatusStoreWriter().get().writeHeartbeat(userStoreName, currentTimestamp);
+      getPushStatusStoreWriter().writeHeartbeat(userStoreName, currentTimestamp);
     } else {
       getMetaStoreWriter().writeHeartbeat(userStoreName, currentTimestamp);
     }
@@ -7898,7 +7939,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
         long retrievedTimestamp;
         if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-          retrievedTimestamp = getPushStatusStoreReader().get()
+          retrievedTimestamp = getPushStatusStoreReader()
               .getHeartbeat(userStoreName, PushStatusStoreUtils.CONTROLLER_HEARTBEAT_INSTANCE_NAME);
         } else {
           retrievedTimestamp = getMetaStoreReader().getHeartbeat(userStoreName);

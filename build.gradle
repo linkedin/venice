@@ -38,7 +38,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def avroVersion = '1.10.2'
-def avroUtilVersion = '0.3.19'
+def avroUtilVersion = '0.3.21'
 def grpcVersion = '1.49.2'
 def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.4.1.65'
@@ -61,6 +61,7 @@ ext.libraries = [
     avroUtilFastserde: "com.linkedin.avroutil1:avro-fastserde:${avroUtilVersion}",
     avroUtilSpotbugsPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
     bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
+    bouncyCastleBcpkix: 'org.bouncycastle:bcpkix-jdk15on:1.55',
     caffeine: 'com.github.ben-manes.caffeine:caffeine:2.8.5',
     classgraph: 'io.github.classgraph:classgraph:4.8.60',
     commonsCodec: 'commons-codec:commons-codec:1.4',
@@ -105,7 +106,7 @@ ext.libraries = [
     pulsarIoCommon: "${pulsarGroup}:pulsar-io-common:${pulsarVersion}",
     r2: "com.linkedin.pegasus:r2:${pegasusVersion}",
     restliCommon: "com.linkedin.pegasus:restli-common:${pegasusVersion}",
-    rocksdbjni: 'org.rocksdb:rocksdbjni:7.9.2',
+    rocksdbjni: 'org.rocksdb:rocksdbjni:8.8.1',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     slf4j: 'org.slf4j:slf4j:1.7.36',
     slf4jApi: 'org.slf4j:slf4j-api:1.7.36',
@@ -700,6 +701,8 @@ ext.createDiffFile = { ->
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
       // unit test for gRPC Transport Client is not straightforward, adding to exclusion list for now
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/transport/GrpcTransportClient.java',
+      // unit test for deprecated DispatchingVsonStoreClient is not meaningful since most logic is in its parent class
+      ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/DispatchingVsonStoreClient.java',
 
       // venice-producer
       ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/OnlineProducerFactory.java',

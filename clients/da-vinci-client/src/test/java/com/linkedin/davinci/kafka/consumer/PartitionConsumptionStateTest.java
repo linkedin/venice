@@ -1,9 +1,19 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.validation.checksum.CheckSum;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.writer.LeaderCompleteState;
+import com.linkedin.venice.writer.WriterChunkingHelper;
+import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -12,6 +22,58 @@ import org.testng.annotations.Test;
 
 
 public class PartitionConsumptionStateTest {
+  @Test
+  public void testUpdateChecksum() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false);
+    pcs.initializeExpectedChecksum();
+    byte[] rmdPayload = new byte[] { 127 };
+    byte[] key1 = new byte[] { 1 };
+    byte[] key2 = new byte[] { 2 };
+    byte[] key3 = new byte[] { 3 };
+    byte[] key4 = new byte[] { 4 };
+    byte[] valuePayload1 = new byte[] { 10 };
+    byte[] valuePayload3 = new byte[] { 11 };
+    byte[] valuePayload4 = new byte[] { 12 };
+
+    Put put = new Put();
+    // Try to update a value chunk (should only update value payload)
+    put.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+    put.putValue = ByteBuffer.wrap(valuePayload1);
+    put.replicationMetadataPayload = WriterChunkingHelper.EMPTY_BYTE_BUFFER;
+    pcs.maybeUpdateExpectedChecksum(key1, put);
+    // Try to update a RMD chunk (should not be updated)
+    put.putValue = WriterChunkingHelper.EMPTY_BYTE_BUFFER;
+    put.replicationMetadataPayload = ByteBuffer.wrap(rmdPayload);
+    pcs.maybeUpdateExpectedChecksum(key2, put);
+    // Try to update a regular value with RMD (should only update value payload)
+    put.schemaId = 1;
+    put.putValue = ByteBuffer.wrap(valuePayload3);
+    put.replicationMetadataPayload = ByteBuffer.wrap(rmdPayload);
+    pcs.maybeUpdateExpectedChecksum(key3, put);
+    // Try to update a manifest (should only update value payload)
+    put.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    put.putValue = ByteBuffer.wrap(valuePayload4);
+    put.replicationMetadataPayload = ByteBuffer.wrap(rmdPayload);
+    pcs.maybeUpdateExpectedChecksum(key4, put);
+
+    byte[] checksum = pcs.getExpectedChecksum();
+    Assert.assertNotNull(checksum);
+
+    // Calculate expected checksum.
+    CheckSum expectedChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    expectedChecksum.update(key1);
+    expectedChecksum.update(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion());
+    expectedChecksum.update(valuePayload1, 0, valuePayload1.length);
+    expectedChecksum.update(key3);
+    expectedChecksum.update(1);
+    expectedChecksum.update(valuePayload3, 0, valuePayload3.length);
+    expectedChecksum.update(key4);
+    expectedChecksum.update(AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+    expectedChecksum.update(valuePayload4, 0, valuePayload4.length);
+
+    Assert.assertEquals(expectedChecksum.getCheckSum(), checksum);
+  }
+
   /**
    * Test the different transientRecordMap operations.
    */
@@ -60,5 +122,21 @@ public class PartitionConsumptionStateTest {
     Assert.assertNull(tr2);
     Assert.assertEquals(pcs.getTransientRecordMapSize(), 1);
 
+  }
+
+  @Test
+  public void testIsLeaderCompleted() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false);
+    // default is LEADER_COMPLETE_STATE_UNKNOWN
+    assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN);
+    assertFalse(pcs.isLeaderCompleted());
+
+    // test with LEADER_NOT_COMPLETED
+    pcs.setLeaderCompleteState(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    assertFalse(pcs.isLeaderCompleted());
+
+    // test with LEADER_COMPLETED
+    pcs.setLeaderCompleteState(LeaderCompleteState.LEADER_COMPLETED);
+    assertTrue(pcs.isLeaderCompleted());
   }
 }

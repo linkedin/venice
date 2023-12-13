@@ -16,7 +16,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -67,7 +66,7 @@ import org.apache.logging.log4j.Logger;
  *
  * @see AggKafkaConsumerService which wraps one instance of this class per Kafka cluster.
  */
-public abstract class KafkaConsumerService extends AbstractVeniceService {
+public abstract class KafkaConsumerService extends AbstractKafkaConsumerService {
   private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -116,7 +115,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         : createKafkaConsumerServiceStats(
             metricsRepository,
             kafkaClusterAlias,
-            this::getMaxElapsedTimeSinceLastPollInConsumerPool);
+            this::getMaxElapsedTimeMSSinceLastPollInConsumerPool);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
@@ -170,6 +169,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     return Utils.getHostName() + "_" + kafkaUrl + "_" + suffix;
   }
 
+  @Override
   public SharedKafkaConsumer getConsumerAssignedToVersionTopicPartition(
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition) {
@@ -185,6 +185,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
    *
    * Must be idempotent and thus return previously a assigned consumer (for the same params) if any exists.
    */
+  @Override
   public SharedKafkaConsumer assignConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition topicPartition) {
     Map<PubSubTopicPartition, SharedKafkaConsumer> topicPartitionToConsumerMap =
         versionTopicToTopicPartitionToConsumer.computeIfAbsent(versionTopic, k -> new VeniceConcurrentHashMap<>());
@@ -205,6 +206,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   /**
    * Stop all subscription associated with the given version topic.
    */
+  @Override
   public void unsubscribeAll(PubSubTopic versionTopic) {
     versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
       if (topicPartitionToConsumerMap != null) {
@@ -220,7 +222,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   /**
    * Stop specific subscription associated with the given version topic.
    */
-  void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  @Override
+  public void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer != null) {
       consumer.unSubscribe(pubSubTopicPartition);
@@ -236,7 +239,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  void batchUnsubscribe(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub) {
+  @Override
+  public void batchUnsubscribe(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub) {
     Map<PubSubConsumerAdapter, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
     PubSubConsumerAdapter consumer;
     for (PubSubTopicPartition topicPartition: topicPartitionsToUnSub) {
@@ -304,6 +308,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     LOGGER.info("SharedKafkaConsumer closed in {} ms.", System.currentTimeMillis() - beginningTime);
   }
 
+  @Override
   public boolean hasAnySubscriptionFor(PubSubTopic versionTopic) {
     Map<PubSubTopicPartition, SharedKafkaConsumer> subscriptions =
         versionTopicToTopicPartitionToConsumer.get(versionTopic);
@@ -324,7 +329,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         getMaxElapsedTimeSinceLastPollInConsumerPool);
   }
 
-  private long getMaxElapsedTimeSinceLastPollInConsumerPool() {
+  @Override
+  public long getMaxElapsedTimeMSSinceLastPollInConsumerPool() {
     long maxElapsedTimeSinceLastPollInConsumerPool = -1;
     int slowestTaskId = -1;
     long elapsedTimeSinceLastPoll;
@@ -349,6 +355,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     return maxElapsedTimeSinceLastPollInConsumerPool;
   }
 
+  @Override
   public void startConsumptionIntoDataReceiver(
       PubSubTopicPartition topicPartition,
       long lastReadOffset,

@@ -212,7 +212,7 @@ public class TestFabricBuildout {
       ControllerClient childControllerClient,
       String storeName,
       int versionNum) {
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = childControllerClient.getStore(storeName);
       Assert.assertFalse(storeResponse.isError());
       Assert.assertNotNull(storeResponse.getStore());

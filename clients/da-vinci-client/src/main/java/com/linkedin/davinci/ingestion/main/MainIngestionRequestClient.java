@@ -15,6 +15,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
@@ -237,6 +238,10 @@ public class MainIngestionRequestClient implements Closeable {
       LOGGER.warn("Unable to get heartbeat from ingestion service");
       return false;
     }
+  }
+
+  public LoadedStoreUserPartitionMapping getLoadedStoreUserPartitionMapping() {
+    return httpClientTransport.sendRequest(IngestionAction.GET_LOADED_STORE_USER_PARTITION_MAPPING, getDummyCommand());
   }
 
   @Override

@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient.meta;
 import static com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig;
 import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
 
+import com.linkedin.alpini.base.concurrency.NamedThreadFactory;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
@@ -13,10 +14,12 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
+import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
@@ -36,6 +39,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -44,6 +48,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -62,22 +67,38 @@ import org.apache.logging.log4j.Logger;
 public class RequestBasedMetadata extends AbstractStoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(RequestBasedMetadata.class);
   private static final String VERSION_PARTITION_SEPARATOR = "_";
-  private static final long ZSTD_DICT_FETCH_TIMEOUT = 10;
-  static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
-  static final long WARMUP_REFRESH_INTERVAL_IN_SECONDS = 5;
+
+  public static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
+  private static final long ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS = 10;
+  public static final long DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT = 20;
+  static final long INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS = 5;
+
   private long refreshIntervalInSeconds;
+  private long connWarmupTimeoutInSeconds;
+  /** scheduler to run {@link #refresh()} to periodically update metadata */
   private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+  /** scheduler within {@link #refresh()} to warmup new instances updated via metadata refresh.
+   * Using a new ExecutorService rather than CompletableFuture's default one to not affect
+   * the read requests happening in parallel.
+   * Using newCachedThreadPool to avoid idle threads most of the time and to be able to warm up connections to
+   * multiple instances quickly when needed (e.g., at the beginning of a client start or when
+   * there is a new version or migration)
+   */
+  private ExecutorService h2ConnWarmupExecutorService =
+      Executors.newCachedThreadPool(new NamedThreadFactory("h2ConnWarmupForFastClient"));
 
   private final AtomicInteger currentVersion = new AtomicInteger();
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
   private final AtomicReference<SchemaData> schemas = new AtomicReference<>();
   private final Map<String, List<String>> readyToServeInstancesMap = new VeniceConcurrentHashMap<>();
+  private Map<String, CompletableFuture> warmUpInstancesFutures = new VeniceConcurrentHashMap<>();
   private final Map<Integer, VenicePartitioner> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
-  private final D2TransportClient transportClient;
+  private final D2TransportClient d2TransportClient;
+  private final R2TransportClient r2TransportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
@@ -87,24 +108,28 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private volatile boolean isReady;
   private CountDownLatch isReadyLatch = new CountDownLatch(1);
 
-  public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
+  public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient d2TransportClient) {
     super(clientConfig);
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
-    this.transportClient = transportClient;
+    this.connWarmupTimeoutInSeconds = clientConfig.getMetadataConnWarmupTimeoutInSeconds() > 0
+        ? clientConfig.getMetadataConnWarmupTimeoutInSeconds()
+        : DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT;
+    this.d2TransportClient = d2TransportClient;
     this.d2ServiceDiscovery = new D2ServiceDiscovery();
-    this.clusterDiscoveryD2ServiceName = transportClient.getServiceName();
+    this.clusterDiscoveryD2ServiceName = d2TransportClient.getServiceName();
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
     this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
     InternalAvroStoreClient metadataSchemaResponseStoreClient = new AvroGenericStoreClientImpl(
         // Create a new D2TransportClient since the other one will be set to point to server d2 after cluster discovery
-        new D2TransportClient(clusterDiscoveryD2ServiceName, transportClient.getD2Client()),
+        new D2TransportClient(clusterDiscoveryD2ServiceName, d2TransportClient.getD2Client()),
         false,
         defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
     this.metadataResponseSchemaReader =
         new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
+    this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
   }
 
   // For unit tests only
@@ -114,6 +139,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public int getCurrentStoreVersion() {
+    if (!isReady()) {
+      throw new VeniceClientException(getStoreName() + " metadata is not ready yet, retry in sometime");
+    }
     return currentVersion.get();
   }
 
@@ -160,7 +188,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       // if there is an InterruptedException, let the periodic refresh continue with updating the metadata
       LOGGER.error(
           "Metadata warmup failed and will be retried every {} seconds. Read requests will throw exception until then",
-          WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS,
           e);
     }
   }
@@ -173,10 +201,144 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       if (isServiceDiscovered) {
         return;
       }
-      transportClient.setServiceName(clusterDiscoveryD2ServiceName);
-      String serverD2ServiceName = d2ServiceDiscovery.find(transportClient, storeName, true).getServerD2Service();
-      transportClient.setServiceName(serverD2ServiceName);
+      d2TransportClient.setServiceName(clusterDiscoveryD2ServiceName);
+      String serverD2ServiceName = d2ServiceDiscovery.find(d2TransportClient, storeName, true).getServerD2Service();
+      d2TransportClient.setServiceName(serverD2ServiceName);
       isServiceDiscovered = true;
+    }
+  }
+
+  /**
+   * Warmup the connection from the client to Instances discovered from the metadata update.
+   * To avoid duplicate warmup requests being sent which might delay the warmup process,
+   * {@link #warmUpInstancesFutures} is used to track the list of already warmed up instances
+   * and its status.
+   * <p>
+   * As we are not trying to validate the metadata here but just to warmup conns beforehand,
+   * warmup is on best effort basis for now. If we want to improve the long tail and potentially
+   * further improve the client startup speed by not waiting till the timeout for all the conns
+   * to be warmed up, we can think of adding more fine-grained logic wrt partitions, replicas or
+   * warmup success rate, which might succeed faster that waiting for all conns.
+   */
+  private void warmupConnectionToInstances(int currentFetchedVersion, int partitionCount) throws ExecutionException {
+    Set<String> newReplicasToBeWarmedUp = new HashSet<>();
+    // get all replicas
+    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
+      newReplicasToBeWarmedUp.addAll(getReplicas(currentFetchedVersion, partitionId));
+    }
+    String logPrefix =
+        String.format("Metadata connection warmup for store %s version %d:", storeName, currentFetchedVersion);
+    LOGGER.info("{} Newly fetched metadata has {} instances", logPrefix, newReplicasToBeWarmedUp.size());
+
+    // If there are warmup in progress, check its status to cancel or reuse the same warmup
+    Set<String> replicasWarmupInProgressFromPastRefresh = new HashSet<>();
+    int warmupSuccessfullInPastRefresh = 0;
+    Iterator<Map.Entry<String, CompletableFuture>> entryIterator = warmUpInstancesFutures.entrySet().iterator();
+    while (entryIterator.hasNext()) {
+      Map.Entry<String, CompletableFuture> entry = entryIterator.next();
+      String replica = entry.getKey();
+      CompletableFuture<Void> future = entry.getValue();
+      if (!newReplicasToBeWarmedUp.contains(replica)) {
+        // No need to warm up this instance anymore as it's not in the latest metadata: cancel if already running
+        if (!future.isDone()) {
+          future.cancel(true);
+        }
+        entryIterator.remove();
+      } else {
+        // Already attempted to warmup in the past warmups.
+        if (!future.isDone()) {
+          // not restarting it: in the worst case, the first read request to this instance will try it again.
+          replicasWarmupInProgressFromPastRefresh.add(replica);
+          newReplicasToBeWarmedUp.remove(replica);
+        } else if (!future.isCompletedExceptionally()) {
+          // no need to warm up these instances again as its already completed successfully in the past warmups.
+          newReplicasToBeWarmedUp.remove(replica);
+          warmupSuccessfullInPastRefresh++;
+        } else {
+          // else will be warmed up again
+          entryIterator.remove();
+        }
+      }
+    }
+
+    if (replicasWarmupInProgressFromPastRefresh.size() != 0) {
+      LOGGER.warn(
+          "{} {} instances still incomplete from the previous attempt, not retrying again for these instances: {}",
+          logPrefix,
+          replicasWarmupInProgressFromPastRefresh.size(),
+          String.join(",", replicasWarmupInProgressFromPastRefresh));
+    }
+
+    // Warmup all the new instances
+    int instanceNum = newReplicasToBeWarmedUp.size();
+    if (instanceNum == 0) {
+      if (replicasWarmupInProgressFromPastRefresh.size() == 0) {
+        LOGGER.info("{} all instances are already warmed up in the previous attempts", logPrefix);
+      }
+      return;
+    }
+
+    if (warmupSuccessfullInPastRefresh != 0) {
+      LOGGER.info(
+          "{} {} instances already warmed up in the previous attempts, Starting H2 connection warm up from fast client to the remaining {} instances",
+          logPrefix,
+          warmupSuccessfullInPastRefresh,
+          instanceNum);
+    } else {
+      LOGGER.info("{} Starting H2 connection warm up from fast client to {} instances", logPrefix, instanceNum);
+    }
+
+    AtomicInteger numberOfWarmUpSuccess = new AtomicInteger(0);
+    Set<String> warmUpFailedInstances = VeniceConcurrentHashMap.newKeySet();
+    newReplicasToBeWarmedUp.forEach((replica) -> {
+      String url = replica + "/" + QueryAction.HEALTH.toString().toLowerCase();
+      CompletableFuture warmupFuture = CompletableFuture.runAsync(() -> {
+        try {
+          r2TransportClient.get(url).get();
+          numberOfWarmUpSuccess.incrementAndGet();
+        } catch (Exception e) {
+          warmUpFailedInstances.add(replica);
+          throw new RuntimeException(String.format("%s warmup failed for replica: %s", logPrefix, replica), e);
+        }
+      }, h2ConnWarmupExecutorService);
+
+      warmupFuture.whenComplete((ignore, throwable) -> {
+        if (throwable != null) {
+          warmupFuture.completeExceptionally((Throwable) throwable);
+        }
+      });
+      warmUpInstancesFutures.put(replica, warmupFuture);
+    });
+
+    CompletableFuture<Void> warmupResultFuture =
+        CompletableFuture.allOf(warmUpInstancesFutures.values().toArray(new CompletableFuture[0]));
+    try {
+      warmupResultFuture.get(connWarmupTimeoutInSeconds, TimeUnit.SECONDS);
+      LOGGER.info("{} {} instances succeeded", logPrefix, numberOfWarmUpSuccess.get());
+    } catch (Exception e) {
+      int successCount = numberOfWarmUpSuccess.get();
+      int failureCount = warmUpFailedInstances.size();
+      if (e instanceof TimeoutException) {
+        int notCompletedCount = instanceNum - (successCount + failureCount);
+        LOGGER.warn(
+            "{} {} instances succeeded, {} instances failed and {} instances failed to finish "
+                + "within {} seconds. Failed instances {} will be retried during the periodic metadata refresh.",
+            logPrefix,
+            successCount,
+            failureCount,
+            notCompletedCount,
+            connWarmupTimeoutInSeconds,
+            String.join(",", warmUpFailedInstances));
+      } else {
+        LOGGER.warn(
+            "{} {} instances succeeded, {} instances failed. Failed instances {} will be retried "
+                + "during the periodic metadata refresh.",
+            logPrefix,
+            successCount,
+            failureCount,
+            String.join(",", warmUpFailedInstances),
+            e);
+      }
     }
   }
 
@@ -187,6 +349,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @return if the fetched metadata was an updated version
    */
   synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
+    LOGGER.info("Metadata fetch operation for store: {} started", storeName);
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
@@ -200,13 +363,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
-      int fetchedVersion = versionMetadata.getCurrentVersion();
+      int fetchedCurrentVersion = versionMetadata.getCurrentVersion();
 
       // call the DICTIONARY endpoint if needed
       CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
-      if (!versionZstdDictionaryMap.containsKey(fetchedVersion)
+      if (!versionZstdDictionaryMap.containsKey(fetchedCurrentVersion)
           && versionMetadata.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
-        dictionaryFetchFuture = fetchCompressionDictionary(fetchedVersion);
+        dictionaryFetchFuture = fetchCompressionDictionary(fetchedCurrentVersion);
       }
 
       // Update partitioner pair map (versionPartitionerMap)
@@ -217,8 +380,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           versionMetadata.getPartitionerClass().toString(),
           versionMetadata.getAmplificationFactor(),
           new VeniceProperties(params));
-      versionPartitionerMap.put(fetchedVersion, partitioner);
-      versionPartitionCountMap.put(fetchedVersion, partitionCount);
+      versionPartitionerMap.put(fetchedCurrentVersion, partitioner);
+      versionPartitionCountMap.put(fetchedCurrentVersion, partitionCount);
 
       // Update readyToServeInstanceMap
       Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
@@ -230,7 +393,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
                   e -> e.getValue().stream().map(CharSequence::toString).collect(Collectors.toList())));
 
       for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-        String key = getVersionPartitionMapKey(fetchedVersion, partitionId);
+        String key = getVersionPartitionMapKey(fetchedCurrentVersion, partitionId);
         readyToServeInstancesMap.put(key, routingInfo.get(partitionId));
       }
 
@@ -253,21 +416,27 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       for (Map.Entry<CharSequence, Integer> entry: metadataResponse.getHelixGroupInfo().entrySet()) {
         helixGroupInfo.put(entry.getKey().toString(), entry.getValue());
       }
-      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
 
       latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
       // Wait for dictionary fetch to finish if there is one
       try {
         if (dictionaryFetchFuture != null) {
-          dictionaryFetchFuture.get(ZSTD_DICT_FETCH_TIMEOUT, TimeUnit.SECONDS);
+          dictionaryFetchFuture.get(ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS);
         }
       } catch (ExecutionException | TimeoutException e) {
         LOGGER.warn(
             "Dictionary fetch operation could not complete in time for some of the versions. "
                 + "Will be retried on next refresh",
             e);
-        return;
+        // throw exception to make the start() blocking till the dictionary is fetched in case
+        // of initial warmup. For the non warmup case: returning an exception or just returning
+        // doesn't make any difference.
+        throw new VeniceException(e);
       }
+
+      // warmup H2 conns before setting the fetched version as the current version
+      warmupConnectionToInstances(fetchedCurrentVersion, partitionCount);
+
       // Evict entries from inactive versions
       Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
       readyToServeInstancesMap.entrySet()
@@ -275,22 +444,29 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
-      currentVersion.set(fetchedVersion);
-      clusterStats.updateCurrentVersion(getCurrentStoreVersion());
+      currentVersion.set(fetchedCurrentVersion);
+      clusterStats.updateCurrentVersion(fetchedCurrentVersion);
+      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
       // Update the metadata timestamp only if all updates are successful
       clientStats.updateCacheTimestamp(currentTimeMs);
+      LOGGER.info(
+          "Metadata fetch operation for store: {} finished successfully with current version {}.",
+          storeName,
+          fetchedCurrentVersion);
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration
       if (!onDemandRefresh) {
-        LOGGER.warn("Metadata fetch operation has failed with exception {}", e.getMessage());
+        LOGGER.warn("Metadata fetch operation for store: {} failed with exception {}", storeName, e.getMessage());
         isServiceDiscovered = false;
         discoverD2Service();
         updateCache(true);
       } else {
         // pass the error along if the on demand refresh also fails
         clusterStats.recordVersionUpdateFailure();
-        throw new VeniceClientException("Metadata fetch retry has failed", e.getCause());
+        throw new VeniceClientException(
+            String.format("Metadata fetch operation for store: %s retry failed", storeName),
+            e.getCause());
       }
     }
   }
@@ -301,18 +477,19 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       if (!isReady) {
         isReadyLatch.countDown();
         isReady = true;
-        LOGGER.info("Metadata warmup completed successfully");
+        LOGGER.info("Metadata warmup completed successfully for store: {}", storeName);
       }
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
       LOGGER.error(
-          "Metadata periodic refresh encountered unexpected error, will be retried in {} seconds",
-          isReady ? refreshIntervalInSeconds : WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          "Metadata periodic refresh for store: {} encountered unexpected error, will be retried in {} seconds",
+          storeName,
+          isReady ? refreshIntervalInSeconds : INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS,
           e);
     } finally {
       scheduler.schedule(
           this::refresh,
-          isReady ? refreshIntervalInSeconds : WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          isReady ? refreshIntervalInSeconds : INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS,
           TimeUnit.SECONDS);
     }
   }
@@ -323,6 +500,14 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     try {
       if (!scheduler.awaitTermination(60, TimeUnit.SECONDS)) {
         scheduler.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    h2ConnWarmupExecutorService.shutdown();
+    try {
+      if (!h2ConnWarmupExecutorService.awaitTermination(60, TimeUnit.SECONDS)) {
+        h2ConnWarmupExecutorService.shutdownNow();
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -338,7 +523,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     String url = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
 
     LOGGER.info("Fetching metadata for store {} from URL {} ", storeName, url);
-    transportClient.get(url).whenComplete((response, throwable) -> {
+    d2TransportClient.get(url).whenComplete((response, throwable) -> {
       if (throwable != null) {
         String message = String.format("Problem fetching metadata from URL:%s for store:%s ", url, storeName);
         LOGGER.warn(message, throwable);
@@ -355,7 +540,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     String url = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
 
     LOGGER.info("Fetching compression dictionary for version {} from URL {} ", version, url);
-    transportClient.get(url).whenComplete((response, throwable) -> {
+    d2TransportClient.get(url).whenComplete((response, throwable) -> {
       if (throwable != null) {
         String message = String.format(
             "Problem fetching zstd compression dictionary from URL:%s for store:%s , version:%d",
@@ -455,5 +640,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   public long getRefreshIntervalInSeconds() {
     return refreshIntervalInSeconds;
+  }
+
+  public Map<String, CompletableFuture> getWarmUpInstancesFutures() {
+    return warmUpInstancesFutures;
+  }
+
+  public void setWarmUpInstancesFutures(Map<String, CompletableFuture> warmUpInstancesFutures) {
+    this.warmUpInstancesFutures = warmUpInstancesFutures;
   }
 }

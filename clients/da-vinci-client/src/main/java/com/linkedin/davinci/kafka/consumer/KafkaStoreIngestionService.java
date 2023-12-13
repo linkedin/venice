@@ -4,8 +4,6 @@ import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_
 import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
@@ -26,8 +24,8 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
-import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
@@ -183,8 +181,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final MetaStoreWriter metaStoreWriter;
 
-  private final MetaSystemStoreReplicaStatusNotifier metaSystemStoreReplicaStatusNotifier;
-
   private final StoreIngestionTaskFactory ingestionTaskFactory;
 
   private final boolean isIsolatedIngestion;
@@ -196,7 +192,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private ParticipantStoreConsumptionTask participantStoreConsumptionTask;
 
-  private boolean metaSystemStoreReplicaStatusNotifierQueued = false;
   // TODO: This could be a composite storage engine which keeps secondary storage engines updated in lockstep with a
   // primary
   // source. This could be a view of the data, or in our case a cache, or both potentially.
@@ -349,12 +344,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           pubSubTopicRepository,
           serverConfig.getMetaStoreWriterCloseTimeoutInMS(),
           serverConfig.getMetaStoreWriterCloseConcurrency());
-      this.metaSystemStoreReplicaStatusNotifier = new MetaSystemStoreReplicaStatusNotifier(
-          serverConfig.getClusterName(),
-          metaStoreWriter,
-          metadataRepo,
-          Instance.fromHostAndPort(Utils.getHostName(), serverConfig.getListenerPort()));
-      LOGGER.info("MetaSystemStoreReplicaStatusNotifier was initialized");
       metadataRepo.registerStoreDataChangedListener(new StoreDataChangedListener() {
         @Override
         public void handleStoreDeleted(Store store) {
@@ -367,7 +356,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       });
     } else {
       this.metaStoreWriter = null;
-      this.metaSystemStoreReplicaStatusNotifier = null;
     }
 
     this.hostLevelIngestionStats = new AggHostLevelIngestionStats(
@@ -465,7 +453,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()),
-        pubSubDeserializer);
+        pubSubDeserializer,
+        (topicName) -> this.killConsumptionTask(topicName),
+        vt -> {
+          String storeName = Version.parseStoreFromKafkaTopicName(vt);
+          int versionNumber = Version.parseVersionFromKafkaTopicName(vt);
+          Store store = metadataRepo.getStore(storeName);
+          if (null == store) {
+            return false;
+          }
+          Optional<Version> version = store.getVersion(versionNumber);
+          if (!version.isPresent()) {
+            return false;
+          }
+          return version.get().isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
+        });
     /**
      * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
      * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.
@@ -520,30 +522,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setRunnableForKillIngestionTasksForNonCurrentVersions(
             serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .build();
-  }
-
-  /**
-   * This function should only be triggered in classical Venice since replica status reporting is only valid
-   * in classical Venice for meta system store.
-   */
-  public synchronized void addMetaSystemStoreReplicaStatusNotifier() {
-    if (metaSystemStoreReplicaStatusNotifierQueued) {
-      throw new VeniceException("MetaSystemStoreReplicaStatusNotifier should NOT be added twice");
-    }
-    if (this.metaSystemStoreReplicaStatusNotifier == null) {
-      throw new VeniceException("MetaSystemStoreReplicaStatusNotifier wasn't initialized properly");
-    }
-    addIngestionNotifier(this.metaSystemStoreReplicaStatusNotifier);
-    metaSystemStoreReplicaStatusNotifierQueued = true;
-  }
-
-  @Override
-  public synchronized Optional<MetaSystemStoreReplicaStatusNotifier> getMetaSystemStoreReplicaStatusNotifier() {
-    if (metaSystemStoreReplicaStatusNotifierQueued) {
-      return Optional.of(metaSystemStoreReplicaStatusNotifier);
-    } else {
-      return Optional.empty();
-    }
   }
 
   /**
@@ -1152,11 +1130,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     kafkaConsumerProperties.setProperty(
         KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG,
         String.valueOf(serverConfig.getKafkaFetchPartitionMaxSizePerSecond()));
-    kafkaConsumerProperties
-        .setProperty(KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG, String.valueOf(serverConfig.getKafkaPollRetryTimes()));
     kafkaConsumerProperties.setProperty(
-        KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
-        String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
+        PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_TIMES,
+        String.valueOf(serverConfig.getPubSubConsumerPollRetryTimes()));
+    kafkaConsumerProperties.setProperty(
+        PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS,
+        String.valueOf(serverConfig.getPubSubConsumerPollRetryBackoffMs()));
 
     return kafkaConsumerProperties;
   }
@@ -1226,6 +1205,26 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           + " admin command";
       LOGGER.warn(msg);
       response.setMessage(msg);
+    }
+    return response;
+  }
+
+  @Override
+  public ServerCurrentVersionResponse getCurrentVersionResponse(String storeName) {
+    ServerCurrentVersionResponse response = new ServerCurrentVersionResponse();
+    try {
+      Store store = metadataRepo.getStoreOrThrow(storeName);
+      // Version metadata
+      int currentVersionNumber = store.getCurrentVersion();
+      if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
+        throw new VeniceException(
+            "No valid store version available to read for store: " + storeName
+                + ". Please push data to the store before consuming");
+      }
+      response.setCurrentVersion(currentVersionNumber);
+    } catch (VeniceException e) {
+      response.setMessage("Failed to get current version for store: " + storeName + " due to: " + e.getMessage());
+      response.setError(true);
     }
     return response;
   }
