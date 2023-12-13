@@ -19,17 +19,6 @@ import java.util.Objects;
 public class VeniceChangeCoordinate implements Externalizable {
   private static final long serialVersionUID = 1L;
 
-  private static final ThreadLocal<ByteArrayOutputStream> _byteArrayOutputStream =
-      ThreadLocal.withInitial(ByteArrayOutputStream::new);
-
-  private static final ThreadLocal<ObjectOutputStream> _objectOutputStream = ThreadLocal.withInitial(() -> {
-    try {
-      return new ObjectOutputStream(_byteArrayOutputStream.get());
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-  });
-
   private String topic;
   private Integer partition;
   private PubSubPosition pubSubPosition;
@@ -96,11 +85,16 @@ public class VeniceChangeCoordinate implements Externalizable {
 
   public static String convertVeniceChangeCoordinateToStringAndEncode(VeniceChangeCoordinate veniceChangeCoordinate)
       throws IOException {
-    veniceChangeCoordinate.writeExternal(_objectOutputStream.get());
-    _objectOutputStream.get().flush();
-    _objectOutputStream.get().close();
-    byte[] data = _byteArrayOutputStream.get().toByteArray();
-    return Base64.getEncoder().encodeToString(data);
+    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    ObjectOutputStream outputStream = new ObjectOutputStream(byteArrayOutputStream);
+    try {
+      veniceChangeCoordinate.writeExternal(outputStream);
+      outputStream.flush();
+      byte[] data = byteArrayOutputStream.toByteArray();
+      return Base64.getEncoder().encodeToString(data);
+    } finally {
+      outputStream.close();
+    }
   }
 
   public static VeniceChangeCoordinate decodeStringAndConvertToVeniceChangeCoordinate(String offsetString)
