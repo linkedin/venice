@@ -1924,19 +1924,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean isLagAcceptable = offsetLag <= offsetThreshold;
 
     if (shouldLogLag) {
-      LOGGER.info(
-          "{} [{} lag] partition {} is {}lagging. {}Lag: [{}] {} Threshold [{}]",
-          isOffsetBasedLag ? "Offset" : "Time",
-          consumerTaskId,
+      logLag(
+          isOffsetBasedLag,
           pcs.getPartition(),
-          (isLagAcceptable ? "not " : ""),
-          (isOffsetBasedLag ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+          isLagAcceptable,
+          latestConsumedProducerTimestamp,
           offsetLag,
-          (isLagAcceptable ? "<" : ">"),
-          offsetThreshold);
+          offsetThreshold,
+          "");
     }
 
     return isLagAcceptable;
+  }
+
+  protected void logLag(
+      boolean isOffsetBasedLag,
+      int partition,
+      boolean isLagAcceptable,
+      long latestConsumedProducerTimestamp,
+      long offsetLag,
+      long offsetThreshold,
+      String lagLogFooter) {
+    LOGGER.info(
+        "{} [{} lag] partition {} is {}lagging. {}Lag: [{}] {} Threshold [{}]{}",
+        this.consumerTaskId,
+        isOffsetBasedLag ? "Offset" : "Time",
+        partition,
+        (isLagAcceptable ? "not " : ""),
+        (isOffsetBasedLag ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+        offsetLag,
+        (isLagAcceptable ? "<" : ">"),
+        offsetThreshold,
+        lagLogFooter);
   }
 
   /**
@@ -3272,6 +3291,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         ? offsetFromConsumer
         : cachedPubSubMetadataGetter
             .getOffset(getTopicManager(sourceRealTimeTopicKafkaURL), leaderTopic, partitionToGetLatestOffsetFor);
+
+    if (lastOffsetInRealTimeTopic < 0) {
+      LOGGER.warn(
+          "Unexpected! Got a negative lastOffsetInRealTimeTopic ({})! Will return Long.MAX_VALUE as the lag.",
+          lastOffsetInRealTimeTopic,
+          new VeniceException("Exception not thrown, just for logging purposes."));
+      return Long.MAX_VALUE;
+    }
 
     if (latestLeaderOffset == -1) {
       // If leader hasn't consumed anything yet we should use the value of 0 to calculate the exact offset lag.

@@ -1309,7 +1309,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       boolean shouldLogLag,
       boolean isOffsetBasedLag,
       long latestConsumedProducerTimestamp) {
-    boolean isLagAcceptable = offsetLag <= offsetThreshold;
+    boolean isLagAcceptable = super.checkAndLogIfLagIsAcceptableForHybridStore(
+        pcs,
+        offsetLag,
+        offsetThreshold,
+        false, // We'll take care of logging at the end of this function
+        isOffsetBasedLag,
+        latestConsumedProducerTimestamp);
 
     if (isLagAcceptable && isHybridFollower(pcs)) {
       if (!getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled()) {
@@ -1336,15 +1342,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       } else {
         lagLogFooter = "";
       }
-      LOGGER.info(
-          "{} [{} lag] partition {} is {}lagging. {}Lag: [{}] {} Threshold [{}]{}",
-          isOffsetBasedLag ? "Offset" : "Time",
-          consumerTaskId,
+      logLag(
+          isOffsetBasedLag,
           pcs.getPartition(),
-          (isLagAcceptable ? "not " : ""),
-          (isOffsetBasedLag ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+          isLagAcceptable,
+          latestConsumedProducerTimestamp,
           offsetLag,
-          (isLagAcceptable ? "<" : ">"),
           offsetThreshold,
           lagLogFooter);
     }

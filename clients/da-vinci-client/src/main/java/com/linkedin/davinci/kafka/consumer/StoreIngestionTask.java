@@ -3488,18 +3488,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             if (storageEngineReloadedFromRepo == null) {
               LOGGER.warn("Storage engine {} was removed before reopening", kafkaVersionTopic);
             } else {
-              LOGGER.info("Reopen partition {}_{} for reading after ready-to-serve.", kafkaVersionTopic, partition);
               storageEngineReloadedFromRepo.preparePartitionForReading(partition);
             }
           }
-          if (partitionConsumptionState.isCompletionReported()) {
-            // Completion has been reported so extraDisjunctionCondition must be true to enter here.
-            LOGGER.info(
-                "{} Partition {} synced offset: {}",
-                consumerTaskId,
-                partition,
-                partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
-          } else {
+          if (!partitionConsumptionState.isCompletionReported()) {
             reportCompleted(partitionConsumptionState);
             warmupSchemaCache(store);
           }
