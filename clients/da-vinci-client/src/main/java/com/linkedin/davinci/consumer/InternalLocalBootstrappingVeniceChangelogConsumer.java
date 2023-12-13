@@ -289,6 +289,11 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     return bootstrapCompletedCount;
   }
 
+  @VisibleForTesting
+  VeniceConcurrentHashMap<Integer, BootstrapState> getBootstrapStateMap() {
+    return bootstrapStateMap;
+  }
+
   /**
    * Polls change capture client and persist the results to local disk. Also updates the bootstrapStateMap with latest offsets
    * and if the client has caught up or not.
@@ -389,7 +394,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
                 partition);
           } else {
             localCheckpoint = VeniceChangeCoordinate.decodeStringAndConvertToVeniceChangeCoordinate(offsetString);
-            if (partition != localCheckpoint.getPartition()) {
+            if (!partition.equals(localCheckpoint.getPartition())) {
               throw new IllegalStateException(
                   String.format(
                       "Local checkpoint partition: %s doesn't match with targeted partition: %s",

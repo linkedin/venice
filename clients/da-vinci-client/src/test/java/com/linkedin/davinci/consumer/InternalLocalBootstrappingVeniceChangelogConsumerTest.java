@@ -26,6 +26,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -41,6 +42,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -52,9 +54,12 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.ChangeCaptureView;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -89,7 +94,11 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   private static final String TEST_OLD_VALUE_3 = "old_value_3";
   private static final String TEST_NEW_VALUE_3 = "new_value_3";
   private static final String TEST_BOOTSTRAP_FILE_SYSTEM_PATH = "/export/content/data/change-capture";
+  private static final String TEST_TOPIC = "testTopic";
   private static final int TEST_SCHEMA_ID = 1;
+  private static final int TEST_PARTITION_ID_0 = 0;
+  private static final long TEST_OFFSET_OLD = 1L;
+  private static final long TEST_OFFSET_NEW = 2L;
   private String storeName;
   private InternalLocalBootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer;
   private RecordSerializer<String> keySerializer;
@@ -278,6 +287,43 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     Assert.assertTrue(completed.get());
     Assert.assertEquals(state.bootstrapState, InternalLocalBootstrappingVeniceChangelogConsumer.PollState.CONSUMING);
     Assert.assertEquals(bootstrappingVeniceChangelogConsumer.getBootstrapCompletedCount(), 2);
+  }
+
+  @Test
+  public void testProcessRecordBytes_UpdatesBootstrapStateMap() throws IOException {
+    byte[] key = "key".getBytes();
+    byte[] valueBytes = "value".getBytes();
+    ByteBuffer value = mock(ByteBuffer.class);
+    when(value.array()).thenReturn(valueBytes);
+    RecordDeserializer deserializer = mock(RecordDeserializer.class);
+    RecordChangeEvent recordChangeEvent = new RecordChangeEvent();
+    recordChangeEvent.setCurrentValue(new ValueBytes(value, TEST_SCHEMA_ID));
+    when(deserializer.deserialize(value)).thenReturn(recordChangeEvent);
+    VeniceCompressor compressor = mock(VeniceCompressor.class);
+    when(compressor.decompress(value)).thenReturn(value);
+    PubSubTopicPartition partition = mock(PubSubTopicPartition.class);
+    when(partition.getPartitionNumber()).thenReturn(TEST_PARTITION_ID_0);
+    StorageService mockStorageService = mock(StorageService.class);
+    AbstractStorageEngine mockStorageEngine = mock(AbstractStorageEngine.class);
+    when(mockStorageService.getStorageEngine(anyString())).thenReturn(mockStorageEngine);
+    bootstrappingVeniceChangelogConsumer
+        .setStorageAndMetadataService(mockStorageService, mock(StorageMetadataService.class));
+    VeniceConcurrentHashMap<Integer, InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState> bootstrapStateMap =
+        bootstrappingVeniceChangelogConsumer.getBootstrapStateMap();
+    InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState bootstrapState =
+        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
+    bootstrapState.currentPubSubPosition =
+        new VeniceChangeCoordinate(TEST_TOPIC, new ApacheKafkaOffsetPosition(TEST_OFFSET_OLD), TEST_PARTITION_ID_0);
+    bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);
+
+    bootstrappingVeniceChangelogConsumer
+        .processRecordBytes(deserializer, compressor, key, value, partition, TEST_SCHEMA_ID, TEST_OFFSET_NEW);
+
+    Assert.assertEquals(
+        ((ApacheKafkaOffsetPosition) bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition())
+            .getOffset(),
+        TEST_OFFSET_NEW);
+    verify(mockStorageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
   }
 
   private void verifyPollResult(
