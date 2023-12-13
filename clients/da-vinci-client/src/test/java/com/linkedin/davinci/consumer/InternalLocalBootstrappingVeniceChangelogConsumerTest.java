@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
+import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -56,6 +57,7 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.ChangeCaptureView;
@@ -82,6 +84,7 @@ import org.testng.annotations.Test;
 
 
 public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
+  private static final String CHANGE_CAPTURE_COORDINATE = "ChangeCaptureCoordinatePosition";
   private static final String TEST_CLUSTER_NAME = "test_cluster";
   private static final String TEST_ZOOKEEPER_ADDRESS = "test_zookeeper";
   private static final String TEST_KEY_1 = "key_1";
@@ -97,6 +100,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   private static final String TEST_TOPIC = "testTopic";
   private static final int TEST_SCHEMA_ID = 1;
   private static final int TEST_PARTITION_ID_0 = 0;
+  private static final int TEST_PARTITION_ID_1 = 1;
+  private static final int TEST_PARTITION_ID_2 = 2;
   private static final long TEST_OFFSET_OLD = 1L;
   private static final long TEST_OFFSET_NEW = 2L;
   private String storeName;
@@ -324,6 +329,66 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .getOffset(),
         TEST_OFFSET_NEW);
     verify(mockStorageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
+  }
+
+  @Test
+  public void testStart_InvalidLocalCheckpoint_Throws() throws Exception {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
+    PubSubTopic changeCaptureTopic =
+        pubSubTopicRepository.getTopic(versionTopic.getName() + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+    PubSubTopicPartition topicPartition_0 = new PubSubTopicPartitionImpl(changeCaptureTopic, TEST_PARTITION_ID_0);
+    PubSubTopicPartition topicPartition_1 = new PubSubTopicPartitionImpl(changeCaptureTopic, TEST_PARTITION_ID_1);
+    Set<PubSubTopicPartition> assignments = ImmutableSet.of(topicPartition_0, topicPartition_1);
+    doReturn(assignments).when(pubSubConsumer).getAssignment();
+    doReturn(0L).when(pubSubConsumer).getLatestOffset(topicPartition_0);
+    doReturn(0L).when(pubSubConsumer).getLatestOffset(topicPartition_1);
+    doReturn(1L).when(pubSubConsumer).endOffset(topicPartition_0);
+    doReturn(1L).when(pubSubConsumer).endOffset(topicPartition_1);
+    when(pubSubConsumer.poll(anyLong())).thenReturn(new HashMap<>());
+
+    StorageService mockStorageService = mock(StorageService.class);
+    AbstractStorageEngine mockStorageEngine = mock(AbstractStorageEngine.class);
+    when(mockStorageService.getStorageEngine(anyString())).thenReturn(mockStorageEngine);
+    StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
+    OffsetRecord lastOffsetRecord = new OffsetRecord(mock(InternalAvroSpecificSerializer.class));
+    Map<String, String> databaseInfo = new HashMap<>();
+    databaseInfo.put(
+        CHANGE_CAPTURE_COORDINATE,
+        VeniceChangeCoordinate.convertVeniceChangeCoordinateToStringAndEncode(
+            new VeniceChangeCoordinate(
+                TEST_TOPIC,
+                new ApacheKafkaOffsetPosition(TEST_OFFSET_NEW),
+                TEST_PARTITION_ID_2)));
+    lastOffsetRecord.setDatabaseInfo(databaseInfo);
+    when(mockStorageMetadataService.getLastOffset(anyString(), anyInt())).thenReturn(lastOffsetRecord);
+    bootstrappingVeniceChangelogConsumer.setStorageAndMetadataService(mockStorageService, mockStorageMetadataService);
+    when(pubSubConsumer.poll(anyLong()))
+        .thenReturn(prepareChangeCaptureRecordsToBePolled(TEST_KEY_1, changeCaptureTopic, TEST_PARTITION_ID_0))
+        .thenReturn(prepareChangeCaptureRecordsToBePolled(TEST_KEY_2, changeCaptureTopic, TEST_PARTITION_ID_1));
+
+    try {
+      bootstrappingVeniceChangelogConsumer.start().get();
+    } catch (Exception e) {
+      Assert.assertTrue(e.getCause() instanceof IllegalStateException);
+      return;
+    }
+
+    Assert.fail();
+  }
+
+  @Test
+  public void testStop() throws Exception {
+    StorageService mockStorageService = mock(StorageService.class);
+    AbstractStorageEngine mockStorageEngine = mock(AbstractStorageEngine.class);
+    StorageMetadataService storageMetadataService = mock(StorageEngineMetadataService.class);
+    when(mockStorageService.getStorageEngine(anyString())).thenReturn(mockStorageEngine);
+    bootstrappingVeniceChangelogConsumer.setStorageAndMetadataService(mockStorageService, storageMetadataService);
+
+    bootstrappingVeniceChangelogConsumer.stop();
+
+    verify(mockStorageService, times(1)).stop();
+    verify((AbstractVeniceService) storageMetadataService, times(1)).stop();
+    verify(metadataRepository, times(1)).clear();
   }
 
   private void verifyPollResult(
