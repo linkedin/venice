@@ -3118,7 +3118,8 @@ public abstract class StoreIngestionTaskTest {
         storeConfig,
         leaderSubPartition,
         false,
-        Optional.empty());
+        Optional.empty(),
+        null);
     PartitionConsumptionState mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     doCallRealMethod().when(mockPartitionConsumptionState).isLeaderCompleted();
 
@@ -3285,7 +3286,8 @@ public abstract class StoreIngestionTaskTest {
             storeConfig,
             leaderSubPartition,
             false,
-            Optional.empty());
+            Optional.empty(),
+            null);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     PartitionConsumptionState partitionConsumptionState =
