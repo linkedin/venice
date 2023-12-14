@@ -149,7 +149,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
         if (!retryFuture.isCancelled() && RETRIABLE_ERROR_CODES.contains(statusCode)) {
           retryFuture.setSuccess(HttpResponseStatus.valueOf(statusCode));
           AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
-          stats.recordRetryCount(storeName);
+          stats.recordErrorRetryCount(storeName);
           return;
         }
 
