@@ -37,6 +37,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
@@ -219,6 +220,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int daVinciPushStatusScanIntervalInSeconds;
 
   private final int daVinciPushStatusScanThreadNumber;
+
+  private final boolean enableDisabledReplicaEnabled;
 
   private final int daVinciPushStatusScanNoReportRetryMaxAttempt;
 
@@ -526,6 +529,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
     this.isKMERegistrationFromMessageHeaderEnabled =
         props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
+    this.enableDisabledReplicaEnabled = props.getBoolean(CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED, false);
 
     try {
       String producerFactoryClassName =
@@ -697,6 +701,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getAdminConsumptionTimeoutMinutes() {
     return adminConsumptionTimeoutMinute;
+  }
+
+  public boolean isEnableDisabledReplicaEnabled() {
+    return enableDisabledReplicaEnabled;
   }
 
   public long getAdminConsumptionCycleTimeoutMs() {
