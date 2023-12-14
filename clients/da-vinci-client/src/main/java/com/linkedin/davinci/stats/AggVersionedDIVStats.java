@@ -56,20 +56,6 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordSuccessMsg);
   }
 
-  public void recordLatencies(
-      String storeName,
-      int version,
-      long currentTimeMs,
-      double producerBrokerLatencyMs,
-      double brokerConsumerLatencyMs,
-      double producerConsumerLatencyMs) {
-    recordVersionedAndTotalStat(storeName, version, stat -> {
-      stat.recordProducerBrokerLatencyMs(producerBrokerLatencyMs, currentTimeMs);
-      stat.recordBrokerConsumerLatencyMs(brokerConsumerLatencyMs, currentTimeMs);
-      stat.recordProducerConsumerLatencyMs(producerConsumerLatencyMs, currentTimeMs);
-    });
-  }
-
   public void recordLeaderLatencies(
       String storeName,
       int version,
