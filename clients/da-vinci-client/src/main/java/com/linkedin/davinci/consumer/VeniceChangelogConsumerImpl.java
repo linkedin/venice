@@ -607,7 +607,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 compressor,
                 null),
             pubSubTopicPartition,
-            readerSchemaId);
+            readerSchemaId,
+            recordOffset);
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
         // can actually happen if the client seeks to the middle of a chunked record either by
@@ -627,7 +628,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             keyBytes,
             valueBytes,
             pubSubTopicPartition,
-            readerSchemaId);
+            readerSchemaId,
+            recordOffset);
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
@@ -651,7 +653,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       byte[] key,
       ByteBuffer value,
       PubSubTopicPartition partition,
-      int valueSchemaId) throws IOException {
+      int valueSchemaId,
+      long recordOffset) throws IOException {
     return deserializer.deserialize(compressor.decompress(value));
   }
 
