@@ -22,10 +22,8 @@ public class TestRecordTransformer implements DaVinciRecordTransformer<Integer, 
   }
 
   public TransformedRecord put(Lazy<Integer> key, Lazy<Integer> value) {
-    Integer valueInteger = value.get();
-    Integer transformedValue = valueInteger * 100;
     TransformedRecord transformedRecord = new TransformedRecord<Integer, Integer>();
-    transformedRecord.setValue(transformedValue);
+    transformedRecord.setValue(value.get() * 100);
 
     return transformedRecord;
   }
