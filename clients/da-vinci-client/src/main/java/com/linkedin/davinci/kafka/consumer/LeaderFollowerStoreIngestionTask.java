@@ -98,7 +98,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -1620,17 +1619,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       return measureRTOffsetLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
     }
-  }
-
-  protected long measureRTOffsetLagForSingleRegion(
-      String sourceRealTimeTopicKafkaURL,
-      PartitionConsumptionState partitionConsumptionState,
-      boolean shouldLogLag) {
-    return getLatestLeaderPersistedOffsetAndHybridTopicOffset(
-        sourceRealTimeTopicKafkaURL,
-        partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
-        partitionConsumptionState,
-        shouldLogLag);
   }
 
   protected long measureRTOffsetLagForMultiRegions(
@@ -3222,34 +3210,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long apply(String sourceKafkaUrl, PubSubTopic upstreamTopic);
   }
 
+  private boolean isIngestingSystemStore() {
+    return VeniceSystemStoreUtils.isSystemStore(storeName);
+  }
+
   /**
    * This method fetches/calculates latest leader persisted offset and last offset in RT topic. The method relies on
    * {@link #getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState, String)} to fetch
    * latest leader persisted offset for different data replication policy.
    * @return the lag (lastOffsetInRealTimeTopic - latestPersistedLeaderOffset)
    */
-  protected long getLatestLeaderPersistedOffsetAndHybridTopicOffset(
+  protected long measureRTOffsetLagForSingleRegion(
       String sourceRealTimeTopicKafkaURL,
-      PubSubTopic leaderTopic,
       PartitionConsumptionState pcs,
-      boolean shouldLog) {
-    return getLatestLeaderOffsetAndHybridTopicOffset(
-        sourceRealTimeTopicKafkaURL,
-        leaderTopic,
-        pcs,
-        this::getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement,
-        shouldLog);
-  }
-
-  private boolean isIngestingSystemStore() {
-    return VeniceSystemStoreUtils.isSystemStore(storeName);
-  }
-
-  private long getLatestLeaderOffsetAndHybridTopicOffset(
-      String sourceRealTimeTopicKafkaURL,
-      PubSubTopic leaderTopic,
-      PartitionConsumptionState pcs,
-      BiFunction<PartitionConsumptionState, String, Long> getLeaderLatestOffset,
       boolean shouldLog) {
     int partition = pcs.getPartition();
     long latestLeaderOffset;
@@ -3273,7 +3246,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       for (int i = 0; i < subPartitions.size(); i++) {
         subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartitions.getInt(i));
         if (subPartitionConsumptionState != null && subPartitionConsumptionState.getOffsetRecord() != null) {
-          upstreamOffset = getLeaderLatestOffset.apply(subPartitionConsumptionState, sourceRealTimeTopicKafkaURL);
+          upstreamOffset = getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
+              subPartitionConsumptionState,
+              sourceRealTimeTopicKafkaURL);
           if (upstreamOffset > latestLeaderOffset) {
             latestLeaderOffset = upstreamOffset;
           }
@@ -3281,8 +3256,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     } else {
       partitionToGetLatestOffsetFor = partition;
-      latestLeaderOffset = getLeaderLatestOffset.apply(pcs, sourceRealTimeTopicKafkaURL);
+      latestLeaderOffset =
+          getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, sourceRealTimeTopicKafkaURL);
     }
+
+    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
 
     long offsetFromConsumer =
         getPartitionLatestOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partitionToGetLatestOffsetFor);
