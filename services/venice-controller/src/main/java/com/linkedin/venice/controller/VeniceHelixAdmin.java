@@ -4868,10 +4868,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     enableDisabledPartition(clusterName, kafkaTopic, false);
   }
 
-  public boolean enableDisabledPartition(String clusterName, String kafkaTopic, boolean enableAll) {
+  public void enableDisabledPartition(String clusterName, String kafkaTopic, boolean enableAll) {
     List<String> instances = getStorageNodes(clusterName);
     Map<String, List<String>> disabledPartitions;
-    boolean didOne = false;
     for (String instance: instances) {
       try {
         disabledPartitions = getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
@@ -4888,11 +4887,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           getDisabledPartitionStats(clusterName).recordClearDisabledPartition();
           getHelixAdminClient().enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
           LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
-          didOne = true;
         }
       }
     }
-    return didOne;
   }
 
   /**
