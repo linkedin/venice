@@ -132,6 +132,13 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     }
   }
 
+  public void recordRetryCount(String storeName) {
+    totalStats.recordRetryCount();
+    if (storeName != null) {
+      getStoreStats(storeName).recordRetryCount();
+    }
+  }
+
   public void recordFanoutRequestCount(String storeName, int count) {
     totalStats.recordFanoutRequestCount(count);
     getStoreStats(storeName).recordFanoutRequestCount(count);
