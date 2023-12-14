@@ -109,21 +109,6 @@ public class AggVersionedDIVStatsTest {
 
     long consumerTimestampMs = System.currentTimeMillis();
     double v1ProducerBrokerLatencyMs = 801d;
-    double v1BrokerConsumerLatencyMs = 201d;
-    double v1ProducerConsumerLatencyMs = 1001d;
-    stats.recordLatencies(
-        storeName,
-        1,
-        consumerTimestampMs,
-        v1ProducerBrokerLatencyMs,
-        v1BrokerConsumerLatencyMs,
-        v1ProducerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--producer_to_consumer_latency_avg_ms.DIVStatsCounter").value(),
-        v1ProducerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--producer_to_consumer_latency_max_ms.DIVStatsCounter").value(),
-        v1ProducerConsumerLatencyMs);
 
     double v1ProducerToSourceBrokerLatencyMs = 811d;
     double v1SourceBrokerToLeaderConsumerLatencyMs = 211d;
@@ -168,34 +153,13 @@ public class AggVersionedDIVStatsTest {
     mockStore.addVersion(version2);
 
     stats.recordDuplicateMsg(storeName, 2);
-    double v2ProducerBrokerLatencyMs = 802d;
     double v2BrokerConsumerLatencyMs = 202d;
-    double v2ProducerConsumerLatencyMs = 1002d;
-    stats.recordLatencies(
-        storeName,
-        2,
-        consumerTimestampMs,
-        v2ProducerBrokerLatencyMs,
-        v2BrokerConsumerLatencyMs,
-        v2ProducerConsumerLatencyMs);
     stats.handleStoreChanged(mockStore);
 
     // expect to see v1's stats on current reporter and v2's stats on future reporter
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 2d);
     Assert.assertEquals(reporter.query("." + storeName + "--current_version.VersionStat").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 1d);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_current--producer_to_broker_latency_avg_ms.DIVStatsCounter").value(),
-        v1ProducerBrokerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_current--producer_to_broker_latency_max_ms.DIVStatsCounter").value(),
-        v1ProducerBrokerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--broker_to_consumer_latency_avg_ms.DIVStatsCounter").value(),
-        v2BrokerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--broker_to_consumer_latency_max_ms.DIVStatsCounter").value(),
-        v2BrokerConsumerLatencyMs);
 
     double v2ProducerToSourceBrokerLatencyMs = 812d;
     double v2SourceBrokerToLeaderConsumerLatencyMs = 212d;
@@ -263,12 +227,6 @@ public class AggVersionedDIVStatsTest {
 
     // expect to see v2's stats on current reporter and v1's stats on backup reporter
     Assert.assertEquals(reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsCounter").value(), 1d);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_current--broker_to_consumer_latency_avg_ms.DIVStatsCounter").value(),
-        v2BrokerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_current--broker_to_consumer_latency_max_ms.DIVStatsCounter").value(),
-        v2BrokerConsumerLatencyMs);
 
     // v3 finishes pushing and the status becomes to be online
     Version version3 = new VersionImpl(storeName, 3);

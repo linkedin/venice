@@ -1860,13 +1860,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             brokerConsumerLatencyMs,
             producerConsumerLatencyMs);
       }
-    } else {
-      super.recordWriterStats(
-          consumerTimestampMs,
-          producerBrokerLatencyMs,
-          brokerConsumerLatencyMs,
-          producerConsumerLatencyMs,
-          partitionConsumptionState);
     }
   }
 
