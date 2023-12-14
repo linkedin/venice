@@ -5,8 +5,11 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 
 
 public class VeniceRequestEarlyTerminationException extends VeniceException {
+  private final String storeName;
+
   public VeniceRequestEarlyTerminationException(String storeName) {
     super("The request to store: " + storeName + " is terminated because of early termination setup");
+    this.storeName = storeName;
   }
 
   @Override
@@ -16,5 +19,9 @@ public class VeniceRequestEarlyTerminationException extends VeniceException {
 
   public static HttpResponseStatus getHttpResponseStatus() {
     return HttpResponseStatus.REQUEST_TIMEOUT;
+  }
+
+  public String getStoreName() {
+    return storeName;
   }
 }

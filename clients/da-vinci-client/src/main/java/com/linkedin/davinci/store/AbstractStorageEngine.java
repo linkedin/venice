@@ -356,7 +356,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     tmpList.parallelStream().forEach(Partition::close);
     LOGGER.info(
         "Closing {} rockDB partitions of store {} took {} ms",
-        partitionList.size(),
+        tmpList.size(),
         storeName,
         LatencyUtils.getElapsedTimeInMs(startTime));
     partitionList.clear();
