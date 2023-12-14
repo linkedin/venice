@@ -46,6 +46,9 @@ public class VeniceController {
   private AdminSparkServer secureAdminServer;
   private TopicCleanupService topicCleanupService;
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
+
+  private Optional<DisabledPartitionEnablerService> disabledPartitionEnablerService;
+
   private Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
   private Optional<SystemStoreRepairService> systemStoreRepairService;
 
@@ -176,6 +179,7 @@ public class VeniceController {
     storeBackupVersionCleanupService = Optional.empty();
     storeGraveyardCleanupService = Optional.empty();
     systemStoreRepairService = Optional.empty();
+    disabledPartitionEnablerService = Optional.empty();
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
       topicCleanupService =
@@ -201,6 +205,9 @@ public class VeniceController {
       storeBackupVersionCleanupService = Optional
           .of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs, metricsRepository));
       LOGGER.info("StoreBackupVersionCleanupService is enabled");
+
+      disabledPartitionEnablerService =
+          Optional.of(new DisabledPartitionEnablerService((VeniceHelixAdmin) admin, multiClusterConfigs));
     }
     // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
     initializeSystemSchema(controllerService.getVeniceHelixAdmin());
@@ -224,6 +231,7 @@ public class VeniceController {
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
+    disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
       serviceDiscoveryAnnouncer.register();
@@ -285,6 +293,7 @@ public class VeniceController {
     systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    disabledPartitionEnablerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
     Utils.closeQuietlyWithErrorLogged(adminServer);
