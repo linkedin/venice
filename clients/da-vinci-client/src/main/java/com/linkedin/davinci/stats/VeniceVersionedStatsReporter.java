@@ -27,8 +27,10 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
 
     this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
 
-    registerSensor("current_version", new Gauge(() -> currentVersion));
-    registerSensor("future_version", new Gauge(() -> futureVersion));
+    if (!isSystemStore) {
+      registerSensor("current_version", new Gauge(() -> currentVersion));
+      registerSensor("future_version", new Gauge(() -> futureVersion));
+    }
 
     this.currentStatsReporter = statsSupplier.get(metricsRepository, storeName + "_current");
     if (!isSystemStore) {
