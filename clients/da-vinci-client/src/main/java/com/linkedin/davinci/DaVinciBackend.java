@@ -3,6 +3,7 @@ package com.linkedin.davinci;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static java.lang.Thread.currentThread;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -104,7 +105,8 @@ public class DaVinciBackend implements Closeable {
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Optional<ObjectCacheConfig> cacheConfig) {
+      Optional<ObjectCacheConfig> cacheConfig,
+      DaVinciRecordTransformer recordTransformer) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -251,6 +253,7 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
+          recordTransformer,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,

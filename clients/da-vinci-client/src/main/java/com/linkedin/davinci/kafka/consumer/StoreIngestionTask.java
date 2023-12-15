@@ -9,6 +9,8 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.TransformedRecord;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -295,6 +297,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StatusReportAdapter statusReportAdapter;
 
   private final Optional<ObjectCacheBackend> cacheBackend;
+  private final DaVinciRecordTransformer recordTransformer;
   private final Runnable runnableForKillIngestionTasksForMissingSOP;
 
   protected final String localKafkaServer;
@@ -332,6 +335,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
+      DaVinciRecordTransformer recordTransformer,
       Queue<VeniceNotifier> notifiers) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -431,6 +435,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.runnableForKillIngestionTasksForMissingSOP = () -> waitForStateVersion(kafkaVersionTopic);
     this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
     this.cacheBackend = cacheBackend;
+    this.recordTransformer = recordTransformer;
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
@@ -3074,14 +3079,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
-        prependHeaderAndWriteToStorageEngine(
-            // Leaders might consume from a RT topic and immediately write into StorageEngine,
-            // so we need to re-calculate partition.
-            // Followers are not affected since they are always consuming from VTs.
-            producedPartition,
-            keyBytes,
-            put,
-            currentTimeMs);
+
+        // Do transorfmation recompute key, value and partition
+        if (recordTransformer != null) {
+          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
+          SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, put.schemaId);
+          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
+          Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(put.putValue, valueSchema));
+          TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
+          ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
+          put.putValue = transformedBytes;
+          writeToStorageEngine(producedPartition, keyBytes, put, currentTimeMs);
+        } else {
+
+          prependHeaderAndWriteToStorageEngine(
+              // Leaders might consume from a RT topic and immediately write into StorageEngine,
+              // so we need to re-calculate partition.
+              // Followers are not affected since they are always consuming from VTs.
+              producedPartition,
+              keyBytes,
+              put,
+              currentTimeMs);
+        }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
         if (put.schemaId > 0) {
@@ -3099,7 +3118,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
         keyLen = keyBytes.length;
-
         removeFromStorageEngine(producedPartition, keyBytes, delete);
         if (cacheBackend.isPresent()) {
           if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
@@ -3300,6 +3318,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Value deserialization succeeded with schema id {} for: {}", schemaId, record.getTopicPartition());
       deserializedSchemaIds.set(schemaId, new Object());
     }
+  }
+
+  private Object deserializeAvroObjectAndReturn(ByteBuffer input, SchemaEntry schemaEntry) {
+    return new AvroGenericDeserializer<>(schemaEntry.getSchema(), schemaEntry.getSchema()).deserialize(input);
   }
 
   private void maybeCloseInactiveIngestionTask() {

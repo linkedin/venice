@@ -16,6 +16,7 @@ import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
@@ -188,7 +189,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
       boolean isIsolatedIngestion,
-      Optional<ObjectCacheBackend> cacheBackend) {
+      Optional<ObjectCacheBackend> cacheBackend,
+      DaVinciRecordTransformer recordTransformer) {
     super(
         builder,
         store,
@@ -199,6 +201,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         errorPartitionId,
         isIsolatedIngestion,
         cacheBackend,
+        recordTransformer,
         builder.getLeaderFollowerNotifiers());
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the

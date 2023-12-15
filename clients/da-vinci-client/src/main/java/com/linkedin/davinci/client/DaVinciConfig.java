@@ -34,6 +34,11 @@ public class DaVinciConfig {
   private ObjectCacheConfig cacheConfig;
 
   /**
+   * Record transformer reference
+   */
+  private DaVinciRecordTransformer recordTransformer;
+
+  /**
    * Whether to enable read-path metrics.
    * Metrics are expensive compared with the DaVinci performance and this feature should be disabled for
    * the high throughput use cases.
@@ -97,12 +102,25 @@ public class DaVinciConfig {
     return cacheConfig != null;
   }
 
+  public boolean isRecordTransformerEnabled() {
+    return recordTransformer != null;
+  }
+
   public ObjectCacheConfig getCacheConfig() {
     return cacheConfig;
   }
 
   public DaVinciConfig setCacheConfig(ObjectCacheConfig cacheConfig) {
     this.cacheConfig = cacheConfig;
+    return this;
+  }
+
+  public DaVinciRecordTransformer getRecordTransformer() {
+    return recordTransformer;
+  }
+
+  public DaVinciConfig setRecordTransformer(DaVinciRecordTransformer recordTransformer) {
+    this.recordTransformer = recordTransformer;
     return this;
   }
 

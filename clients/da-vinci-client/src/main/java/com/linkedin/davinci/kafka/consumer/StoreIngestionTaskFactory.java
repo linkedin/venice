@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -47,7 +48,8 @@ public class StoreIngestionTaskFactory {
       VeniceStoreVersionConfig storeConfig,
       int partitionId,
       boolean isIsolatedIngestion,
-      Optional<ObjectCacheBackend> cacheBackend) {
+      Optional<ObjectCacheBackend> cacheBackend,
+      DaVinciRecordTransformer recordTransformer) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
           builder,
@@ -58,7 +60,8 @@ public class StoreIngestionTaskFactory {
           storeConfig,
           partitionId,
           isIsolatedIngestion,
-          cacheBackend);
+          cacheBackend,
+          recordTransformer);
     }
     return new LeaderFollowerStoreIngestionTask(
         builder,
@@ -69,7 +72,8 @@ public class StoreIngestionTaskFactory {
         storeConfig,
         partitionId,
         isIsolatedIngestion,
-        cacheBackend);
+        cacheBackend,
+        recordTransformer);
   }
 
   /**

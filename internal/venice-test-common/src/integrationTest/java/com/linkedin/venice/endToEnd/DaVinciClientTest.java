@@ -203,6 +203,32 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
+    // Test record transformation
+    TestRecordTransformer recordTransformer = new TestRecordTransformer();
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
+      DaVinciClient<Integer, Object> clientWithRecordTransformer =
+          factory.getAndStartGenericAvroClient(storeName1, clientConfig.setRecordTransformer(recordTransformer));
+      recordTransformer.setOriginalSchema(Schema.parse(DEFAULT_VALUE_SCHEMA));
+
+      // Test non-existent key access
+      clientWithRecordTransformer.subscribeAll().get();
+      assertNull(clientWithRecordTransformer.get(KEY_COUNT + 1).get());
+
+      // Test single-get access
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(clientWithRecordTransformer.get(k).get(), 100);
+      }
+      clientWithRecordTransformer.unsubscribeAll();
+    }
+
+    if (clientConfig.isRecordTransformerEnabled()) {
+      clientConfig.setRecordTransformer(null);
+    }
+
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,

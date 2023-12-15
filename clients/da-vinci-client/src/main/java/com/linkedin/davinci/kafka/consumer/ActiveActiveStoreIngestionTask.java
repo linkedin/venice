@@ -7,6 +7,7 @@ import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STA
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
@@ -111,7 +112,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
       boolean isIsolatedIngestion,
-      Optional<ObjectCacheBackend> cacheBackend) {
+      Optional<ObjectCacheBackend> cacheBackend,
+      DaVinciRecordTransformer recordTransformer) {
     super(
         builder,
         store,
@@ -121,7 +123,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         storeConfig,
         errorPartitionId,
         isIsolatedIngestion,
-        cacheBackend);
+        cacheBackend,
+        recordTransformer);
 
     this.rmdProtocolVersionId = version.getRmdVersionId();
 
