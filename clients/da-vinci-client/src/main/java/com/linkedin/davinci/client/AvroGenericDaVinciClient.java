@@ -679,13 +679,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Optional<ObjectCacheConfig> cacheConfig) {
+      Optional<ObjectCacheConfig> cacheConfig,
+      DaVinciRecordTransformer recordTransformer) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         logger
             .info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
         daVinciBackend = new ReferenceCounted<>(
-            new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig),
+            new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig, recordTransformer),
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
@@ -721,7 +722,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     logger.info("Starting client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
-    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
+    initBackend(
+        clientConfig,
+        configLoader,
+        managedClients,
+        icProvider,
+        cacheConfig,
+        daVinciConfig.getRecordTransformer());
 
     try {
       if (!getBackend().compareCacheConfig(cacheConfig)) {
