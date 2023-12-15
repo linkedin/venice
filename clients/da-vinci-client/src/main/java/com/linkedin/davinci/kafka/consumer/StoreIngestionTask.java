@@ -2807,15 +2807,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long brokerConsumerLatencyMs,
       long producerConsumerLatencyMs,
       PartitionConsumptionState partitionConsumptionState) {
-    if (!isUserSystemStore) {
-      versionedDIVStats.recordLatencies(
-          storeName,
-          versionNumber,
-          consumerTimestampMs,
-          producerBrokerLatencyMs,
-          brokerConsumerLatencyMs,
-          producerConsumerLatencyMs);
-    }
+
   }
 
   /**

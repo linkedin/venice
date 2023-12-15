@@ -12,9 +12,6 @@ import java.util.concurrent.atomic.LongAdder;
  */
 public class DIVStats {
   private final MetricConfig metricConfig = new MetricConfig();
-  private final WritePathLatencySensor producerBrokerLatencySensor;
-  private final WritePathLatencySensor brokerConsumerLatencySensor;
-  private final WritePathLatencySensor producerConsumerLatencySensor;
   private final WritePathLatencySensor producerSourceBrokerLatencySensor;
   private final WritePathLatencySensor sourceBrokerLeaderConsumerLatencySensor;
   private final WritePathLatencySensor producerLeaderConsumerLatencySensor;
@@ -43,14 +40,6 @@ public class DIVStats {
      * Creating this separate local metric repository only to utilize the sensor library and not for reporting.
      */
     MetricsRepository localRepository = new MetricsRepository(metricConfig);
-
-    // TODO Remove the three metrics below when NR is fully rolled out, since these metrics only apply to non-NR.
-    producerBrokerLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "producer_to_broker_latency");
-    brokerConsumerLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "broker_to_consumer_latency");
-    producerConsumerLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "producer_to_consumer_latency");
 
     // NR metrics below:
     producerSourceBrokerLatencySensor =
@@ -119,32 +108,8 @@ public class DIVStats {
     this.successMsg.add(count);
   }
 
-  public void recordProducerBrokerLatencyMs(double value, long currentTimeMs) {
-    producerBrokerLatencySensor.record(value, currentTimeMs);
-  }
-
-  public WritePathLatencySensor getProducerBrokerLatencySensor() {
-    return producerBrokerLatencySensor;
-  }
-
   public WritePathLatencySensor getProducerSourceBrokerLatencySensor() {
     return producerSourceBrokerLatencySensor;
-  }
-
-  public void recordBrokerConsumerLatencyMs(double value, long currentTimeMs) {
-    brokerConsumerLatencySensor.record(value, currentTimeMs);
-  }
-
-  public WritePathLatencySensor getBrokerConsumerLatencySensor() {
-    return brokerConsumerLatencySensor;
-  }
-
-  public void recordProducerConsumerLatencyMs(double value, long currentTimeMs) {
-    producerConsumerLatencySensor.record(value, currentTimeMs);
-  }
-
-  public WritePathLatencySensor getProducerConsumerLatencySensor() {
-    return producerConsumerLatencySensor;
   }
 
   public void recordProducerSourceBrokerLatencyMs(double value, long currentTimeMs) {
