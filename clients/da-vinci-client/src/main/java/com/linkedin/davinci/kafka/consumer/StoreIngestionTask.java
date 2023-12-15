@@ -3126,17 +3126,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
         keyLen = keyBytes.length;
-        // Commenting out, since only supporting value transformation for now deleting a key should be the same
-        // if (recordTransformer != null) {
-        // SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-        // Lazy<Object> lazyKey =
-        // Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-        // TransformedRecord keptRecord = recordTransformer.delete(lazyKey);
-        // int newProducedPartition = venicePartitioner.getPartitionId(keyBytes, subPartitionCount);
-        // removeFromStorageEngine(newProducedPartition, keyBytes, delete);
-        // } else {
         removeFromStorageEngine(producedPartition, keyBytes, delete);
-        // }
         if (cacheBackend.isPresent()) {
           if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
             cacheBackend.get().getStorageEngine(kafkaVersionTopic).delete(producedPartition, keyBytes);
