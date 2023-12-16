@@ -667,7 +667,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)
-        .put("record.transformer.value.schema", daVinciConfig.getRecordTransformer().getValueOutputSchema().toString())
+        .put(
+            "record.transformer.value.schema",
+            daVinciConfig.getRecordTransformer() != null
+                ? daVinciConfig.getRecordTransformer().getValueOutputSchema().toString()
+                : "null")
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + INGESTION_MEMORY_LIMIT, -1) // Explicitly disable memory limiter
                                                                                    // in Isolated Process
         .build();
