@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.RECORD_TRANSFORMER_VALUE_SCHEMA;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER;
@@ -668,7 +669,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)
         .put(
-            "record.transformer.value.schema",
+            RECORD_TRANSFORMER_VALUE_SCHEMA,
             daVinciConfig.getRecordTransformer() != null
                 ? daVinciConfig.getRecordTransformer().getValueOutputSchema().toString()
                 : "null")

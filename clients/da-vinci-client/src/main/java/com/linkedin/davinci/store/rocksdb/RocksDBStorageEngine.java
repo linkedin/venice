@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.RECORD_TRANSFORMER_VALUE_SCHEMA;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -215,7 +216,9 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
         VeniceProperties persistedStorageEngineConfig = Utils.parseProperties(storeEngineConfig);
         LOGGER.info("Found storage engine configs: {}", persistedStorageEngineConfig.toString(true));
         boolean usePlainTableFormat = persistedStorageEngineConfig.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
-        String transformerValueSchema = persistedStorageEngineConfig.getString("record.transformer.value.schema");
+        String transformerValueSchema = persistedStorageEngineConfig.containsKey(RECORD_TRANSFORMER_VALUE_SCHEMA)
+            ? persistedStorageEngineConfig.getString(RECORD_TRANSFORMER_VALUE_SCHEMA)
+            : "null";
         if (usePlainTableFormat != rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
           String existingTableFormat = usePlainTableFormat ? "PlainTable" : "BlockBasedTable";
           String newTableFormat =
