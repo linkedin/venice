@@ -215,6 +215,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
         VeniceProperties persistedStorageEngineConfig = Utils.parseProperties(storeEngineConfig);
         LOGGER.info("Found storage engine configs: {}", persistedStorageEngineConfig.toString(true));
         boolean usePlainTableFormat = persistedStorageEngineConfig.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
+        String transformerValueSchema = persistedStorageEngineConfig.getString("record.transformer.value.schema");
         if (usePlainTableFormat != rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
           String existingTableFormat = usePlainTableFormat ? "PlainTable" : "BlockBasedTable";
           String newTableFormat =
@@ -223,6 +224,13 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
               "Tried to open an existing {} RocksDB format engine with table format option: {}. Will remove the content and recreate the folder.",
               existingTableFormat,
               newTableFormat);
+          return true;
+        }
+        if (!transformerValueSchema.equals(rocksDBServerConfig.getTransformerValueSchema())) {
+          LOGGER.warn(
+              "Tried to open an existing RocksDB engine with transformer schema: {} but already exists with schema {}. Will remove the content and recreate the folder.",
+              rocksDBServerConfig.getTransformerValueSchema(),
+              transformerValueSchema);
           return true;
         }
       } catch (IOException e) {

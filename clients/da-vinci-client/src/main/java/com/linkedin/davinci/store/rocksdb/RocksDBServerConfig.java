@@ -268,6 +268,7 @@ public class RocksDBServerConfig {
   private int blockBaseFormatVersion;
   private final int maxLogFileNum;
   private final long maxLogFileSize;
+  private final String transformerValueSchema;
 
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
@@ -380,6 +381,7 @@ public class RocksDBServerConfig {
      */
     this.maxLogFileNum = props.getInt(ROCKSDB_MAX_LOG_FILE_NUM, 3);
     this.maxLogFileSize = props.getSizeInBytes(ROCKSDB_MAX_LOG_FILE_SIZE, 10 * 1024 * 1024); // 10MB;
+    this.transformerValueSchema = props.getString("record.transformer.value.schema");
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {
@@ -568,4 +570,9 @@ public class RocksDBServerConfig {
   public long getMaxLogFileSize() {
     return maxLogFileSize;
   }
+
+  public String getTransformerValueSchema() {
+    return transformerValueSchema;
+  }
+
 }
