@@ -28,7 +28,6 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.DaVinciUserApp;
@@ -75,12 +74,11 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
-import io.tehuti.metrics.AsyncGaugeConfig;
-import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -741,7 +739,7 @@ public class DaVinciClientTest {
     // Since the previous DaVinci client is closed, the static default Gauge metric measurement thread pool is also
     // shutdown. In order to continue calculating Gauge metrics values in the new client, create a new thread pool
     MetricsRepository metricsRepository =
-        new MetricsRepository(new MetricConfig(new AsyncGaugeConfig(Executors.newSingleThreadExecutor(), 10000, 50)));
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository("da-vinci_test_async_gauge_thread", 10000, 50);
     DaVinciTestContext<Integer, Object> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,

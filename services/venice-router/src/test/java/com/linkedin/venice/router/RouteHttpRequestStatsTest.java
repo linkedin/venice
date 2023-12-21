@@ -2,14 +2,11 @@ package com.linkedin.venice.router;
 
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import io.tehuti.metrics.AsyncGaugeConfig;
-import io.tehuti.metrics.MetricConfig;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -21,8 +18,8 @@ public class RouteHttpRequestStatsTest {
 
   @BeforeSuite
   public void setUp() {
-    MetricsRepository metrics = new MetricsRepository(
-        new MetricConfig(new AsyncGaugeConfig(Executors.newSingleThreadExecutor(), TimeUnit.MINUTES.toMillis(1), 100)));
+    MetricsRepository metrics =
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository("router_test_async_gauge_thread");
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
 

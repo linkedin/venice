@@ -13,14 +13,11 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.AsyncGaugeConfig;
-import io.tehuti.metrics.MetricConfig;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
@@ -145,12 +142,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
     if (metricsRepository == null) {
-      metricsRepository = new MetricsRepository(
-          new MetricConfig(
-              new AsyncGaugeConfig(
-                  Executors.newFixedThreadPool(10, new DaemonThreadFactory("client_async_gauge_thread")),
-                  TimeUnit.MINUTES.toMillis(1),
-                  100)));
+      metricsRepository = MetricsRepositoryUtils.createMultiThreadedMetricsRepository("client_async_gauge_thread");
     }
     // TODO consider changing the implementation or make it explicit that the config builder can only build once with
     // the same metricsRepository

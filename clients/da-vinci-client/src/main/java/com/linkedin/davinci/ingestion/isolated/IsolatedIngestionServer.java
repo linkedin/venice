@@ -50,7 +50,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -58,6 +57,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -65,8 +65,6 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.tehuti.metrics.AsyncGaugeConfig;
-import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
@@ -658,12 +656,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         new ClientConfig().setD2Client(d2Client).setD2ServiceName(clusterDiscoveryD2ServiceName);
 
     // Create MetricsRepository
-    metricsRepository = new MetricsRepository(
-        new MetricConfig(
-            new AsyncGaugeConfig(
-                Executors.newFixedThreadPool(10, new DaemonThreadFactory("client_async_gauge_thread")),
-                TimeUnit.MINUTES.toMillis(1),
-                100)));
+    metricsRepository =
+        MetricsRepositoryUtils.createMultiThreadedMetricsRepository("Isolated_server_async_gauge_thread");
 
     // Initialize store/schema repositories.
     VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
