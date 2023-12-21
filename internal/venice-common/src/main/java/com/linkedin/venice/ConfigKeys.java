@@ -2095,23 +2095,4 @@ public class ConfigKeys {
       "server.dedicated.consumer.pool.for.aa.wc.leader.enabled";
   public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER =
       "server.dedicated.consumer.pool.size.for.aa.wc.leader";
-
-  /*
-   * The size of the thread pool for AsyncGauge metric value measurement.
-   */
-  public static final String ASYNC_GAUGE_MEASUREMENT_THREAD_COUNT = "async.gauge.measurement.thread.count";
-
-  /**
-   * The maximum timeout in milliseconds for AsyncGauge metric value measurement.
-   * If this timeout is reached, the measurement will be canceled, a new measurement task will be submitted, and the
-   * cached metric value from the previous measurement (if any; otherwise 0) will be returned.
-   */
-  public static final String ASYNC_GAUGE_MEASUREMENT_MAX_TIMEOUT_IN_MS = "async.gauge.measurement.max.timeout.in.ms";
-
-  /**
-   * Whenever a new AsyncGauge metric value measurement task is submitted, the caller thread will wait for at least
-   * this amount of time before returning the cached metric value from the previous measurement (if any; otherwise 0).
-   */
-  public static final String ASYNC_GAUGE_MEASUREMENT_INITIAL_TIMEOUT_IN_MS =
-      "async.gauge.measurement.initial.timeout.in.ms";
 }
