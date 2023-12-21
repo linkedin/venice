@@ -40,7 +40,10 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
 
   @Override
   protected Sensor registerSensor(NamedMeasurableStat... stats) {
-    String sensorName = stats.length > 0 ? stats[0].getStatName() : "NO_NAME";
+    if (stats.length == 0) {
+      throw new IllegalArgumentException("At least one stat must be provided");
+    }
+    String sensorName = stats[0].getStatName();
     return super.registerSensor(getFullMetricName(sensorName), stats);
   }
 

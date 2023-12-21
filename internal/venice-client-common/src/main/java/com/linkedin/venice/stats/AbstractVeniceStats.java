@@ -54,7 +54,10 @@ public class AbstractVeniceStats {
   }
 
   protected Sensor registerSensor(NamedMeasurableStat... stats) {
-    String sensorName = stats.length > 0 ? stats[0].getStatName() : "NO_NAME";
+    if (stats.length == 0) {
+      throw new IllegalArgumentException("At least one stat must be provided");
+    }
+    String sensorName = stats[0].getStatName();
     return registerSensor(getSensorFullName(getName(), sensorName), null, null, stats);
   }
 
@@ -182,7 +185,10 @@ public class AbstractVeniceStats {
   }
 
   protected Sensor registerSensorIfAbsent(NamedMeasurableStat... stats) {
-    String sensorName = stats.length > 0 ? stats[0].getStatName() : "NO_NAME";
+    if (stats.length == 0) {
+      throw new IllegalArgumentException("At least one stat must be provided");
+    }
+    String sensorName = stats[0].getStatName();
     return registerSensorIfAbsent(getName(), sensorName, null, null, stats);
   }
 
