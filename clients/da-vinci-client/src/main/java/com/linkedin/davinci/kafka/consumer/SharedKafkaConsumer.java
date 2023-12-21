@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -40,6 +40,7 @@ import org.apache.logging.log4j.Logger;
  */
 class SharedKafkaConsumer implements PubSubConsumerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
+  private long nextPollTimeOutSeconds = 10;
 
   protected final PubSubConsumerAdapter delegate;
 
@@ -155,7 +156,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       this.delegate.unSubscribe(pubSubTopicPartition);
       subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
       unsubscriptionListener.call(this, pubSubTopicPartition);
-      return 1;
+      return Collections.singleton(pubSubTopicPartition);
     });
   }
 
@@ -167,7 +168,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
         subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
         unsubscriptionListener.call(this, pubSubTopicPartition);
       }
-      return pubSubTopicPartitionSet.size();
+      return pubSubTopicPartitionSet;
     });
   }
 
@@ -175,34 +176,39 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    * This function encapsulates the logging, bookkeeping and required waiting period surrounding the action of
    * unsubscribing some partition(s).
    *
-   * @param action which performs the unsubscription and returns the number of partitions which were unsubscribed
+   * @param supplier which performs the unsubscription and returns a set of partitions which were unsubscribed
    */
-  protected synchronized void unSubscribeAction(IntSupplier action) {
+  protected synchronized void unSubscribeAction(Supplier<Set<PubSubTopicPartition>> supplier) {
     long currentPollTimes = pollTimes;
     long startTime = System.currentTimeMillis();
-    int numberOfUnsubbedPartitions = action.getAsInt();
+    Set<PubSubTopicPartition> topicPartitions = supplier.get();
     long elapsedTime = System.currentTimeMillis() - startTime;
 
     LOGGER.info(
-        "Shared consumer {} unsubscribed {} partition(s) in {} ms.",
+        "Shared consumer {} unsubscribed {} partition(s): ({}) in {} ms",
         this.getClass().getSimpleName(),
-        numberOfUnsubbedPartitions,
+        topicPartitions.size(),
+        topicPartitions,
         elapsedTime);
     updateCurrentAssignment(delegate.getAssignment());
-    waitAfterUnsubscribe(currentPollTimes);
+    waitAfterUnsubscribe(currentPollTimes, topicPartitions);
   }
 
-  protected void waitAfterUnsubscribe(long currentPollTimes) {
+  protected void waitAfterUnsubscribe(long currentPollTimes, Set<PubSubTopicPartition> topicPartitions) {
     currentPollTimes++;
     waitingForPoll.set(true);
     // Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait
     // returned
     // due to timeout. So an explicit time check is necessary.
-    long timeoutMs = (time.getNanoseconds() / Time.NS_PER_MS) + (10 * Time.MS_PER_SECOND);
+    long timeoutMs = (time.getNanoseconds() / Time.NS_PER_MS) + nextPollTimeOutSeconds * Time.MS_PER_SECOND;
     try {
       while (currentPollTimes > pollTimes) {
         long waitMs = timeoutMs - (time.getNanoseconds() / Time.NS_PER_MS);
         if (waitMs <= 0) {
+          LOGGER.warn(
+              "Wait for poll request after unsubscribe topic partition(s) ({}) timed out after {} seconds",
+              topicPartitions,
+              nextPollTimeOutSeconds);
           break;
         }
         wait(waitMs);
@@ -212,6 +218,16 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       LOGGER.info("Wait for poll request in `unsubscribe` function got interrupted.");
       Thread.currentThread().interrupt();
     }
+  }
+
+  // Only for testing.
+  void setNextPollTimeoutSeconds(long nextPollTimeOutSeconds) {
+    this.nextPollTimeOutSeconds = nextPollTimeOutSeconds;
+  }
+
+  // Only for testing.
+  long getPollTimes() {
+    return pollTimes;
   }
 
   @Override
