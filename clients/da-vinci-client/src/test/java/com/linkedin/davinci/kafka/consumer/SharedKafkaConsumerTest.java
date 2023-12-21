@@ -16,12 +16,15 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.SystemTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -31,6 +34,9 @@ public class SharedKafkaConsumerTest {
   protected KafkaConsumerServiceStats consumerServiceStats;
 
   protected PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private SharedKafkaConsumer sharedKafkaConsumer;
+  private Set<PubSubTopicPartition> topicPartitions;
+  private PubSubConsumerAdapter consumerAdapter;
 
   @BeforeMethod
   public void setUp() {
@@ -63,5 +69,36 @@ public class SharedKafkaConsumerTest {
 
     sharedConsumer.poll(1000);
     verify(consumer, times(1)).poll(1000);
+  }
+
+  private void setUpSharedConsumer() {
+    consumerAdapter = mock(PubSubConsumerAdapter.class);
+    KafkaConsumerServiceStats stats = mock(KafkaConsumerServiceStats.class);
+    Runnable assignmentChangeListener = mock(Runnable.class);
+    SharedKafkaConsumer.UnsubscriptionListener unsubscriptionListener =
+        mock(SharedKafkaConsumer.UnsubscriptionListener.class);
+
+    sharedKafkaConsumer = new SharedKafkaConsumer(
+        consumerAdapter,
+        stats,
+        assignmentChangeListener,
+        unsubscriptionListener,
+        new SystemTime());
+    topicPartitions = new HashSet<>();
+    topicPartitions.add(mock(PubSubTopicPartition.class));
+  }
+
+  @Test
+  public void testWaitAfterUnsubscribe() {
+    setUpSharedConsumer();
+    Supplier<Set<PubSubTopicPartition>> supplier = () -> topicPartitions;
+
+    long poolTimesBeforeUnsubscribe = sharedKafkaConsumer.getPollTimes();
+    sharedKafkaConsumer.setNextPollTimeoutSeconds(1);
+    sharedKafkaConsumer.unSubscribeAction(supplier);
+
+    // This is to test that if the poll time is not incremented when the consumer is unsubscribed the correct log can
+    // be found in the logs.
+    Assert.assertEquals(poolTimesBeforeUnsubscribe, sharedKafkaConsumer.getPollTimes());
   }
 }
