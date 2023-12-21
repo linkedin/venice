@@ -7,13 +7,13 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 
 
 public class ServerConnectionStats extends AbstractVeniceStats {
-  public static final String NEW_ROUTER_CONNECTION_COUNT = "new_router_connection_count";
+  public static final String ROUTER_CONNECTION_REQUEST = "router_connection_request";
   public static final String ROUTER_CONNECTION_COUNT_GAUGE = "router_connection_count";
-  public static final String NEW_CLIENT_CONNECTION_COUNT = "new_client_connection_count";
+  public static final String CLIENT_CONNECTION_REQUEST = "client_connection_request";
   public static final String CLIENT_CONNECTION_COUNT_GAUGE = "client_connection_count";
 
-  private final Sensor routerConnectionCountSensor;
-  private final Sensor clientConnectionCountSensor;
+  private final Sensor routerConnectionRequestSensor;
+  private final Sensor clientConnectionRequestSensor;
 
   private long routerConnectionCount;
   private long clientConnectionCount;
@@ -21,28 +21,26 @@ public class ServerConnectionStats extends AbstractVeniceStats {
   public ServerConnectionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
     registerSensorIfAbsent(new AsyncGauge((ignored, ignored2) -> routerConnectionCount, ROUTER_CONNECTION_COUNT_GAUGE));
-    routerConnectionCountSensor = registerSensorIfAbsent(NEW_ROUTER_CONNECTION_COUNT, new OccurrenceRate());
+    routerConnectionRequestSensor = registerSensorIfAbsent(ROUTER_CONNECTION_REQUEST, new OccurrenceRate());
     registerSensorIfAbsent(new AsyncGauge((ignored, ignored2) -> clientConnectionCount, CLIENT_CONNECTION_COUNT_GAUGE));
-    clientConnectionCountSensor = registerSensorIfAbsent(NEW_CLIENT_CONNECTION_COUNT, new OccurrenceRate());
+    clientConnectionRequestSensor = registerSensorIfAbsent(CLIENT_CONNECTION_REQUEST, new OccurrenceRate());
   }
 
   public void incrementRouterConnectionCount() {
     routerConnectionCount++;
-    routerConnectionCountSensor.record(routerConnectionCount);
+    routerConnectionRequestSensor.record(1);
   }
 
   public void decrementRouterConnectionCount() {
     routerConnectionCount--;
-    routerConnectionCountSensor.record(routerConnectionCount);
   }
 
   public void incrementClientConnectionCount() {
     clientConnectionCount++;
-    clientConnectionCountSensor.record(clientConnectionCount);
+    clientConnectionRequestSensor.record(1);
   }
 
   public void decrementClientConnectionCount() {
     clientConnectionCount--;
-    clientConnectionCountSensor.record(clientConnectionCount);
   }
 }
