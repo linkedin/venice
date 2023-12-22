@@ -2,7 +2,10 @@ package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.utils.TestMockTime;
 import java.util.HashSet;
@@ -30,8 +33,7 @@ public class TestDisabledPartitionEnablerService {
     DisabledPartitionEnablerService service = new DisabledPartitionEnablerService(admin, config, time);
 
     service.startInner();
-    verify(admin, timeout(1000).atLeast(1)).enableDisabledPartition(clusterName, "", true);
-
+    verify(admin, timeout(1000).atLeastOnce()).enableDisabledPartition(clusterName, "", true);
   }
 
 }
