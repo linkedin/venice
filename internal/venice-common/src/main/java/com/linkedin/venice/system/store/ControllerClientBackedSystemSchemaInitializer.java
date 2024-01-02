@@ -345,13 +345,13 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
         c -> c.addDerivedSchema(storeName, valueSchemaId, partialUpdateSchema.toString()));
     if (addDerivedSchemaResponse.isError()) {
       throw new VeniceException(
-          "Error when adding derived schema for value schema v" + valueSchemaId + " to system store " + storeName
+          "Error when adding partial update schema for value schema v" + valueSchemaId + " to system store " + storeName
               + " in cluster " + clusterName + " after retries. Error: " + addDerivedSchemaResponse.getError());
     }
     LOGGER.info(
         "Added partial update schema v{}-{} to system store {}.",
-        addDerivedSchemaResponse.getDerivedSchemaId(),
         valueSchemaId,
+        addDerivedSchemaResponse.getDerivedSchemaId(),
         storeName);
   }
 
