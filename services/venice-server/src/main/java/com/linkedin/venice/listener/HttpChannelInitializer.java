@@ -130,7 +130,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           customizedViewRepository,
           nodeId,
           quotaUsageStats,
-          metricsRepository);
+          metricsRepository,
+          serverConfig.getReadQuotaEnforcementBuffer());
 
       // Token Bucket Stats for a store must be initialized when that store is created
       this.quotaTokenBucketStats = new AggServerQuotaTokenBucketStats(metricsRepository, quotaEnforcer);

@@ -115,6 +115,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_IN
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_STORE_READ_QUOTA_BUFFER;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND;
@@ -296,6 +297,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long leakedResourceCleanUpIntervalInMS;
 
   private final boolean quotaEnforcementEnabled;
+
+  private final double readQuotaEnforcementBuffer;
 
   private final boolean serverCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
 
@@ -533,6 +536,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     leakedResourceCleanUpIntervalInMS =
         TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 10));
     quotaEnforcementEnabled = serverProperties.getBoolean(SERVER_QUOTA_ENFORCEMENT_ENABLED, false);
+    readQuotaEnforcementBuffer = serverProperties.getDouble(SERVER_STORE_READ_QUOTA_BUFFER, 2);
     serverCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled =
         serverProperties.getBoolean(SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED, true);
 
@@ -968,6 +972,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isQuotaEnforcementEnabled() {
     return quotaEnforcementEnabled;
+  }
+
+  public double getReadQuotaEnforcementBuffer() {
+    return readQuotaEnforcementBuffer;
   }
 
   public boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled() {

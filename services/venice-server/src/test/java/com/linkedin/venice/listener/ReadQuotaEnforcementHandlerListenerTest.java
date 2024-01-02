@@ -1,10 +1,12 @@
 package com.linkedin.venice.listener;
 
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
@@ -23,6 +25,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -64,7 +67,8 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         CompletableFuture.completedFuture(customizedViewRepository),
         nodeId,
         stats,
-        metricsRepository);
+        metricsRepository,
+        1);
 
     Assert.assertEquals(listeners.get(0), quotaEnforcer);
   }
@@ -110,11 +114,13 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         CompletableFuture.completedFuture(customizedViewRepository),
         nodeId,
         stats,
-        metricsRepository);
+        metricsRepository,
+        2);
 
     // Add a store (call store created) verify all versions in buckets and in subscriptions
     Store store1 = getDummyStore("store1", Arrays.asList(new Integer[] { 1 }), 10);
     store1.setCurrentVersion(1);
+    doReturn(store1).when(storeRepository).getStore(eq(store1.getName()));
     quotaEnforcer.handleStoreCreated(store1);
     assertTrue(
         registeredTopics.contains(Version.composeKafkaTopic(store1.getName(), 1)),
@@ -122,12 +128,15 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     assertTrue(
         quotaEnforcer.listTopics().contains(Version.composeKafkaTopic(store1.getName(), 1)),
         "After adding a store with version 1, the throttler should have a bucket for that topic");
+    TokenBucket tokenBucket1 = quotaEnforcer.getBucketForStore(store1.getName());
+    assertEquals(tokenBucket1.getAmortizedRefillPerSecond(), 20f);
 
     // Add another store (call store created) verify all versions in buckets and in subscriptions
 
     List<Integer> versions = Arrays.asList(new Integer[] { 2, 3 });
     Store store2 = getDummyStore("store2", versions, 10);
     store2.setCurrentVersion(3);
+    doReturn(store1).when(storeRepository).getStore(eq(store2.getName()));
     quotaEnforcer.handleStoreCreated(store2);
     assertTrue(
         registeredTopics.contains(Version.composeKafkaTopic(store2.getName(), 3)),
@@ -135,6 +144,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     assertTrue(
         quotaEnforcer.listTopics().contains(Version.composeKafkaTopic(store2.getName(), 3)),
         "After adding a store with version " + 3 + ", the throttler should have a bucket for that topic");
+    assertEquals(tokenBucket1.getAmortizedRefillPerSecond(), 20f);
 
     // Modify store (call store data changed) verify new versions in buckets and subscriptions, old versions are not
     versions = Arrays.asList(new Integer[] { 3, 4 });

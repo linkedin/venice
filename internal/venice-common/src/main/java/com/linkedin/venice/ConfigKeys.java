@@ -2084,4 +2084,10 @@ public class ConfigKeys {
       "server.dedicated.consumer.pool.for.aa.wc.leader.enabled";
   public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER =
       "server.dedicated.consumer.pool.size.for.aa.wc.leader";
+
+  /**
+   * The equivalent to {@value ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER} for server read quota. This is to align server
+   * the current solution for hot partitions for server and router read quota enforcement.
+   */
+  public static final String SERVER_STORE_READ_QUOTA_BUFFER = "server.store.read.quota.buffer";
 }

@@ -59,6 +59,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   // TODO make these configurable
   private final int enforcementIntervalSeconds = 10; // TokenBucket refill interval
   private final int enforcementCapacityMultiple = 5; // Token bucket capacity is refill amount times this multiplier
+  private final double readQuotaEnforcementBuffer;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private volatile boolean initializedVolatile = false;
   private boolean initialized = false;
@@ -69,7 +70,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       String nodeId,
       AggServerQuotaUsageStats stats,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      double readQuotaEnforcementBuffer) {
     this(
         storageNodeRcuCapacity,
         storeRepository,
@@ -77,6 +79,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         nodeId,
         stats,
         metricsRepository,
+        readQuotaEnforcementBuffer,
         Clock.systemUTC());
   }
 
@@ -87,6 +90,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       String nodeId,
       AggServerQuotaUsageStats stats,
       MetricsRepository metricsRepository,
+      double readQuotaEnforcementBuffer,
       Clock clock) {
     this.clock = clock;
     this.storageNodeBucket = tokenBucketfromRcuPerSecond(storageNodeRcuCapacity, 1);
@@ -95,6 +99,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     this.storeRepository = storeRepository;
     this.thisNodeId = nodeId;
     this.stats = stats;
+    this.readQuotaEnforcementBuffer = readQuotaEnforcementBuffer;
     customizedViewRepository.thenAccept(cv -> {
       LOGGER.info("Initializing ReadQuotaEnforcementHandler with completed RoutingDataRepository");
       this.customizedViewRepository = cv;
@@ -414,8 +419,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       storeVersionBuckets.remove(topic);
       return;
     }
-    long quotaInRcu = storeRepository.getStore(Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic()))
-        .getReadQuotaInCU();
+    long quotaInRcu =
+        (long) (storeRepository.getStore(Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic()))
+            .getReadQuotaInCU() * readQuotaEnforcementBuffer);
     storeVersionBuckets.compute(topic, (k, v) -> {
       long newRefillAmount = calculateRefillAmount(quotaInRcu, thisNodeQuotaResponsibility);
       if (v == null || v.getAmortizedRefillPerSecond() * enforcementIntervalSeconds != newRefillAmount) {
