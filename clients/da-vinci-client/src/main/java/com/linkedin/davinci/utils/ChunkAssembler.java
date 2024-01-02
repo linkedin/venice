@@ -4,7 +4,6 @@ import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
@@ -14,7 +13,6 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,9 +22,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class ChunkAssembler {
   private static final Logger LOGGER = LogManager.getLogger(ChunkAssembler.class);
-
-  protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
-  protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
 
   protected final String storeName;
 
