@@ -735,7 +735,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         storeVersionStateSerializer,
         partitionStateSerializer,
         storeRepository,
-        false,
+        !isDaVinciClient,
         true);
     storageService.start();
 

@@ -390,15 +390,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       Runnable mainProcessCommandRunnable) {
     boolean isTopicPartitionHosted = isTopicPartitionHosted(topicName, partition);
 
-    // drop storage partition in main process if it does not exist
-    if (command == REMOVE_PARTITION && !isTopicPartitionHosted) {
-      mainProcessCommandRunnable.run();
-      return;
-    }
-
     do {
       if (isTopicPartitionHostedInMainProcess(topicName, partition)
-          || !isTopicPartitionHosted && command != START_CONSUMPTION) {
+          || (!isTopicPartitionHosted && command != START_CONSUMPTION && command != REMOVE_PARTITION)) {
         LOGGER.info("Executing command {} of topic: {}, partition: {} in main process.", command, topicName, partition);
         mainProcessCommandRunnable.run();
         return;

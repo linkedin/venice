@@ -201,6 +201,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           isolatedIngestionServer.cleanupTopicState(topicName);
           break;
         case REMOVE_PARTITION:
+          isolatedIngestionServer.maybeSubscribeNewResource(topicName, partitionId);
           validateAndExecuteCommand(ingestionCommandType, report, () -> {
             /**
              * Here we do not allow storage service to clean up "empty" storage engine. When ingestion isolation is turned on,
