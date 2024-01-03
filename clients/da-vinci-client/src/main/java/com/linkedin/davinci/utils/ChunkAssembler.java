@@ -1,13 +1,11 @@
 package com.linkedin.davinci.utils;
 
-import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
-import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -51,9 +49,7 @@ public class ChunkAssembler {
       byte[] keyBytes,
       ByteBuffer valueBytes,
       long recordOffset,
-      AbstractAvroChunkingAdapter<T> chunkingAdapter,
       Lazy<RecordDeserializer<T>> recordDeserializer,
-      StoreDeserializerCache<T> deserializerCache,
       int readerSchemaId,
       VeniceCompressor compressor) {
     T assembledRecord = null;
@@ -75,10 +71,9 @@ public class ChunkAssembler {
           keyBytes,
           ValueRecord.create(schemaId, valueBytes.array()).serialize());
       try {
-        assembledRecord = processRecordBytes(
+        assembledRecord = deserializeAndDecompressBytes(
             recordDeserializer.get(),
             compressor,
-            keyBytes,
             RawBytesChunkingAdapter.INSTANCE.get(
                 inMemoryStorageEngine,
                 pubSubTopicPartition.getPartitionNumber(),
@@ -90,10 +85,7 @@ public class ChunkAssembler {
                 readerSchemaId,
                 RawBytesStoreDeserializerCache.getInstance(),
                 compressor,
-                null),
-            pubSubTopicPartition,
-            readerSchemaId,
-            recordOffset);
+                null));
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
         // can actually happen if the client seeks to the middle of a chunked record either by
@@ -107,14 +99,7 @@ public class ChunkAssembler {
     } else {
       // this is a fully specified record, no need to buffer and assemble it, just decompress and deserialize it
       try {
-        assembledRecord = processRecordBytes(
-            recordDeserializer.get(),
-            compressor,
-            keyBytes,
-            valueBytes,
-            pubSubTopicPartition,
-            readerSchemaId,
-            recordOffset);
+        assembledRecord = deserializeAndDecompressBytes(recordDeserializer.get(), compressor, valueBytes);
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
@@ -128,14 +113,10 @@ public class ChunkAssembler {
     return assembledRecord;
   }
 
-  protected <T> T processRecordBytes(
+  protected <T> T deserializeAndDecompressBytes(
       RecordDeserializer<T> deserializer,
       VeniceCompressor compressor,
-      byte[] key,
-      ByteBuffer value,
-      PubSubTopicPartition partition,
-      int valueSchemaId,
-      long recordOffset) throws IOException {
+      ByteBuffer value) throws IOException {
     return deserializer.deserialize(compressor.decompress(value));
   }
 

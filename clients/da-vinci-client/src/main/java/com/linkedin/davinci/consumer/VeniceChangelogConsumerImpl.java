@@ -553,7 +553,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubTopicPartition partition,
       int valueSchemaId,
       long recordOffset) throws IOException {
-    return deserializer.deserialize(compressor.decompress(value));
+    // NoOp
+    return null;
   }
 
   protected Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> convertPubSubMessageToPubSubChangeEventMessage(
@@ -621,9 +622,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           keyBytes,
           put.getPutValue(),
           message.getOffset(),
-          chunkingAdapter,
           deserializerProvider,
-          deserializerCache,
           readerSchemaId,
           compressor);
       if (assembledObject == null) {
