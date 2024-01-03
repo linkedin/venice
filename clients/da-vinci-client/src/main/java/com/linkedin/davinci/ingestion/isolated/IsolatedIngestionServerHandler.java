@@ -201,6 +201,11 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           isolatedIngestionServer.cleanupTopicState(topicName);
           break;
         case REMOVE_PARTITION:
+          /**
+           * For this command, we will try to initialize the isolated process metadata for the topic partition, if the
+           * topic partition has never been associated with the server. This is needed as data partition is by default
+           * restored in the isolated process, and thus it should be able to be removed by Helix command.
+           */
           isolatedIngestionServer.maybeSubscribeNewResource(topicName, partitionId);
           validateAndExecuteCommand(ingestionCommandType, report, () -> {
             /**

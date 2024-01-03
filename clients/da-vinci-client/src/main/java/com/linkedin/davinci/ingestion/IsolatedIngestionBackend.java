@@ -391,6 +391,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     boolean isTopicPartitionHosted = isTopicPartitionHosted(topicName, partition);
 
     do {
+      /**
+       * There are two cases where we execute the command to the main process:
+       * (1) The main process metadata tells that the topic partition is hosted in main process.
+       * (2) The topic partition has never been associated with the server, and the incoming command is not START_CONSUMPTION
+       * or REMOVE_PARTITION. For these two commands, it should by default be sent to isolated process.
+       */
       if (isTopicPartitionHostedInMainProcess(topicName, partition)
           || (!isTopicPartitionHosted && command != START_CONSUMPTION && command != REMOVE_PARTITION)) {
         LOGGER.info("Executing command {} of topic: {}, partition: {} in main process.", command, topicName, partition);
