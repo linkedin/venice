@@ -3271,10 +3271,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .getOffset(getTopicManager(sourceRealTimeTopicKafkaURL), leaderTopic, partitionToGetLatestOffsetFor);
 
     if (lastOffsetInRealTimeTopic < 0) {
-      LOGGER.warn(
-          "Unexpected! Got a negative lastOffsetInRealTimeTopic ({})! Will return Long.MAX_VALUE as the lag.",
-          lastOffsetInRealTimeTopic,
-          new VeniceException("Exception not thrown, just for logging purposes."));
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException("Got a negative lastOffsetInRealTimeTopic")) {
+        LOGGER.warn(
+            "Unexpected! Got a negative lastOffsetInRealTimeTopic ({})! Will return Long.MAX_VALUE as the lag.",
+            lastOffsetInRealTimeTopic,
+            new VeniceException("Exception not thrown, just for logging purposes."));
+      }
       return Long.MAX_VALUE;
     }
 
