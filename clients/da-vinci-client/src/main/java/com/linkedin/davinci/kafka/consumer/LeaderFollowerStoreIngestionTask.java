@@ -15,7 +15,6 @@ import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WR
 import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -91,12 +90,13 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
@@ -140,7 +140,7 @@ import org.apache.logging.log4j.Logger;
  *           follower can subscribe back to VT using the recently updated VT offset.
  */
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
-  private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
+  static Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
@@ -1910,9 +1910,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * Checks whether the lag is acceptable for hybrid stores
    * <p>
-   * leaderCompleteStateCheckEnabled is not used for non AA stores: as consumer task is unable to read HB messages from
-   * RT topic (though a test consumer can still read it), leading to standby replicas waiting for leader completion
-   * state header indefinitely, so disabling it until that issue is resolved
+   * leaderCompleteStateCheckEnabled is not used for non AA stores: as SIT reads from parent RT for non AA
+   * stores but HB is written to local RT. This should be enabled once all hybrid stores are made AA.
    */
   @Override
   protected boolean checkAndLogIfLagIsAcceptableForHybridStore(
@@ -3355,7 +3354,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  private CompletableFuture<PubSubProduceResult> sendIngestionHeartbeatToRT(
+  CompletableFuture<PubSubProduceResult> sendIngestionHeartbeatToRT(
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper) {
@@ -3408,7 +3407,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .whenComplete((ignore, throwable) -> logIngestionHeartbeat(topicPartition, (Exception) throwable));
       }
     } catch (Exception e) {
-      heartBeatFuture = null;
+      heartBeatFuture = new CompletableFuture<>();
+      heartBeatFuture.completeExceptionally(e);
       if (shouldLog) {
         logIngestionHeartbeat(topicPartition, e);
       }
@@ -3441,10 +3441,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
 
-    int numHeartBeatAttempted = 0;
     AtomicInteger numHeartBeatSuccess = new AtomicInteger(0);
     Map<Integer, CompletableFuture<PubSubProduceResult>> heartBeatFutures = new VeniceConcurrentHashMap<>();
     Set<String> failedPartitions = VeniceConcurrentHashMap.newKeySet();
+    AtomicReference<CompletionException> completionException = new AtomicReference<>(null);
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
       PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
       if (isLeader(pcs) && leaderTopic != null && leaderTopic.isRealTime()) {
@@ -3454,73 +3454,48 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Do not send heartbeat if we detected a topic switch is happening since TS requires the leader to be idle.
           continue;
         }
-        numHeartBeatAttempted++;
         int partition = pcs.getUserPartition();
         CompletableFuture<PubSubProduceResult> heartBeatFuture = sendIngestionHeartbeatToRT(
             new PubSubTopicPartitionImpl(leaderTopic, partition),
             null,
             DEFAULT_LEADER_METADATA_WRAPPER);
-        if (heartBeatFuture != null) {
-          heartBeatFutures.put(partition, heartBeatFuture);
-        } else {
-          failedPartitions.add(String.valueOf(partition));
-        }
-      }
-    }
-
-    if (heartBeatFutures.size() > 0) {
-      CountDownLatch heartBeatCompletionLatch = new CountDownLatch(heartBeatFutures.size());
-      for (int partition: heartBeatFutures.keySet()) {
-        CompletableFuture<PubSubProduceResult> heartBeatFuture = heartBeatFutures.get(partition);
         heartBeatFuture.whenComplete((ignore, throwable) -> {
           if (throwable != null) {
+            completionException.set(new CompletionException(throwable));
             failedPartitions.add(String.valueOf(partition));
           } else {
             numHeartBeatSuccess.getAndIncrement();
           }
-          heartBeatCompletionLatch.countDown();
         });
+        heartBeatFutures.put(partition, heartBeatFuture);
       }
+    }
 
-      int finalNumHeartBeatAttempted = numHeartBeatAttempted;
+    if (heartBeatFutures.size() > 0) {
       CompletableFuture.allOf(heartBeatFutures.values().toArray(new CompletableFuture[0]))
           .whenCompleteAsync((ignore, throwable) -> {
-            boolean heartBeatSendCompleted;
-            try {
-              heartBeatSendCompleted = heartBeatCompletionLatch.await(5, SECONDS);
-            } catch (InterruptedException e) {
-              heartBeatSendCompleted = false;
-            }
-            if (!heartBeatSendCompleted || failedPartitions.size() > 0) {
+            if (failedPartitions.size() > 0) {
+              int numFailedPartitions = failedPartitions.size();
               String logMessage = String.format(
-                  "Send ingestion heartbeat for %d partitions of topic %s: %d succeeded, %d failed for partitions: %s%s",
-                  finalNumHeartBeatAttempted,
+                  "Send ingestion heartbeat for %d partitions of topic %s: %d succeeded, %d failed for partitions: %s",
+                  heartBeatFutures.size(),
                   realTimeTopic,
                   numHeartBeatSuccess.get(),
-                  failedPartitions.size(),
-                  String.join(",", failedPartitions),
-                  heartBeatSendCompleted ? "" : " and timed out or interrupted for other partitions");
+                  numFailedPartitions,
+                  String.join(",", failedPartitions));
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(logMessage)) {
-                LOGGER.error(logMessage, throwable);
+                LOGGER.error(logMessage, completionException.get());
               }
             } else {
               String logMessage = String.format(
                   "Send ingestion heartbeat for %d partitions of topic %s: all succeeded",
-                  finalNumHeartBeatAttempted,
+                  heartBeatFutures.size(),
                   realTimeTopic);
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(logMessage)) {
                 LOGGER.debug(logMessage);
               }
             }
           });
-    } else if (failedPartitions.size() > 0) {
-      String logMessage = String.format(
-          "Send ingestion heartbeat for %d partitions of topic %s: all failed",
-          numHeartBeatAttempted,
-          realTimeTopic);
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(logMessage)) {
-        LOGGER.error(logMessage);
-      }
     }
 
     lastSendIngestionHeartbeatTimestamp.set(currentTimestamp);
@@ -3538,5 +3513,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // reset lastSendIngestionHeartbeatTimestamp to force sending HB SOS to the respective RT topics.
       lastSendIngestionHeartbeatTimestamp.set(0);
     }
+  }
+
+  // visible for testing
+  public static void setLogger(Logger logger) {
+    LOGGER = logger;
   }
 }

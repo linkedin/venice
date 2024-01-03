@@ -207,6 +207,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -3987,6 +3989,9 @@ public abstract class StoreIngestionTaskTest {
 
     VeniceWriter veniceWriter = mock(VeniceWriter.class);
     VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
+    CompletableFuture heartBeatFuture = new CompletableFuture();
+    heartBeatFuture.complete(null);
+    doReturn(heartBeatFuture).when(veniceWriter).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
     doReturn(veniceWriter).when(veniceWriterFactory).createVeniceWriter(any());
 
     StoreIngestionTaskFactory ingestionTaskFactory = TestUtils.getStoreIngestionTaskBuilder(storeName)
@@ -4026,6 +4031,111 @@ public abstract class StoreIngestionTaskTest {
 
     when(mockTopicManager.containsTopic(eq(ingestionTask.getVersionTopic()))).thenReturn(false);
     Assert.assertFalse(ingestionTask.isProducingVersionTopicHealthy());
+  }
+
+  @Test
+  public void testMaybeSendIngestionHeartbeatWithHBSuccessOrFailure() throws InterruptedException {
+    String storeName = Utils.getUniqueString("store");
+    Store mockStore = mock(Store.class);
+    String versionTopic = Version.composeKafkaTopic(storeName, 1);
+    VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
+    Version mockVersion = mock(Version.class);
+    doReturn(2).when(mockVersion).getPartitionCount();
+    doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
+    doReturn(true).when(mockVersion).isUseVersionLevelHybridConfig();
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+    doReturn(mockHybridConfig).when(mockVersion).getHybridStoreConfig();
+    Properties mockKafkaConsumerProperties = mock(Properties.class);
+    doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));
+    ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
+    doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
+    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
+    doReturn(true).when(mockVersion).isActiveActiveReplicationEnabled();
+    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
+    doReturn(true).when(mockVeniceProperties).isEmpty();
+    doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToUrlMap();
+    doReturn(1000L).when(mockVeniceServerConfig).getIngestionHeartbeatIntervalMs();
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    PartitionConsumptionState pcs0 = mock(PartitionConsumptionState.class);
+    doReturn(offsetRecord).when(pcs0).getOffsetRecord();
+    doReturn(LEADER).when(pcs0).getLeaderFollowerState();
+    PartitionConsumptionState pcs1 = mock(PartitionConsumptionState.class);
+    doReturn(offsetRecord).when(pcs1).getOffsetRecord();
+    doReturn(LEADER).when(pcs1).getLeaderFollowerState();
+    doReturn(1).when(pcs1).getUserPartition();
+    PubSubTopic pubsubTopic = mock(PubSubTopic.class);
+    doReturn(pubsubTopic).when(offsetRecord).getLeaderTopic(any());
+    doReturn(true).when(pubsubTopic).isRealTime();
+
+    VeniceWriter veniceWriter = mock(VeniceWriter.class);
+    VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
+    doReturn(veniceWriter).when(veniceWriterFactory).createVeniceWriter(any());
+
+    StoreIngestionTaskFactory ingestionTaskFactory = TestUtils.getStoreIngestionTaskBuilder(storeName)
+        .setStorageMetadataService(mockStorageMetadataService)
+        .setMetadataRepository(mockReadOnlyStoreRepository)
+        .setTopicManagerRepository(mockTopicManagerRepository)
+        .setServerConfig(mockVeniceServerConfig)
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setVeniceWriterFactory(veniceWriterFactory)
+        .build();
+    LeaderFollowerStoreIngestionTask ingestionTask =
+        (LeaderFollowerStoreIngestionTask) ingestionTaskFactory.getNewIngestionTask(
+            mockStore,
+            mockVersion,
+            mockKafkaConsumerProperties,
+            () -> true,
+            mockVeniceStoreVersionConfig,
+            0,
+            false,
+            Optional.empty(),
+            null);
+    ingestionTask.setPartitionConsumptionState(0, pcs0);
+    ingestionTask.setPartitionConsumptionState(1, pcs1);
+    Logger mockLogger = mock(Logger.class);
+    LeaderFollowerStoreIngestionTask.setLogger(mockLogger);
+
+    CompletableFuture heartBeatFuture = new CompletableFuture();
+    heartBeatFuture.complete(null);
+    PubSubTopicPartition pubSubTopicPartition0 = new PubSubTopicPartitionImpl(pubsubTopic, 0);
+    PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubsubTopic, 1);
+    String expectedLogMessage;
+
+    // all succeeded
+    doReturn(heartBeatFuture).when(veniceWriter).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
+    ingestionTask.maybeSendIngestionHeartbeat();
+    expectedLogMessage = String
+        .format("Send ingestion heartbeat for 2 partitions of topic %s: all succeeded", ingestionTask.realTimeTopic);
+    verify(mockLogger, timeout(5000).times(1)).debug(expectedLogMessage);
+
+    // 1 partition throws exception
+    Thread.sleep(2000); // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS to elapse
+    doReturn(heartBeatFuture).when(veniceWriter)
+        .sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong());
+    doAnswer(invocation -> {
+      throw new Exception("mock exception");
+    }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition1), any(), any(), anyBoolean(), any(), anyLong());
+    ingestionTask.maybeSendIngestionHeartbeat();
+    expectedLogMessage = String.format(
+        "Send ingestion heartbeat for 2 partitions of topic %s: 1 succeeded, 1 failed for partitions: 1",
+        ingestionTask.realTimeTopic);
+    verify(mockLogger, timeout(5000).times(1)).error(eq(expectedLogMessage), isA(CompletionException.class));
+
+    // both partition throws exception
+    Thread.sleep(2000); // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS to elapse
+    doAnswer(invocation -> {
+      throw new Exception("mock exception");
+    }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong());
+    ingestionTask.maybeSendIngestionHeartbeat();
+    expectedLogMessage = String.format(
+        "Send ingestion heartbeat for 2 partitions of topic %s: 0 succeeded, 2 failed for partitions: 0,1",
+        ingestionTask.realTimeTopic);
+    verify(mockLogger, timeout(5000).times(1)).error(eq(expectedLogMessage), isA(CompletionException.class));
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
