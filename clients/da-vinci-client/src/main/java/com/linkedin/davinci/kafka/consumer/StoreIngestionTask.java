@@ -1338,7 +1338,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
-        maybeSendIngestionHeartbeat();
+        maybeSendIngestionHeartbeat(Optional.empty());
       }
 
       List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
@@ -3801,7 +3801,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
 
-  protected void maybeSendIngestionHeartbeat() {
+  protected void maybeSendIngestionHeartbeat(Optional<Set<String>> failedPartitions) {
     // No op, heartbeat is only useful for L/F hybrid stores.
   }
 

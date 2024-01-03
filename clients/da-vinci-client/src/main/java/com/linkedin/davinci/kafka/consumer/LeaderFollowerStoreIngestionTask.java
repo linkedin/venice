@@ -140,7 +140,7 @@ import org.apache.logging.log4j.Logger;
  *           follower can subscribe back to VT using the recently updated VT offset.
  */
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
-  static Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
+  private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
@@ -3430,7 +3430,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * in the RT, avoiding the need to differentiate between heartbeats from leaders of different versions (backup/current/future) and colos.
    */
   @Override
-  protected void maybeSendIngestionHeartbeat() {
+  protected void maybeSendIngestionHeartbeat(Optional<Set<String>> failedPartitions) {
     if (!isHybridMode() || isDaVinciClient) {
       // Skip if the store version is not hybrid or if this is a DaVinci client.
       return;
@@ -3443,7 +3443,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     AtomicInteger numHeartBeatSuccess = new AtomicInteger(0);
     Map<Integer, CompletableFuture<PubSubProduceResult>> heartBeatFutures = new VeniceConcurrentHashMap<>();
-    Set<String> failedPartitions = VeniceConcurrentHashMap.newKeySet();
+    Set<String> failedPartitionSet = failedPartitions.orElseGet(VeniceConcurrentHashMap::newKeySet);
     AtomicReference<CompletionException> completionException = new AtomicReference<>(null);
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
       PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
@@ -3462,7 +3462,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         heartBeatFuture.whenComplete((ignore, throwable) -> {
           if (throwable != null) {
             completionException.set(new CompletionException(throwable));
-            failedPartitions.add(String.valueOf(partition));
+            failedPartitionSet.add(String.valueOf(partition));
           } else {
             numHeartBeatSuccess.getAndIncrement();
           }
@@ -3474,15 +3474,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (heartBeatFutures.size() > 0) {
       CompletableFuture.allOf(heartBeatFutures.values().toArray(new CompletableFuture[0]))
           .whenCompleteAsync((ignore, throwable) -> {
-            if (failedPartitions.size() > 0) {
-              int numFailedPartitions = failedPartitions.size();
+            if (failedPartitionSet.size() > 0) {
+              int numFailedPartitions = failedPartitionSet.size();
               String logMessage = String.format(
                   "Send ingestion heartbeat for %d partitions of topic %s: %d succeeded, %d failed for partitions: %s",
                   heartBeatFutures.size(),
                   realTimeTopic,
                   numHeartBeatSuccess.get(),
                   numFailedPartitions,
-                  String.join(",", failedPartitions));
+                  String.join(",", failedPartitionSet));
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(logMessage)) {
                 LOGGER.error(logMessage, completionException.get());
               }
@@ -3503,7 +3503,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   /**
    * Once leader is marked completed, immediately reset {@link #lastSendIngestionHeartbeatTimestamp}
-   * such that {@link #maybeSendIngestionHeartbeat()} will send HB SOS to the respective RT topics
+   * such that {@link #maybeSendIngestionHeartbeat} will send HB SOS to the respective RT topics
    * rather than waiting for the timer to send HB SOS.
    */
   @Override
@@ -3513,10 +3513,5 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // reset lastSendIngestionHeartbeatTimestamp to force sending HB SOS to the respective RT topics.
       lastSendIngestionHeartbeatTimestamp.set(0);
     }
-  }
-
-  // visible for testing
-  public static void setLogger(Logger logger) {
-    LOGGER = logger;
   }
 }

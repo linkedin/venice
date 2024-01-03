@@ -181,6 +181,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -208,7 +209,6 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -4014,9 +4014,9 @@ public abstract class StoreIngestionTaskTest {
             Optional.empty(),
             null);
     ingestionTask.setPartitionConsumptionState(0, pcs);
-    ingestionTask.maybeSendIngestionHeartbeat();
+    ingestionTask.maybeSendIngestionHeartbeat(Optional.empty());
     // Second invocation should be skipped since it shouldn't be time for another heartbeat yet.
-    ingestionTask.maybeSendIngestionHeartbeat();
+    ingestionTask.maybeSendIngestionHeartbeat(Optional.empty());
     if (isHybridStore && isRealTimeTopic && isLeader) {
       verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
     } else {
@@ -4097,8 +4097,6 @@ public abstract class StoreIngestionTaskTest {
             null);
     ingestionTask.setPartitionConsumptionState(0, pcs0);
     ingestionTask.setPartitionConsumptionState(1, pcs1);
-    Logger mockLogger = mock(Logger.class);
-    LeaderFollowerStoreIngestionTask.setLogger(mockLogger);
 
     CompletableFuture heartBeatFuture = new CompletableFuture();
     heartBeatFuture.complete(null);
@@ -4108,10 +4106,9 @@ public abstract class StoreIngestionTaskTest {
 
     // all succeeded
     doReturn(heartBeatFuture).when(veniceWriter).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
-    ingestionTask.maybeSendIngestionHeartbeat();
-    expectedLogMessage = String
-        .format("Send ingestion heartbeat for 2 partitions of topic %s: all succeeded", ingestionTask.realTimeTopic);
-    verify(mockLogger, timeout(5000).times(1)).debug(expectedLogMessage);
+    Set<String> failedPartitions = VeniceConcurrentHashMap.newKeySet();
+    ingestionTask.maybeSendIngestionHeartbeat(Optional.of(failedPartitions));
+    assertEquals(failedPartitions.size(), 0);
 
     // 1 partition throws exception
     Thread.sleep(2000); // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS to elapse
@@ -4120,22 +4117,25 @@ public abstract class StoreIngestionTaskTest {
     doAnswer(invocation -> {
       throw new Exception("mock exception");
     }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition1), any(), any(), anyBoolean(), any(), anyLong());
-    ingestionTask.maybeSendIngestionHeartbeat();
-    expectedLogMessage = String.format(
-        "Send ingestion heartbeat for 2 partitions of topic %s: 1 succeeded, 1 failed for partitions: 1",
-        ingestionTask.realTimeTopic);
-    verify(mockLogger, timeout(5000).times(1)).error(eq(expectedLogMessage), isA(CompletionException.class));
+    ingestionTask.maybeSendIngestionHeartbeat(Optional.of(failedPartitions));
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(failedPartitions.size(), 1);
+      assertFalse(failedPartitions.contains("0"));
+      assertTrue(failedPartitions.contains("1"));
+    });
 
     // both partition throws exception
     Thread.sleep(2000); // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS to elapse
     doAnswer(invocation -> {
       throw new Exception("mock exception");
     }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong());
-    ingestionTask.maybeSendIngestionHeartbeat();
-    expectedLogMessage = String.format(
-        "Send ingestion heartbeat for 2 partitions of topic %s: 0 succeeded, 2 failed for partitions: 0,1",
-        ingestionTask.realTimeTopic);
-    verify(mockLogger, timeout(5000).times(1)).error(eq(expectedLogMessage), isA(CompletionException.class));
+    failedPartitions.clear();
+    ingestionTask.maybeSendIngestionHeartbeat(Optional.of(failedPartitions));
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(failedPartitions.size(), 2);
+      assertTrue(failedPartitions.contains("0"));
+      assertTrue(failedPartitions.contains("1"));
+    });
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
