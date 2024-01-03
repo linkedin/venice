@@ -17,22 +17,26 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.Utils;
+import java.io.IOException;
 import java.util.Optional;
+import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class ControllerClientBackedSystemSchemaInitializerTest {
   @Test
-  public void testCreateSystemStoreAndRegisterSchema() {
+  public void testCreateSystemStoreAndRegisterSchema() throws IOException {
 
     try (ControllerClientBackedSystemSchemaInitializer initializer = new ControllerClientBackedSystemSchemaInitializer(
         AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
         "testCluster",
         null,
         null,
-        false,
+        true,
         Optional.empty(),
         "",
         "",
@@ -50,7 +54,7 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
         "testCluster",
         null,
         null,
-        false,
+        true,
         Optional.empty(),
         "",
         "d2Service",
@@ -68,17 +72,33 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
       NewStoreResponse newStoreResponse = mock(NewStoreResponse.class);
       doReturn(newStoreResponse).when(controllerClient).createNewSystemStore(any(), any(), any(), any());
       MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
-      doReturn(new MultiSchemaResponse.Schema[0]).when(multiSchemaResponse).getSchemas();
-      doReturn(multiSchemaResponse).when(controllerClient).getAllValueSchema(any());
-      SchemaResponse schemaResponse = mock(SchemaResponse.class);
-      doReturn(schemaResponse).when(controllerClient).addValueSchema(any(), any(), anyInt(), any());
+      MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[2];
+      Schema valueSchema = Utils.getSchemaFromResource("avro/StoreMetaValue/v1/StoreMetaValue.avsc");
+      schemas[0] = new MultiSchemaResponse.Schema();
+      schemas[0].setId(1);
+      schemas[0].setSchemaStr(valueSchema.toString());
+      schemas[1] = new MultiSchemaResponse.Schema();
+      schemas[1].setId(1);
+      schemas[1].setDerivedSchemaId(1);
+      schemas[1]
+          .setSchemaStr(WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema).toString());
+      doReturn(schemas).when(multiSchemaResponse).getSchemas();
+      doReturn(multiSchemaResponse).when(controllerClient).getAllValueAndDerivedSchema(any());
+      doReturn(mock(SchemaResponse.class)).when(controllerClient).addValueSchema(any(), any(), anyInt(), any());
+      doReturn(mock(SchemaResponse.class)).when(controllerClient).addDerivedSchema(any(), anyInt(), any());
       doCallRealMethod().when(controllerClient).retryableRequest(anyInt(), any(), any());
       doCallRealMethod().when(controllerClient).retryableRequest(anyInt(), any());
       initializer.setControllerClient(controllerClient);
       initializer.execute();
       verify(controllerClient, times(1)).createNewSystemStore(any(), any(), any(), any());
-      verify(controllerClient, times(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion()))
-          .addValueSchema(any(), any(), anyInt(), any());
+      verify(
+          controllerClient,
+          times(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion() - 1))
+              .addValueSchema(any(), any(), anyInt(), any());
+      verify(
+          controllerClient,
+          times(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion() - 1))
+              .addDerivedSchema(any(), anyInt(), any());
     }
     verify(controllerClient, times(1)).close();
   }

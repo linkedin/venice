@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -23,9 +24,11 @@ import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
@@ -134,18 +137,25 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
     }
 
     MultiSchemaResponse multiSchemaResponse =
-        controllerClient.retryableRequest(DEFAULT_RETRY_TIMES, c -> c.getAllValueSchema(storeName));
+        controllerClient.retryableRequest(DEFAULT_RETRY_TIMES, c -> c.getAllValueAndDerivedSchema(storeName));
     if (multiSchemaResponse.isError()) {
       throw new VeniceException(
           "Error when getting all value schemas from system store " + storeName + " in cluster " + clusterName
               + " after retries. Error: " + multiSchemaResponse.getError());
     }
-    Map<Integer, Schema> schemasInZk = new HashMap<>();
-    Arrays.stream(multiSchemaResponse.getSchemas())
-        .forEach(schema -> schemasInZk.put(schema.getId(), AvroCompatibilityHelper.parse(schema.getSchemaStr())));
+    Map<Integer, Schema> valueSchemasInZk = new HashMap<>();
+    List<DerivedSchemaEntry> partialUpdateSchemasInZk = new ArrayList<>();
+    Arrays.stream(multiSchemaResponse.getSchemas()).forEach(schema -> {
+      if (schema.isDerivedSchema()) {
+        partialUpdateSchemasInZk
+            .add(new DerivedSchemaEntry(schema.getId(), schema.getDerivedSchemaId(), schema.getSchemaStr()));
+      } else {
+        valueSchemasInZk.put(schema.getId(), AvroCompatibilityHelper.parse(schema.getSchemaStr()));
+      }
+    });
 
     if (isSchemaResourceInLocal) {
-      registerLocalSchemaResources(storeName, schemaResources, schemasInZk);
+      registerLocalSchemaResources(storeName, schemaResources, valueSchemasInZk, partialUpdateSchemasInZk);
     } else {
       // For passed in new schemas, its version could be larger than protocolDefinition.getCurrentProtocolVersion(),
       // register schema directly.
@@ -153,7 +163,7 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
         checkAndMayRegisterValueSchema(
             storeName,
             entry.getKey(),
-            schemasInZk.get(entry.getKey()),
+            valueSchemasInZk.get(entry.getKey()),
             entry.getValue(),
             determineSchemaCompatabilityType());
       }
@@ -163,7 +173,8 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
   private void registerLocalSchemaResources(
       String storeName,
       Map<Integer, Schema> schemaResources,
-      Map<Integer, Schema> schemasInZk) {
+      Map<Integer, Schema> valueSchemasInZk,
+      List<DerivedSchemaEntry> partialUpdateSchemasInZk) {
     for (int version = 1; version <= protocolDefinition.getCurrentProtocolVersion(); version++) {
       Schema schemaInLocalResources = schemaResources.get(version);
       if (schemaInLocalResources == null) {
@@ -175,22 +186,18 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
         checkAndMayRegisterValueSchema(
             storeName,
             version,
-            schemasInZk.get(version),
+            valueSchemasInZk.get(version),
             schemaInLocalResources,
             determineSchemaCompatabilityType());
 
         if (autoRegisterPartialUpdateSchema) {
-          checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources);
+          checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources, partialUpdateSchemasInZk);
         }
       }
     }
   }
 
   DirectionalSchemaCompatibilityType determineSchemaCompatabilityType() {
-    if (protocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
-      return DirectionalSchemaCompatibilityType.FULL;
-    }
-
     if (protocolDefinition == AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE) {
       return DirectionalSchemaCompatibilityType.BACKWARD;
     }
@@ -317,35 +324,35 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
   private void checkAndMayRegisterPartialUpdateSchema(
       String storeName,
       int valueSchemaId,
-      Schema schemaInLocalResources) {
-    String partialUpdateSchema =
-        WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(schemaInLocalResources).toString();
-    SchemaResponse getSchemaResponse = controllerClient.retryableRequest(
-        DEFAULT_RETRY_TIMES,
-        c -> c.getValueOrDerivedSchemaId(storeName, partialUpdateSchema),
-        r -> r.getError().contains("Can not find any registered value schema nor derived schema"));
-    if (getSchemaResponse.isError()) {
-      if (getSchemaResponse.getError().contains("Can not find any registered value schema nor derived schema")) {
-        // The derived schema doesn't exist right now, try to register it.
-        SchemaResponse addDerivedSchemaResponse = controllerClient.retryableRequest(
-            DEFAULT_RETRY_TIMES,
-            c -> c.addDerivedSchema(storeName, valueSchemaId, partialUpdateSchema));
-        if (addDerivedSchemaResponse.isError()) {
-          throw new VeniceException(
-              "Error when adding derived schema for value schema v" + valueSchemaId + " to system store " + storeName
-                  + " in cluster " + clusterName + " after retries. Error: " + addDerivedSchemaResponse.getError());
-        }
+      Schema valueSchemaInLocalResources,
+      List<DerivedSchemaEntry> partialUpdateSchemasInZk) {
+    Schema partialUpdateSchema =
+        WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaInLocalResources);
+    String partialUpdateSchemaToFind = AvroCompatibilityHelper.toParsingForm(partialUpdateSchema);
+    for (DerivedSchemaEntry partialUpdateSchemaInZk: partialUpdateSchemasInZk) {
+      if (partialUpdateSchemaToFind.equals(partialUpdateSchemaInZk.getCanonicalSchemaStr())) {
         LOGGER.info(
-            "Added derived schema v{} for value schema v{} to system store {}.",
-            addDerivedSchemaResponse.getDerivedSchemaId(),
-            valueSchemaId,
-            storeName);
-      } else {
-        throw new VeniceException(
-            "Error when getting derived schema from system store " + storeName + " in cluster " + clusterName
-                + " after retries. Error: " + getSchemaResponse.getError());
+            "Partial update schema in system store {} is already registered as version {}-{}.",
+            storeName,
+            partialUpdateSchemaInZk.getValueSchemaID(),
+            partialUpdateSchemaInZk.getId());
+        return;
       }
     }
+    // Partial update schema doesn't exist right now, try to register it.
+    SchemaResponse addDerivedSchemaResponse = controllerClient.retryableRequest(
+        DEFAULT_RETRY_TIMES,
+        c -> c.addDerivedSchema(storeName, valueSchemaId, partialUpdateSchema.toString()));
+    if (addDerivedSchemaResponse.isError()) {
+      throw new VeniceException(
+          "Error when adding partial update schema for value schema v" + valueSchemaId + " to system store " + storeName
+              + " in cluster " + clusterName + " after retries. Error: " + addDerivedSchemaResponse.getError());
+    }
+    LOGGER.info(
+        "Added partial update schema v{}-{} to system store {}.",
+        valueSchemaId,
+        addDerivedSchemaResponse.getDerivedSchemaId(),
+        storeName);
   }
 
   @Override
