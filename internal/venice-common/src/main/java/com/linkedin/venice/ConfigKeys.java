@@ -377,9 +377,12 @@ public class ConfigKeys {
       "kme.registration.from.message.header.enabled";
 
   /**
-   * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
+   * The following config is to control whether to turn on disabled replica enabler service.
    */
   public static final String CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED = "controller.enable.disabled.replica.enabled";
+
+  public static final String CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS =
+      "controller..disabled.replica.enabler.interval.ms";
 
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";

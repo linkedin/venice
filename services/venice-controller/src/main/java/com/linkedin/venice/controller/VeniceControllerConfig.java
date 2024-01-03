@@ -1,103 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER;
-import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
-import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
-import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_TIMEOUT_MINUTES;
-import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ADMIN_HOSTNAME;
-import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
-import static com.linkedin.venice.ConfigKeys.ADMIN_SECURE_PORT;
-import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
-import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
-import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
-import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
-import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_PREFIX;
-import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_SERVICE_NAME;
-import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
-import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_ENABLED;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
-import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
-import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
-import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
-import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
-import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_PROCESSING_CYCLE_DELAY;
-import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
-import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
-import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
-import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
-import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
-import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
-import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
-import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
-import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
-import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
-import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
-import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
-import static com.linkedin.venice.ConfigKeys.TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS;
-import static com.linkedin.venice.ConfigKeys.TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
-import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
+import static com.linkedin.venice.ConfigKeys.*;
 
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -170,6 +74,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long deprecatedJobTopicRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
   private final long topicCleanupSleepIntervalBetweenTopicListFetchMs;
+
+  private final long disabledReplicaEnablerServiceIntervalMs;
+
   private final int topicCleanupDelayFactor;
   private final int topicManagerKafkaOperationTimeOutMs;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
@@ -412,6 +319,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
                                                                                  // topicCleanupSleepIntervalBetweenTopicListFetchMs
                                                                                  // = delayBeforeTopicDeletion
 
+    this.disabledReplicaEnablerServiceIntervalMs =
+        props.getLong(CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS, TimeUnit.HOURS.toMillis(16));
     this.topicManagerKafkaOperationTimeOutMs =
         props.getInt(TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS, 30 * Time.MS_PER_SECOND);
 
@@ -627,6 +536,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getTopicCleanupSleepIntervalBetweenTopicListFetchMs() {
     return topicCleanupSleepIntervalBetweenTopicListFetchMs;
+  }
+
+  public long getDisabledReplicaEnablerServiceIntervalMs() {
+    return disabledReplicaEnablerServiceIntervalMs;
   }
 
   public int getDaVinciPushStatusScanMaxOfflineInstance() {
