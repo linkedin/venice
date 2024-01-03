@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.partitionoffset;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
@@ -41,11 +42,16 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   @Override
   public long getPartitionLatestOffsetAndRetry(PubSubTopicPartition topicPartition, int retries) {
     final long startTimeMs = time.getMilliseconds();
-    long res = partitionOffsetFetcher.getPartitionLatestOffsetAndRetry(topicPartition, retries);
-    stats.recordLatency(
-        PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_PARTITION_LATEST_OFFSET_WITH_RETRY,
-        Utils.calculateDurationMs(time, startTimeMs));
-    return res;
+    try {
+      long value = partitionOffsetFetcher.getPartitionLatestOffsetAndRetry(topicPartition, retries);
+      stats.recordLatency(
+          PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_PARTITION_LATEST_OFFSET_WITH_RETRY,
+          Utils.calculateDurationMs(time, startTimeMs));
+      return value;
+    } catch (PubSubTopicDoesNotExistException e) {
+      stats.recordGetLatestOffsetError();
+      throw e;
+    }
   }
 
   @Override
