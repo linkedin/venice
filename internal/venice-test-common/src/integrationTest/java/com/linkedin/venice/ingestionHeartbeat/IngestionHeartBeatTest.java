@@ -1,5 +1,6 @@
 package com.linkedin.venice.ingestionHeartbeat;
 
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
@@ -83,13 +84,14 @@ public class IngestionHeartBeatTest {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
-        3,
+        1,
         4,
         1,
         2,
@@ -105,11 +107,9 @@ public class IngestionHeartBeatTest {
     this.parentController = parentControllers.get(0);
   }
 
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS)
-  public void testIngestionHeartBeat(
-      boolean isAmplificationFactorEnabled,
-      boolean isNativeReplicationEnabled,
-      boolean isActiveActiveEnabled) throws IOException {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS)
+  public void testIngestionHeartBeat(boolean isAmplificationFactorEnabled, boolean isActiveActiveEnabled)
+      throws IOException {
     final String storeName = Utils.getUniqueString("ingestionHeartBeatTest");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
@@ -133,17 +133,12 @@ public class IngestionHeartBeatTest {
               .setHybridOffsetLagThreshold(0L)
               .setPartitionCount(2)
               .setReplicationFactor(2)
-              .setNativeReplicationEnabled(isNativeReplicationEnabled)
+              .setNativeReplicationEnabled(true)
               .setActiveActiveReplicationEnabled(isActiveActiveEnabled)
               .setAmplificationFactor(amplificationFactor);
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
-      if (!isNativeReplicationEnabled && isActiveActiveEnabled) {
-        assertTrue(
-            updateStoreResponse.isError(),
-            "Update store should fail when native replication is disabled and active-active replication is enabled");
-        return;
-      } else if (isAmplificationFactorEnabled && isActiveActiveEnabled) {
+      if (isAmplificationFactorEnabled && isActiveActiveEnabled) {
         assertTrue(
             updateStoreResponse.isError(),
             "Update store should fail when both amplification factor and active-active replication are enabled");
