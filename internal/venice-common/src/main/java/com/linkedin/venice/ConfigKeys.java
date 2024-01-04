@@ -382,7 +382,7 @@ public class ConfigKeys {
   public static final String CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED = "controller.enable.disabled.replica.enabled";
 
   public static final String CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS =
-      "controller..disabled.replica.enabler.interval.ms";
+      "controller.disabled.replica.enabler.interval.ms";
 
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
