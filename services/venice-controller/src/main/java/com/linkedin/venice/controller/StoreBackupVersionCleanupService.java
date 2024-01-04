@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.meta.Store.*;
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
