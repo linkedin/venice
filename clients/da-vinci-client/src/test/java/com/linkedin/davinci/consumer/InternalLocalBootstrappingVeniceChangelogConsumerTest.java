@@ -4,6 +4,11 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
@@ -321,8 +326,15 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         new VeniceChangeCoordinate(TEST_TOPIC, new ApacheKafkaOffsetPosition(TEST_OFFSET_OLD), TEST_PARTITION_ID_0);
     bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);
 
-    bootstrappingVeniceChangelogConsumer
-        .processRecordBytes(deserializer, compressor, key, value, partition, TEST_SCHEMA_ID, TEST_OFFSET_NEW);
+    ByteBuffer decompressedBytes = compressor.decompress(value);
+    bootstrappingVeniceChangelogConsumer.processRecordBytes(
+        decompressedBytes,
+        deserializer.deserialize(decompressedBytes),
+        key,
+        value,
+        partition,
+        TEST_SCHEMA_ID,
+        TEST_OFFSET_NEW);
 
     Assert.assertEquals(
         ((ApacheKafkaOffsetPosition) bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition())
