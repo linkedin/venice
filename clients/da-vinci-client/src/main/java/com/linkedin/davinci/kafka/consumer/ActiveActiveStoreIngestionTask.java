@@ -1337,8 +1337,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (shouldLogLag) {
       String lagLogFooter;
       if (isHybridFollower(pcs)) {
-        lagLogFooter = ". Leader Complete State: {" + pcs.getLeaderCompleteState().toString()
-            + "}, Last update In Ms: {" + pcs.getLastLeaderCompleteStateUpdateInMs() + "}.";
+        lagLogFooter = "Leader Complete State: {" + pcs.getLeaderCompleteState().toString() + "}, Last update In Ms: {"
+            + pcs.getLastLeaderCompleteStateUpdateInMs() + "}.";
       } else {
         lagLogFooter = "";
       }
@@ -1402,10 +1402,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           }
 
           // Fall back to calculate offset lag in the old way
-          return (cachedPubSubMetadataGetter
-              .getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getUserPartition()) - 1)
-              - pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress);
+          return measureLagWithCallToPubSub(
+              kafkaSourceAddress,
+              currentLeaderTopic,
+              pcs.getUserPartition(),
+              pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress));
         })
+        .filter(VALID_LAG)
         .sum();
 
     return minZeroLag(offsetLag);
