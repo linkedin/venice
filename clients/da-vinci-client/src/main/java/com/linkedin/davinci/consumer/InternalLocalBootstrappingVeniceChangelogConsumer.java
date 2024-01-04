@@ -21,7 +21,6 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
@@ -37,7 +36,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -325,15 +323,13 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
   @Override
   protected <T> T processRecordBytes(
-      RecordDeserializer<T> deserializer,
-      VeniceCompressor compressor,
+      ByteBuffer decompressedBytes,
+      T deserializedValue,
       byte[] key,
       ByteBuffer value,
       PubSubTopicPartition partition,
       int readerSchemaId,
       long recordOffset) throws IOException {
-    ByteBuffer decompressedBytes = compressor.decompress(value);
-    T deserializedValue = deserializer.deserialize(decompressedBytes);
     if (deserializedValue instanceof RecordChangeEvent) {
       RecordChangeEvent recordChangeEvent = (RecordChangeEvent) deserializedValue;
       if (recordChangeEvent.currentValue == null) {

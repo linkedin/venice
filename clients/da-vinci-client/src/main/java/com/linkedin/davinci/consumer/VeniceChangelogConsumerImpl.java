@@ -6,10 +6,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
-import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
-import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -27,7 +25,6 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -42,7 +39,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
-import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache;
@@ -84,7 +80,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
   protected StoreDeserializerCache<V> storeDeserializerCache;
-  private final AvroStoreDeserializerCache<RecordChangeEvent> recordChangeEventDeserializerCache;
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
 
@@ -107,20 +102,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final String storeName;
 
-  // This storage engine serves as a buffer for records which are chunked and have to be buffered before they can
-  // be returned to the client. We leverage the storageEngine interface here in order to take better advantage
-  // of the chunking and decompressing adapters that we've already built (which today are built around this interface)
-  // as chunked records are assembled we will eagerly evict all keys from the storage engine in order to keep the memory
-  // footprint as small as we can. We could use the object cache storage engine here in order to get LRU behavior
-  // but then that runs the risk of a parallel subscription having record chunks getting evicted before we have a chance
-  // to assemble them. So we rely on the simpler and concrete implementation as opposed to the abstraction in order
-  // to control and guarantee the behavior we're expecting.
-  protected final InMemoryStorageEngine inMemoryStorageEngine;
   protected final PubSubConsumerAdapter pubSubConsumer;
   protected final Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
   protected final int[] currentValuePayloadSize;
 
   protected final ChangelogClientConfig changelogClientConfig;
+
+  protected final ChunkAssembler chunkAssembler;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -142,19 +130,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.schemaReader = changelogClientConfig.getSchemaReader();
     Schema keySchema = schemaReader.getKeySchema();
     this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
-    // The in memory storage engine only relies on the name of store and nothing else. We use an unversioned store name
-    // here in order to reduce confusion (as this storage engine can be used across version topics).
-    this.inMemoryStorageEngine = new InMemoryStorageEngine(storeName);
-    // disable noisy logs
-    this.inMemoryStorageEngine.suppressLogs(true);
+    this.chunkAssembler = new ChunkAssembler(storeName);
+
     this.storeRepository = new ThinClientMetaStoreBasedRepository(
         changelogClientConfig.getInnerClientConfig(),
         VeniceProperties.empty(),
         null);
-    this.recordChangeEventDeserializerCache = new AvroStoreDeserializerCache<>(
-        new RecordChangeEventReadOnlySchemaRepository(this.storeRepository),
-        storeName,
-        true);
+
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
       Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
@@ -553,109 +535,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return false;
   }
 
-  protected <T> T bufferAndAssembleRecordChangeEvent(
-      PubSubTopicPartition pubSubTopicPartition,
-      int schemaId,
-      byte[] keyBytes,
-      ByteBuffer valueBytes,
-      long recordOffset,
-      AbstractAvroChunkingAdapter<T> chunkingAdapter,
-      Lazy<RecordDeserializer<T>> recordDeserializer,
-      StoreDeserializerCache<T> deserializerCache,
-      int readerSchemaId) {
-    T assembledRecord = null;
-    // Select compressor. We'll only construct compressors for version topics so this will return null for
-    // events from change capture. This is fine as today they are not compressed.
-    VeniceCompressor compressor;
-    if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
-      compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
-    } else {
-      compressor = NO_OP_COMPRESSOR;
-    }
-
-    if (!inMemoryStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
-      inMemoryStorageEngine.addStoragePartition(pubSubTopicPartition.getPartitionNumber());
-    }
-    // If this is a record chunk, store the chunk and return null for processing this record
-    if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
-      inMemoryStorageEngine.put(
-          pubSubTopicPartition.getPartitionNumber(),
-          keyBytes,
-          ValueRecord.create(schemaId, valueBytes.array()).serialize());
-      return null;
-    } else if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-      // This is the last value. Store it, and now read it from the in memory store as a fully assembled value
-      inMemoryStorageEngine.put(
-          pubSubTopicPartition.getPartitionNumber(),
-          keyBytes,
-          ValueRecord.create(schemaId, valueBytes.array()).serialize());
-      try {
-        assembledRecord = processRecordBytes(
-            recordDeserializer.get(),
-            compressor,
-            keyBytes,
-            RawBytesChunkingAdapter.INSTANCE.get(
-                inMemoryStorageEngine,
-                pubSubTopicPartition.getPartitionNumber(),
-                ByteBuffer.wrap(keyBytes),
-                false,
-                null,
-                null,
-                null,
-                readerSchemaId,
-                RawBytesStoreDeserializerCache.getInstance(),
-                compressor,
-                null),
-            pubSubTopicPartition,
-            readerSchemaId,
-            recordOffset);
-      } catch (Exception ex) {
-        // We might get an exception if we haven't persisted all the chunks for a given key. This
-        // can actually happen if the client seeks to the middle of a chunked record either by
-        // only tailing the records or through direct offset management. This is ok, we just won't
-        // return this record since this is a course grained approach we can drop it.
-        LOGGER.warn(
-            "Encountered error assembling chunked record, this can happen when seeking between chunked records. Skipping offset {} on topic {}",
-            recordOffset,
-            pubSubTopicPartition.getPubSubTopic().getName());
-      }
-    } else {
-      // this is a fully specified record, no need to buffer and assemble it, just decompress and deserialize it
-      try {
-        assembledRecord = processRecordBytes(
-            recordDeserializer.get(),
-            compressor,
-            keyBytes,
-            valueBytes,
-            pubSubTopicPartition,
-            readerSchemaId,
-            recordOffset);
-      } catch (Exception e) {
-        throw new RuntimeException(e);
-      }
-    }
-    // We only buffer one record at a time for a given partition. If we've made it this far
-    // we either just finished assembling a large record, or, didn't specify anything. So we'll clear
-    // the cache. Kafka might give duplicate delivery, but it won't give out of order delivery, so
-    // this is safe to do in all such contexts.
-    inMemoryStorageEngine.dropPartition(pubSubTopicPartition.getPartitionNumber());
-    return assembledRecord;
-  }
-
   // This function exists for wrappers of this class to be able to do any kind of preprocessing on the raw bytes of the
   // data consumed
   // in the change stream so as to avoid having to do any duplicate deserialization/serialization. Wrappers which depend
   // on solely
   // on the data post deserialization
   protected <T> T processRecordBytes(
-      RecordDeserializer<T> deserializer,
-      VeniceCompressor compressor,
+      ByteBuffer decompressedBytes,
+      T deserializedValue,
       byte[] key,
       ByteBuffer value,
       PubSubTopicPartition partition,
       int valueSchemaId,
       long recordOffset) throws IOException {
-    return deserializer.deserialize(compressor.decompress(value));
+    return deserializedValue;
   }
 
   protected Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> convertPubSubMessageToPubSubChangeEventMessage(
@@ -690,37 +583,52 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Put put = (Put) message.getValue().payloadUnion;
       // Select appropriate deserializers
       Lazy deserializerProvider;
-      AbstractAvroChunkingAdapter chunkingAdapter;
       int readerSchemaId;
-      ReadOnlySchemaRepository schemaRepo;
-      StoreDeserializerCache deserializerCache;
       if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
         Schema valueSchema = schemaReader.getValueSchema(put.schemaId);
         deserializerProvider =
             Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema));
-        chunkingAdapter = userEventChunkingAdapter;
         readerSchemaId = AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersion();
-        deserializerCache = this.storeDeserializerCache;
       } else {
         deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
-        chunkingAdapter = recordChangeEventChunkingAdapter;
         readerSchemaId = this.schemaReader.getLatestValueSchemaId();
-        deserializerCache = recordChangeEventDeserializerCache;
       }
-      assembledObject = bufferAndAssembleRecordChangeEvent(
+
+      // Select compressor. We'll only construct compressors for version topics so this will return null for
+      // events from change capture. This is fine as today they are not compressed.
+      VeniceCompressor compressor;
+      if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
+        compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
+      } else {
+        compressor = NO_OP_COMPRESSOR;
+      }
+
+      assembledObject = chunkAssembler.bufferAndAssembleRecord(
           pubSubTopicPartition,
           put.getSchemaId(),
           keyBytes,
           put.getPutValue(),
           message.getOffset(),
-          chunkingAdapter,
           deserializerProvider,
-          deserializerCache,
-          readerSchemaId);
+          readerSchemaId,
+          compressor);
       if (assembledObject == null) {
-        // bufferAndAssembleRecordChangeEvent may have only buffered records and not returned anything yet because
+        // bufferAndAssembleRecord may have only buffered records and not returned anything yet because
         // it's waiting for more input. In this case, just return an empty optional for now.
         return Optional.empty();
+      }
+
+      try {
+        assembledObject = processRecordBytes(
+            compressor.decompress(put.getPutValue()),
+            assembledObject,
+            keyBytes,
+            put.getPutValue(),
+            pubSubTopicPartition,
+            readerSchemaId,
+            message.getOffset());
+      } catch (Exception ex) {
+        throw new VeniceException(ex);
       }
 
       if (assembledObject instanceof RecordChangeEvent) {
@@ -814,7 +722,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             .put(pubSubTopicPartition.getPartitionNumber(), versionSwap.getLocalHighWatermarks());
       }
       switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
-      inMemoryStorageEngine.drop();
+      chunkAssembler.clearInMemoryDB();
       return true;
     }
     return false;
