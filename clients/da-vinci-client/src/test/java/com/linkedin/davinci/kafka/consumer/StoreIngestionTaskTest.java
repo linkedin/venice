@@ -2267,6 +2267,7 @@ public abstract class StoreIngestionTaskTest {
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     long[] messageCountPerPartition = new long[PARTITION_COUNT];
+
     when(mockTopicManager.getPartitionLatestOffsetAndRetry(any(), anyInt())).thenAnswer(invocation -> {
       PubSubTopicPartition pt = invocation.getArgument(0);
       return messageCountPerPartition[pt.getPartitionNumber()];
@@ -2276,7 +2277,7 @@ public abstract class StoreIngestionTaskTest {
       localVeniceWriter.broadcastStartOfPush(Collections.emptyMap());
       for (int partition: ALL_PARTITIONS) {
         // Taking into account both the initial SOS and the SOP
-        messageCountPerPartition[partition] = messageCountPerPartition[partition] + 2;
+        messageCountPerPartition[partition] += 2;
       }
       for (int i = 0; i < MESSAGES_BEFORE_EOP; i++) {
         try {
@@ -2284,15 +2285,14 @@ public abstract class StoreIngestionTaskTest {
               localVeniceWriter.put(getNumberedKey(i), getNumberedValue(i), SCHEMA_ID);
           PubSubProduceResult result = future.get();
           int partition = result.getPartition();
-          long offset = messageCountPerPartition[partition];
-          messageCountPerPartition[partition] = ++offset;
+          messageCountPerPartition[partition]++;
         } catch (InterruptedException | ExecutionException e) {
           throw new VeniceException(e);
         }
       }
       localVeniceWriter.broadcastEndOfPush(Collections.emptyMap());
       for (int partition: ALL_PARTITIONS) {
-        messageCountPerPartition[partition] = ++messageCountPerPartition[partition];
+        messageCountPerPartition[partition]++;
       }
 
     }, () -> {
@@ -2305,7 +2305,7 @@ public abstract class StoreIngestionTaskTest {
           System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
           Collections.emptyMap());
       for (int partition: ALL_PARTITIONS) {
-        messageCountPerPartition[partition] = ++messageCountPerPartition[partition];
+        messageCountPerPartition[partition]++;
       }
 
       for (int i = 0; i < MESSAGES_AFTER_EOP; i++) {
@@ -2314,8 +2314,7 @@ public abstract class StoreIngestionTaskTest {
               localVeniceWriter.put(getNumberedKey(i), getNumberedValue(i), SCHEMA_ID);
           PubSubProduceResult result = future.get();
           int partition = result.getPartition();
-          long offset = messageCountPerPartition[partition];
-          messageCountPerPartition[partition] = ++offset;
+          messageCountPerPartition[partition]++;
         } catch (InterruptedException | ExecutionException e) {
           throw new VeniceException(e);
         }
@@ -2336,7 +2335,7 @@ public abstract class StoreIngestionTaskTest {
             true,
             LeaderCompleteState.getLeaderCompleteState(true),
             System.currentTimeMillis());
-        messageCountPerPartition[partition] = ++messageCountPerPartition[partition];
+        messageCountPerPartition[partition]++;
       }
 
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeast(ALL_PARTITIONS.size()))
