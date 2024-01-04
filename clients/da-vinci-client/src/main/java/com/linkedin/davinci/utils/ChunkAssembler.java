@@ -71,7 +71,7 @@ public class ChunkAssembler {
           keyBytes,
           ValueRecord.create(schemaId, valueBytes.array()).serialize());
       try {
-        assembledRecord = deserializeAndDecompressBytes(
+        assembledRecord = decompressAndDeserialize(
             recordDeserializer.get(),
             compressor,
             RawBytesChunkingAdapter.INSTANCE.get(
@@ -99,7 +99,7 @@ public class ChunkAssembler {
     } else {
       // this is a fully specified record, no need to buffer and assemble it, just decompress and deserialize it
       try {
-        assembledRecord = deserializeAndDecompressBytes(recordDeserializer.get(), compressor, valueBytes);
+        assembledRecord = decompressAndDeserialize(recordDeserializer.get(), compressor, valueBytes);
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
@@ -113,7 +113,7 @@ public class ChunkAssembler {
     return assembledRecord;
   }
 
-  protected <T> T deserializeAndDecompressBytes(
+  protected <T> T decompressAndDeserialize(
       RecordDeserializer<T> deserializer,
       VeniceCompressor compressor,
       ByteBuffer value) throws IOException {

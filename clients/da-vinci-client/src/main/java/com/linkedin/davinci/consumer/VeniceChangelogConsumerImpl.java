@@ -541,15 +541,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   // on solely
   // on the data post deserialization
   protected <T> T processRecordBytes(
-      RecordDeserializer<T> deserializer,
-      VeniceCompressor compressor,
+      ByteBuffer decompressedBytes,
+      T deserializedValue,
       byte[] key,
       ByteBuffer value,
       PubSubTopicPartition partition,
       int valueSchemaId,
       long recordOffset) throws IOException {
-    // NoOp
-    return null;
+    return deserializedValue;
   }
 
   protected Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> convertPubSubMessageToPubSubChangeEventMessage(
@@ -617,6 +616,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         // bufferAndAssembleRecord may have only buffered records and not returned anything yet because
         // it's waiting for more input. In this case, just return an empty optional for now.
         return Optional.empty();
+      }
+
+      try {
+        assembledObject = processRecordBytes(null, assembledObject, null, null, null, 0, 0);
+      } catch (Exception ex) {
+        throw new VeniceException(ex);
       }
 
       if (assembledObject instanceof RecordChangeEvent) {
