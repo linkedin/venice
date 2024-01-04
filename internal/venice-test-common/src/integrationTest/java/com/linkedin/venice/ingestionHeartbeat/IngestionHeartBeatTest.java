@@ -90,7 +90,7 @@ public class IngestionHeartBeatTest {
         NUMBER_OF_CLUSTERS,
         1,
         3,
-        3,
+        4,
         1,
         2,
         Optional.of(controllerProps),
@@ -194,19 +194,20 @@ public class IngestionHeartBeatTest {
 
         Properties properties = new Properties();
         properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
-        PubSubConsumerAdapter pubSubConsumer = pubSubBrokerWrapper.getPubSubClientsFactory()
+        try (PubSubConsumerAdapter pubSubConsumer = pubSubBrokerWrapper.getPubSubClientsFactory()
             .getConsumerAdapterFactory()
-            .create(new VeniceProperties(properties), false, PubSubMessageDeserializer.getInstance(), "testConsumer");
+            .create(new VeniceProperties(properties), false, PubSubMessageDeserializer.getInstance(), "testConsumer")) {
 
-        for (int partition = 0; partition < response.getPartitions(); partition++) {
-          // RT: verify HB is received
-          verifyHBinKafkaTopic(pubSubConsumer, storeName, partition, isActiveActiveEnabled, true);
+          for (int partition = 0; partition < response.getPartitions(); partition++) {
+            // RT: verify HB is received
+            verifyHBinKafkaTopic(pubSubConsumer, storeName, partition, isActiveActiveEnabled, true);
 
-          // VT: verify leader topic partition receives HB from RT, and is forwarded with leader completed
-          // header to all VT.
-          List<Integer> subPartitions = PartitionUtils.getSubPartitions(partition, amplificationFactor);
-          for (int subPartition: subPartitions) {
-            verifyHBinKafkaTopic(pubSubConsumer, storeName, subPartition, isActiveActiveEnabled, false);
+            // VT: verify leader topic partition receives HB from RT, and is forwarded with leader completed
+            // header to all VT.
+            List<Integer> subPartitions = PartitionUtils.getSubPartitions(partition, amplificationFactor);
+            for (int subPartition: subPartitions) {
+              verifyHBinKafkaTopic(pubSubConsumer, storeName, subPartition, isActiveActiveEnabled, false);
+            }
           }
         }
       }
@@ -273,9 +274,8 @@ public class IngestionHeartBeatTest {
               String.format("Leader completed header not set to completed in VT partition %d", partition));
         }
       } else {
-        // If AA is not enabled, leader partition doesn't receive HB in RT and is not forwarded to all VT
+        // If AA is not enabled: SIT reads from parent RT but HB is sent to local RT, so HB is never propagated to VT
         if (isRealTime) {
-          // Though, in the consumer created for test, RT does receive HB. Should figure out why the consumer task
           assertTrue(
               isHBFound.get(),
               String.format("Heartbeat not found in RT partition %d with AA not enabled", partition));
