@@ -62,6 +62,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -181,7 +182,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -218,6 +218,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -1119,7 +1120,7 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        Assert.assertNotNull(storeIngestionTaskUnderTest.getLastConsumerException());
+        assertNotNull(storeIngestionTaskUnderTest.getLastConsumerException());
         Assert.assertTrue(
             storeIngestionTaskUnderTest.getLastConsumerException()
                 .getMessage()
@@ -2106,7 +2107,7 @@ public abstract class StoreIngestionTaskTest {
        * never be updated
        */
       relevantPartitions.stream().forEach(partition -> {
-        Assert.assertNotNull(storeIngestionTaskUnderTest.getPartitionConsumptionState(partition));
+        assertNotNull(storeIngestionTaskUnderTest.getPartitionConsumptionState(partition));
         PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(partition);
         Assert.assertTrue(pcs.getLatestProcessedUpstreamRTOffsetMap().isEmpty());
       });
@@ -4014,9 +4015,9 @@ public abstract class StoreIngestionTaskTest {
             Optional.empty(),
             null);
     ingestionTask.setPartitionConsumptionState(0, pcs);
-    ingestionTask.maybeSendIngestionHeartbeat(Optional.empty());
+    ingestionTask.maybeSendIngestionHeartbeat();
     // Second invocation should be skipped since it shouldn't be time for another heartbeat yet.
-    ingestionTask.maybeSendIngestionHeartbeat(Optional.empty());
+    ingestionTask.maybeSendIngestionHeartbeat();
     if (isHybridStore && isRealTimeTopic && isLeader) {
       verify(veniceWriter, times(1)).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
     } else {
@@ -4102,39 +4103,45 @@ public abstract class StoreIngestionTaskTest {
     heartBeatFuture.complete(null);
     PubSubTopicPartition pubSubTopicPartition0 = new PubSubTopicPartitionImpl(pubsubTopic, 0);
     PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubsubTopic, 1);
-    String expectedLogMessage;
 
     // all succeeded
     doReturn(heartBeatFuture).when(veniceWriter).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
-    Set<String> failedPartitions = VeniceConcurrentHashMap.newKeySet();
-    ingestionTask.maybeSendIngestionHeartbeat(Optional.of(failedPartitions));
-    assertEquals(failedPartitions.size(), 0);
+    AtomicReference<Set<String>> failedPartitions = new AtomicReference<>(null);
+    failedPartitions.set(ingestionTask.maybeSendIngestionHeartbeat());
+    assertEquals(failedPartitions.get().size(), 0);
 
     // 1 partition throws exception
-    Thread.sleep(2000); // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS to elapse
     doReturn(heartBeatFuture).when(veniceWriter)
         .sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong());
     doAnswer(invocation -> {
       throw new Exception("mock exception");
     }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition1), any(), any(), anyBoolean(), any(), anyLong());
-    ingestionTask.maybeSendIngestionHeartbeat(Optional.of(failedPartitions));
+    // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      assertEquals(failedPartitions.size(), 1);
-      assertFalse(failedPartitions.contains("0"));
-      assertTrue(failedPartitions.contains("1"));
+      failedPartitions.set(ingestionTask.maybeSendIngestionHeartbeat());
+      assertNotNull(failedPartitions.get());
+    });
+    // wait for the futures to complete that populates failedPartitions
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(failedPartitions.get().size(), 1);
+      assertFalse(failedPartitions.get().contains("0"));
+      assertTrue(failedPartitions.get().contains("1"));
     });
 
     // both partition throws exception
-    Thread.sleep(2000); // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS to elapse
     doAnswer(invocation -> {
       throw new Exception("mock exception");
     }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong());
-    failedPartitions.clear();
-    ingestionTask.maybeSendIngestionHeartbeat(Optional.of(failedPartitions));
+    // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      assertEquals(failedPartitions.size(), 2);
-      assertTrue(failedPartitions.contains("0"));
-      assertTrue(failedPartitions.contains("1"));
+      failedPartitions.set(ingestionTask.maybeSendIngestionHeartbeat());
+      assertNotNull(failedPartitions.get());
+    });
+    // wait for the futures to complete that populates failedPartitions
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(failedPartitions.get().size(), 2);
+      assertTrue(failedPartitions.get().contains("0"));
+      assertTrue(failedPartitions.get().contains("1"));
     });
   }
 

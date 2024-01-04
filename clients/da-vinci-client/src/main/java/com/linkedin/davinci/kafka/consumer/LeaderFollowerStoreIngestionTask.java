@@ -3428,22 +3428,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * <p>
    * This heartbeat message does not include a leader completion header. This maintains the leader completion states only in VTs and not
    * in the RT, avoiding the need to differentiate between heartbeats from leaders of different versions (backup/current/future) and colos.
+   *
+   * @return the set of partitions that failed to send heartbeat (used for tests)
    */
   @Override
-  protected void maybeSendIngestionHeartbeat(Optional<Set<String>> failedPartitions) {
+  protected Set<String> maybeSendIngestionHeartbeat() {
     if (!isHybridMode() || isDaVinciClient) {
       // Skip if the store version is not hybrid or if this is a DaVinci client.
-      return;
+      return null;
     }
     long currentTimestamp = System.currentTimeMillis();
     if (lastSendIngestionHeartbeatTimestamp.get() + serverConfig.getIngestionHeartbeatIntervalMs() > currentTimestamp) {
       // Not time for another heartbeat yet.
-      return;
+      return null;
     }
 
     AtomicInteger numHeartBeatSuccess = new AtomicInteger(0);
     Map<Integer, CompletableFuture<PubSubProduceResult>> heartBeatFutures = new VeniceConcurrentHashMap<>();
-    Set<String> failedPartitionSet = failedPartitions.orElseGet(VeniceConcurrentHashMap::newKeySet);
+    Set<String> failedPartitions = VeniceConcurrentHashMap.newKeySet();
     AtomicReference<CompletionException> completionException = new AtomicReference<>(null);
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
       PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
@@ -3462,7 +3464,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         heartBeatFuture.whenComplete((ignore, throwable) -> {
           if (throwable != null) {
             completionException.set(new CompletionException(throwable));
-            failedPartitionSet.add(String.valueOf(partition));
+            failedPartitions.add(String.valueOf(partition));
           } else {
             numHeartBeatSuccess.getAndIncrement();
           }
@@ -3474,15 +3476,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (heartBeatFutures.size() > 0) {
       CompletableFuture.allOf(heartBeatFutures.values().toArray(new CompletableFuture[0]))
           .whenCompleteAsync((ignore, throwable) -> {
-            if (failedPartitionSet.size() > 0) {
-              int numFailedPartitions = failedPartitionSet.size();
+            if (failedPartitions.size() > 0) {
+              int numFailedPartitions = failedPartitions.size();
               String logMessage = String.format(
                   "Send ingestion heartbeat for %d partitions of topic %s: %d succeeded, %d failed for partitions: %s",
                   heartBeatFutures.size(),
                   realTimeTopic,
                   numHeartBeatSuccess.get(),
                   numFailedPartitions,
-                  String.join(",", failedPartitionSet));
+                  String.join(",", failedPartitions));
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(logMessage)) {
                 LOGGER.error(logMessage, completionException.get());
               }
@@ -3499,11 +3501,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     lastSendIngestionHeartbeatTimestamp.set(currentTimestamp);
+    return failedPartitions;
   }
 
   /**
    * Once leader is marked completed, immediately reset {@link #lastSendIngestionHeartbeatTimestamp}
-   * such that {@link #maybeSendIngestionHeartbeat} will send HB SOS to the respective RT topics
+   * such that {@link #maybeSendIngestionHeartbeat()} will send HB SOS to the respective RT topics
    * rather than waiting for the timer to send HB SOS.
    */
   @Override
