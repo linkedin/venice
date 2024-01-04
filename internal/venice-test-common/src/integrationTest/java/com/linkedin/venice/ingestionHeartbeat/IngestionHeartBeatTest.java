@@ -1,6 +1,5 @@
 package com.linkedin.venice.ingestionHeartbeat;
 
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
@@ -84,7 +83,6 @@ public class IngestionHeartBeatTest {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     this.multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
@@ -130,7 +128,7 @@ public class IngestionHeartBeatTest {
               .setCompressionStrategy(CompressionStrategy.NO_OP)
               .setIncrementalPushEnabled(true)
               .setHybridRewindSeconds(500L)
-              .setHybridOffsetLagThreshold(0L)
+              .setHybridOffsetLagThreshold(10L)
               .setPartitionCount(2)
               .setReplicationFactor(2)
               .setNativeReplicationEnabled(true)
