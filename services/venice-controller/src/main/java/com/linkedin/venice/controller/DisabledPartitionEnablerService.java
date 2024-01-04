@@ -4,7 +4,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,7 +35,7 @@ public class DisabledPartitionEnablerService extends AbstractVeniceService {
     this.admin = admin;
     this.multiClusterConfig = multiClusterConfig;
     this.allClusters = multiClusterConfig.getClusters();
-    this.sleepInterval = TimeUnit.HOURS.toMillis(10);
+    this.sleepInterval = multiClusterConfig.getDisabledReplicaEnablerServiceIntervalMs();
     this.time = time;
     this.cleanupThread = new Thread(new DisabledPartitionEnablerTask(), "StoreBackupVersionCleanupTask");
   }

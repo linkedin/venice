@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.venice.ConfigKeys;
@@ -146,11 +148,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     for (Instance routerInstance: liveRouterInstances) {
       try {
         HttpGet routerRequest =
-            new HttpGet(routerInstance.getUrl() + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
+            new HttpGet(routerInstance.getUrl(true) + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
         HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
-              "Got status code {} from host {} while querying current version for store {}",
+              "Got status code {} from host {} while querying router current version for store {}",
               response.getStatusLine().getStatusCode(),
               routerInstance,
               store.getName());
@@ -166,7 +168,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           return false;
         }
       } catch (Exception e) {
-        LOGGER.error("Got exception while getting current version for store {}", store.getName(), e);
+        LOGGER.error("Got exception while getting router current version for store {}", store.getName(), e);
         return false;
       }
     }
@@ -179,11 +181,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     for (Instance instance: instances) {
       try {
         HttpGet routerRequest = new HttpGet(
-            instance.getUrl() + "/" + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + store.getName());
+            instance.getUrl(true) + "/" + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + store.getName());
         HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
-              "Got status code {} from host {} while querying current version for store {}",
+              "Got status code {} from host {} while querying server current version for store {}",
               response.getStatusLine().getStatusCode(),
               instance,
               store.getName());
@@ -219,6 +221,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     List<Version> versions = store.getVersions();
     List<Version> readyToBeRemovedVersions = new ArrayList<>();
     int currentVersion = store.getCurrentVersion();
+
+    if (currentVersion == NON_EXISTING_VERSION) {
+      return false;
+    }
 
     // Do not delete version unless all routers and all servers are on same current version
     if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionMetadataFetchBasedCleanupEnabled()

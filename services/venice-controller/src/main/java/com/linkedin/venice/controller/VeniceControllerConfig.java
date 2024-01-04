@@ -33,6 +33,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
@@ -170,6 +171,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long deprecatedJobTopicRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
   private final long topicCleanupSleepIntervalBetweenTopicListFetchMs;
+
+  private final long disabledReplicaEnablerServiceIntervalMs;
+
   private final int topicCleanupDelayFactor;
   private final int topicManagerKafkaOperationTimeOutMs;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
@@ -412,6 +416,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
                                                                                  // topicCleanupSleepIntervalBetweenTopicListFetchMs
                                                                                  // = delayBeforeTopicDeletion
 
+    this.disabledReplicaEnablerServiceIntervalMs =
+        props.getLong(CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS, TimeUnit.HOURS.toMillis(16));
     this.topicManagerKafkaOperationTimeOutMs =
         props.getInt(TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS, 30 * Time.MS_PER_SECOND);
 
@@ -627,6 +633,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getTopicCleanupSleepIntervalBetweenTopicListFetchMs() {
     return topicCleanupSleepIntervalBetweenTopicListFetchMs;
+  }
+
+  public long getDisabledReplicaEnablerServiceIntervalMs() {
+    return disabledReplicaEnablerServiceIntervalMs;
   }
 
   public int getDaVinciPushStatusScanMaxOfflineInstance() {
