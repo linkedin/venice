@@ -619,7 +619,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
 
       try {
-        assembledObject = processRecordBytes(null, assembledObject, null, null, null, 0, 0);
+        assembledObject = processRecordBytes(
+            compressor.decompress(put.getPutValue()),
+            assembledObject,
+            keyBytes,
+            put.getPutValue(),
+            pubSubTopicPartition,
+            readerSchemaId,
+            message.getOffset());
       } catch (Exception ex) {
         throw new VeniceException(ex);
       }
