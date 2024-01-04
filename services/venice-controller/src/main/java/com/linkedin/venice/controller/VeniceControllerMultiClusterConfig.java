@@ -118,6 +118,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
   }
 
+  public long getDisabledReplicaEnablerServiceIntervalMs() {
+    return getCommonConfig().getDisabledReplicaEnablerServiceIntervalMs();
+  }
+
   public int getTopicCleanupDelayFactor() {
     return getCommonConfig().getTopicCleanupDelayFactor();
   }
