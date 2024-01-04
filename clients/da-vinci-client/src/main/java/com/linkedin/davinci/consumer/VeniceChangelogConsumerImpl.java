@@ -25,7 +25,6 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -81,7 +80,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
   protected StoreDeserializerCache<V> storeDeserializerCache;
-  private final AvroStoreDeserializerCache<RecordChangeEvent> recordChangeEventDeserializerCache;
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
 
@@ -138,10 +136,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         changelogClientConfig.getInnerClientConfig(),
         VeniceProperties.empty(),
         null);
-    this.recordChangeEventDeserializerCache = new AvroStoreDeserializerCache<>(
-        new RecordChangeEventReadOnlySchemaRepository(this.storeRepository),
-        storeName,
-        true);
+
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
       Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
@@ -589,22 +584,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Put put = (Put) message.getValue().payloadUnion;
       // Select appropriate deserializers
       Lazy deserializerProvider;
-      AbstractAvroChunkingAdapter chunkingAdapter;
       int readerSchemaId;
-      ReadOnlySchemaRepository schemaRepo;
-      StoreDeserializerCache deserializerCache;
       if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
         Schema valueSchema = schemaReader.getValueSchema(put.schemaId);
         deserializerProvider =
             Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema));
-        chunkingAdapter = userEventChunkingAdapter;
         readerSchemaId = AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersion();
-        deserializerCache = this.storeDeserializerCache;
       } else {
         deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
-        chunkingAdapter = recordChangeEventChunkingAdapter;
         readerSchemaId = this.schemaReader.getLatestValueSchemaId();
-        deserializerCache = recordChangeEventDeserializerCache;
       }
 
       // Select compressor. We'll only construct compressors for version topics so this will return null for
