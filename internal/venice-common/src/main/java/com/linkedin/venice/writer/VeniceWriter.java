@@ -1950,11 +1950,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     synchronized (this.partitionLocks[partition]) {
       Segment currentSegment = segments[partition];
       if (currentSegment == null) {
-        logger.info("endSegment(partition {}) called but currentSegment == null. Ignoring.", partition);
+        logger.debug("endSegment(partition {}) called but currentSegment == null. Ignoring.", partition);
       } else if (!currentSegment.isStarted()) {
-        logger.info("endSegment(partition {}) called but currentSegment.started == false. Ignoring.", partition);
+        logger.debug("endSegment(partition {}) called but currentSegment.started == false. Ignoring.", partition);
       } else if (currentSegment.isEnded()) {
-        logger.info("endSegment(partition {}) called but currentSegment.ended == true. Ignoring.", partition);
+        logger.debug("endSegment(partition {}) called but currentSegment.ended == true. Ignoring.", partition);
       } else {
         try {
           sendEndOfSegment(
