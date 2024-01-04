@@ -3801,9 +3801,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
 
-  protected void maybeSendIngestionHeartbeat() {
-    // No op, heartbeat is only useful for L/F hybrid stores.
-  }
+  /**
+   * For L/F hybrid stores, the leader periodically writes a special SOS message to the RT topic.
+   * Check {@link LeaderFollowerStoreIngestionTask#maybeSendIngestionHeartbeat()} for more details.
+   */
+  protected abstract Set<String> maybeSendIngestionHeartbeat();
 
   /**
    * This function is checking the following conditions:
