@@ -1407,6 +1407,14 @@ public abstract class StoreIngestionTaskTest {
     long barLastOffset = getOffset(localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+    doReturn(fooLastOffset + 1).when(mockTopicManager)
+        .getPartitionLatestOffsetAndRetry(
+            argThat(argument -> argument.getPartitionNumber() == PARTITION_FOO),
+            anyInt());
+    doReturn(barLastOffset + 1).when(mockTopicManager)
+        .getPartitionLatestOffsetAndRetry(
+            argThat(argument -> argument.getPartitionNumber() == PARTITION_BAR),
+            anyInt());
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
       /**
