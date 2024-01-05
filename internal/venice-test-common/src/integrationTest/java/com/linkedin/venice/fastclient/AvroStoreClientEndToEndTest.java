@@ -284,7 +284,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
   public void testFastClientGet(
       boolean dualRead,
       boolean speculativeQueryEnabled,
-      boolean useStreamingBatchGetAsDefault,
       boolean enableGrpc,
       boolean retryEnabled,
       int batchGetKeySize,
@@ -299,8 +298,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setSpeculativeQueryEnabled(speculativeQueryEnabled)
             .setDualReadEnabled(dualRead)
             // this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt)
-            .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
     if (batchGet || compute) {
       clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(recordCnt);
@@ -357,7 +355,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       if (batchGet) {
         fastClientStatsValidation = metricsRepository -> validateBatchGetMetrics(
             metricsRepository,
-            useStreamingBatchGetAsDefault,
             false,
             batchGetKeySize,
             batchGetKeySize,
@@ -404,9 +401,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(false)
-            .setUseStreamingBatchGetAsDefault(true);
-
+            .setDualReadEnabled(false);
     // single get
     Consumer<MetricsRepository> fastClientStatsValidation =
         metricsRepository -> validateSingleGetMetrics(metricsRepository, false);
@@ -422,13 +417,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         storeMetadataFetchMode);
 
     // batch get
-    fastClientStatsValidation = metricsRepository -> validateBatchGetMetrics(
-        metricsRepository,
-        true, // testing batch get with useStreamingBatchGetAsDefault as true
-        false,
-        recordCnt,
-        recordCnt,
-        false);
+    fastClientStatsValidation =
+        metricsRepository -> validateBatchGetMetrics(metricsRepository, false, recordCnt, recordCnt, false);
     runTest(
         clientConfigBuilder,
         RequestType.MULTI_GET,
@@ -465,16 +455,12 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(recordCnt);
     }
 
-    if (batchGet) {
-      clientConfigBuilder.setUseStreamingBatchGetAsDefault(true);
-    }
-
     Consumer<MetricsRepository> fastClientStatsValidation;
     if (batchGet) {
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
       fastClientStatsValidation =
-          metricsRepository -> validateBatchGetMetrics(metricsRepository, true, false, recordCnt, recordCnt, true);
+          metricsRepository -> validateBatchGetMetrics(metricsRepository, false, recordCnt, recordCnt, true);
     } else if (compute) {
       clientConfigBuilder.setLongTailRetryEnabledForCompute(true).setLongTailRetryThresholdForComputeInMicroSeconds(1);
       fastClientStatsValidation =

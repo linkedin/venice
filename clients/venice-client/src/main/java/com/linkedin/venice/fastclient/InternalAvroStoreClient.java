@@ -8,11 +8,7 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFutur
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -51,14 +47,6 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
 
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
-    return getClientConfig().useStreamingBatchGetAsDefault()
-        ? batchGetUsingStreamingBatchGet(requestContext, keys)
-        : batchGetUsingSingleGet(keys);
-  }
-
-  private CompletableFuture<Map<K, V>> batchGetUsingStreamingBatchGet(
-      BatchGetRequestContext<K, V> requestContext,
-      Set<K> keys) throws VeniceClientException {
     CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
     CompletableFuture<VeniceResponseMap<K, V>> streamingResultFuture = streamingBatchGet(requestContext, keys);
 
@@ -72,51 +60,6 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
         resultFuture.complete(response);
       }
     });
-    return resultFuture;
-  }
-
-  /**
-   *  Leverage single-get implementation here:
-   *  1. Looping through all keys and call get() for each of the keys
-   *  2. Collect the replies and pass it to the caller
-   *
-   *  Transient change to support {@link ClientConfig#useStreamingBatchGetAsDefault()}
-   */
-  private CompletableFuture<Map<K, V>> batchGetUsingSingleGet(Set<K> keys) throws VeniceClientException {
-    int maxAllowedKeyCntInBatchGetReq = getClientConfig().getMaxAllowedKeyCntInBatchGetReq();
-    if (keys.isEmpty()) {
-      return CompletableFuture.completedFuture(Collections.emptyMap());
-    }
-    int keyCnt = keys.size();
-    if (keyCnt > maxAllowedKeyCntInBatchGetReq) {
-      throw new VeniceKeyCountLimitException(
-          getStoreName(),
-          RequestType.MULTI_GET,
-          keyCnt,
-          maxAllowedKeyCntInBatchGetReq);
-    }
-    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
-    Map<K, CompletableFuture<V>> valueFutures = new HashMap<>();
-    keys.forEach(k -> {
-      valueFutures.put(k, (get(new GetRequestContext(true), k)));
-    });
-    CompletableFuture.allOf(valueFutures.values().toArray(new CompletableFuture[0]))
-        .whenComplete(((aVoid, throwable) -> {
-          if (throwable != null) {
-            resultFuture.completeExceptionally(throwable);
-          }
-          Map<K, V> resultMap = new HashMap<>();
-          valueFutures.forEach((k, f) -> {
-            try {
-              resultMap.put(k, f.get());
-            } catch (Exception e) {
-              resultFuture.completeExceptionally(
-                  new VeniceClientException("Failed to complete future for key: " + k.toString(), e));
-            }
-          });
-          resultFuture.complete(resultMap);
-        }));
-
     return resultFuture;
   }
 

@@ -103,8 +103,7 @@ public class RetriableAvroGenericStoreClientTest {
             (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS))
         .setLongTailRetryEnabledForCompute(true)
         .setLongTailRetryThresholdForComputeInMicroSeconds(
-            (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS))
-        .setUseStreamingBatchGetAsDefault(true);
+            (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS));
     BATCH_GET_KEYS.add("test_key_1");
     BATCH_GET_KEYS.add("test_key_2");
     GenericRecord value1 = (GenericRecord) rrg.randomGeneric(STORE_VALUE_SCHEMA);
@@ -453,7 +452,7 @@ public class RetriableAvroGenericStoreClientTest {
    * @param retryWin retry request wins
    */
   private void validateMetrics(RequestType requestType, boolean errorRetry, boolean longTailRetry, boolean retryWin) {
-    String metricsPrefix = ClientTestUtils.getMetricPrefix(STORE_NAME, requestType, true);
+    String metricsPrefix = ClientTestUtils.getMetricPrefix(STORE_NAME, requestType);
 
     boolean singleGet = requestType == RequestType.SINGLE_GET;
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
