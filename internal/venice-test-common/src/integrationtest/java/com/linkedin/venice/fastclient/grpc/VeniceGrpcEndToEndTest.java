@@ -147,8 +147,7 @@ public class VeniceGrpcEndToEndTest {
             .setR2Client(r2Client)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
-            .setSpeculativeQueryEnabled(false)
-            .setUseStreamingBatchGetAsDefault(false);
+            .setSpeculativeQueryEnabled(false);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
@@ -200,8 +199,7 @@ public class VeniceGrpcEndToEndTest {
             .setR2Client(r2Client)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
-            .setSpeculativeQueryEnabled(false)
-            .setUseStreamingBatchGetAsDefault(true);
+            .setSpeculativeQueryEnabled(false);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -209,8 +207,7 @@ public class VeniceGrpcEndToEndTest {
             .setGrpcClientConfig(grpcClientConfig)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
-            .setSpeculativeQueryEnabled(false)
-            .setUseStreamingBatchGetAsDefault(true);
+            .setSpeculativeQueryEnabled(false);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
@@ -266,8 +263,7 @@ public class VeniceGrpcEndToEndTest {
             .setR2Client(r2Client)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
-            .setSpeculativeQueryEnabled(false)
-            .setUseStreamingBatchGetAsDefault(true);
+            .setSpeculativeQueryEnabled(false);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -275,8 +271,7 @@ public class VeniceGrpcEndToEndTest {
             .setGrpcClientConfig(grpcClientConfig)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
-            .setSpeculativeQueryEnabled(false)
-            .setUseStreamingBatchGetAsDefault(true);
+            .setSpeculativeQueryEnabled(false);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
@@ -316,8 +311,7 @@ public class VeniceGrpcEndToEndTest {
             .setR2Client(fastR2Client)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
-            .setSpeculativeQueryEnabled(false)
-            .setUseStreamingBatchGetAsDefault(true);
+            .setSpeculativeQueryEnabled(false);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -325,8 +319,7 @@ public class VeniceGrpcEndToEndTest {
             .setGrpcClientConfig(grpcClientConfig)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
-            .setSpeculativeQueryEnabled(false)
-            .setUseStreamingBatchGetAsDefault(true);
+            .setSpeculativeQueryEnabled(false);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), fastD2Client);

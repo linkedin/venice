@@ -67,18 +67,11 @@ public class ClientTestUtils {
     }
   }
 
-  public static String getMetricPrefix(
-      String storeName,
-      RequestType requestType,
-      boolean useStreamingBatchGetAsDefault) {
+  public static String getMetricPrefix(String storeName, RequestType requestType) {
     String metricPrefix = "." + storeName;
     switch (requestType) {
       case MULTI_GET:
-        if (useStreamingBatchGetAsDefault) {
-          metricPrefix += "--" + RequestType.MULTI_GET_STREAMING.getMetricPrefix();
-        } else {
-          metricPrefix += "--";
-        }
+        metricPrefix += "--" + RequestType.MULTI_GET_STREAMING.getMetricPrefix();
         break;
       case COMPUTE:
         metricPrefix += "--" + RequestType.COMPUTE_STREAMING.getMetricPrefix();
@@ -98,7 +91,7 @@ public class ClientTestUtils {
     Set<String> allMetricPrefixes = new HashSet<>();
     for (RequestType requestType: RequestType.values()) {
       for (int i = 0; i < 2; i++) {
-        allMetricPrefixes.add(getMetricPrefix(storeName, requestType, i == 0));
+        allMetricPrefixes.add(getMetricPrefix(storeName, requestType));
       }
     }
     return allMetricPrefixes;
