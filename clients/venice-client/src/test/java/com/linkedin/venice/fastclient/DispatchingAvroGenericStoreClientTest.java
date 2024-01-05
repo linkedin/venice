@@ -659,9 +659,7 @@ public class DispatchingAvroGenericStoreClientTest {
     try {
       setUpClient(false, true, false);
       batchGetRequestContext = new BatchGetRequestContext<>(BATCH_GET_KEYS.size(), false);
-      Map<String, GenericRecord> value =
-          (Map<String, GenericRecord>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS)
-              .get();
+      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {
       assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
