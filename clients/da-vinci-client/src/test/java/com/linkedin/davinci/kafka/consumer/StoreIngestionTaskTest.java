@@ -3,6 +3,10 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
+import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.HybridConfig.HYBRID;
+import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.DA_VINCI_CLIENT;
+import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.FOLLOWER_SERVER;
+import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.LEADER_SERVER;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
@@ -31,7 +35,6 @@ import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
-import static com.linkedin.venice.writer.VeniceWriter.EMPTY_MSG_HEADERS;
 import static com.linkedin.venice.writer.VeniceWriter.generateHeartbeatMessage;
 import static com.linkedin.venice.writer.VeniceWriter.getHeartbeatKME;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -238,6 +241,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -247,6 +251,18 @@ import org.testng.annotations.Test;
  */
 @Test(singleThreaded = true)
 public abstract class StoreIngestionTaskTest {
+  enum NodeType {
+    LEADER_SERVER, FOLLOWER_SERVER, DA_VINCI_CLIENT
+  }
+
+  enum HybridConfig {
+    HYBRID, BATCH_ONLY
+  }
+
+  enum AAConfig {
+    ACTIVE_ACTIVE, NON_ACTIVE_ACTIVE
+  }
+
   private static final Logger LOGGER = LogManager.getLogger(StoreIngestionTaskTest.class);
 
   private static final long READ_CYCLE_DELAY_MS = 5;
@@ -2963,13 +2979,19 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testActiveActiveStoreIsReadyToServe(boolean isHybrid, boolean isDaVinciClient, boolean isLeader) {
-    if (isDaVinciClient && isLeader) {
-      // DaVinci client can't be leader
-      return;
+  @DataProvider
+  public static Object[][] testActiveActiveStoreIsReadyToServeProvider() {
+    List<Object[]> params = new ArrayList<>();
+    for (HybridConfig hybridConfig: HybridConfig.values()) {
+      for (NodeType nodeType: NodeType.values()) {
+        params.add(new Object[] { hybridConfig, nodeType });
+      }
     }
+    return params.toArray(new Object[0][]);
+  }
 
+  @Test(dataProvider = "testActiveActiveStoreIsReadyToServeProvider")
+  public void testActiveActiveStoreIsReadyToServe(HybridConfig hybridConfig, NodeType nodeType) {
     int partitionCount = 2;
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(1);
@@ -2977,7 +2999,7 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
     HybridStoreConfig hybridStoreConfig = null;
-    if (isHybrid) {
+    if (hybridConfig == HYBRID) {
       hybridStoreConfig = new HybridStoreConfigImpl(
           100,
           100,
@@ -3003,7 +3025,9 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         1,
         new HashMap<>(),
-        false).setIsDaVinciClient(isDaVinciClient).setAggKafkaConsumerService(aggKafkaConsumerService).build();
+        false).setIsDaVinciClient(nodeType == DA_VINCI_CLIENT)
+            .setAggKafkaConsumerService(aggKafkaConsumerService)
+            .build();
 
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
     doReturn(mockTopicManager).when(mockTopicManagerRepository)
@@ -3052,7 +3076,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(mockPcsMultipleSourceKafkaServers).isEndOfPushReceived();
     doReturn(false).when(mockPcsMultipleSourceKafkaServers).isComplete();
     doReturn(true).when(mockPcsMultipleSourceKafkaServers).isWaitingForReplicationLag();
-    doReturn(isHybrid).when(mockPcsMultipleSourceKafkaServers).isHybrid();
+    doReturn(hybridConfig == HYBRID).when(mockPcsMultipleSourceKafkaServers).isHybrid();
     doReturn(topicSwitchWithMultipleSourceKafkaServersWrapper).when(mockPcsMultipleSourceKafkaServers).getTopicSwitch();
     doReturn(mockOffsetRecord).when(mockPcsMultipleSourceKafkaServers).getOffsetRecord();
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(any(), anyInt());
@@ -3060,7 +3084,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), any(), any());
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getPartition();
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getUserPartition();
-    if (isLeader) {
+    if (nodeType == LEADER_SERVER) {
       doReturn(LEADER).when(mockPcsMultipleSourceKafkaServers).getLeaderFollowerState();
     } else {
       doReturn(STANDBY).when(mockPcsMultipleSourceKafkaServers).getLeaderFollowerState();
@@ -3071,25 +3095,19 @@ public abstract class StoreIngestionTaskTest {
           .getLastLeaderCompleteStateUpdateInMs();
     }
     storeIngestionTaskUnderTest.setPartitionConsumptionState(0, mockPcsMultipleSourceKafkaServers);
-    if (isHybrid && isLeader) {
+    if (hybridConfig == HYBRID && nodeType == LEADER_SERVER) {
       assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers));
     } else {
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsMultipleSourceKafkaServers));
     }
   }
 
-  @Test(dataProvider = "Five-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testCheckAndLogIfLagIsAcceptableForHybridStore(
       boolean isOffsetBasedLag,
       boolean isDaVinciClient,
-      boolean isLeader,
       boolean isActiveActiveReplicationEnabled,
       boolean leaderCompleteStateCheckEnabled) {
-    if (isDaVinciClient && isLeader) {
-      // DaVinci client can't be leader
-      return;
-    }
-
     int partitionCount = 2;
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(1);
@@ -3266,10 +3284,23 @@ public abstract class StoreIngestionTaskTest {
         !(leaderCompleteStateCheckEnabled && isActiveActiveReplicationEnabled));
   }
 
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @DataProvider
+  public static Object[][] testGetAndUpdateLeaderCompletedStateProvider() {
+    List<Object[]> params = new ArrayList<>();
+    for (HybridConfig hybridConfig: HybridConfig.values()) {
+      for (NodeType nodeType: new NodeType[] { DA_VINCI_CLIENT, FOLLOWER_SERVER }) {
+        for (boolean leaderCompletedHeaderFound: new boolean[] { false, true }) {
+          params.add(new Object[] { hybridConfig, nodeType, leaderCompletedHeaderFound });
+        }
+      }
+    }
+    return params.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "testGetAndUpdateLeaderCompletedStateProvider")
   public void testGetAndUpdateLeaderCompletedState(
-      boolean isHybrid,
-      boolean isDaVinciClient,
+      HybridConfig hybridConfig,
+      NodeType nodeType,
       boolean leaderCompletedHeaderFound) {
 
     int partitionCount = 2;
@@ -3280,7 +3311,7 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
     HybridStoreConfig hybridStoreConfig = null;
-    if (isHybrid) {
+    if (hybridConfig == HYBRID) {
       hybridStoreConfig =
           new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
     }
@@ -3301,7 +3332,9 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         1,
         new HashMap<>(),
-        false).setIsDaVinciClient(isDaVinciClient).setAggKafkaConsumerService(aggKafkaConsumerService).build();
+        false).setIsDaVinciClient(nodeType == DA_VINCI_CLIENT)
+            .setAggKafkaConsumerService(aggKafkaConsumerService)
+            .build();
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
@@ -3327,7 +3360,7 @@ public abstract class StoreIngestionTaskTest {
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(producerTimestamp, mockLeaderMetadataWrapper, generateHeartbeatMessage(CheckSumType.NONE), "0");
 
-    PubSubMessageHeaders pubSubMessageHeaders = EMPTY_MSG_HEADERS;
+    PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
     if (leaderCompletedHeaderFound) {
       pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
     }
@@ -3347,7 +3380,7 @@ public abstract class StoreIngestionTaskTest {
     KafkaMessageEnvelope kafkaValue = pubSubMessage.getValue();
     ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
 
-    if (!isDaVinciClient) {
+    if (nodeType != DA_VINCI_CLIENT) {
       partitionConsumptionState.setLeaderFollowerState(LEADER);
       ingestionTask.getAndUpdateLeaderCompletedState(
           kafkaKey,
@@ -3368,7 +3401,7 @@ public abstract class StoreIngestionTaskTest {
         pubSubMessage.getPubSubMessageHeaders(),
         partitionConsumptionState);
     if (leaderCompletedHeaderFound) {
-      if (isHybrid) {
+      if (hybridConfig == HYBRID) {
         assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
         assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), producerTimestamp);
       } else {
@@ -3379,7 +3412,7 @@ public abstract class StoreIngestionTaskTest {
       assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
       assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
     }
-    assertEquals(partitionConsumptionState.isFirstHeartBeatSOSReceived(), isHybrid);
+    assertEquals(partitionConsumptionState.isFirstHeartBeatSOSReceived(), hybridConfig == HYBRID);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
