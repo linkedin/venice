@@ -3084,6 +3084,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), any(), any());
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getPartition();
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getUserPartition();
+    doReturn(5L).when(mockPcsMultipleSourceKafkaServers).getLatestProcessedLocalVersionTopicOffset();
     if (nodeType == LEADER_SERVER) {
       doReturn(LEADER).when(mockPcsMultipleSourceKafkaServers).getLeaderFollowerState();
     } else {
