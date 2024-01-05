@@ -119,11 +119,9 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   /**
    * Creates a batchget request which uses scatter gather to fetch all keys from different replicas.
    */
-  @Test(dataProvider = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
-  public void testBatchGetGenericClient(
-      boolean useStreamingBatchGetAsDefault,
-      boolean retryEnabled,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "Boolean-And-StoreMetadataFetchModes", timeOut = TIME_OUT)
+  public void testBatchGetGenericClient(boolean retryEnabled, StoreMetadataFetchMode storeMetadataFetchMode)
+      throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -131,8 +129,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setDualReadEnabled(false)
             .setMaxAllowedKeyCntInBatchGetReq(recordCnt + 1) // +1 for nonExistingKey
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1)
-            .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1);
 
     if (retryEnabled) {
       // enable retry to test the code path: to mimic retry in integration tests
@@ -158,17 +155,15 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, false, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, false, recordCnt + 1, recordCnt, false);
 
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
     printAllStats();
   }
 
-  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
-  public void testBatchGetSpecificClient(
-      boolean useStreamingBatchGetAsDefault,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
+  public void testBatchGetSpecificClient(StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -176,8 +171,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setDualReadEnabled(false)
             .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt)
-            .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
@@ -195,7 +189,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, false, recordCnt, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, false, recordCnt, recordCnt, false);
 
     specificFastClient.close();
     printAllStats();
@@ -255,7 +249,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         1,
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
 
-    validateBatchGetMetrics(metricsRepository, true, true, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false);
   }
 
   @Test(dataProvider = "Boolean-And-StoreMetadataFetchModes", timeOut = TIME_OUT)
@@ -339,7 +333,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         "STATS: latency -> {}",
         stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
 
-    validateBatchGetMetrics(metricsRepository, true, true, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false);
     printAllStats();
   }
 }

@@ -145,13 +145,12 @@ public abstract class AbstractClientEndToEndSetup {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean dualRead = (boolean) permutation[0];
       boolean speculativeQueryEnabled = (boolean) permutation[1];
-      boolean useStreamingBatchGetAsDefault = (boolean) permutation[2];
-      boolean retryEnabled = (boolean) permutation[4];
-      int batchGetKeySize = (int) permutation[5];
-      RequestType requestType = (RequestType) permutation[6];
-      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[7];
+      boolean retryEnabled = (boolean) permutation[3];
+      int batchGetKeySize = (int) permutation[4];
+      RequestType requestType = (RequestType) permutation[5];
+      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[6];
       if (requestType != RequestType.MULTI_GET && requestType != RequestType.MULTI_GET_STREAMING) {
-        if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
+        if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
           // to avoid duplicate tests
           return false;
@@ -173,23 +172,11 @@ public abstract class AbstractClientEndToEndSetup {
     },
         DataProviderUtils.BOOLEAN, // dualRead
         DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
-        DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
         DataProviderUtils.BOOLEAN, // enableGrpc
         DataProviderUtils.BOOLEAN, // retryEnabled
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         REQUEST_TYPES_SMALL, // requestType
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
-  }
-
-  @DataProvider(name = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
-  public Object[][] oneBooleanStoreMetadataFetchMode() {
-    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
-  }
-
-  @DataProvider(name = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode")
-  public Object[][] twoBooleanStoreMetadataFetchMode() {
-    return DataProviderUtils
-        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
   }
 
   @DataProvider(name = "fastClientHTTPVariantsAndStoreMetadataFetchModes")
@@ -200,6 +187,11 @@ public abstract class AbstractClientEndToEndSetup {
   @DataProvider(name = "Boolean-And-StoreMetadataFetchModes")
   public static Object[][] booleanAndStoreMetadataFetchModes() {
     return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
+  }
+
+  @DataProvider(name = "StoreMetadataFetchModes")
+  public static Object[][] storeMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(STORE_METADATA_FETCH_MODES);
   }
 
   @DataProvider(name = "FastClient-Request-Types-Small")
@@ -505,19 +497,17 @@ public abstract class AbstractClientEndToEndSetup {
   }
 
   protected void validateSingleGetMetrics(MetricsRepository metricsRepository, boolean retryEnabled) {
-    validateMetrics(metricsRepository, false, RequestType.SINGLE_GET, 0, 0, retryEnabled);
+    validateMetrics(metricsRepository, RequestType.SINGLE_GET, 0, 0, retryEnabled);
   }
 
   protected void validateBatchGetMetrics(
       MetricsRepository metricsRepository,
-      boolean useStreamingBatchGetAsDefault,
       boolean streamingBatchGetApi,
       int expectedMultiKeySizeMetricsCount,
       int expectedMultiKeySizeSuccessMetricsCount,
       boolean retryEnabled) {
     validateMetrics(
         metricsRepository,
-        useStreamingBatchGetAsDefault,
         streamingBatchGetApi ? RequestType.MULTI_GET_STREAMING : RequestType.MULTI_GET,
         expectedMultiKeySizeMetricsCount,
         expectedMultiKeySizeSuccessMetricsCount,
@@ -532,7 +522,6 @@ public abstract class AbstractClientEndToEndSetup {
       boolean retryEnabled) {
     validateMetrics(
         metricsRepository,
-        true,
         streamingComputeApi ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE,
         expectedBatchGetKeySizeMetricsCount,
         expectedBatchGetKeySizeSuccessMetricsCount,
@@ -541,15 +530,14 @@ public abstract class AbstractClientEndToEndSetup {
 
   private void validateMetrics(
       MetricsRepository metricsRepository,
-      boolean useStreamingBatchGetAsDefault,
       RequestType requestType,
       int expectedMultiKeySizeMetricsCount,
       int expectedMultiKeySizeSuccessMetricsCount,
       boolean retryEnabled) {
-    final String metricPrefix = ClientTestUtils.getMetricPrefix(storeName, requestType, useStreamingBatchGetAsDefault);
+    final String metricPrefix = ClientTestUtils.getMetricPrefix(storeName, requestType);
 
-    double keyCount = useStreamingBatchGetAsDefault ? expectedMultiKeySizeMetricsCount : 1;
-    double successKeyCount = useStreamingBatchGetAsDefault ? expectedMultiKeySizeSuccessMetricsCount : 1;
+    double keyCount = expectedMultiKeySizeMetricsCount;
+    double successKeyCount = expectedMultiKeySizeSuccessMetricsCount;
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
 
     // counters are incremented in an async manner, so adding non-deterministic wait
