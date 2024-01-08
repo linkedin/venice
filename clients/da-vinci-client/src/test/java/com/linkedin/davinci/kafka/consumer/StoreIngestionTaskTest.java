@@ -5,8 +5,8 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDB
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.AAConfig.AA_OFF;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.AAConfig.AA_ON;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.HybridConfig.HYBRID;
-import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.DA_VINCI;
-import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.FOLLOWER;
+import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.LeaderCompleteCheck.LEADER_COMPLETE_CHECK_ON;
+import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.*;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.SortedInput.SORTED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
@@ -76,6 +76,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerIngestionProgressNotifier;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -266,6 +267,10 @@ public abstract class StoreIngestionTaskTest {
 
   enum SortedInput {
     SORTED, UNSORTED
+  }
+
+  enum LeaderCompleteCheck {
+    LEADER_COMPLETE_CHECK_ON, LEADER_COMPLETE_CHECK_OFF
   }
 
   @DataProvider
@@ -3103,18 +3108,24 @@ public abstract class StoreIngestionTaskTest {
   @DataProvider
   public static Object[][] testCheckAndLogIfLagIsAcceptableForHybridStoreProvider() {
     return DataProviderUtils.allPermutationGenerator(
-        DataProviderUtils.BOOLEAN,
+        LagType.values(),
         new NodeType[] { DA_VINCI, FOLLOWER },
         AAConfig.values(),
-        DataProviderUtils.BOOLEAN);
+        LeaderCompleteCheck.values());
   }
 
+  /**
+   * @param lagType N.B. this only affects cosmetic logging details at the level where we mock it
+   * @param nodeType Can be either DVC or follower
+   * @param aaConfig AA on/off
+   * @param leaderCompleteCheck Whether followers/DVC should wait for the leader to be complete
+   */
   @Test(dataProvider = "testCheckAndLogIfLagIsAcceptableForHybridStoreProvider")
   public void testCheckAndLogIfLagIsAcceptableForHybridStore(
-      boolean isOffsetBasedLag,
+      LagType lagType,
       NodeType nodeType,
       AAConfig aaConfig,
-      boolean leaderCompleteStateCheckEnabled) {
+      LeaderCompleteCheck leaderCompleteCheck) {
     int partitionCount = 2;
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(1);
@@ -3143,7 +3154,8 @@ public abstract class StoreIngestionTaskTest {
     Map<String, Object> serverProperties = new HashMap<>();
     serverProperties.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000L);
     serverProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000L);
-    serverProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, leaderCompleteStateCheckEnabled);
+    serverProperties
+        .put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON);
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
         new RandomPollStrategy(),
@@ -3188,7 +3200,7 @@ public abstract class StoreIngestionTaskTest {
               offsetLag,
               offsetThreshold,
               true,
-              isOffsetBasedLag,
+              lagType,
               0));
     }
 
@@ -3200,7 +3212,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            isOffsetBasedLag,
+            lagType,
             0));
 
     // Case 3: offsetLag <= offsetThreshold and instance is not a standby or DaVinciClient
@@ -3214,7 +3226,7 @@ public abstract class StoreIngestionTaskTest {
               offsetLag,
               offsetThreshold,
               false,
-              isOffsetBasedLag,
+              lagType,
               0));
     }
 
@@ -3228,9 +3240,9 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            isOffsetBasedLag,
+            lagType,
             0),
-        !(leaderCompleteStateCheckEnabled && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
 
     // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is unknown
@@ -3242,7 +3254,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            isOffsetBasedLag,
+            lagType,
             0));
 
     // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
@@ -3258,7 +3270,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            isOffsetBasedLag,
+            lagType,
             0));
 
     // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
@@ -3272,9 +3284,9 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            isOffsetBasedLag,
+            lagType,
             0),
-        !(leaderCompleteStateCheckEnabled && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
 
     // Case 8: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is LEADER_NOT_COMPLETED
@@ -3286,9 +3298,9 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            isOffsetBasedLag,
+            lagType,
             0),
-        !(leaderCompleteStateCheckEnabled && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
   }
 
   @DataProvider
@@ -3415,8 +3427,13 @@ public abstract class StoreIngestionTaskTest {
     assertEquals(partitionConsumptionState.isFirstHeartBeatSOSReceived(), hybridConfig == HYBRID);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testProcessTopicSwitch(boolean isDaVinciClient) {
+  @DataProvider
+  public static Object[][] testProcessTopicSwitchProvider() {
+    return new Object[][] { { LEADER }, { DA_VINCI } };
+  }
+
+  @Test(dataProvider = "testProcessTopicSwitchProvider")
+  public void testProcessTopicSwitch(NodeType nodeType) {
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(amplificationFactor);
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
@@ -3437,7 +3454,7 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         amplificationFactor,
         new HashMap<>(),
-        false).setIsDaVinciClient(isDaVinciClient).build();
+        false).setIsDaVinciClient(nodeType == DA_VINCI).build();
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
@@ -3472,7 +3489,7 @@ public abstract class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest.getStatusReportAdapter().initializePartitionReportStatus(PARTITION_FOO);
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
 
-    verify(mockTopicManagerRemoteKafka, isDaVinciClient ? never() : times(1))
+    verify(mockTopicManagerRemoteKafka, nodeType == DA_VINCI ? never() : times(1))
         .getPartitionOffsetByTime(any(), anyLong());
   }
 

@@ -9,6 +9,7 @@ import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
@@ -1307,14 +1308,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long offsetLag,
       long offsetThreshold,
       boolean shouldLogLag,
-      boolean isOffsetBasedLag,
+      LagType lagType,
       long latestConsumedProducerTimestamp) {
     boolean isLagAcceptable = super.checkAndLogIfLagIsAcceptableForHybridStore(
         pcs,
         offsetLag,
         offsetThreshold,
         false, // We'll take care of logging at the end of this function
-        isOffsetBasedLag,
+        lagType,
         latestConsumedProducerTimestamp);
 
     if (isLagAcceptable && isHybridFollower(pcs)) {
@@ -1343,7 +1344,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         lagLogFooter = "";
       }
       logLag(
-          isOffsetBasedLag,
+          lagType,
           pcs.getPartition(),
           isLagAcceptable,
           latestConsumedProducerTimestamp,

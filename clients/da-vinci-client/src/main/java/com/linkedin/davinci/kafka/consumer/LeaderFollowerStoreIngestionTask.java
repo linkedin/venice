@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.LEADER_TO_STANDBY;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER;
@@ -19,6 +20,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
@@ -1915,13 +1917,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long offsetLag,
       long offsetThreshold,
       boolean shouldLogLag,
-      boolean isOffsetBasedLag,
+      LagType lagType,
       long latestConsumedProducerTimestamp) {
     boolean isLagAcceptable = offsetLag <= offsetThreshold;
 
     if (shouldLogLag) {
       logLag(
-          isOffsetBasedLag,
+          lagType,
           pcs.getPartition(),
           isLagAcceptable,
           latestConsumedProducerTimestamp,
@@ -1934,7 +1936,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   protected void logLag(
-      boolean isOffsetBasedLag,
+      LagType lagType,
       int partition,
       boolean isLagAcceptable,
       long latestConsumedProducerTimestamp,
@@ -1944,10 +1946,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LOGGER.info(
         "{} [{} lag] partition {} is {}. {}Lag: [{}] {} Threshold [{}]. {}",
         this.consumerTaskId,
-        isOffsetBasedLag ? "Offset" : "Time",
+        lagType.prettyString(),
         partition,
         (isLagAcceptable ? "not lagging" : "lagging"),
-        (isOffsetBasedLag ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+        (lagType == OFFSET_LAG ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
         lag,
         (isLagAcceptable ? "<" : ">"),
         threshold,

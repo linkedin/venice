@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
+import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
@@ -15,6 +17,7 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
@@ -769,7 +772,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long offsetLag,
       long offsetThreshold,
       boolean shouldLogLag,
-      boolean isOffsetBasedLag,
+      LagType lagType,
       long latestConsumedProducerTimestamp);
 
   /**
@@ -828,7 +831,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               measureHybridOffsetLag(partitionConsumptionState, shouldLogLag),
               offsetThreshold,
               shouldLogLag,
-              true,
+              OFFSET_LAG,
               0);
         }
 
@@ -852,7 +855,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp),
               producerTimeLagThresholdInMS,
               shouldLogLag,
-              false,
+              TIME_LAG,
               latestConsumedProducerTimestamp);
           /**
            * If time lag is not acceptable but the producer timestamp of the last message of RT is smaller or equal than
