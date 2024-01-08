@@ -26,6 +26,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -296,6 +297,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final StatusReportAdapter statusReportAdapter;
 
+  protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final DaVinciRecordTransformer recordTransformer;
   private final Runnable runnableForKillIngestionTasksForMissingSOP;
@@ -434,6 +436,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.runnableForKillIngestionTasksForMissingSOP = () -> waitForStateVersion(kafkaVersionTopic);
     this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
+    this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
     this.recordTransformer = recordTransformer;
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -3080,7 +3083,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
-        // Do transorfmation recompute key, value and partition
+        Schema schema = put.getSchema();
+
+        // Decompress/assemble record before transformation
+        put.setPutValue(
+            chunkAssembler.bufferAndAssembleRecord(
+                consumerRecord.getTopicPartition(),
+                put.getSchemaId(),
+                keyBytes,
+                put.getPutValue(),
+                consumerRecord.getOffset(),
+                Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(schema, schema)),
+                producedPartition,
+                (VeniceCompressor) compressor));
+
+        // Do transformation recompute key, value and partition
         if (recordTransformer != null) {
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, put.schemaId);
