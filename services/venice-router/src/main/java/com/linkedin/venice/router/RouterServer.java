@@ -889,7 +889,7 @@ public class RouterServer extends AbstractVeniceService {
           config.getRefreshAttemptsForZkReconnect(),
           config.getRefreshIntervalForZkReconnectInMs());
       routersClusterManager.refresh();
-      routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getHostname(), config.getPort()));
+      routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getHostname(), config.getSslPort()));
       routingDataRepository.refresh();
       hybridStoreQuotaRepository.ifPresent(HelixHybridStoreQuotaRepository::refresh);
 
