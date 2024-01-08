@@ -63,7 +63,7 @@ public abstract class AbstractDataWriterTask {
       try {
         jobProps = configurator.setupSSLConfig(jobProps, UserCredentialsFactory.getHadoopUserCredentials());
       } catch (IOException e) {
-        throw new VeniceException("Could not get user credential for job:" + engineTaskConfigProvider.getJobName(), e);
+        throw new VeniceException("Could not get user credential for job: " + engineTaskConfigProvider.getJobName(), e);
       }
     }
     setRmdChunkingEnabled(Boolean.parseBoolean(jobProps.getProperty(VeniceWriter.ENABLE_RMD_CHUNKING)));
