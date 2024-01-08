@@ -2331,7 +2331,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void updateOffsetLagInMetadata(PartitionConsumptionState ps) {
     // Measure and save real-time offset lag.
-    long offsetLag = measureHybridOffsetLag(ps, true);
+    long offsetLag = measureHybridOffsetLag(ps, false);
     ps.getOffsetRecord().setOffsetLag(offsetLag);
   }
 
