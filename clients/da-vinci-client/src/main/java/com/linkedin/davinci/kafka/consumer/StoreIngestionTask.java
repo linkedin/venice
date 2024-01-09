@@ -3083,24 +3083,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
-        Schema schema = put.getSchema();
+        Schema writerSchema = put.getSchema();
+        int writerSchemaId = put.getSchemaId();
 
-        // Decompress/assemble record before transformation
-        put.setPutValue(
-            chunkAssembler.bufferAndAssembleRecord(
-                consumerRecord.getTopicPartition(),
-                put.getSchemaId(),
-                keyBytes,
-                put.getPutValue(),
-                consumerRecord.getOffset(),
-                Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(schema, schema)),
-                producedPartition,
-                (VeniceCompressor) compressor));
+        if (valueSchemaId > 0) {
+          Schema readerSchema = schemaRepository.getValueSchema(storeName, valueSchemaId).getSchema();
+
+          // Decompress/assemble record before transformation
+          put.setPutValue(
+              chunkAssembler.bufferAndAssembleRecord(
+                  consumerRecord.getTopicPartition(),
+                  writerSchemaId,
+                  keyBytes,
+                  put.getPutValue(),
+                  consumerRecord.getOffset(),
+                  Lazy.of(() -> new AvroGenericDeserializer<>(writerSchema, readerSchema)),
+                  // Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema,
+                  // readerSchema)),
+                  valueSchemaId,
+                  compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic)));
+        }
 
         // Do transformation recompute key, value and partition
         if (recordTransformer != null) {
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, put.schemaId);
+          SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, writerSchemaId);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
           Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(put.putValue, valueSchema));
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
@@ -3120,8 +3127,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
-        if (put.schemaId > 0) {
-          valueSchemaId = put.schemaId;
+        if (writerSchemaId > 0) {
+          valueSchemaId = writerSchemaId;
         }
         break;
 
