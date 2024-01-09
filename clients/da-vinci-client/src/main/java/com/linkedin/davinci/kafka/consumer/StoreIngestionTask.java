@@ -3082,6 +3082,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Do transorfmation recompute key, value and partition
         if (recordTransformer != null) {
+          long recordTransformStartTime = System.currentTimeMillis();
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, put.schemaId);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
@@ -3089,6 +3090,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
           ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
           put.putValue = transformedBytes;
+          versionedIngestionStats.recordTransformerLatency(
+              storeName,
+              versionNumber,
+              LatencyUtils.getElapsedTimeInMs(recordTransformStartTime),
+              currentTimeMs);
           writeToStorageEngine(producedPartition, keyBytes, put, currentTimeMs);
         } else {
 

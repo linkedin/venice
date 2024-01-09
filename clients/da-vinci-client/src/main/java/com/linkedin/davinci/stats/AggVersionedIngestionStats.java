@@ -164,4 +164,8 @@ public class AggVersionedIngestionStats
         version,
         stat -> stat.recordNearlineLocalBrokerToReadyToServeLatency(value, timestamp));
   }
+
+  public void recordTransformerLatency(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerLatency(value, timestamp));
+  }
 }
