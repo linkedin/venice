@@ -1,16 +1,11 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
-import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.StringJoiner;
-import javax.annotation.Nonnull;
-import org.apache.commons.lang.Validate;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.Metric;
@@ -24,38 +19,34 @@ import org.apache.logging.log4j.Logger;
  * This class tracks consumed topic partitions' offsets
  */
 public class TopicPartitionsOffsetsTracker {
-  public enum ResultType {
-    VALID_OFFSET_LAG, NO_OFFSET_LAG, INVALID_OFFSET_LAG
-  }
-
   private static final Logger LOGGER = LogManager.getLogger(TopicPartitionsOffsetsTracker.class);
-  private static final Duration DEFAULT_OFFSETS_UPDATE_INTERVAL = Duration.ofSeconds(30);
-  private static final Duration DEFAULT_MIN_LOG_INTERVAL = Duration.ofMinutes(3);
-  private static final ResultType[] RESULT_TYPE_VALUES = ResultType.values();
+  private static final long INVALID = -1;
+  private static final long DEFAULT_OFFSETS_UPDATE_INTERVAL_MS = 30 * Time.MS_PER_SECOND;
 
-  private final Map<TopicPartition, Double> topicPartitionCurrentOffset;
-  private final Map<TopicPartition, Double> topicPartitionEndOffset;
-  private Instant lastMetricsCollectedTime;
-  private final Duration offsetsUpdateInterval;
-  private final StatsAccumulator statsAccumulator;
+  private final Map<TopicPartition, OffsetInfo> topicPartitionOffsetInfo;
+  private volatile long lastMetricsCollectedTime;
+  private final long offsetsUpdateIntervalMs;
 
   public TopicPartitionsOffsetsTracker() {
-    this(DEFAULT_OFFSETS_UPDATE_INTERVAL);
+    this(validateInterval(DEFAULT_OFFSETS_UPDATE_INTERVAL_MS));
   }
 
-  public TopicPartitionsOffsetsTracker(Duration offsetsUpdateInterval) {
-    this(offsetsUpdateInterval, DEFAULT_MIN_LOG_INTERVAL);
+  /**
+   * N.B. Package-private, for tests only. This constructor skips the {@link #validateInterval(long)} check.
+   */
+  TopicPartitionsOffsetsTracker(long offsetsUpdateIntervalMs) {
+    this.offsetsUpdateIntervalMs = offsetsUpdateIntervalMs;
+    this.lastMetricsCollectedTime = 0;
+    // N.B. This map can be accessed both by poll (one caller at a time) and by metrics (arbitrary concurrency)
+    // so it needs to be threadsafe.
+    this.topicPartitionOffsetInfo = new VeniceConcurrentHashMap<>();
   }
 
-  public TopicPartitionsOffsetsTracker(@Nonnull Duration offsetsUpdateInterval, Duration minLogInterval) {
-    Validate.notNull(offsetsUpdateInterval);
-    this.offsetsUpdateInterval = offsetsUpdateInterval;
-    this.lastMetricsCollectedTime = null;
-    // N.B. These maps can be accessed both by poll (one caller at a time) and by metrics (arbitrary concurrency)
-    // so they need to be threadsafe.
-    this.topicPartitionCurrentOffset = new VeniceConcurrentHashMap<>();
-    this.topicPartitionEndOffset = new VeniceConcurrentHashMap<>();
-    this.statsAccumulator = new StatsAccumulator(minLogInterval);
+  private static long validateInterval(long interval) {
+    if (interval > 0) {
+      return interval;
+    }
+    throw new IllegalArgumentException("The interval must be above zero.");
   }
 
   /**
@@ -64,15 +55,30 @@ public class TopicPartitionsOffsetsTracker {
    * to be the largest offset amongst the records passed in.
    *
    * @param records consumed records
+   * @param kafkaConsumer from which to extract metrics
    */
   public void updateEndAndCurrentOffsets(
       ConsumerRecords<byte[], byte[]> records,
-      Map<MetricName, ? extends Metric> metrics) {
-    if (lastMetricsCollectedTime != null && LatencyUtils
-        .getElapsedTimeInMs(lastMetricsCollectedTime.toEpochMilli()) < offsetsUpdateInterval.toMillis()) {
+      Consumer<byte[], byte[]> kafkaConsumer) {
+    long lastMetricsCollectedTimeSnapshot = lastMetricsCollectedTime;
+    long currentTime = System.currentTimeMillis();
+    long elapsedTime = currentTime - lastMetricsCollectedTimeSnapshot;
+    if (elapsedTime < offsetsUpdateIntervalMs) {
       return; // Not yet
     }
-    lastMetricsCollectedTime = Instant.now();
+    synchronized (this) {
+      /**
+       * N.B.: This race condition check could be defeated if we allowed the {@link offsetsUpdateIntervalMs} to be zero.
+       *       This is why the {@link #validateInterval(long)} function protects against this at construction-time.
+       *       We do allow an interval of zero in tests, via the package-private constructor, because these are not
+       *       multi-threaded.
+       */
+      if (lastMetricsCollectedTimeSnapshot == lastMetricsCollectedTime) {
+        lastMetricsCollectedTime = currentTime;
+      } else {
+        return; // Another thread got in first.
+      }
+    }
 
     // Update current offset cache for all topics partition.
     List<ConsumerRecord<byte[], byte[]>> listOfRecordsForOnePartition;
@@ -80,35 +86,50 @@ public class TopicPartitionsOffsetsTracker {
     for (TopicPartition tp: records.partitions()) {
       listOfRecordsForOnePartition = records.records(tp);
       lastConsumerRecordOfPartition = listOfRecordsForOnePartition.get(listOfRecordsForOnePartition.size() - 1);
-      topicPartitionCurrentOffset.put(tp, (double) lastConsumerRecordOfPartition.offset());
+      topicPartitionOffsetInfo.computeIfAbsent(tp, k -> new OffsetInfo()).currentOffset =
+          lastConsumerRecordOfPartition.offset();
     }
 
     MetricName metricName;
     Metric metric;
     TopicPartition tp;
-    Double currOffset;
-    for (Map.Entry<MetricName, ? extends Metric> entry: metrics.entrySet()) {
+    OffsetInfo offsetInfo;
+    long metricValue;
+    for (Map.Entry<MetricName, ? extends Metric> entry: kafkaConsumer.metrics().entrySet()) {
       metricName = entry.getKey();
       metric = entry.getValue();
+      metricValue = getMetricEntryRecordsLag(metricName, metric);
 
-      if (isMetricEntryRecordsLag(metricName, metric)) {
+      if (metricValue != INVALID) {
         tp = new TopicPartition(metricName.tags().get("topic"), Integer.parseInt(metricName.tags().get("partition")));
-        currOffset = topicPartitionCurrentOffset.get(tp);
-        if (currOffset != null) {
-          topicPartitionEndOffset.put(tp, currOffset + ((Double) metric.metricValue()));
+        offsetInfo = topicPartitionOffsetInfo.computeIfAbsent(tp, k -> new OffsetInfo());
+        offsetInfo.lag = metricValue;
+        if (offsetInfo.currentOffset != INVALID) {
+          offsetInfo.endOffset = offsetInfo.currentOffset + metricValue;
         }
       }
     }
   }
 
-  private boolean isMetricEntryRecordsLag(MetricName metricName, Metric metric) {
+  /**
+   * @return the lag value if the metric is for lag, or {@link #INVALID} otherwise.
+   */
+  private long getMetricEntryRecordsLag(MetricName metricName, Metric metric) {
     try {
-      return Objects.equals(metricName.name(), "records-lag") && (metric.metricValue() instanceof Double);
+      if (Objects.equals(metricName.name(), "records-lag")) {
+        Object metricValue = metric.metricValue();
+        if (metricValue instanceof Double) {
+          // Double is the way all metrics are internally represented in Kafka, but since we are dealing with lag, we
+          // want an integral type, so we cast it.
+          return ((Double) metricValue).longValue();
+        }
+      }
+      return INVALID;
     } catch (Exception e) {
       LOGGER.warn(
           "Caught exception: {} when attempting to get consumer metrics. Incomplete metrics might be returned.",
           e.getMessage());
-      return false;
+      return INVALID;
     }
   }
 
@@ -118,16 +139,14 @@ public class TopicPartitionsOffsetsTracker {
    * @param topicPartition
    */
   public void removeTrackedOffsets(TopicPartition topicPartition) {
-    topicPartitionCurrentOffset.remove(topicPartition);
-    topicPartitionEndOffset.remove(topicPartition);
+    topicPartitionOffsetInfo.remove(topicPartition);
   }
 
   /**
    * Clear all tracked offsets state
    */
   public void clearAllOffsetState() {
-    topicPartitionCurrentOffset.clear();
-    topicPartitionEndOffset.clear();
+    topicPartitionOffsetInfo.clear();
   }
 
   /**
@@ -137,8 +156,8 @@ public class TopicPartitionsOffsetsTracker {
    * @return end offset of a topic partition if there is any.
    */
   public long getEndOffset(String topic, int partition) {
-    Double endOffset = topicPartitionEndOffset.get(new TopicPartition(topic, partition));
-    return endOffset == null ? -1 : endOffset.longValue();
+    OffsetInfo offsetInfo = topicPartitionOffsetInfo.get(new TopicPartition(topic, partition));
+    return offsetInfo == null ? INVALID : offsetInfo.endOffset;
   }
 
   /**
@@ -148,85 +167,13 @@ public class TopicPartitionsOffsetsTracker {
    * @return end offset of a topic partition if there is any.
    */
   public long getOffsetLag(String topic, int partition) {
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    final Double endOffset = topicPartitionEndOffset.get(topicPartition);
-    if (endOffset == null) {
-      statsAccumulator.recordResult(ResultType.NO_OFFSET_LAG);
-      return -1;
-    }
-    final Double currOffset = topicPartitionCurrentOffset.get(topicPartition);
-    if (currOffset == null) {
-      statsAccumulator.recordResult(ResultType.NO_OFFSET_LAG);
-      return -1;
-    }
-    final long offsetLag = endOffset.longValue() - currOffset.longValue();
-    if (offsetLag < 0) { // Invalid offset lag
-      statsAccumulator.recordResult(ResultType.INVALID_OFFSET_LAG);
-      return -1;
-    }
-    statsAccumulator.recordResult(ResultType.VALID_OFFSET_LAG);
-    statsAccumulator.maybeLogAccumulatedStats(LOGGER);
-    return offsetLag;
+    OffsetInfo offsetInfo = topicPartitionOffsetInfo.get(new TopicPartition(topic, partition));
+    return offsetInfo == null ? INVALID : offsetInfo.lag;
   }
 
-  /**
-   * Package private for testing purpose
-   */
-  public Map<ResultType, Integer> getResultsStats() {
-    return statsAccumulator.getResultsStats();
-  }
-
-  /**
-   * This class keeps track of results stats and can be used to log the accumulated results stats once in a while
-   */
-  private static class StatsAccumulator {
-    private final Map<ResultType, Integer> resultsStats;
-    private final Duration minLogInterval;
-    private Instant lastLoggedTime;
-
-    private StatsAccumulator(Duration minLogInterval) {
-      // N.B. This map can be accessed by many functions in the ingestion path and by metrics. It is not 100%
-      // clear whether concurrent access to this map is possible, but just to be on the safe side, we are going
-      // to make it a threadsafe map.
-      this.resultsStats = new VeniceConcurrentHashMap<>(RESULT_TYPE_VALUES.length);
-      this.minLogInterval = minLogInterval;
-      this.lastLoggedTime = Instant.now();
-    }
-
-    private void recordResult(ResultType resultType) {
-      resultsStats.compute(resultType, (k, v) -> v == null ? 1 : v + 1);
-    }
-
-    /**
-     * @param LOGGER the {@link Logger} instance which is used to log the accumulated stats
-     */
-    private void maybeLogAccumulatedStats(Logger LOGGER) {
-      if (resultsStats.isEmpty()) {
-        return;
-      }
-      final Instant now = Instant.now();
-      final Duration timeSinceLastTimeLogged = Duration.between(lastLoggedTime, now);
-      if (timeSinceLastTimeLogged.toMillis() >= minLogInterval.toMillis()) {
-        LOGGER.info(
-            String.format(
-                "In the last %d second(s), results states are: %s",
-                timeSinceLastTimeLogged.getSeconds(),
-                resultsStatsToString()));
-        lastLoggedTime = now;
-        resultsStats.clear();
-      }
-    }
-
-    private String resultsStatsToString() {
-      StringJoiner sj = new StringJoiner(", ");
-      for (ResultType resultType: RESULT_TYPE_VALUES) {
-        sj.add(resultType + " count: " + resultsStats.getOrDefault(resultType, 0));
-      }
-      return sj.toString();
-    }
-
-    Map<ResultType, Integer> getResultsStats() {
-      return Collections.unmodifiableMap(resultsStats);
-    }
+  private static class OffsetInfo {
+    long currentOffset = INVALID;
+    long endOffset = INVALID;
+    long lag = INVALID;
   }
 }

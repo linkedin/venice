@@ -38,7 +38,7 @@ public class AbstractVeniceStatsTest {
 
   /**
    * This test creates the same metric via many objects using multiple threads.
-   * Without the synchronization in {@link AbstractVeniceStats#registerSensor(String, MetricConfig, Sensor[], MeasurableStat...)}
+   * Without the synchronization in {@link AbstractVeniceStats#registerSensor(String, Sensor[], MeasurableStat...)}
    * this test fails consistently. With the synchronization added the test passes.
    * @throws InterruptedException
    */
