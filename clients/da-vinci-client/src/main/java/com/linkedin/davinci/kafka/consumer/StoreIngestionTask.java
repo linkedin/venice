@@ -3083,25 +3083,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
-        Schema writerSchema = put.getSchema();
+        ByteBuffer valueBytes = put.getPutValue();
         int writerSchemaId = put.getSchemaId();
 
         if (valueSchemaId > 0) {
-          Schema readerSchema = schemaRepository.getValueSchema(storeName, valueSchemaId).getSchema();
+          Schema valueSchema = schemaRepository.getValueSchema(storeName, valueSchemaId).getSchema();
+          Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
+              consumerRecord.getTopicPartition(),
+              writerSchemaId,
+              keyBytes,
+              valueBytes,
+              consumerRecord.getOffset(),
+              Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
+              valueSchemaId,
+              compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
 
-          // Decompress/assemble record before transformation
-          put.setPutValue(
-              chunkAssembler.bufferAndAssembleRecord(
-                  consumerRecord.getTopicPartition(),
-                  writerSchemaId,
-                  keyBytes,
-                  put.getPutValue(),
-                  consumerRecord.getOffset(),
-                  Lazy.of(() -> new AvroGenericDeserializer<>(writerSchema, readerSchema)),
-                  // Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema,
-                  // readerSchema)),
-                  valueSchemaId,
-                  compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic)));
+          System.out.println(assembledObject);
         }
 
         // Do transformation recompute key, value and partition
@@ -3109,7 +3106,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, writerSchemaId);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(put.putValue, valueSchema));
+          Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(valueBytes, valueSchema));
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
           ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
           put.putValue = transformedBytes;
