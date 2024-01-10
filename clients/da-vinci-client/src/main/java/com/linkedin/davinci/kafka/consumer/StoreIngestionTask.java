@@ -3083,7 +3083,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
-        int putSchemaId = put.getSchemaId();
+        // Check if put.getSchemaId is positive, if not default to 1
+        int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
 
         // Do transformation recompute key, value and partition
         if (recordTransformer != null) {
@@ -3100,6 +3101,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
               putSchemaId,
               compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+
+          // Current record is a chunk. We only write to the storage engine for fully assembled records
+          if (assembledObject == null) {
+            break;
+          }
 
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
