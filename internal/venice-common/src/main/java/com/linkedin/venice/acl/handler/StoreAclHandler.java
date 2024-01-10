@@ -27,7 +27,10 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
 import java.net.URI;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
@@ -93,21 +96,25 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
     String uri = req.uri();
     // Parse resource type and store name
     String[] requestParts = URI.create(uri).getPath().split("/");
-    if (requestParts.length < 3) {
+    // invalid request if requestParts.length < 3 except for HEALTH check from venice client
+    if (requestParts.length < 3
+        && !(requestParts.length == 2 && requestParts[1].toUpperCase().equals(QueryAction.HEALTH.toString()))) {
       NettyUtils.setupResponseAndFlush(
           HttpResponseStatus.BAD_REQUEST,
-          ("Invalid request  uri: " + uri).getBytes(),
+          ("Invalid request uri: " + uri).getBytes(),
           false,
           ctx);
       return;
     }
 
     /**
-     *  Skip ACL for requests to /metadata and /admin as there's no sensitive information in the response.
+     *  Skip ACL for requests to /metadata, /admin and /health as there's no sensitive information in the response.
      */
+    Set<QueryAction> queriesToSkipAcl =
+        new HashSet<>(Arrays.asList(QueryAction.METADATA, QueryAction.ADMIN, QueryAction.HEALTH));
     try {
       QueryAction queryAction = QueryAction.valueOf(requestParts[1].toUpperCase());
-      if (queryAction.equals(QueryAction.METADATA) || queryAction.equals(QueryAction.ADMIN)) {
+      if (queriesToSkipAcl.contains(queryAction)) {
         ReferenceCountUtil.retain(req);
         ctx.fireChannelRead(req);
         return;
