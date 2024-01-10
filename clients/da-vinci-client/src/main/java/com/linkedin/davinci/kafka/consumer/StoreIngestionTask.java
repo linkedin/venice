@@ -436,6 +436,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
     this.cacheBackend = cacheBackend;
     this.recordTransformer = recordTransformer;
+    if (recordTransformer != null) {
+      versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
+    }
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();

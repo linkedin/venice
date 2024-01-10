@@ -168,4 +168,8 @@ public class AggVersionedIngestionStats
   public void recordTransformerLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerLatency(value, timestamp));
   }
+
+  public void registerTransformerLatencySensor(String storeName, int version) {
+    getStats(storeName, version).registerTransformerLatencySensor();
+  }
 }

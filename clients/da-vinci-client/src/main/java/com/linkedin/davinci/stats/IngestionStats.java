@@ -83,7 +83,7 @@ public class IngestionStats {
   private final WritePathLatencySensor consumedRecordEndToEndProcessingLatencySensor;
   private final WritePathLatencySensor nearlineProducerToLocalBrokerLatencySensor;
   private final WritePathLatencySensor nearlineLocalBrokerToReadyToServeLatencySensor;
-  private final WritePathLatencySensor transformerLatencySensor;
+  private WritePathLatencySensor transformerLatencySensor;
   // Measure the count of ignored updates due to conflict resolution
   private final LongAdderRateGauge conflictResolutionUpdateIgnoredSensor = new LongAdderRateGauge();
   // Measure the total number of incoming conflict resolutions
@@ -95,6 +95,7 @@ public class IngestionStats {
   /** Record a version-level offset rewind events for VTs across all stores. */
   private final Count versionTopicEndOffsetRewindCount = new Count();
   private final Sensor versionTopicEndOffsetRewindSensor;
+  private final MetricsRepository localMetricRepository;
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -106,7 +107,7 @@ public class IngestionStats {
     regionIdToHybridAvgConsumedOffsetMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
     regionIdToHybridAvgConsumedOffsetSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
 
-    MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
+    localMetricRepository = new MetricsRepository(METRIC_CONFIG);
     for (Int2ObjectMap.Entry<String> entry: kafkaClusterIdToAliasMap.int2ObjectEntrySet()) {
       int regionId = entry.getIntKey();
       String regionNamePrefix =
@@ -170,7 +171,6 @@ public class IngestionStats {
         localMetricRepository,
         METRIC_CONFIG,
         NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY);
-    transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
 
     registerSensor(localMetricRepository, UPDATE_IGNORED_DCR, conflictResolutionUpdateIgnoredSensor);
     registerSensor(localMetricRepository, TOTAL_DCR, totalConflictResolutionCountSensor);
@@ -515,6 +515,10 @@ public class IngestionStats {
 
   public void recordTransformerLatency(double value, long currentTimeMs) {
     transformerLatencySensor.record(value, currentTimeMs);
+  }
+
+  public void registerTransformerLatencySensor() {
+    transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
   }
 
   public static double unAvailableToZero(double value) {
