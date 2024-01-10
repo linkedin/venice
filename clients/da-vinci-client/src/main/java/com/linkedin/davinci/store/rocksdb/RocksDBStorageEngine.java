@@ -36,7 +36,8 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   private final String storeDbPath;
   private final RocksDBMemoryStats memoryStats;
   private final RocksDBThrottler rocksDbThrottler;
-  private final RocksDBServerConfig rocksDBServerConfig;
+  // Made non-final only for testing purposes
+  private RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
   private final VeniceStoreVersionConfig storeConfig;
   private final boolean replicationMetadataEnabled;
@@ -207,7 +208,8 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     return cachedDiskUsage;
   }
 
-  private boolean hasConflictPersistedStoreEngineConfig() {
+  // package-private for testing purposes
+  boolean hasConflictPersistedStoreEngineConfig() {
     String configPath = getRocksDbEngineConfigPath();
     File storeEngineConfig = new File(configPath);
     if (storeEngineConfig.exists()) {
@@ -281,5 +283,10 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       return true;
     }
     return false;
+  }
+
+  // Only used for testing purposes
+  public void setRocksDBServerConfig(RocksDBServerConfig rocksDBServerConfig) {
+    this.rocksDBServerConfig = rocksDBServerConfig;
   }
 }
