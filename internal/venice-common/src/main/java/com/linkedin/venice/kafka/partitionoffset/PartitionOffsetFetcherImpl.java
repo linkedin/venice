@@ -506,7 +506,9 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       IOUtils.closeQuietly(kafkaAdminWrapper.get(), logger::error);
     }
     if (pubSubConsumer.isPresent()) {
-      IOUtils.closeQuietly(pubSubConsumer.get(), logger::error);
+      try (AutoCloseableLock ignore = AutoCloseableLock.of(adminConsumerLock)) {
+        IOUtils.closeQuietly(pubSubConsumer.get(), logger::error);
+      }
     }
   }
 }

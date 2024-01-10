@@ -72,18 +72,15 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
     Sensor getOffsetLagSensor = registerSensor("getOffsetLag", new OccurrenceRate());
     Sensor[] offsetLagParent = new Sensor[] { getOffsetLagSensor };
-    this.getOffsetLagIsAbsentSensor =
-        registerSensor("getOffsetLagIsAbsent", null, offsetLagParent, new OccurrenceRate());
-    this.getOffsetLagIsPresentSensor =
-        registerSensor("getOffsetLagIsPresent", null, offsetLagParent, new OccurrenceRate());
+    this.getOffsetLagIsAbsentSensor = registerSensor("getOffsetLagIsAbsent", offsetLagParent, new OccurrenceRate());
+    this.getOffsetLagIsPresentSensor = registerSensor("getOffsetLagIsPresent", offsetLagParent, new OccurrenceRate());
 
     Sensor getLatestOffsetSensor = registerSensor("getLatestOffset", new OccurrenceRate());
     Sensor[] latestOffsetParent = new Sensor[] { getLatestOffsetSensor };
     this.getLatestOffsetIsAbsentSensor =
-        registerSensor("getLatestOffsetIsAbsent", null, latestOffsetParent, new OccurrenceRate());
+        registerSensor("getLatestOffsetIsAbsent", latestOffsetParent, new OccurrenceRate());
     this.getLatestOffsetIsPresentSensor =
-        registerSensor("getLatestOffsetIsPresent", null, latestOffsetParent, new OccurrenceRate());
-
+        registerSensor("getLatestOffsetIsPresent", latestOffsetParent, new OccurrenceRate());
   }
 
   public void recordPollRequestLatency(double latency) {

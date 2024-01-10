@@ -9,7 +9,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.Map;
 
 
@@ -21,11 +21,12 @@ public class PartitionOffsetFetcherStats extends AbstractVeniceStats {
   }
 
   private final Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> sensorsByTypes;
+  private Sensor getPartitionLatestOffsetError;
 
   public PartitionOffsetFetcherStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
     Map<OCCURRENCE_LATENCY_SENSOR_TYPE, Sensor> tmpRateSensorsByTypes =
-        new HashMap<>(OCCURRENCE_LATENCY_SENSOR_TYPE.values().length);
+        new EnumMap<>(OCCURRENCE_LATENCY_SENSOR_TYPE.class);
     for (OCCURRENCE_LATENCY_SENSOR_TYPE sensorType: OCCURRENCE_LATENCY_SENSOR_TYPE.values()) {
       final String sensorName = sensorType.name().toLowerCase();
       tmpRateSensorsByTypes.put(
@@ -40,9 +41,15 @@ public class PartitionOffsetFetcherStats extends AbstractVeniceStats {
     }
 
     this.sensorsByTypes = Collections.unmodifiableMap(tmpRateSensorsByTypes);
+    this.getPartitionLatestOffsetError =
+        registerSensorIfAbsent("get_partition_latest_offset_with_retry_error", new OccurrenceRate());
   }
 
   public void recordLatency(OCCURRENCE_LATENCY_SENSOR_TYPE sensor_type, long requestLatencyMs) {
     sensorsByTypes.get(sensor_type).record(requestLatencyMs);
+  }
+
+  public void recordGetLatestOffsetError() {
+    this.getPartitionLatestOffsetError.record();
   }
 }

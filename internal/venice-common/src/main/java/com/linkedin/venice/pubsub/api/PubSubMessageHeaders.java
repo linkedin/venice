@@ -11,10 +11,10 @@ import java.util.Map;
  * In case of headers with the same key, only the most recently added headers value will be kept.
  */
 public class PubSubMessageHeaders {
-
-  // Kafka allows duplicate keys in the headers but some pubsub systems may not
-  // allow it. Hence, it would be good to enforce uniqueness of keys in headers
-  // from the beginning.
+  /**
+   * N.B.: Kafka allows duplicate keys in the headers but some pubsub systems may not
+   * allow it. Hence, we will enforce uniqueness of keys in headers from the beginning.
+   */
   private final Map<String, PubSubMessageHeader> headers = new LinkedHashMap<>();
 
   public static final String VENICE_TRANSPORT_PROTOCOL_HEADER = "vtp";

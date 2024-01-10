@@ -190,7 +190,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     int partitionId = partitionConfig.getPartitionId();
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     if (partition.verifyConfig(partitionConfig)) {
-      LOGGER.info("No adjustment needed for store name: {}, partition id: {}", getStoreName(), partitionId);
       return;
     }
     // Need to re-open storage partition according to the provided partition config
