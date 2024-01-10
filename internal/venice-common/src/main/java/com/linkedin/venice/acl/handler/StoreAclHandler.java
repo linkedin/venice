@@ -27,7 +27,10 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
 import java.net.URI;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
@@ -107,10 +110,11 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
     /**
      *  Skip ACL for requests to /metadata, /admin and /health as there's no sensitive information in the response.
      */
+    Set<QueryAction> queriesToSkipAcl =
+        new HashSet<>(Arrays.asList(QueryAction.METADATA, QueryAction.ADMIN, QueryAction.HEALTH));
     try {
       QueryAction queryAction = QueryAction.valueOf(requestParts[1].toUpperCase());
-      if (queryAction.equals(QueryAction.METADATA) || queryAction.equals(QueryAction.ADMIN)
-          || queryAction.equals(QueryAction.HEALTH)) {
+      if (queriesToSkipAcl.contains(queryAction)) {
         ReferenceCountUtil.retain(req);
         ctx.fireChannelRead(req);
         return;
