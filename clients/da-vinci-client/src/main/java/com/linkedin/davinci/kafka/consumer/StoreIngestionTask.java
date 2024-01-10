@@ -80,7 +80,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.system.store.MetaStoreWriter;
@@ -3084,39 +3083,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
-        ByteBuffer valueBytes = put.getPutValue();
         int putSchemaId = put.getSchemaId();
-        Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
-
-        // Decompress/assemble record
-        Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
-            consumerRecord.getTopicPartition(),
-            putSchemaId,
-            keyBytes,
-            valueBytes,
-            consumerRecord.getOffset(),
-            Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
-            putSchemaId,
-            compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
-
-        // Convert assembledObject to ByteBuffer
-        ByteBuffer assembledByteBuffer = ByteBuffer.wrap(new AvroSerializer(valueSchema).serialize(assembledObject));
-        ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + assembledByteBuffer.remaining());
-        newBuffer.putInt(putSchemaId);
-        newBuffer.put(assembledByteBuffer);
-        newBuffer.flip();
-        // Since we prepended the schema ID, we need to shift the position up 4 bytes
-        newBuffer.position(Integer.BYTES);
-
-        // Set new put value with decompressed/assembled record
-        put.setPutValue(newBuffer);
 
         // Do transformation recompute key, value and partition
         if (recordTransformer != null) {
+          ByteBuffer valueBytes = put.getPutValue();
+          Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
+
+          // Decompress/assemble record
+          Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
+              consumerRecord.getTopicPartition(),
+              putSchemaId,
+              keyBytes,
+              valueBytes,
+              consumerRecord.getOffset(),
+              Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
+              putSchemaId,
+              compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          // SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, writerSchemaId);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          // Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(valueBytes, valueSchema));
           Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
           ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
