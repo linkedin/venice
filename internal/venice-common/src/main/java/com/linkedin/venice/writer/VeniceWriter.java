@@ -36,6 +36,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
@@ -210,8 +211,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER =
       new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID);
 
-  public static final PubSubMessageHeaders EMPTY_MSG_HEADERS = new PubSubMessageHeaders();
-
   // Immutable state
   private final PubSubMessageHeaders protocolSchemaHeaders;
 
@@ -343,7 +342,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
 
     this.protocolSchemaHeaders = overrideProtocolSchema == null
-        ? EMPTY_MSG_HEADERS
+        ? EmptyPubSubMessageHeaders.SINGLETON
         : new PubSubMessageHeaders()
             .add(VENICE_TRANSPORT_PROTOCOL_HEADER, overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
     try {
@@ -1357,7 +1356,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER} or {@link VeniceWriter#EMPTY_MSG_HEADERS} is used for
+   * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER} or {@link EmptyPubSubMessageHeaders} is used for
    * all messages to a partition based on {@link VeniceWriter} param overrideProtocolSchema and whether it's a first message.
    * {@link PubSubMessageHeaders#VENICE_LEADER_COMPLETION_STATE_HEADER} is added to the above headers for HB SOS message.
    *
@@ -1378,7 +1377,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     PubSubMessageHeaders pubSubMessageHeaders =
         producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0
             ? protocolSchemaHeaders
-            : EMPTY_MSG_HEADERS;
+            : EmptyPubSubMessageHeaders.SINGLETON;
 
     if (addLeaderCompleteState) {
       // copy protocolSchemaHeaders locally and add extra header for leaderCompleteState

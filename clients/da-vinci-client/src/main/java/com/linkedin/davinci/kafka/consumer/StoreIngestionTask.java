@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
+import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
@@ -15,6 +17,7 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
@@ -80,7 +83,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
@@ -152,7 +154,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
-  private static final int SLOPPY_OFFSET_CATCHUP_THRESHOLD = 100;
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -770,7 +771,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long offsetLag,
       long offsetThreshold,
       boolean shouldLogLag,
-      boolean isOffsetBasedLag,
+      LagType lagType,
       long latestConsumedProducerTimestamp);
 
   /**
@@ -804,16 +805,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     boolean isLagAcceptable = false;
 
     if (!hybridStoreConfig.isPresent()) {
-      /**
-       * In theory, it will be 1 offset ahead of the current offset since getOffset returns the next available offset.
-       * Currently, we make it a sloppy in case Kafka topic have duplicate messages.
-       * TODO: find a better solution
-       */
-      final long versionTopicPartitionOffset =
-          cachedPubSubMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partitionId);
-      isLagAcceptable =
-          versionTopicPartitionOffset <= partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset()
-              + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
+      long lag = measureLagWithCallToPubSub(
+          localKafkaServer,
+          versionTopic,
+          partitionId,
+          partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
+      isLagAcceptable = lag <= 0;
     } else {
       try {
         // Looks like none of the short-circuitry fired, so we need to measure lag!
@@ -833,7 +830,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               measureHybridOffsetLag(partitionConsumptionState, shouldLogLag),
               offsetThreshold,
               shouldLogLag,
-              true,
+              OFFSET_LAG,
               0);
         }
 
@@ -857,7 +854,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp),
               producerTimeLagThresholdInMS,
               shouldLogLag,
-              false,
+              TIME_LAG,
               latestConsumedProducerTimestamp);
           /**
            * If time lag is not acceptable but the producer timestamp of the last message of RT is smaller or equal than
@@ -1931,9 +1928,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (offset == OffsetRecord.LOWEST_OFFSET) {
       return;
     }
+    /**
+     * N.B.: We do not want to use {@link #getTopicPartitionEndOffSet(String, PubSubTopic, int)} because it can return
+     *       a cached value which will result in a false positive in the below check.
+     */
+    long endOffset = aggKafkaConsumerService.getLatestOffsetFor(
+        localKafkaServer,
+        versionTopic,
+        new PubSubTopicPartitionImpl(versionTopic, pcs.getPartition()));
     // Proceed if persisted OffsetRecord exists and has meaningful content.
-    long endOffset = getKafkaTopicPartitionEndOffSet(localKafkaServer, versionTopic, pcs.getPartition());
-    if (endOffset != StatsErrorCode.LAG_MEASUREMENT_FAILURE.code && offset > endOffset) {
+    if (endOffset >= 0 && offset > endOffset) {
       // report offset rewind.
       LOGGER.warn(
           "Offset rewind for version topic: {}, partition: {}, persisted record offset: {}, Kafka topic partition end-offset: {}",
@@ -1946,31 +1950,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * @return the end offset in kafka for the topic partition in SIT.
+   * @return the end offset in kafka for the topic partition in SIT, or a negative value if it failed to get it.
+   *
+   * N.B.: The returned end offset is the last successfully replicated message plus one. If the partition has never been
+   * written to, the end offset is 0.
    */
-  protected long getKafkaTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
-    long offsetFromConsumer = getPartitionLatestOffset(kafkaUrl, pubSubTopic, partition);
+  protected long getTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
+    long offsetFromConsumer = aggKafkaConsumerService
+        .getLatestOffsetFor(kafkaUrl, versionTopic, new PubSubTopicPartitionImpl(pubSubTopic, partition));
     if (offsetFromConsumer >= 0) {
       return offsetFromConsumer;
     }
 
-    /**
-     * The returned end offset is the last successfully replicated message plus one. If the partition has never been
-     * written to, the end offset is 0.
-     * @see CachedPubSubMetadataGetter#getOffset(TopicManager, String, int)
-     * TODO: Refactor this using PubSubTopicPartition.
-     */
-    return cachedPubSubMetadataGetter.getOffset(getTopicManager(kafkaUrl), versionTopic, partition);
+    return cachedPubSubMetadataGetter.getOffset(getTopicManager(kafkaUrl), pubSubTopic, partition);
   }
 
   protected long getPartitionOffsetLag(String kafkaSourceAddress, PubSubTopic topic, int partition) {
     return aggKafkaConsumerService
         .getOffsetLagFor(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
-  }
-
-  protected long getPartitionLatestOffset(String kafkaSourceAddress, PubSubTopic topic, int partition) {
-    return aggKafkaConsumerService
-        .getLatestOffsetFor(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
   }
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
@@ -2333,7 +2330,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void updateOffsetLagInMetadata(PartitionConsumptionState ps) {
     // Measure and save real-time offset lag.
-    long offsetLag = measureHybridOffsetLag(ps, true);
+    long offsetLag = measureHybridOffsetLag(ps, false);
     ps.getOffsetRecord().setOffsetLag(offsetLag);
   }
 
@@ -2371,6 +2368,30 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract long getBatchLeaderOffsetLag();
 
   public abstract long getHybridLeaderOffsetLag();
+
+  /**
+   * @param pubSubServerName Pub Sub deployment to interrogate
+   * @param topic topic to measure
+   * @param partition for which to measure lag
+   * @return the lag, or {@value Long#MAX_VALUE} if it failed to measure it
+   *
+   * N.B.: Note that the returned lag can be negative since the end offset used in the calculation is cached.
+   */
+  protected long measureLagWithCallToPubSub(
+      String pubSubServerName,
+      PubSubTopic topic,
+      int partition,
+      long currentOffset) {
+    if (currentOffset < 0) {
+      return Long.MAX_VALUE;
+    }
+    TopicManager tm = getTopicManager(pubSubServerName);
+    long endOffset = cachedPubSubMetadataGetter.getOffset(tm, topic, partition) - 1;
+    if (endOffset < 0) {
+      return Long.MAX_VALUE;
+    }
+    return endOffset - currentOffset;
+  }
 
   /**
    * Measure the offset lag between follower and leader
@@ -3488,18 +3509,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             if (storageEngineReloadedFromRepo == null) {
               LOGGER.warn("Storage engine {} was removed before reopening", kafkaVersionTopic);
             } else {
-              LOGGER.info("Reopen partition {}_{} for reading after ready-to-serve.", kafkaVersionTopic, partition);
               storageEngineReloadedFromRepo.preparePartitionForReading(partition);
             }
           }
-          if (partitionConsumptionState.isCompletionReported()) {
-            // Completion has been reported so extraDisjunctionCondition must be true to enter here.
-            LOGGER.info(
-                "{} Partition {} synced offset: {}",
-                consumerTaskId,
-                partition,
-                partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
-          } else {
+          if (!partitionConsumptionState.isCompletionReported()) {
             reportCompleted(partitionConsumptionState);
             warmupSchemaCache(store);
           }

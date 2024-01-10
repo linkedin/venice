@@ -1,13 +1,14 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.Metric;
@@ -19,7 +20,7 @@ import org.testng.annotations.Test;
 
 
 public class TopicPartitionsOffsetsTrackerTest {
-  private static final Duration OFFSETS_UPDATE_INTERVAL = Duration.ZERO; // No interval
+  private static final long OFFSETS_UPDATE_INTERVAL = 0; // No interval
   private static final String TOPIC_1 = "topic_1";
   private static final String TOPIC_2 = "topic_2";
   private static final int PARTITION_ID = 2;
@@ -34,16 +35,9 @@ public class TopicPartitionsOffsetsTrackerTest {
   public void testNoUpdateWithRecords() {
     Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), -1);
     Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), -1);
-    Assert.assertTrue(topicPartitionsOffsetsTracker.getResultsStats().isEmpty());
 
     Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), -1);
     Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_2, PARTITION_ID), -1);
-    Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
-    Assert.assertEquals(
-        topicPartitionsOffsetsTracker.getResultsStats()
-            .get(TopicPartitionsOffsetsTracker.ResultType.NO_OFFSET_LAG)
-            .intValue(),
-        2);
   }
 
   @Test
@@ -82,7 +76,7 @@ public class TopicPartitionsOffsetsTrackerTest {
     metricsTags.put("partition", String.valueOf(PARTITION_ID));
     MetricName metricName = new MetricName("records-lag", "", "", metricsTags);
     Metric metricValue = mock(Metric.class);
-    when(metricValue.metricValue()).thenReturn((double) firstPartitionLag);
+    when(metricValue.metricValue()).thenReturn(Double.valueOf(firstPartitionLag));
     mockMetrics.put(metricName, metricValue);
 
     // Set up partition record lag for the second topic partition
@@ -91,26 +85,15 @@ public class TopicPartitionsOffsetsTrackerTest {
     metricsTags.put("partition", String.valueOf(PARTITION_ID));
     metricName = new MetricName("records-lag", "", "", metricsTags);
     metricValue = mock(Metric.class);
-    when(metricValue.metricValue()).thenReturn((double) secondPartitionLag);
+    when(metricValue.metricValue()).thenReturn(Double.valueOf(secondPartitionLag));
     mockMetrics.put(metricName, metricValue);
+    Consumer<byte[], byte[]> kafkaConsumer = mock(Consumer.class);
+    doReturn(mockMetrics).when(kafkaConsumer).metrics();
 
-    topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(mockRecords, mockMetrics);
+    topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(mockRecords, kafkaConsumer);
 
     Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), firstPartitionLag);
-    Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
-    Assert.assertEquals(
-        topicPartitionsOffsetsTracker.getResultsStats()
-            .get(TopicPartitionsOffsetsTracker.ResultType.VALID_OFFSET_LAG)
-            .intValue(),
-        1);
-
     Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_2, PARTITION_ID), secondPartitionLag);
-    Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
-    Assert.assertEquals(
-        topicPartitionsOffsetsTracker.getResultsStats()
-            .get(TopicPartitionsOffsetsTracker.ResultType.VALID_OFFSET_LAG)
-            .intValue(),
-        2);
 
     // End offset == current offset + lag
     Assert.assertEquals(
@@ -129,11 +112,5 @@ public class TopicPartitionsOffsetsTrackerTest {
     topicPartitionsOffsetsTracker.clearAllOffsetState();
     Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), -1);
     Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), -1);
-    Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
-    Assert.assertEquals(
-        topicPartitionsOffsetsTracker.getResultsStats()
-            .get(TopicPartitionsOffsetsTracker.ResultType.VALID_OFFSET_LAG)
-            .intValue(),
-        2);
   }
 }
