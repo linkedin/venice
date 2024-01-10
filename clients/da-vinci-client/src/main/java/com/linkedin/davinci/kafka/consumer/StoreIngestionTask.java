@@ -80,6 +80,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.system.store.MetaStoreWriter;
@@ -3084,29 +3085,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
         ByteBuffer valueBytes = put.getPutValue();
-        int writerSchemaId = put.getSchemaId();
+        int putSchemaId = put.getSchemaId();
+        Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
 
-        if (valueSchemaId > 0) {
-          Schema valueSchema = schemaRepository.getValueSchema(storeName, valueSchemaId).getSchema();
-          Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
-              consumerRecord.getTopicPartition(),
-              writerSchemaId,
-              keyBytes,
-              valueBytes,
-              consumerRecord.getOffset(),
-              Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
-              valueSchemaId,
-              compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+        // Decompress/assemble record
+        Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
+            consumerRecord.getTopicPartition(),
+            putSchemaId,
+            keyBytes,
+            valueBytes,
+            consumerRecord.getOffset(),
+            Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
+            putSchemaId,
+            compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
 
-          System.out.println(assembledObject);
-        }
+        // Convert assembledObject to ByteBuffer
+        ByteBuffer assembledByteBuffer = ByteBuffer.wrap(new AvroSerializer(valueSchema).serialize(assembledObject));
+        ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + assembledByteBuffer.remaining());
+        newBuffer.putInt(putSchemaId);
+        newBuffer.put(assembledByteBuffer);
+        newBuffer.flip();
+        // Since we prepended the schema ID, we need to shift the position up 4 bytes
+        newBuffer.position(Integer.BYTES);
+
+        // Set new put value with decompressed/assembled record
+        put.setPutValue(newBuffer);
 
         // Do transformation recompute key, value and partition
         if (recordTransformer != null) {
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, writerSchemaId);
+          // SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, writerSchemaId);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(valueBytes, valueSchema));
+          // Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(valueBytes, valueSchema));
+          Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
           ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
           put.putValue = transformedBytes;
@@ -3124,8 +3135,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
-        if (writerSchemaId > 0) {
-          valueSchemaId = writerSchemaId;
+        if (putSchemaId > 0) {
+          valueSchemaId = putSchemaId;
         }
         break;
 
