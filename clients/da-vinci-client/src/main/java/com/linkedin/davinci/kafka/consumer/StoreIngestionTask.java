@@ -3113,8 +3113,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
           ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
 
-          transformedRecord.getKeyBytes(valueSchema);
-
           put.putValue = transformedBytes;
           writeToStorageEngine(producedPartition, keyBytes, put, currentTimeMs);
         } else {
