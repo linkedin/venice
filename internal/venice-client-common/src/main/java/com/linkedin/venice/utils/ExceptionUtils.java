@@ -28,54 +28,36 @@ public class ExceptionUtils {
    * @return true if the throwableToInspect corresponds to or is caused by any of the throwableClassesToLookFor
    */
   public static boolean recursiveClassEquals(Throwable throwableToInspect, Class... throwableClassesToLookFor) {
-    return getRecursiveCause(throwableToInspect, throwableClassesToLookFor) != null;
-  }
-
-  /**
-   * Inspects a given {@link Throwable} as well as its nested causes, in order to look
-   * for a specific set of exception classes. The function also detects if the throwable
-   * to inspect is a subclass of one of the classes you look for, but not the other way
-   * around (i.e.: if you're looking for the subclass but the throwableToInspect is the
-   * parent class, then this function returns false).
-   *
-   * @return true if the throwableToInspect corresponds to or is caused by any of the throwableClassesToLookFor
-   */
-  public static Throwable getRecursiveCause(Throwable throwableToInspect, Class... throwableClassesToLookFor) {
-    if (throwableToInspect == null) {
-      return null;
-    }
-    for (Class clazz: throwableClassesToLookFor) {
-      Class classToInspect = throwableToInspect.getClass();
-      while (classToInspect != null) {
-        if (classToInspect.equals(clazz)) {
-          return throwableToInspect;
+    while (throwableToInspect != null) {
+      for (Class clazz: throwableClassesToLookFor) {
+        Class classToInspect = throwableToInspect.getClass();
+        while (classToInspect != null) {
+          if (classToInspect.equals(clazz)) {
+            return true;
+          }
+          classToInspect = classToInspect.getSuperclass();
         }
-        classToInspect = classToInspect.getSuperclass();
       }
+      throwableToInspect = throwableToInspect.getCause();
     }
-    Throwable cause = throwableToInspect.getCause();
-    return getRecursiveCause(cause, throwableClassesToLookFor);
+    return false;
   }
 
   /**
    * Inspects a given {@link Throwable} as well as its nested causes, in order to look
    * for a specific message.
    *
-   * @return true if a the throwableToInspect contains the message parameter
+   * @return true if the throwableToInspect contains the message parameter
    */
   public static boolean recursiveMessageContains(Throwable throwableToInspect, String message) {
-    if (throwableToInspect == null) {
-      return false;
+    while (throwableToInspect != null) {
+      String throwableToInspectMessage = throwableToInspect.getMessage();
+      if (throwableToInspectMessage != null && throwableToInspectMessage.contains(message)) {
+        return true;
+      }
+      throwableToInspect = throwableToInspect.getCause();
     }
-    String throwableToInspectMessage = throwableToInspect.getMessage();
-    if (throwableToInspectMessage == null) {
-      return false;
-    }
-    if (throwableToInspectMessage.contains(message)) {
-      return true;
-    }
-    Throwable cause = throwableToInspect.getCause();
-    return recursiveMessageContains(cause, message);
+    return false;
   }
 
   /**
