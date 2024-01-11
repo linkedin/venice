@@ -3104,7 +3104,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           // Current record is a chunk. We only write to the storage engine for fully assembled records
           if (assembledObject == null) {
-            break;
+            return 0;
           }
 
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
@@ -3112,6 +3112,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
           ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
+
+          transformedRecord.getKeyBytes(valueSchema);
+
           put.putValue = transformedBytes;
           writeToStorageEngine(producedPartition, keyBytes, put, currentTimeMs);
         } else {
