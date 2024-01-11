@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.RECORD_TRANSFORMER_VALUE_SCHEMA;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -35,7 +36,8 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   private final String storeDbPath;
   private final RocksDBMemoryStats memoryStats;
   private final RocksDBThrottler rocksDbThrottler;
-  private final RocksDBServerConfig rocksDBServerConfig;
+  // Made non-final only for testing purposes
+  private RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
   private final VeniceStoreVersionConfig storeConfig;
   private final boolean replicationMetadataEnabled;
@@ -206,7 +208,8 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     return cachedDiskUsage;
   }
 
-  private boolean hasConflictPersistedStoreEngineConfig() {
+  // package-private for testing purposes
+  boolean hasConflictPersistedStoreEngineConfig() {
     String configPath = getRocksDbEngineConfigPath();
     File storeEngineConfig = new File(configPath);
     if (storeEngineConfig.exists()) {
@@ -215,6 +218,9 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
         VeniceProperties persistedStorageEngineConfig = Utils.parseProperties(storeEngineConfig);
         LOGGER.info("Found storage engine configs: {}", persistedStorageEngineConfig.toString(true));
         boolean usePlainTableFormat = persistedStorageEngineConfig.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
+        String transformerValueSchema = persistedStorageEngineConfig.containsKey(RECORD_TRANSFORMER_VALUE_SCHEMA)
+            ? persistedStorageEngineConfig.getString(RECORD_TRANSFORMER_VALUE_SCHEMA)
+            : "null";
         if (usePlainTableFormat != rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
           String existingTableFormat = usePlainTableFormat ? "PlainTable" : "BlockBasedTable";
           String newTableFormat =
@@ -223,6 +229,13 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
               "Tried to open an existing {} RocksDB format engine with table format option: {}. Will remove the content and recreate the folder.",
               existingTableFormat,
               newTableFormat);
+          return true;
+        }
+        if (!transformerValueSchema.equals(rocksDBServerConfig.getTransformerValueSchema())) {
+          LOGGER.warn(
+              "Tried to open an existing RocksDB engine with transformer schema: {} but already exists with schema {}. Will remove the content and recreate the folder.",
+              rocksDBServerConfig.getTransformerValueSchema(),
+              transformerValueSchema);
           return true;
         }
       } catch (IOException e) {
@@ -270,5 +283,10 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       return true;
     }
     return false;
+  }
+
+  // Only used for testing purposes
+  public void setRocksDBServerConfig(RocksDBServerConfig rocksDBServerConfig) {
+    this.rocksDBServerConfig = rocksDBServerConfig;
   }
 }
