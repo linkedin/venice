@@ -64,7 +64,7 @@ public class GrpcSslUtils {
 
   public static TrustManager[] getTrustManagers(SSLFactory sslFactory, String algorithm)
       throws CertificateException, KeyStoreException, IOException, NoSuchAlgorithmException {
-    KeyStore trustStore = loadTrustStore(sslFactory, sslFactory.getSSLConfig().getKeyStoreType());
+    KeyStore trustStore = loadTrustStore(sslFactory, sslFactory.getSSLConfig().getTrustStoreType());
     return createTrustManagers(trustStore, algorithm);
   }
 
