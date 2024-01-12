@@ -171,5 +171,6 @@ public class AggVersionedIngestionStats
 
   public void registerTransformerLatencySensor(String storeName, int version) {
     getStats(storeName, version).registerTransformerLatencySensor();
+    getTotalStats(storeName).registerTransformerLatencySensor();
   }
 }
