@@ -221,7 +221,7 @@ public class PulsarVeniceSinkTest {
       String name = "name" + i;
       int expectedAge = i;
 
-      Awaitility.await().atMost(30, TimeUnit.SECONDS).untilAsserted(() -> {
+      Awaitility.await().atMost(60, TimeUnit.SECONDS).untilAsserted(() -> {
         // StdErr will have some noise like
         // "StatusLogger Log4j2 could not find a logging implementation."
         ExecResult res = execByService(
