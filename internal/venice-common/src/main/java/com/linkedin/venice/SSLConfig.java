@@ -94,6 +94,7 @@ public class SSLConfig {
     config.setKeyStoreType(sslKeyStoreType);
     config.setTrustStoreFilePassword(sslTrustStorePassword);
     config.setTrustStoreFilePath(sslTrustStoreLocation);
+    config.setTrustStoreType(sslTrustStoreType);
 
     return config;
   }
