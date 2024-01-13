@@ -193,4 +193,19 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     Assert.assertFalse(testStoreEngine.getMetadataPartition() instanceof ReplicationMetadataRocksDBStoragePartition);
     Assert.assertTrue(testStoreEngine.getMetadataPartition() instanceof RocksDBStoragePartition);
   }
+
+  @Test
+  public void testHasConflictPersistedStoreEngineConfig() {
+    AbstractStorageEngine testStorageEngine = getTestStoreEngine();
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) testStorageEngine;
+    RocksDBServerConfig rocksDBServerConfigMock = mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfigMock.getTransformerValueSchema()).thenReturn("not_null");
+    when(rocksDBServerConfigMock.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    rocksDBStorageEngine.setRocksDBServerConfig(rocksDBServerConfigMock);
+
+    boolean result = rocksDBStorageEngine.hasConflictPersistedStoreEngineConfig();
+
+    Assert.assertTrue(result);
+
+  }
 }

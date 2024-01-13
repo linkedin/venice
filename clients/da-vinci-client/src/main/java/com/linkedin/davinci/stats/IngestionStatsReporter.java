@@ -39,6 +39,8 @@ import com.linkedin.venice.utils.RegionUtils;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.util.function.DoubleSupplier;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -47,6 +49,8 @@ import java.util.function.DoubleSupplier;
  * collection/visualization system.
  */
 public class IngestionStatsReporter extends AbstractVeniceStatsReporter<IngestionStats> {
+  private static final Logger LOGGER = LogManager.getLogger(IngestionStatsReporter.class);
+
   public IngestionStatsReporter(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
   }
@@ -159,8 +163,18 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
           new IngestionStatsGauge(this, () -> getStats().getNearlineLocalBrokerToReadyToServeLatencyMax(), 0));
     }
 
+    if (getStats() == null) {
+      LOGGER.warn("Failed to fully registerConditionalStats because getStats() returns null for: {}", storeName);
+      return;
+    } else if (getStats().getIngestionTask() == null) {
+      LOGGER.warn(
+          "Failed to fully registerConditionalStats because getStats().getIngestionTask() returns null for: {}",
+          storeName);
+      return;
+    }
+
     // Do not need to check store name here as per user system store is not in active/active mode.
-    if (null != getStats() && getStats().getIngestionTask().isActiveActiveReplicationEnabled()) {
+    if (getStats().getIngestionTask().isActiveActiveReplicationEnabled()) {
       registerSensor(UPDATE_IGNORED_DCR, new IngestionStatsGauge(this, () -> getStats().getUpdateIgnoredRate(), 0));
       registerSensor(TOTAL_DCR, new IngestionStatsGauge(this, () -> getStats().getTotalDCRRate(), 0));
       registerSensor(

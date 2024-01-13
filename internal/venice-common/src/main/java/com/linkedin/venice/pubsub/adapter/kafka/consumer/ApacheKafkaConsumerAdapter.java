@@ -275,7 +275,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     }
 
     if (topicPartitionsOffsetsTracker != null) {
-      topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(records, kafkaConsumer.metrics());
+      topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(records, kafkaConsumer);
     }
     return polledPubSubMessages;
   }

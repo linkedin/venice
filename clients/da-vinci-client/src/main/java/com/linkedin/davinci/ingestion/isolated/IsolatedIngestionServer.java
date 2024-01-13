@@ -472,7 +472,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     return subscription.get();
   }
 
-  public void maybeSubscribeNewResource(String topicName, int partition) {
+  public void maybeInitializeResourceHostingMetadata(String topicName, int partition) {
     getTopicPartitionSubscriptionMap().computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
         .computeIfAbsent(partition, p -> new AtomicBoolean(true));
   }
@@ -715,19 +715,22 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         metricsRepository,
         storeRepository,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
-    /**
-     * The reason of not to restore the data partitions during initialization of storage service is:
-     * 1. During first fresh start up with no data on disk, we don't need to restore anything
-     * 2. During fresh start up with data on disk (aka bootstrap), we will receive messages to subscribe to the partition
-     * and it will re-open the partition on demand.
-     * 3. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
-     * should not try to open it. The remaining ingestion tasks will open the storage engines.
-     * Also, we don't need to restore metadata partition here, as all subscribe requests sent to forked process will
-     * automatically open the metadata partitions. Also, during Da Vinci bootstrap, main process will need to open the
-     * metadata partition of storage engines in order to perform full cleanup of stale versions.
-     */
     boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
 
+    /**
+     * For isolated ingestion server, we always restore metadata partition, but we will only restore data partition in server,
+     * not Da Vinci.
+     * The reason of not to restore the data partitions during initialization of storage service in DVC is:
+     * 1. During fresh start up with data on disk (aka bootstrap), we will receive messages to subscribe to the partition
+     * and it will re-open the partition on demand.
+     * 2. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
+     * should not try to open it. The remaining ingestion tasks will open the storage engines.
+     *
+     * The reason to restore data partitions during initialization of storage service in server is:
+     * 1. Helix can issue OFFLINE->DROPPED state transition for stale partition in anytime, including server restart time.
+     * If data partition is not restored here (as well as the main process), it will never be dropped so the RocksDB storage
+     * will be leaking.
+     */
     storageService = new StorageService(
         configLoader,
         storageEngineStats,
@@ -735,7 +738,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         storeVersionStateSerializer,
         partitionStateSerializer,
         storeRepository,
-        false,
+        !isDaVinciClient,
         true);
     storageService.start();
 

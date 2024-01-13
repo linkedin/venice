@@ -210,9 +210,9 @@ public class DaVinciClientTest {
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig)) {
+      recordTransformer.setOriginalSchema(Schema.parse(DEFAULT_VALUE_SCHEMA));
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
           factory.getAndStartGenericAvroClient(storeName1, clientConfig.setRecordTransformer(recordTransformer));
-      recordTransformer.setOriginalSchema(Schema.parse(DEFAULT_VALUE_SCHEMA));
 
       // Test non-existent key access
       clientWithRecordTransformer.subscribeAll().get();
