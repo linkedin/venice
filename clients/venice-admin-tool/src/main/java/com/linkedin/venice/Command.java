@@ -6,6 +6,7 @@ import static com.linkedin.venice.Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.Arg.ALLOW_STORE_MIGRATION;
 import static com.linkedin.venice.Arg.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
+import static com.linkedin.venice.Arg.BACKUP_FOLDER;
 import static com.linkedin.venice.Arg.BACKUP_STRATEGY;
 import static com.linkedin.venice.Arg.BACKUP_VERSION_RETENTION_DAY;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
@@ -35,6 +36,7 @@ import static com.linkedin.venice.Arg.FABRIC_A;
 import static com.linkedin.venice.Arg.FABRIC_B;
 import static com.linkedin.venice.Arg.FORCE;
 import static com.linkedin.venice.Arg.FUTURE_VERSION_ETL_ENABLED;
+import static com.linkedin.venice.Arg.GRAVEYARD_CLUSTERS;
 import static com.linkedin.venice.Arg.HYBRID_BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.Arg.HYBRID_DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.Arg.HYBRID_OFFSET_LAG;
@@ -80,9 +82,11 @@ import static com.linkedin.venice.Arg.READABILITY;
 import static com.linkedin.venice.Arg.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.Arg.READ_QUOTA;
 import static com.linkedin.venice.Arg.RECOVERY_COMMAND;
+import static com.linkedin.venice.Arg.RECOVER_CLUSTER;
 import static com.linkedin.venice.Arg.REGIONS_FILTER;
 import static com.linkedin.venice.Arg.REGULAR_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.Arg.REMOVE_VIEW;
+import static com.linkedin.venice.Arg.REPAIR;
 import static com.linkedin.venice.Arg.REPLICATE_ALL_CONFIGS;
 import static com.linkedin.venice.Arg.REPLICATION_FACTOR;
 import static com.linkedin.venice.Arg.RETRY;
@@ -90,6 +94,7 @@ import static com.linkedin.venice.Arg.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.Arg.SERVER_URL;
 import static com.linkedin.venice.Arg.SKIP_DIV;
+import static com.linkedin.venice.Arg.SKIP_LAST_STORE_CREATION;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
 import static com.linkedin.venice.Arg.START_DATE;
@@ -484,6 +489,17 @@ public enum Command {
   CONFIGURE_STORE_VIEW(
       "configure-store-view", "Configure store view of a certain store", new Arg[] { URL, CLUSTER, STORE, VIEW_NAME },
       new Arg[] { VIEW_CLASS, VIEW_PARAMS, REMOVE_VIEW }
+  ),
+
+  RECOVER_STORE_METADATA(
+      "recover-store-metadata", "Recover store metadata in EI",
+      new Arg[] { URL, STORE, VENICE_ZOOKEEPER_URL, ZK_SSL_CONFIG_FILE, KAFKA_BOOTSTRAP_SERVERS,
+          KAFKA_CONSUMER_CONFIG_FILE, GRAVEYARD_CLUSTERS },
+      new Arg[] { RECOVER_CLUSTER, SKIP_LAST_STORE_CREATION, REPAIR }
+  ),
+  BACKUP_STORE_METADATA_FROM_GRAVEYARD(
+      "backup-store-metadata-from-graveyard", "Backup store metadata from graveyard in EI",
+      new Arg[] { VENICE_ZOOKEEPER_URL, ZK_SSL_CONFIG_FILE, BACKUP_FOLDER }
   );
 
   private final String commandName;
