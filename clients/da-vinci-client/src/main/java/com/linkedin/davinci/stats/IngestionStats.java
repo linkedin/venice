@@ -58,6 +58,7 @@ public class IngestionStats {
   public static final String NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY = "nearline_producer_to_local_broker_latency";
   public static final String NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY =
       "nearline_local_broker_to_ready_to_serve_latency";
+  public static final String TRANSFORMER_LATENCY = "transformer_latency";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
@@ -82,6 +83,7 @@ public class IngestionStats {
   private final WritePathLatencySensor consumedRecordEndToEndProcessingLatencySensor;
   private final WritePathLatencySensor nearlineProducerToLocalBrokerLatencySensor;
   private final WritePathLatencySensor nearlineLocalBrokerToReadyToServeLatencySensor;
+  private WritePathLatencySensor transformerLatencySensor;
   // Measure the count of ignored updates due to conflict resolution
   private final LongAdderRateGauge conflictResolutionUpdateIgnoredSensor = new LongAdderRateGauge();
   // Measure the total number of incoming conflict resolutions
@@ -93,6 +95,7 @@ public class IngestionStats {
   /** Record a version-level offset rewind events for VTs across all stores. */
   private final Count versionTopicEndOffsetRewindCount = new Count();
   private final Sensor versionTopicEndOffsetRewindSensor;
+  private final MetricsRepository localMetricRepository;
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -104,7 +107,7 @@ public class IngestionStats {
     regionIdToHybridAvgConsumedOffsetMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
     regionIdToHybridAvgConsumedOffsetSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
 
-    MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
+    localMetricRepository = new MetricsRepository(METRIC_CONFIG);
     for (Int2ObjectMap.Entry<String> entry: kafkaClusterIdToAliasMap.int2ObjectEntrySet()) {
       int regionId = entry.getIntKey();
       String regionNamePrefix =
@@ -508,6 +511,14 @@ public class IngestionStats {
 
   public void recordNearlineLocalBrokerToReadyToServeLatency(double value, long currentTimeMs) {
     nearlineLocalBrokerToReadyToServeLatencySensor.record(value, currentTimeMs);
+  }
+
+  public void recordTransformerLatency(double value, long currentTimeMs) {
+    transformerLatencySensor.record(value, currentTimeMs);
+  }
+
+  public void registerTransformerLatencySensor() {
+    transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
   }
 
   public static double unAvailableToZero(double value) {
