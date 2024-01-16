@@ -24,22 +24,22 @@ import org.apache.hadoop.io.NullWritable;
 public class VeniceAvroRecordReader extends AbstractAvroRecordReader<AvroWrapper<IndexedRecord>, NullWritable> {
   /**
    * This constructor is used when data is read from HDFS.
-   * @param fileSchema Schema of the avro file
+   * @param dataSchema Schema of the avro file
    * @param keyFieldStr Field name of the key field
    * @param valueFieldStr Field name of the value field
    * @param etlValueSchemaTransformation The type of transformation that was applied to this schema during ETL. When source data set is not an ETL job, use NONE.
    */
   public VeniceAvroRecordReader(
-      Schema fileSchema,
+      Schema dataSchema,
       String keyFieldStr,
       String valueFieldStr,
       ETLValueSchemaTransformation etlValueSchemaTransformation,
       Schema updateSchema) {
-    super(fileSchema, keyFieldStr, valueFieldStr, etlValueSchemaTransformation, updateSchema);
+    super(dataSchema, keyFieldStr, valueFieldStr, etlValueSchemaTransformation, updateSchema);
   }
 
   public static VeniceAvroRecordReader fromProps(VeniceProperties props) {
-    Schema fileSchema = AvroSchemaParseUtils.parseSchemaFromJSON(
+    Schema dataSchema = AvroSchemaParseUtils.parseSchemaFromJSON(
         props.getString(SCHEMA_STRING_PROP),
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED));
 
@@ -57,7 +57,7 @@ public class VeniceAvroRecordReader extends AbstractAvroRecordReader<AvroWrapper
     }
 
     return new VeniceAvroRecordReader(
-        fileSchema,
+        dataSchema,
         keyFieldStr,
         valueFieldStr,
         etlValueSchemaTransformation,

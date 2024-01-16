@@ -47,8 +47,6 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   // Compression related
   private CompressionStrategy compressionStrategy;
   private boolean compressionMetricCollectionEnabled;
-  private boolean isZstdDictCreationSuccess;
-  private boolean isZstdDictCreationRequired;
   private CompressorFactory compressorFactory;
   private VeniceCompressor[] compressor;
 
@@ -58,7 +56,6 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   private final AtomicReference<byte[]> processedValue = new AtomicReference<>();
   private boolean firstRecord = true;
 
-  // TODO: Find a better name
   protected final void processRecord(
       INPUT_KEY inputKey,
       INPUT_VALUE inputValue,
@@ -217,9 +214,9 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     // A
     compressionMetricCollectionEnabled = props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED);
     // B
-    isZstdDictCreationRequired = props.getBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED);
+    boolean isZstdDictCreationRequired = props.getBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED);
     // C
-    isZstdDictCreationSuccess = props.getBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS);
+    boolean isZstdDictCreationSuccess = props.getBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS);
 
     if (compressionMetricCollectionEnabled) {
       // case 1

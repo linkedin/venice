@@ -19,6 +19,10 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
     }
   }
 
+  public Reporter getReporter() {
+    return reporter;
+  }
+
   @Override
   public void heartbeat() {
     reporter.progress();

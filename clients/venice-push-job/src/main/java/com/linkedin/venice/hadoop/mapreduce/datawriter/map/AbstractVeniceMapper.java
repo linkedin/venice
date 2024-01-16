@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.map;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.task.datawriter.AbstractInputRecordProcessor;
@@ -26,7 +25,6 @@ import org.apache.hadoop.mapred.Reporter;
 public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     extends AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE>
     implements Mapper<INPUT_KEY, INPUT_VALUE, BytesWritable, BytesWritable> {
-  private MapReduceEngineTaskConfigProvider engineTaskConfigProvider;
   private Reporter reporter = null;
   private DataWriterTaskTracker dataWriterTaskTracker = null;
 
@@ -51,14 +49,8 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   }
 
   @Override
-  public EngineTaskConfigProvider getEngineTaskConfigProvider() {
-    return engineTaskConfigProvider;
-  }
-
-  @Override
   public void configure(JobConf job) {
-    this.engineTaskConfigProvider = new MapReduceEngineTaskConfigProvider(job);
-    super.configure();
+    super.configure(new MapReduceEngineTaskConfigProvider(job));
   }
 
   private BytesWritable wrapBytes(byte[] data) {

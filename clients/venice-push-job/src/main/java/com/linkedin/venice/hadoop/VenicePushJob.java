@@ -248,9 +248,9 @@ public class VenicePushJob implements AutoCloseable {
     INITIALIZE_PUSH_JOB(0), NEW_VERSION_CREATED(1), START_MAP_REDUCE_JOB(2), MAP_REDUCE_JOB_COMPLETED(3),
     START_JOB_STATUS_POLLING(4), JOB_STATUS_POLLING_COMPLETED(5), START_VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB(6),
     VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED(7), QUOTA_EXCEEDED(-1), WRITE_ACL_FAILED(-2),
-    DUP_KEY_WITH_DIFF_VALUE(-3), FILE_SCHEMA_VALIDATION_FAILED(-4), EXTENDED_FILE_SCHEMA_VALIDATION_FAILED(-5),
-    RECORD_TOO_LARGE_FAILED(-6), CONCURRENT_BATCH_PUSH(-7), DATASET_CHANGED(-8), INVALID_INPUT_FILE(-9),
-    ZSTD_DICTIONARY_CREATION_FAILED(-10);
+    DUP_KEY_WITH_DIFF_VALUE(-3), INPUT_DATA_SCHEMA_VALIDATION_FAILED(-4),
+    EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED(-5), RECORD_TOO_LARGE_FAILED(-6), CONCURRENT_BATCH_PUSH(-7),
+    DATASET_CHANGED(-8), INVALID_INPUT_FILE(-9), ZSTD_DICTIONARY_CREATION_FAILED(-10);
 
     private final int value;
 
@@ -432,7 +432,7 @@ public class VenicePushJob implements AutoCloseable {
         if (rewindTimestamp > nowInSeconds) {
           throw new VeniceException(
               String.format(
-                  "Provided '{}' for {}. {} cannot be a timestamp in the future!!",
+                  "Provided '%d' for %s. %s cannot be a timestamp in the future!!",
                   rewindTimestamp,
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE,
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE));
@@ -479,9 +479,6 @@ public class VenicePushJob implements AutoCloseable {
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
       pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
     }
-
-    pushJobSettingToReturn.proxyDataWriterTransportFilePath =
-        "/tmp/hdfsTransport/" + jobId + "/" + Utils.getUniqueString() + ".avro";
 
     // Test related configs
     if (props.containsKey(MAP_REDUCE_PARTITIONER_CLASS_CONFIG)) {
@@ -681,7 +678,7 @@ public class VenicePushJob implements AutoCloseable {
        */
       if (!pushJobSetting.isSourceKafka) {
         if (pushJobSetting.isAvro) {
-          validateFileSchema(pushJobSetting.fileSchemaString);
+          validateInputDataSchema(pushJobSetting.inputDataSchemaString);
         } else {
           LOGGER.info("Skip validating file schema since it is not Avro.");
         }
@@ -979,24 +976,24 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void validateFileSchema(String fileSchemaString) {
+  private void validateInputDataSchema(String inputDataSchemaString) {
     try {
-      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(fileSchemaString);
+      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(inputDataSchemaString);
     } catch (Exception e) {
       if (pushJobSetting.extendedSchemaValidityCheckEnabled) {
         LOGGER.error(
             "The schema of the input data failed strict Avro schema validation. Verify if the schema is a valid Avro schema.");
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.EXTENDED_FILE_SCHEMA_VALIDATION_FAILED);
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(e);
       }
 
       LOGGER.info("The schema of the input data failed strict Avro schema validation. Trying loose schema validation.");
       try {
-        AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(fileSchemaString);
+        AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(inputDataSchemaString);
       } catch (Exception looseValidationException) {
         LOGGER.error(
             "The schema of the input data failed loose Avro schema validation. Verify if the schema is a valid Avro schema.");
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.FILE_SCHEMA_VALIDATION_FAILED);
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(looseValidationException);
       }
     }
@@ -1235,7 +1232,7 @@ public class VenicePushJob implements AutoCloseable {
       final long schemaInconsistencyFailureCount =
           MRJobCounterHelper.getMapperSchemaInconsistencyFailureCount(counters);
       if (schemaInconsistencyFailureCount != 0) {
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.FILE_SCHEMA_VALIDATION_FAILED);
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         String err = "Error while validating schema: Inconsistent file schema found";
         LOGGER.error(err);
         throw new VeniceException(err);
@@ -2586,7 +2583,7 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.jobExecutionId);
     conf.set(VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY, validateSchemaAndBuildDictMapperOutputDirectory);
 
-    /** adding below for AbstractMapReduceTask.configure() to not crash: Doesn't affect this flow */
+    /** adding below for {@link AbstractDataWriterTask.configure(EngineTaskConfigProvider)} to not crash: Doesn't affect this flow */
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, false);
 
     /** Allow overriding properties if their names start with {@link HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX} */
@@ -2650,8 +2647,6 @@ public class VenicePushJob implements AutoCloseable {
    * @param storeName, the store name
    * @param refresh, if true, query the controller to get the latest store response otherwise return the cached one.
    * @return the cached {@link StoreResponse} or the newly fetched {@link StoreResponse} when refresh is true.
-   *
-   * TODO: Need more refactoring to get rid of pushJobSetting, or even other POJOs in this class so codes can be cleaner.
    */
   private StoreResponse getStoreResponse(String storeName, boolean refresh) {
     // If this is the first time getting the StoreResponse, fetch it despite the "refresh" argument
@@ -2695,8 +2690,8 @@ public class VenicePushJob implements AutoCloseable {
     propKeyValuePairs.add("Venice Store Name: " + pushJobSetting.storeName);
     propKeyValuePairs.add("Venice Cluster Name: " + pushJobSetting.clusterName);
     propKeyValuePairs.add("Venice URL: " + pushJobSetting.veniceControllerUrl);
-    if (pushJobSetting.fileSchemaString != null) {
-      propKeyValuePairs.add("File Schema: " + pushJobSetting.fileSchemaString);
+    if (pushJobSetting.inputDataSchemaString != null) {
+      propKeyValuePairs.add("File Schema: " + pushJobSetting.inputDataSchemaString);
       propKeyValuePairs.add("Avro key schema: " + pushJobSetting.keySchemaString);
       propKeyValuePairs.add("Avro value schema: " + pushJobSetting.valueSchemaString);
     }

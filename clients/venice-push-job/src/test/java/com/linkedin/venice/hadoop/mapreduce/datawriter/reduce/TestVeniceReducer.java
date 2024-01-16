@@ -131,8 +131,8 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaIdCaptor = ArgumentCaptor.forClass(Integer.class);
     ArgumentCaptor<PutMetadata> metadataArgumentCaptor = ArgumentCaptor.forClass(PutMetadata.class);
-    ArgumentCaptor<AbstractPartitionWriter.DelegatingProducerCallback> callbackCaptor =
-        ArgumentCaptor.forClass(AbstractPartitionWriter.DelegatingProducerCallback.class);
+    ArgumentCaptor<AbstractPartitionWriter.PartitionWriterProducerCallback> callbackCaptor =
+        ArgumentCaptor.forClass(AbstractPartitionWriter.PartitionWriterProducerCallback.class);
 
     verify(mockWriter).put(
         keyCaptor.capture(),
@@ -143,9 +143,9 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     Assert.assertEquals(keyCaptor.getValue(), keyFieldValue.getBytes());
     Assert.assertEquals(valueCaptor.getValue(), valueFieldValue.getBytes());
     Assert.assertEquals((int) schemaIdCaptor.getValue(), VALUE_SCHEMA_ID);
-    Assert.assertTrue(callbackCaptor.getValue().getDelegate() instanceof VeniceReducer.ReducerProduceCallback);
+    Assert.assertTrue(reducer.getDataWriterTaskTracker() instanceof ReporterBackedMapReduceDataWriterTaskTracker);
     Assert.assertEquals(
-        ((VeniceReducer.ReducerProduceCallback) callbackCaptor.getValue().getDelegate()).getProgressable(),
+        ((ReporterBackedMapReduceDataWriterTaskTracker) reducer.getDataWriterTaskTracker()).getReporter(),
         mockReporter);
 
     verify(mockReporter).incrCounter(
@@ -436,13 +436,13 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
     reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
 
-    ArgumentCaptor<AbstractPartitionWriter.DelegatingProducerCallback> callbackCaptor =
-        ArgumentCaptor.forClass(AbstractPartitionWriter.DelegatingProducerCallback.class);
+    ArgumentCaptor<AbstractPartitionWriter.PartitionWriterProducerCallback> callbackCaptor =
+        ArgumentCaptor.forClass(AbstractPartitionWriter.PartitionWriterProducerCallback.class);
 
     verify(mockWriter).put(any(), any(), anyInt(), callbackCaptor.capture(), any());
-    Assert.assertTrue(callbackCaptor.getValue().getDelegate() instanceof VeniceReducer.ReducerProduceCallback);
+    Assert.assertTrue(reducer.getDataWriterTaskTracker() instanceof ReporterBackedMapReduceDataWriterTaskTracker);
     Assert.assertEquals(
-        ((VeniceReducer.ReducerProduceCallback) callbackCaptor.getValue().getDelegate()).getProgressable(),
+        ((ReporterBackedMapReduceDataWriterTaskTracker) reducer.getDataWriterTaskTracker()).getReporter(),
         mockReporter);
 
     // test with different reporter
@@ -450,9 +450,9 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
     reducer.reduce(keyWritable, values.iterator(), mockCollector, newMockReporter);
     verify(mockWriter, times(2)).put(any(), any(), anyInt(), callbackCaptor.capture(), any());
-    Assert.assertTrue(callbackCaptor.getValue().getDelegate() instanceof VeniceReducer.ReducerProduceCallback);
+    Assert.assertTrue(reducer.getDataWriterTaskTracker() instanceof ReporterBackedMapReduceDataWriterTaskTracker);
     Assert.assertEquals(
-        ((VeniceReducer.ReducerProduceCallback) callbackCaptor.getValue().getDelegate()).getProgressable(),
+        ((ReporterBackedMapReduceDataWriterTaskTracker) reducer.getDataWriterTaskTracker()).getReporter(),
         newMockReporter);
   }
 

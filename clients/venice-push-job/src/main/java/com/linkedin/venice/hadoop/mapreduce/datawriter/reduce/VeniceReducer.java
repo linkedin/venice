@@ -1,8 +1,6 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.reduce;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartitioner;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
@@ -11,8 +9,6 @@ import com.linkedin.venice.hadoop.mapreduce.engine.HadoopJobClientProvider;
 import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
-import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
@@ -28,9 +24,6 @@ import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
-import org.apache.hadoop.util.Progressable;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -47,29 +40,19 @@ import org.apache.logging.log4j.Logger;
 public class VeniceReducer extends AbstractPartitionWriter
     implements Reducer<BytesWritable, BytesWritable, BytesWritable, BytesWritable> {
   public static final String MAP_REDUCE_JOB_ID_PROP = "mapreduce.job.id";
-  private static final Logger LOGGER = LogManager.getLogger(VeniceReducer.class);
-
-  private VeniceProperties props;
 
   private Reporter reporter = null;
-  private DataWriterTaskTracker dataWriterTaskTracker = null;
   private HadoopJobClientProvider hadoopJobClientProvider = new DefaultHadoopJobClientProvider();
-
-  private MapReduceEngineTaskConfigProvider engineTaskConfigProvider;
-
-  @Override
-  protected EngineTaskConfigProvider getEngineTaskConfigProvider() {
-    return engineTaskConfigProvider;
-  }
+  private JobConf jobConf;
 
   protected JobConf getJobConf() {
-    return engineTaskConfigProvider.getJobConf();
+    return jobConf;
   }
 
   @Override
   public void configure(JobConf job) {
-    this.engineTaskConfigProvider = new MapReduceEngineTaskConfigProvider(job);
-    super.configure();
+    this.jobConf = job;
+    super.configure(new MapReduceEngineTaskConfigProvider(job));
   }
 
   @Override
@@ -78,9 +61,11 @@ public class VeniceReducer extends AbstractPartitionWriter
       Iterator<BytesWritable> values,
       OutputCollector<BytesWritable, BytesWritable> output,
       Reporter reporter) {
+    DataWriterTaskTracker dataWriterTaskTracker;
     if (updatePreviousReporter(reporter)) {
-      setCallback(new ReducerProduceCallback(reporter));
       dataWriterTaskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(reporter);
+    } else {
+      dataWriterTaskTracker = getDataWriterTaskTracker();
     }
     processValuesForKey(key.copyBytes(), mapIterator(values, BytesWritable::copyBytes), dataWriterTaskTracker);
   }
@@ -91,6 +76,12 @@ public class VeniceReducer extends AbstractPartitionWriter
       return true;
     }
     return false;
+  }
+
+  // Visible for testing
+  @Override
+  protected DataWriterTaskTracker getDataWriterTaskTracker() {
+    return super.getDataWriterTaskTracker();
   }
 
   // Visible for testing
@@ -126,7 +117,6 @@ public class VeniceReducer extends AbstractPartitionWriter
   @Override
   protected void configureTask(VeniceProperties props) {
     super.configureTask(props);
-    this.props = props;
   }
 
   @Override
@@ -180,43 +170,6 @@ public class VeniceReducer extends AbstractPartitionWriter
   // Visible for testing
   protected void setHadoopJobClientProvider(HadoopJobClientProvider hadoopJobClientProvider) {
     this.hadoopJobClientProvider = hadoopJobClientProvider;
-  }
-
-  protected class ReducerProduceCallback implements PubSubProducerCallback {
-    private final Reporter reporter;
-
-    public ReducerProduceCallback(Reporter reporter) {
-      this.reporter = reporter;
-    }
-
-    @Override
-    public void onCompletion(PubSubProduceResult produceResult, Exception e) {
-      if (e != null) {
-        // This is unexpected since it should be handled in AbstractPartitionWriter. Ignore.
-        LOGGER.warn("Received exception in pubsub callback. This is unexpected.", e);
-      } else {
-        int partition = produceResult.getPartition();
-        if (partition != getTaskId()) {
-          // Reducer input and output are not aligned!
-          recordMessageErrored(
-              new VeniceException(
-                  String.format(
-                      "The reducer is not writing to the Kafka partition that maps to its task (taskId = %d, partition = %d). "
-                          + "This could mean that MR shuffling is buggy or that the configured %s (%s) is non-deterministic.",
-                      getTaskId(),
-                      partition,
-                      VenicePartitioner.class.getSimpleName(),
-                      props.getString(ConfigKeys.PARTITIONER_CLASS))));
-        }
-      }
-      // Report progress so map-reduce framework won't kill current reducer when it finishes
-      // sending all the messages to Kafka broker, but not yet flushed and closed.
-      reporter.progress();
-    }
-
-    protected Progressable getProgressable() {
-      return reporter;
-    }
   }
 
   private <T, O> Iterator<O> mapIterator(Iterator<T> iterator, Function<T, O> mapper) {

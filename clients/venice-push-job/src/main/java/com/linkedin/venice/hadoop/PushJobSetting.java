@@ -17,7 +17,7 @@ import org.apache.hadoop.mapred.Partitioner;
 
 
 /**
- * This class carries the state for the duration of the VenicePushJob. Consider breaking changes carefully.
+ * This class carries the state for the duration of the VenicePushJob. Consider making breaking changes carefully.
  */
 public class PushJobSetting implements Serializable {
   private static final long serialVersionUID = 1;
@@ -124,8 +124,8 @@ public class PushJobSetting implements Serializable {
   public String keyField;
   public String valueField;
 
-  public Schema fileSchema;
-  public String fileSchemaString;
+  public Schema inputDataSchema;
+  public String inputDataSchemaString;
 
   public Schema keySchema;
   public String keySchemaString;
@@ -133,11 +133,11 @@ public class PushJobSetting implements Serializable {
   public Schema valueSchema;
   public String valueSchemaString;
 
-  public VsonSchema vsonFileKeySchema;
-  public String vsonFileKeySchemaString;
+  public VsonSchema vsonInputKeySchema;
+  public String vsonInputKeySchemaString;
 
-  public VsonSchema vsonFileValueSchema;
-  public String vsonFileValueSchemaString;
+  public VsonSchema vsonInputValueSchema;
+  public String vsonInputValueSchemaString;
 
   public boolean generatePartialUpdateRecordFromInput;
   public ETLValueSchemaTransformation etlValueSchemaTransformation;
@@ -150,9 +150,6 @@ public class PushJobSetting implements Serializable {
   public transient Version sourceKafkaInputVersionInfo;
   public CompressionStrategy sourceVersionCompressionStrategy;
   public boolean sourceVersionChunkingEnabled;
-
-  // Proxy compute job
-  public String proxyDataWriterTransportFilePath;
 
   // Configs to help with testing
   public Class<? extends Partitioner> mapReducePartitionerClass = VeniceMRPartitioner.class;

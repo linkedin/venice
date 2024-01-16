@@ -17,15 +17,11 @@ public class MapReduceEngineTaskConfigProvider implements EngineTaskConfigProvid
   // are different. Continuing to use the old configs for now.
   public static final String MAPRED_TASK_ID_PROP_NAME = "mapred.task.id";
   public static final String MAPREDUCE_JOB_NAME_PROP_NAME = "mapreduce.job.name";
-  private JobConf jobConf;
+  private final JobConf jobConf;
   private Properties jobProps;
 
   public MapReduceEngineTaskConfigProvider(JobConf jobConf) {
     this.jobConf = jobConf;
-  }
-
-  public JobConf getJobConf() {
-    return jobConf;
   }
 
   @Override
@@ -35,7 +31,7 @@ public class MapReduceEngineTaskConfigProvider implements EngineTaskConfigProvid
 
   @Override
   public int getTaskId() {
-    TaskAttemptID taskAttemptID = TaskAttemptID.forName(getJobConf().get(MAPRED_TASK_ID_PROP_NAME));
+    TaskAttemptID taskAttemptID = TaskAttemptID.forName(jobConf.get(MAPRED_TASK_ID_PROP_NAME));
     if (taskAttemptID == null) {
       throw new UndefinedPropertyException(
           MAPRED_TASK_ID_PROP_NAME + " not found in the " + JobConf.class.getSimpleName());

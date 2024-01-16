@@ -21,38 +21,37 @@ import org.apache.avro.generic.IndexedRecord;
  */
 public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
     extends AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
-  private final Schema fileSchema;
-  private final Schema outputSchema;
+  private final Schema dataSchema;
 
   private final int keyFieldPos;
-  private final Schema keySchema;
   private final int valueFieldPos;
   private final Schema valueSchema;
 
-  private boolean generatePartialUpdateRecordFromInput;
+  private final boolean generatePartialUpdateRecordFromInput;
 
   /**
    * This constructor is used when data is read from HDFS.
-   * @param fileSchema Schema of the avro file
+   * @param dataSchema Schema of the avro file
    * @param keyFieldStr Field name of the key field
    * @param valueFieldStr Field name of the value field
    * @param etlValueSchemaTransformation The type of transformation that was applied to this schema during ETL. When source data set is not an ETL job, use NONE.
    */
   public AbstractAvroRecordReader(
-      Schema fileSchema,
+      Schema dataSchema,
       String keyFieldStr,
       String valueFieldStr,
       ETLValueSchemaTransformation etlValueSchemaTransformation,
       Schema updateSchema) {
-    this.fileSchema = fileSchema;
-    Schema.Field keyField = getField(fileSchema, keyFieldStr);
+    this.dataSchema = dataSchema;
+    Schema.Field keyField = getField(dataSchema, keyFieldStr);
     keyFieldPos = keyField.pos();
-    keySchema = keyField.schema();
+    Schema keySchema = keyField.schema();
 
+    Schema outputSchema;
     if (!etlValueSchemaTransformation.equals(ETLValueSchemaTransformation.NONE)) {
       List<Schema.Field> outputSchemaFields = new LinkedList<>();
 
-      for (Schema.Field fileField: fileSchema.getFields()) {
+      for (Schema.Field fileField: dataSchema.getFields()) {
         Schema fieldSchema = fileField.schema();
         // In our ETL jobs, when we see a "delete" record, we set the value as "null". To allow the value field to be
         // set as "null", we make the schema of the value field as a union schema of "null" and the original value
@@ -65,10 +64,10 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
       }
 
       outputSchema = Schema
-          .createRecord(fileSchema.getName(), fileSchema.getDoc(), fileSchema.getNamespace(), fileSchema.isError());
+          .createRecord(dataSchema.getName(), dataSchema.getDoc(), dataSchema.getNamespace(), dataSchema.isError());
       outputSchema.setFields(outputSchemaFields);
     } else {
-      outputSchema = fileSchema;
+      outputSchema = dataSchema;
     }
 
     Schema.Field outputValueField = getField(outputSchema, valueFieldStr);
@@ -76,7 +75,7 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
 
     this.generatePartialUpdateRecordFromInput = updateSchema != null;
     if (generatePartialUpdateRecordFromInput) {
-      this.valueSchema = updateSchema;
+      valueSchema = updateSchema;
     } else {
       valueSchema = outputValueField.schema();
     }
@@ -96,8 +95,8 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
     return field;
   }
 
-  public Schema getDatasetSchema() {
-    return fileSchema;
+  public Schema getDataSchema() {
+    return dataSchema;
   }
 
   protected abstract IndexedRecord getRecordDatum(INPUT_KEY inputKey, INPUT_VALUE inputValue);

@@ -8,7 +8,6 @@ import com.linkedin.venice.hadoop.jobs.DataWriterComputeJob;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.map.AbstractVeniceMapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.Time;
-import java.time.Duration;
 import org.apache.hadoop.fs.PathFilter;
 
 
@@ -362,12 +361,4 @@ public final class VenicePushJobConstants {
    * The class must extend {@link DataWriterComputeJob} and have a zero-arg constructor.
    */
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
-  public static final String COMPUTE_PROXY_JOB_STATUS_REPORT_PERIOD_SECONDS =
-      "compute.proxy.status.report.period.seconds";
-  public static final String COMPUTE_PROXY_JOB_STATUS_REFRESH_PERIOD_SECONDS =
-      "compute.proxy.status.refresh.period.seconds";
-  public static final String COMPUTE_PROXY_JOB_STATUS_HEARTBEAT_MISS_COUNT =
-      "compute.proxy.status.heartbeat.miss.count";
-  public static final Duration DEFAULT_PROXY_JOB_STATUS_UPDATE_PERIOD = Duration.ofSeconds(30);
-  public static final int DEFAULT_COMPUTE_PROXY_JOB_STATUS_HEARTBEAT_MISS_COUNT = 3;
 }

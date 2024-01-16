@@ -4,8 +4,9 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.ValidateSchemaAndBuildDictMapper;
 import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
-import com.linkedin.venice.hadoop.mapreduce.datawriter.task.AbstractMapReduceTask;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormatCombiner;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -15,7 +16,8 @@ import java.util.Properties;
 
 
 /**
- * Class for commonalities between {@link AbstractMapReduceTask}, {@link AbstractInputRecordProcessor} and {@link AbstractPartitionWriter}.
+ * Class for commonalities between {@link AbstractInputRecordProcessor}, {@link AbstractPartitionWriter},
+ * {@link KafkaInputFormatCombiner} and {@link ValidateSchemaAndBuildDictMapper}.
  */
 public abstract class AbstractDataWriterTask {
   protected static final int TASK_ID_NOT_SET = -1;
@@ -24,11 +26,18 @@ public abstract class AbstractDataWriterTask {
   private int taskId = TASK_ID_NOT_SET;
   private boolean isChunkingEnabled;
   private boolean isRmdChunkingEnabled;
+  private EngineTaskConfigProvider engineTaskConfigProvider;
 
+  /**
+   * @return The number of partitions for the pubsub topic where data will be written.
+   */
   protected int getPartitionCount() {
     return this.partitionCount;
   }
 
+  /**
+   * @return The ID of the current task. This ID number is 0-based.
+   */
   protected int getTaskId() {
     return this.taskId;
   }
@@ -41,21 +50,33 @@ public abstract class AbstractDataWriterTask {
     return isChunkingEnabled;
   }
 
-  protected void setRmdChunkingEnabled(boolean isRmdChunkingEnabled) {
-    this.isRmdChunkingEnabled = isRmdChunkingEnabled;
-  }
-
   protected boolean isRmdChunkingEnabled() {
     return isRmdChunkingEnabled;
   }
 
-  protected abstract EngineTaskConfigProvider getEngineTaskConfigProvider();
+  private void verifyEngineTaskConfigProviderConfigured() {
+    if (engineTaskConfigProvider == null) {
+      throw new IllegalStateException("EngineTaskConfigProvider is not configured. Please call configure() first.");
+    }
+  }
 
+  protected EngineTaskConfigProvider getEngineTaskConfigProvider() {
+    verifyEngineTaskConfigProviderConfigured();
+    return engineTaskConfigProvider;
+  }
+
+  /**
+   * Allow implementations of this class to configure task-specific stuff.
+   * @param props the job props that the task was configured with.
+   */
   protected abstract void configureTask(VeniceProperties props);
 
-  // TODO: Find a better name
-  protected final void configure() {
-    EngineTaskConfigProvider engineTaskConfigProvider = getEngineTaskConfigProvider();
+  /**
+   * Configures the task with the given {@link EngineTaskConfigProvider}.
+   * @param engineTaskConfigProvider
+   */
+  protected final void configure(EngineTaskConfigProvider engineTaskConfigProvider) {
+    this.engineTaskConfigProvider = engineTaskConfigProvider;
     Properties jobProps = engineTaskConfigProvider.getJobProps();
     String sslConfiguratorClassName = jobProps.getProperty(SSL_CONFIGURATOR_CLASS_CONFIG);
     if (sslConfiguratorClassName != null) {
@@ -66,7 +87,7 @@ public abstract class AbstractDataWriterTask {
         throw new VeniceException("Could not get user credential for job: " + engineTaskConfigProvider.getJobName(), e);
       }
     }
-    setRmdChunkingEnabled(Boolean.parseBoolean(jobProps.getProperty(VeniceWriter.ENABLE_RMD_CHUNKING)));
+    this.isRmdChunkingEnabled = Boolean.parseBoolean(jobProps.getProperty(VeniceWriter.ENABLE_RMD_CHUNKING));
     setChunkingEnabled(Boolean.parseBoolean(jobProps.getProperty(VeniceWriter.ENABLE_CHUNKING)));
     this.partitionCount = Integer.parseInt(jobProps.getProperty(PARTITION_COUNT));
     this.taskId = engineTaskConfigProvider.getTaskId();

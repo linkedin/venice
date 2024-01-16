@@ -211,30 +211,34 @@ public class DataWriterMRJob extends DataWriterComputeJob {
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     conf.setBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
 
-    /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.
-     *  Allow overriding properties if their names start with {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX}
-     *  Allow overriding properties if their names start with {@link ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX}
-     *  Allow overriding properties if their names start with {@link KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX}
+    /**
+     * Pass-through the properties whose names start with:
+     * <ul>
+     *   <li> {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX} </li>
+     *   <li> {@link ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX} </li>
+     *   <li> {@link KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} </li>
+     * </ul>
+     *
+     * Override the properties that are specified with the {@link HADOOP_PREFIX} prefix.
      **/
     List<String> passThroughPrefixList = Arrays.asList(
         VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
         KAFKA_CONFIG_PREFIX,
         KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX);
     int passThroughPrefixListSize = passThroughPrefixList.size();
-    if (passThroughPrefixListSize > 1) {
-      /**
-       * The following logic will make sure there are no two prefixes, which will be fully overlapped.
-       * The algo is slightly inefficient, but it should be good enough for VPJ.
-       */
-      for (int i = 0; i < passThroughPrefixListSize; ++i) {
-        for (int j = 0; j < passThroughPrefixListSize; ++j) {
-          if (i != j) {
-            String prefixI = passThroughPrefixList.get(i);
-            String prefixJ = passThroughPrefixList.get(j);
-            if (prefixI.startsWith(prefixJ)) {
-              throw new VeniceException("Prefix: " + prefixJ + " shouldn't be a prefix of another prefix: " + prefixI);
-            }
-          }
+    /**
+     * The following logic will make sure there is no prefix that is a prefix of another prefix.
+     */
+    for (int i = 0; i < passThroughPrefixListSize; ++i) {
+      for (int j = i + 1; j < passThroughPrefixListSize; ++j) {
+        String prefixI = passThroughPrefixList.get(i);
+        String prefixJ = passThroughPrefixList.get(j);
+        if (prefixI.startsWith(prefixJ)) {
+          throw new VeniceException("Prefix: " + prefixJ + " shouldn't be a prefix of another prefix: " + prefixI);
+        }
+
+        if (prefixJ.startsWith(prefixI)) {
+          throw new VeniceException("Prefix: " + prefixI + " shouldn't be a prefix of another prefix: " + prefixJ);
         }
       }
     }
@@ -283,8 +287,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       }
 
       if (pushJobSetting.isAvro) {
-        jobConf.set(SCHEMA_STRING_PROP, pushJobSetting.fileSchemaString);
-        jobConf.set(AvroJob.INPUT_SCHEMA, pushJobSetting.fileSchemaString);
+        jobConf.set(SCHEMA_STRING_PROP, pushJobSetting.inputDataSchemaString);
+        jobConf.set(AvroJob.INPUT_SCHEMA, pushJobSetting.inputDataSchemaString);
         if (pushJobSetting.generatePartialUpdateRecordFromInput) {
           jobConf.setBoolean(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, true);
           jobConf.set(UPDATE_SCHEMA_STRING_PROP, pushJobSetting.valueSchemaString);
@@ -297,8 +301,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
         jobConf.setInputFormat(VsonSequenceFileInputFormat.class);
         jobConf.setMapperClass(VeniceVsonMapper.class);
         jobConf.setBoolean(VSON_PUSH, true);
-        jobConf.set(FILE_KEY_SCHEMA, pushJobSetting.vsonFileKeySchemaString);
-        jobConf.set(FILE_VALUE_SCHEMA, pushJobSetting.vsonFileValueSchemaString);
+        jobConf.set(FILE_KEY_SCHEMA, pushJobSetting.vsonInputKeySchemaString);
+        jobConf.set(FILE_VALUE_SCHEMA, pushJobSetting.vsonInputValueSchemaString);
       }
     }
   }

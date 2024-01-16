@@ -10,15 +10,14 @@ import com.linkedin.venice.writer.VeniceWriter;
 
 
 public class PushJobZstdConfig {
-  private ZstdDictTrainer zstdDictTrainer;
-  private int maxBytesPerFile;
-  private int maxDictSize;
-  private int maxSampleSize;
+  private final ZstdDictTrainer zstdDictTrainer;
+  private final int maxBytesPerFile;
+  private final int maxSampleSize;
   private int filledSize; // Duplicate of filledSize in ZstdDictTrainer as there is no getter for this
   private int collectedNumberOfSamples;
 
   public PushJobZstdConfig(VeniceProperties props, int numFiles) {
-    maxDictSize = props
+    int maxDictSize = props
         .getInt(COMPRESSION_DICTIONARY_SIZE_LIMIT, VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     maxSampleSize = props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE);
     maxBytesPerFile = maxSampleSize / numFiles;

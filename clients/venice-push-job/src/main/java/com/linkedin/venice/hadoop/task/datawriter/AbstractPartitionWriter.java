@@ -22,6 +22,7 @@ import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
 import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.hadoop.task.TaskTracker;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
@@ -178,9 +179,10 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private boolean isDuplicateKeyAllowed = DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 
   /**
-   * Yarn will kill reducer if it's inactive for more than 10 minutes, which is too short for reducers to retry sending
-   * messages and too short for Venice and Kafka team to mitigate write-path incidents. A background progress heartbeat
-   * task will be scheduled to keep reporting progress every 5 minutes until there is error from producer.
+   * Compute engines will kill a task if it's inactive for a configured time. This time might be is too short for the
+   * partition writers to retry sending messages and too short for Venice and Kafka team to mitigate write-path
+   * incidents. A background progress heartbeat task will be scheduled to keep reporting progress periodically until
+   * there is error from producer.
    */
   private final ScheduledExecutorService taskProgressHeartbeatScheduler = Executors.newScheduledThreadPool(1);
 
@@ -214,8 +216,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
   }
 
-  protected void setCallback(PubSubProducerCallback userCallback) {
-    this.callback = new DelegatingProducerCallback(userCallback);
+  protected DataWriterTaskTracker getDataWriterTaskTracker() {
+    return dataWriterTaskTracker;
   }
 
   protected PubSubProducerCallback getCallback() {
@@ -345,7 +347,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     EngineTaskConfigProvider engineTaskConfigProvider = getEngineTaskConfigProvider();
     writerProps.put(ConfigKeys.PUSH_JOB_COMPUTE_JOB_ID, engineTaskConfigProvider.getJobName());
-    writerProps.put(ConfigKeys.PUSH_JOB_COMPUTE_TASK_ID, engineTaskConfigProvider.getTaskId());
+    writerProps.put(ConfigKeys.PUSH_JOB_COMPUTE_TASK_ID, getTaskId());
     VeniceWriterFactory veniceWriterFactoryFactory =
         new VeniceWriterFactory(writerProps, new ApacheKafkaProducerAdapterFactory(), null);
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
@@ -407,9 +409,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         boolean shouldEndAllSegments = false;
         try {
           veniceWriter.flush();
-          shouldEndAllSegments =
-              messageErrored.get() == 0 && messageSent == messageCompleted.get() && (dataWriterTaskTracker == null
-                  || dataWriterTaskTracker.getProgress() == 1.0 || dataWriterTaskTracker.getProgress() == -1);
+          shouldEndAllSegments = messageErrored.get() == 0 && messageSent == messageCompleted.get()
+              && (dataWriterTaskTracker == null || dataWriterTaskTracker.getProgress() == TaskTracker.PROGRESS_COMPLETED
+                  || dataWriterTaskTracker.getProgress() == TaskTracker.PROGRESS_NOT_SUPPORTED);
         } finally {
           veniceWriter.close(shouldEndAllSegments);
         }
@@ -445,6 +447,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) && props.getBoolean(ENABLE_WRITE_COMPUTE);
     this.duplicateKeyPrinter = initDuplicateKeyPrinter(props);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
+    this.callback = new PartitionWriterProducerCallback();
     initStorageQuotaFields(props);
     /**
      * A dummy background task that reports progress every 5 minutes.
@@ -454,8 +457,6 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         this.dataWriterTaskTracker.heartbeat();
       }
     }, 0, 5, TimeUnit.MINUTES);
-    // Set up a default callback in case the implementation doesn't set one.
-    setCallback(null);
   }
 
   private void initStorageQuotaFields(VeniceProperties props) {
@@ -599,13 +600,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
   }
 
-  public class DelegatingProducerCallback implements PubSubProducerCallback {
-    private final PubSubProducerCallback delegate;
-
-    public DelegatingProducerCallback(PubSubProducerCallback delegate) {
-      this.delegate = delegate;
-    }
-
+  public class PartitionWriterProducerCallback implements PubSubProducerCallback {
     @Override
     public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
       if (exception != null) {
@@ -613,15 +608,24 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         recordMessageErrored(exception);
       } else {
         recordMessageCompleted();
+        int partition = produceResult.getPartition();
+        if (partition != getTaskId()) {
+          // PartitionWriter's input and output are not aligned!
+          recordMessageErrored(
+              new VeniceException(
+                  String.format(
+                      "The task is not writing to the PubSub partition that maps to it (taskId = %d, partition = %d). "
+                          + "This could mean that task shuffling is buggy or that the configured %s (%s) is non-deterministic.",
+                      getTaskId(),
+                      partition,
+                      VenicePartitioner.class.getSimpleName(),
+                      props.getString(ConfigKeys.PARTITIONER_CLASS))));
+        }
       }
 
-      if (delegate != null) {
-        delegate.onCompletion(produceResult, exception);
-      }
-    }
-
-    public PubSubProducerCallback getDelegate() {
-      return delegate;
+      // Report progress so compute framework won't kill current task when it finishes
+      // sending all the messages to PubSub system, but not yet flushed and closed.
+      dataWriterTaskTracker.heartbeat();
     }
   }
 }

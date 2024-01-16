@@ -1,11 +1,12 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.hadoop.VenicePushJobConstants;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartitioner;
-import com.linkedin.venice.hadoop.mapreduce.datawriter.task.AbstractMapReduceTask;
+import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProvider;
+import com.linkedin.venice.hadoop.task.datawriter.AbstractDataWriterTask;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -15,24 +16,26 @@ import java.util.Iterator;
 import java.util.Optional;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.JobConfigurable;
+import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 
 
 /**
- * This class is a Combiner, which is a functionality of the MR framework where we can plug a
- * {@link Reducer} implementation to be executed within the {@link org.apache.hadoop.mapred.Mapper}
- * task, on its output. This allows the Reducer to have less work to do since part of it was
- * already done in the Mappers. In the case of the {@link KafkaInputFormat}, we cannot do all
- * of the same work that the {@link VeniceKafkaInputReducer} is doing, since that includes producing
- * to Kafka, but the part which is relevant to shift to Mappers is the compaction. We have observed
- * that when the input partitions are very large, then Reducers can run out of memory. By shifting
- * the work to Mappers, we should be able to remove this bottleneck and scale better, especially if
- * used in combination with a low value for: {@link VenicePushJob#KAFKA_INPUT_MAX_RECORDS_PER_MAPPER}
+ * This class is a Combiner, which is a functionality of the MR framework where we can plug a {@link Reducer}
+ * implementation to be executed within the {@link Mapper} task, on its output. This allows the Reducer to have less
+ * work to do since part of it was already done in the Mappers. In the case of the {@link KafkaInputFormat}, we cannot
+ * do all the same work that the {@link VeniceKafkaInputReducer} is doing, since that includes producing to Kafka, but
+ * the part which is relevant to shift to Mappers is the compaction. We have observed that when the input partitions are
+ * very large, then Reducers can run out of memory. By shifting the work to Mappers, we should be able to remove this
+ * bottleneck and scale better, especially if used in combination with a low value for:
+ * {@link VenicePushJobConstants#KAFKA_INPUT_MAX_RECORDS_PER_MAPPER}
  */
-public class KafkaInputFormatCombiner extends AbstractMapReduceTask
-    implements Reducer<BytesWritable, BytesWritable, BytesWritable, BytesWritable> {
+public class KafkaInputFormatCombiner extends AbstractDataWriterTask
+    implements Reducer<BytesWritable, BytesWritable, BytesWritable, BytesWritable>, JobConfigurable {
   private static final RecordDeserializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER =
       FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
@@ -82,6 +85,11 @@ public class KafkaInputFormatCombiner extends AbstractMapReduceTask
 
   @Override
   protected void configureTask(VeniceProperties props) {
+  }
+
+  @Override
+  public void configure(JobConf job) {
+    super.configure(new MapReduceEngineTaskConfigProvider(job));
   }
 
   /**

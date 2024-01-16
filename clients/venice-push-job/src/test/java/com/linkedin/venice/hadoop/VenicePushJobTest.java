@@ -778,11 +778,11 @@ public class VenicePushJobTest {
         pushJobSetting.keyField = properties.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
         pushJobSetting.valueField = properties.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
 
-        pushJobSetting.fileSchema = schema;
+        pushJobSetting.inputDataSchema = schema;
         pushJobSetting.valueSchema = schema.getField(pushJobSetting.valueField).schema();
 
-        pushJobSetting.fileSchemaString = SIMPLE_FILE_SCHEMA_STR;
-        pushJobSetting.keySchema = pushJobSetting.fileSchema.getField(pushJobSetting.keyField).schema();
+        pushJobSetting.inputDataSchemaString = SIMPLE_FILE_SCHEMA_STR;
+        pushJobSetting.keySchema = pushJobSetting.inputDataSchema.getField(pushJobSetting.keyField).schema();
 
         pushJobSetting.keySchemaString = pushJobSetting.keySchema.toString();
         pushJobSetting.valueSchemaString = pushJobSetting.valueSchema.toString();

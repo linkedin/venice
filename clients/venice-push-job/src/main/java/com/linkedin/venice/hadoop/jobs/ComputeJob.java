@@ -10,22 +10,18 @@ import java.io.IOException;
  */
 public interface ComputeJob extends Closeable {
   enum Status {
-    NOT_STARTED(0), RUNNING(1), SUCCEEDED(2), FAILED(3), FAILED_VERIFICATION(4), KILLED(5);
-
-    public final int value;
-    private static final Status[] values = values();
-
-    Status(int value) {
-      this.value = value;
-    }
-
-    public static Status valueOf(int value) {
-      return values[value];
-    }
-
-    public boolean isEnded() {
-      return this == SUCCEEDED || this == FAILED || this == FAILED_VERIFICATION || this == KILLED;
-    }
+    /** A job that has not started execution yet */
+    NOT_STARTED,
+    /** A job that is currently executing */
+    RUNNING,
+    /** A job that has completed execution successfully */
+    SUCCEEDED,
+    /** A job that failed during it's execution */
+    FAILED,
+    /** A job that has completed execution but failed verification */
+    FAILED_VERIFICATION,
+    /** A job that was killed */
+    KILLED
   }
 
   void configure(VeniceProperties properties);

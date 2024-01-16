@@ -17,8 +17,9 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.ZSTD_DICTIONARY_
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
-import com.linkedin.venice.hadoop.mapreduce.datawriter.task.AbstractMapReduceTask;
+import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
+import com.linkedin.venice.hadoop.task.datawriter.AbstractDataWriterTask;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -32,6 +33,8 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.JobConfigurable;
 import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
@@ -46,10 +49,14 @@ import org.apache.logging.log4j.Logger;
  * Note: processing all the files in this split are done sequentially and if it
  * results in significant increase in the mapper time or resulting in timeouts,
  * this needs to be revisited to be done via a thread pool.
+ *
+ * TODO: Ideally, this class should not extend {@link AbstractDataWriterTask}. Soon, this MR job is going to be removed
+ * and the handling will be moved to the VPJ driver.
  */
-public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
-    implements Mapper<IntWritable, NullWritable, AvroWrapper<SpecificRecord>, NullWritable> {
+public class ValidateSchemaAndBuildDictMapper extends AbstractDataWriterTask
+    implements Mapper<IntWritable, NullWritable, AvroWrapper<SpecificRecord>, NullWritable>, JobConfigurable {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictMapper.class);
+  private JobConf jobConf;
   protected DefaultInputDataInfoProvider inputDataInfoProvider = null;
   protected InputDataInfoProvider.InputDataInfo inputDataInfo;
   protected PushJobSetting pushJobSetting = new PushJobSetting();
@@ -136,14 +143,14 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       LOGGER.info("Detected Avro input format.");
       Pair<Schema, Schema> newSchema =
           inputDataInfoProvider.getAvroFileHeader(fileSystem, fileStatus.getPath(), isZstdDictCreationRequired);
-      if (!newSchema.getFirst().equals(pushJobSetting.fileSchema)
+      if (!newSchema.getFirst().equals(pushJobSetting.inputDataSchema)
           || !newSchema.getSecond().equals(pushJobSetting.valueSchema)) {
         MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
         LOGGER.error(
             "Error while trying to validate schema: Inconsistent file Avro schema found. File: {}. \n"
                 + "Expected file schema: {}.\n Real File schema: {}.",
             fileStatus.getPath().getName(),
-            pushJobSetting.fileSchema,
+            pushJobSetting.inputDataSchema,
             newSchema.getFirst());
         return false;
       }
@@ -151,17 +158,17 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
       Pair<VsonSchema, VsonSchema> newSchema =
           inputDataInfoProvider.getVsonFileHeader(fileSystem, fileStatus.getPath(), isZstdDictCreationRequired);
-      if (!newSchema.getFirst().equals(pushJobSetting.vsonFileKeySchema)
-          || !newSchema.getSecond().equals(pushJobSetting.vsonFileValueSchema)) {
+      if (!newSchema.getFirst().equals(pushJobSetting.vsonInputKeySchema)
+          || !newSchema.getSecond().equals(pushJobSetting.vsonInputValueSchema)) {
         MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
         LOGGER.error(
             "Error while trying to validate schema: Inconsistent file vson schema found. File: {}. \n"
                 + "Expected key schema: {}. Real key schema: {}.\n"
                 + "Expected value schema: {}. Real value schema: {}.\n",
             fileStatus.getPath().getName(),
-            pushJobSetting.vsonFileKeySchemaString,
+            pushJobSetting.vsonInputKeySchemaString,
             newSchema.getFirst().toString(),
-            pushJobSetting.vsonFileValueSchemaString,
+            pushJobSetting.vsonInputValueSchemaString,
             newSchema.getSecond().toString());
         return false;
       }
@@ -281,7 +288,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
 
     try {
       Path srcPath = new Path(inputDirectory);
-      fileSystem = srcPath.getFileSystem(getJobConf());
+      fileSystem = srcPath.getFileSystem(jobConf);
       fileStatuses = fileSystem.listStatus(srcPath, PATH_FILTER);
     } catch (IOException e) {
       /** Should not happen as this is already done in driver, unless there has
@@ -313,6 +320,12 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       // Errors are printed and counters are incremented already
       hasReportedFailure = true;
     }
+  }
+
+  @Override
+  public void configure(JobConf job) {
+    this.jobConf = job;
+    super.configure(new MapReduceEngineTaskConfigProvider(job));
   }
 
   @Override
