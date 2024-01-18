@@ -225,6 +225,10 @@ public class RocksDBSstFileWriter {
     }
   }
 
+  /**
+   * Closes currentSSTFileWriter, update lastCheckPointedSSTFileNum with the current SST file number,
+   * validates checksum on this SST file and return updated checkpointingInfo with this lastCheckPointedSSTFileNum.
+   */
   public Map<String, String> sync() {
     try {
       /**
@@ -352,13 +356,13 @@ public class RocksDBSstFileWriter {
    * This function calculates checksum of all the key/value pair stored in the input sstFilePath. It then
    * verifies if the checksum matches with the input checksumToMatch and return the result.
    * A SstFileReader handle is used to perform bulk scan through the entire SST file. fillCache option is
-   * explicitely disabled to not pollute the rocksdb internal block caches. And also implicit checksum verification
+   * explicitly disabled to not pollute the rocksdb internal block caches. And also implicit checksum verification
    * is disabled to reduce latency of the entire operation.
    *
    * @param sstFilePath the full absolute path of the SST file
    * @param expectedRecordNumInSSTFile expected number of key/value pairs in the SST File
    * @param checksumToMatch pre-calculated checksum to match against.
-   * @return true if the the sstFile checksum matches with the provided checksum.
+   * @return true if the sstFile checksum matches with the provided checksum.
    */
   private boolean verifyChecksum(String sstFilePath, long expectedRecordNumInSSTFile, byte[] checksumToMatch) {
     SstFileReader sstFileReader = null;

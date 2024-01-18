@@ -10,6 +10,9 @@ import java.util.Objects;
 public class StoragePartitionConfig {
   private final String storeName;
   private final int partitionId;
+  /**
+   * Refer {@link com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition#deferredWrite}
+   */
   private boolean deferredWrite;
   private boolean readOnly;
   private boolean writeOnlyConfig;
