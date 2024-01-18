@@ -204,6 +204,13 @@ public class DaVinciClientTest {
     MetricsRepository metricsRepository = new MetricsRepository();
 
     // Test record transformation
+
+    // Turn on GZIP compression
+    cluster.useControllerClient(controllerClient -> {
+      ControllerResponse response = controllerClient
+          .updateStore(storeName1, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
+      assertFalse(response.isError(), response.getError());
+    });
     TestRecordTransformer recordTransformer = new TestRecordTransformer();
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
@@ -228,6 +235,13 @@ public class DaVinciClientTest {
     if (clientConfig.isRecordTransformerEnabled()) {
       clientConfig.setRecordTransformer(null);
     }
+
+    // Turn off GZIP compression
+    cluster.useControllerClient(controllerClient -> {
+      ControllerResponse response = controllerClient
+          .updateStore(storeName1, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.NO_OP));
+      assertFalse(response.isError(), response.getError());
+    });
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
