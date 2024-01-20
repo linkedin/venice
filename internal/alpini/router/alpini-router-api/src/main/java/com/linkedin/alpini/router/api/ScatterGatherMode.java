@@ -1,17 +1,15 @@
 package com.linkedin.alpini.router.api;
 
-import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.base.misc.Pair;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
@@ -19,7 +17,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
@@ -70,8 +67,7 @@ public abstract class ScatterGatherMode {
       @Nonnull PartitionFinder<K> partitionFinder,
       @Nonnull HostFinder<H, R> hostFinder,
       @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-      @Nonnull R roles,
-      Metrics metrics) throws RouterException {
+      @Nonnull R roles) throws RouterException {
     throw new AbstractMethodError();
   }
 
@@ -83,31 +79,7 @@ public abstract class ScatterGatherMode {
       @Nonnull AsyncPartitionFinder<K> partitionFinder,
       @Nonnull HostFinder<H, R> hostFinder,
       @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-      @Nonnull R roles,
-      Metrics metrics,
-      String initialHost) {
-    // default method simply ignores the initialHost.
-    return scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        partitionFinder,
-        hostFinder,
-        hostHealthMonitor,
-        roles,
-        metrics);
-  }
-
-  @Nonnull
-  public <H, P extends ResourcePath<K>, K, R> CompletionStage<Scatter<H, P, K>> scatter(
-      @Nonnull Scatter<H, P, K> scatter,
-      @Nonnull String requestMethod,
-      @Nonnull String resourceName,
-      @Nonnull AsyncPartitionFinder<K> partitionFinder,
-      @Nonnull HostFinder<H, R> hostFinder,
-      @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-      @Nonnull R roles,
-      Metrics metrics) {
+      @Nonnull R roles) {
     try {
       return CompletableFuture.completedFuture(scatter(scatter, requestMethod, resourceName, new PartitionFinder<K>() {
         @Nonnull
@@ -135,7 +107,7 @@ public abstract class ScatterGatherMode {
             throws RouterException {
           return join(partitionFinder.findPartitionNumber(partitionKey, numPartitions, storeName, versionNumber));
         }
-      }, hostFinder, hostHealthMonitor, roles, metrics));
+      }, hostFinder, hostHealthMonitor, roles));
     } catch (RouterException ex) {
       return failedFuture(ex);
     }
@@ -247,18 +219,9 @@ public abstract class ScatterGatherMode {
         @Nonnull PartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics metrics) throws RouterException {
+        @Nonnull R roles) throws RouterException {
       return join(
-          scatter(
-              scatter,
-              requestMethod,
-              resourceName,
-              sync(partitionFinder),
-              hostFinder,
-              hostHealthMonitor,
-              roles,
-              metrics));
+          scatter(scatter, requestMethod, resourceName, sync(partitionFinder), hostFinder, hostHealthMonitor, roles));
     }
 
     @Nonnull
@@ -270,42 +233,8 @@ public abstract class ScatterGatherMode {
         @Nonnull AsyncPartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics m) {
-      return scatterBase(
-          scatter,
-          requestMethod,
-          resourceName,
-          partitionFinder,
-          hostFinder,
-          hostHealthMonitor,
-          roles,
-          m,
-          null);
-    }
-
-    @Nonnull
-    @Override
-    public <H, P extends ResourcePath<K>, K, R> CompletionStage<Scatter<H, P, K>> scatter(
-        @Nonnull Scatter<H, P, K> scatter,
-        @Nonnull String requestMethod,
-        @Nonnull String resourceName,
-        @Nonnull AsyncPartitionFinder<K> partitionFinder,
-        @Nonnull HostFinder<H, R> hostFinder,
-        @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics m,
-        String initialHost) {
-      return scatterBase(
-          scatter,
-          requestMethod,
-          resourceName,
-          partitionFinder,
-          hostFinder,
-          hostHealthMonitor,
-          roles,
-          m,
-          initialHost);
+        @Nonnull R roles) {
+      return scatterBase(scatter, requestMethod, resourceName, partitionFinder, hostFinder, hostHealthMonitor, roles);
     }
 
     private <H, P extends ResourcePath<K>, K, R> CompletionStage<Scatter<H, P, K>> scatterBase(
@@ -315,15 +244,12 @@ public abstract class ScatterGatherMode {
         @Nonnull AsyncPartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics m,
-        String initialHost) {
+        @Nonnull R roles) {
       return partitionFinder.getAllPartitionNames(resourceName).thenApply(partitions -> {
         try {
           for (String partitionName: partitions) {
             HostHealthChecked<H> healthChecked = new HostHealthChecked<>(hostHealthMonitor);
-            List<H> hosts =
-                hostFinder.findHosts(requestMethod, resourceName, partitionName, healthChecked, roles, initialHost);
+            List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, partitionName, healthChecked, roles);
             BroadcastScatterGatherRequest<H, K> request;
             if ((hosts = healthChecked.check(hosts, partitionName)).isEmpty()) { // SUPPRESS CHECKSTYLE InnerAssignment
               request = new BroadcastScatterGatherRequest<>(Collections.emptyList());
@@ -356,8 +282,7 @@ public abstract class ScatterGatherMode {
             @Nonnull PartitionFinder<K> partitionFinder,
             @Nonnull HostFinder<H, R> hostFinder,
             @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-            @Nonnull R roles,
-            Metrics metrics) throws RouterException {
+            @Nonnull R roles) throws RouterException {
           return join(
               scatter(
                   scatter,
@@ -366,8 +291,7 @@ public abstract class ScatterGatherMode {
                   sync(partitionFinder),
                   hostFinder,
                   hostHealthMonitor,
-                  roles,
-                  metrics));
+                  roles));
         }
 
         @Nonnull
@@ -379,8 +303,7 @@ public abstract class ScatterGatherMode {
             @Nonnull AsyncPartitionFinder<K> partitionFinder,
             @Nonnull HostFinder<H, R> hostFinder,
             @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-            @Nonnull R roles,
-            Metrics m) {
+            @Nonnull R roles) {
           return scatterBase(
               scatter,
               requestMethod,
@@ -388,33 +311,7 @@ public abstract class ScatterGatherMode {
               partitionFinder,
               hostFinder,
               hostHealthMonitor,
-              roles,
-              m,
-              null);
-        }
-
-        @Nonnull
-        @Override
-        public <H, P extends ResourcePath<K>, K, R> CompletionStage<Scatter<H, P, K>> scatter(
-            @Nonnull Scatter<H, P, K> scatter,
-            @Nonnull String requestMethod,
-            @Nonnull String resourceName,
-            @Nonnull AsyncPartitionFinder<K> partitionFinder,
-            @Nonnull HostFinder<H, R> hostFinder,
-            @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-            @Nonnull R roles,
-            Metrics m,
-            String initialHost) {
-          return scatterBase(
-              scatter,
-              requestMethod,
-              resourceName,
-              partitionFinder,
-              hostFinder,
-              hostHealthMonitor,
-              roles,
-              m,
-              initialHost);
+              roles);
         }
 
         private <H, P extends ResourcePath<K>, K, R> CompletionStage<Scatter<H, P, K>> scatterBase(
@@ -424,29 +321,26 @@ public abstract class ScatterGatherMode {
             @Nonnull AsyncPartitionFinder<K> partitionFinder,
             @Nonnull HostFinder<H, R> hostFinder,
             @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-            @Nonnull R roles,
-            Metrics m,
-            String initialHost) {
+            @Nonnull R roles) {
           return partitionFinder.getAllPartitionNames(resourceName).thenApply(partitions -> {
             try {
               Map<H, BroadcastScatterGatherRequest<H, K>> hostMap = new HashMap<>();
               for (String partitionName: partitions) {
                 HostHealthChecked<H> healthChecked = new HostHealthChecked<>(hostHealthMonitor);
-                Optional<H> host = Optional.empty();
+                H host = null;
 
-                List<H> hosts =
-                    hostFinder.findHosts(requestMethod, resourceName, partitionName, healthChecked, roles, initialHost);
+                List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, partitionName, healthChecked, roles);
                 if (hosts != null) {
                   List<H> healthyHosts = healthChecked.check(hosts, partitionName);
                   if (healthyHosts != null && !healthyHosts.isEmpty()) {
                     // First host
-                    host = Optional.of(healthyHosts.get(0));
+                    host = healthyHosts.get(0);
                   }
                 }
 
                 BroadcastScatterGatherRequest<H, K> request;
-                if (host.isPresent()) {
-                  request = hostMap.computeIfAbsent(host.get(), h -> {
+                if (host != null) {
+                  request = hostMap.computeIfAbsent(host, h -> {
                     BroadcastScatterGatherRequest<H, K> r =
                         new BroadcastScatterGatherRequest<>(Collections.singletonList(h));
                     scatter.addOnlineRequest(r);
@@ -479,18 +373,9 @@ public abstract class ScatterGatherMode {
         @Nonnull PartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics metrics) throws RouterException {
+        @Nonnull R roles) throws RouterException {
       return join(
-          scatter(
-              scatter,
-              requestMethod,
-              resourceName,
-              sync(partitionFinder),
-              hostFinder,
-              hostHealthMonitor,
-              roles,
-              metrics));
+          scatter(scatter, requestMethod, resourceName, sync(partitionFinder), hostFinder, hostHealthMonitor, roles));
     }
 
     @Nonnull
@@ -502,42 +387,8 @@ public abstract class ScatterGatherMode {
         @Nonnull AsyncPartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics m) {
-      return scatterBase(
-          scatter,
-          requestMethod,
-          resourceName,
-          partitionFinder,
-          hostFinder,
-          hostHealthMonitor,
-          roles,
-          m,
-          null);
-    }
-
-    @Nonnull
-    @Override
-    public <H, P extends ResourcePath<K>, K, R> CompletionStage<Scatter<H, P, K>> scatter(
-        @Nonnull Scatter<H, P, K> scatter,
-        @Nonnull String requestMethod,
-        @Nonnull String resourceName,
-        @Nonnull AsyncPartitionFinder<K> partitionFinder,
-        @Nonnull HostFinder<H, R> hostFinder,
-        @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics m,
-        String initialHost) {
-      return scatterBase(
-          scatter,
-          requestMethod,
-          resourceName,
-          partitionFinder,
-          hostFinder,
-          hostHealthMonitor,
-          roles,
-          m,
-          initialHost);
+        @Nonnull R roles) {
+      return scatterBase(scatter, requestMethod, resourceName, partitionFinder, hostFinder, hostHealthMonitor, roles);
     }
 
     private <H, P extends ResourcePath<K>, K, R> CompletionStage<Scatter<H, P, K>> scatterBase(
@@ -547,9 +398,7 @@ public abstract class ScatterGatherMode {
         @Nonnull AsyncPartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics m,
-        String initialHost) {
+        @Nonnull R roles) {
       CompletionStage<Map<String, TreeSet<K>>> keyMapStage = CompletableFuture.completedFuture(new HashMap<>());
       for (K key: scatter.getPath().getPartitionKeys()) {
         keyMapStage =
@@ -568,8 +417,7 @@ public abstract class ScatterGatherMode {
         try {
           for (Map.Entry<String, TreeSet<K>> entry: keyMap.entrySet()) {
             HostHealthChecked<H> healthChecked = new HostHealthChecked<>(hostHealthMonitor);
-            List<H> hosts =
-                hostFinder.findHosts(requestMethod, resourceName, entry.getKey(), healthChecked, roles, initialHost);
+            List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, entry.getKey(), healthChecked, roles);
             ScatterGatherRequest<H, K> request;
             if ((hosts = healthChecked.check(hosts, entry.getKey())).isEmpty()) { // SUPPRESS CHECKSTYLE InnerAssignment
               request = new ScatterGatherRequest<>(Collections.emptyList(), entry.getValue());
@@ -657,18 +505,9 @@ public abstract class ScatterGatherMode {
         @Nonnull PartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics metrics) throws RouterException {
+        @Nonnull R roles) throws RouterException {
       return join(
-          scatter(
-              scatter,
-              requestMethod,
-              resourceName,
-              sync(partitionFinder),
-              hostFinder,
-              hostHealthMonitor,
-              roles,
-              metrics));
+          scatter(scatter, requestMethod, resourceName, sync(partitionFinder), hostFinder, hostHealthMonitor, roles));
     }
 
     @Nonnull
@@ -680,42 +519,8 @@ public abstract class ScatterGatherMode {
         @Nonnull AsyncPartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics m) {
-      return scatterBase(
-          scatter,
-          requestMethod,
-          resourceName,
-          partitionFinder,
-          hostFinder,
-          hostHealthMonitor,
-          roles,
-          m,
-          null);
-    }
-
-    @Nonnull
-    @Override
-    public <H, P extends ResourcePath<K>, K, R> CompletionStage<Scatter<H, P, K>> scatter(
-        @Nonnull Scatter<H, P, K> scatter,
-        @Nonnull String requestMethod,
-        @Nonnull String resourceName,
-        @Nonnull AsyncPartitionFinder<K> partitionFinder,
-        @Nonnull HostFinder<H, R> hostFinder,
-        @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics m,
-        String initialHost) {
-      return scatterBase(
-          scatter,
-          requestMethod,
-          resourceName,
-          partitionFinder,
-          hostFinder,
-          hostHealthMonitor,
-          roles,
-          m,
-          initialHost);
+        @Nonnull R roles) {
+      return scatterBase(scatter, requestMethod, resourceName, partitionFinder, hostFinder, hostHealthMonitor, roles);
     }
 
     @Nonnull
@@ -726,9 +531,7 @@ public abstract class ScatterGatherMode {
         @Nonnull AsyncPartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics m,
-        String initialHost) {
+        @Nonnull R roles) {
 
       final class HostInfo implements Comparable<HostInfo> {
         final H host;
@@ -790,8 +593,7 @@ public abstract class ScatterGatherMode {
               hostMapAndPartitions.getSecond().computeIfAbsent(partitionName, partition -> {
                 try {
                   HostHealthChecked<H> healthChecked = new HostHealthChecked<>(hostHealthMonitor);
-                  List<H> hosts =
-                      hostFinder.findHosts(requestMethod, resourceName, partition, healthChecked, roles, initialHost);
+                  List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, partition, healthChecked, roles);
                   if ((hosts = healthChecked.check(hosts, partitionName)).isEmpty()) { // SUPPRESS CHECKSTYLE
                                                                                        // InnerAssignment
                     hosts = Collections.emptyList();
@@ -822,25 +624,38 @@ public abstract class ScatterGatherMode {
               HostInfo next = Collections.max(hostList);
               hostList.remove(next);
 
-              TreeSet<K> keys = next.partitions.stream()
-                  .flatMap(
-                      partition -> Optional.ofNullable(partitions.remove(partition))
-                          .map(Pair::getSecond)
-                          .map(Collection::stream)
-                          .orElseGet(Stream::empty))
-                  .collect(Collectors.toCollection(TreeSet::new));
+              TreeSet keys = new TreeSet();
+              Pair<List<H>, List<K>> hostsToKeysPair;
+              for (String partition: next.partitions) {
+                hostsToKeysPair = partitions.remove(partition);
+                if (hostsToKeysPair != null) {
+                  keys.addAll(hostsToKeysPair.getSecond());
+                }
+              }
 
               scatter.addOnlineRequest(new ScatterGatherRequest<>(Collections.singletonList(next.host), keys));
 
-              hostList.removeIf(hostInfo -> {
-                next.partitions.stream().filter(hostInfo.partitions::remove).forEach(partition -> hostInfo.count--);
-                return hostInfo.count < 1 || hostInfo.partitions.isEmpty();
-              });
+              Iterator<HostInfo> hostListIterator = hostList.iterator();
+              HostInfo hostInfo;
+              while (hostListIterator.hasNext()) {
+                hostInfo = hostListIterator.next();
+                if (hostInfo != null) {
+                  for (String partition: next.partitions) {
+                    if (hostInfo.partitions.remove(partition)) {
+                      hostInfo.count--;
+                    }
+                  }
+                  if (hostInfo.count < 1 || hostInfo.partitions.isEmpty()) {
+                    hostListIterator.remove();
+                  }
+                }
+              }
             }
 
-            partitions.forEach(
-                (partition, pair) -> scatter.addOfflineRequest(
-                    new ScatterGatherRequest<H, K>(Collections.emptyList(), new TreeSet<>(pair.getSecond()))));
+            for (Pair<List<H>, List<K>> pair: partitions.values()) {
+              scatter.addOfflineRequest(
+                  new ScatterGatherRequest<>(Collections.emptyList(), new TreeSet<>(pair.getSecond())));
+            }
 
             return scatter;
           });

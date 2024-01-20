@@ -35,7 +35,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -130,12 +129,7 @@ public class TestScatterGatherRequestHandlerImpl {
   }
 
   private interface ErrorBuilder {
-    Response buildErrorResponse(
-        @Nonnull Request request,
-        @Nonnull Status status,
-        String contentMessage,
-        Throwable ex,
-        @Nonnull Map<String, String> errorHeaders);
+    Response buildErrorResponse(@Nonnull Request request, @Nonnull Status status, String contentMessage, Throwable ex);
   }
 
   private <H, P extends ResourcePath<K>, K, R, HELPER extends ScatterGatherHelper<H, P, K, R, Request, Response, Status>> ScatterGatherRequestHandlerImpl<H, P, K, R, Context, Request, Response, Status, HELPER> buildTestHandler(
@@ -263,9 +257,8 @@ public class TestScatterGatherRequestHandlerImpl {
           @Nonnull Request request,
           @Nonnull Status status,
           String contentMessage,
-          Throwable ex,
-          @Nonnull Map<String, String> errorHeaders) {
-        return errorBuilder.buildErrorResponse(request, status, contentMessage, ex, errorHeaders);
+          Throwable ex) {
+        return errorBuilder.buildErrorResponse(request, status, contentMessage, ex);
       }
     }
 
@@ -284,7 +277,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Response response = mock(Response.class);
       Mockito.when(response.status()).thenReturn(status);
       return response;
@@ -426,7 +419,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Response response = mock(Response.class);
       Mockito.when(response.status()).thenReturn(status);
       return response;
@@ -490,7 +483,7 @@ public class TestScatterGatherRequestHandlerImpl {
 
     NullPointerException npe = new NullPointerException("Foo");
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       throw npe;
     };
 
@@ -540,7 +533,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Response response = mock(Response.class);
       Mockito.when(response.status()).thenReturn(status);
       return response;
@@ -597,7 +590,7 @@ public class TestScatterGatherRequestHandlerImpl {
       }
     }
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Response response = mock(Response.class);
       Mockito.when(response.status()).thenReturn(status);
       Assert.assertTrue(ex instanceof ExpectedException);
@@ -664,7 +657,7 @@ public class TestScatterGatherRequestHandlerImpl {
       }
     }
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Response response = mock(Response.class);
       Mockito.when(response.status()).thenReturn(status);
       Assert.assertTrue(ex instanceof ExpectedException);
@@ -743,7 +736,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.fail("Should not get here");
       return mock(Response.class);
     };
@@ -802,7 +795,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.fail("Should not get here");
       return mock(Response.class);
     };
@@ -883,7 +876,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.fail("Should not get here");
       return mock(Response.class);
     };
@@ -971,7 +964,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.fail("Should not get here");
       return mock(Response.class);
     };
@@ -1073,7 +1066,7 @@ public class TestScatterGatherRequestHandlerImpl {
     Mockito.when(testResponse1.headers()).thenReturn(mock(Headers.class));
     AtomicInteger errorCount = new AtomicInteger();
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       errorCount.incrementAndGet();
       Assert.assertSame(status, Status.SERVICE_UNAVAILABLE);
       return testResponse1;
@@ -1167,7 +1160,7 @@ public class TestScatterGatherRequestHandlerImpl {
     Mockito.when(testResponse1.headers()).thenReturn(mock(Headers.class));
     AtomicInteger errorCount = new AtomicInteger();
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       errorCount.incrementAndGet();
       Assert.assertSame(status, Status.TOO_BUSY);
       return testResponse1;
@@ -1257,7 +1250,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.fail("Should not get here");
       return mock(Response.class);
     };
@@ -1359,7 +1352,7 @@ public class TestScatterGatherRequestHandlerImpl {
     Mockito.when(testResponse1.headers()).thenReturn(mock(Headers.class));
     AtomicInteger errorCount = new AtomicInteger();
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       errorCount.incrementAndGet();
       Assert.assertSame(status, Status.SERVICE_UNAVAILABLE);
       return testResponse1;
@@ -1449,7 +1442,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.fail("Should not get here");
       return mock(Response.class);
     };
@@ -1517,7 +1510,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.fail("Should not get here");
       return mock(Response.class);
     };
@@ -1586,7 +1579,7 @@ public class TestScatterGatherRequestHandlerImpl {
       throw new UnsupportedOperationException();
     };
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.fail("Should not get here");
       return mock(Response.class);
     };
@@ -1679,7 +1672,7 @@ public class TestScatterGatherRequestHandlerImpl {
 
     AtomicInteger errorCount = new AtomicInteger();
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.assertEquals(status, Status.SERVICE_UNAVAILABLE);
       Assert.assertNull(ex);
       errorCount.incrementAndGet();
@@ -1747,7 +1740,7 @@ public class TestScatterGatherRequestHandlerImpl {
 
     AtomicInteger errorCount = new AtomicInteger();
 
-    ErrorBuilder errorBuilder = (request, status, contentMessage, ex, errorHeaders) -> {
+    ErrorBuilder errorBuilder = (request, status, contentMessage, ex) -> {
       Assert.assertEquals(status, Status.SERVICE_UNAVAILABLE);
       Assert.assertNull(ex);
       errorCount.incrementAndGet();
@@ -1908,12 +1901,6 @@ public class TestScatterGatherRequestHandlerImpl {
         @Nonnull List<List<State>> roles) throws RouterException {
       throw new RouterException(Status.class, Status.SERVICE_UNAVAILABLE, 503, "Foo", false);
     }
-
-    @Nonnull
-    @Override
-    public Collection<InetSocketAddress> findAllHosts(List<List<State>> roles) throws RouterException {
-      throw new IllegalStateException();
-    }
   }
 
   private class Path implements ResourcePath<String> {
@@ -2054,19 +2041,6 @@ public class TestScatterGatherRequestHandlerImpl {
       return Collections
           .singletonList(hosts.get((int) ((0xffffffffL & (long) partitionName.hashCode()) % hosts.size())));
     }
-
-    @Nonnull
-    @Override
-    public Collection<InetSocketAddress> findAllHosts(@Nonnull String resourceName, List<List<State>> roles)
-        throws RouterException {
-      return findAllHosts(roles);
-    }
-
-    @Nonnull
-    @Override
-    public Collection<InetSocketAddress> findAllHosts(List<List<State>> roles) throws RouterException {
-      return Collections.unmodifiableCollection(hosts);
-    }
   }
 
   private class HostFinder2Impl implements HostFinder<InetSocketAddress, List<List<State>>> {
@@ -2088,19 +2062,6 @@ public class TestScatterGatherRequestHandlerImpl {
         @Nonnull List<List<State>> roles) throws RouterException {
       return new ArrayList<>(hosts);
     }
-
-    @Nonnull
-    @Override
-    public Collection<InetSocketAddress> findAllHosts(@Nonnull String resourceName, List<List<State>> roles)
-        throws RouterException {
-      return findAllHosts(roles);
-    }
-
-    @Nonnull
-    @Override
-    public Collection<InetSocketAddress> findAllHosts(List<List<State>> roles) throws RouterException {
-      return Collections.unmodifiableCollection(hosts);
-    }
   }
 
   private class HostFinder3Impl implements HostFinder<InetSocketAddress, List<List<State>>> {
@@ -2113,19 +2074,6 @@ public class TestScatterGatherRequestHandlerImpl {
         @Nonnull HostHealthMonitor<InetSocketAddress> hostHealthMonitor,
         @Nonnull List<List<State>> roles) throws RouterException {
       return Collections.emptyList();
-    }
-
-    @Nonnull
-    @Override
-    public Collection<InetSocketAddress> findAllHosts(@Nonnull String resourceName, List<List<State>> roles)
-        throws RouterException {
-      return findAllHosts(roles);
-    }
-
-    @Nonnull
-    @Override
-    public Collection<InetSocketAddress> findAllHosts(List<List<State>> roles) throws RouterException {
-      return Collections.emptySet();
     }
   }
 
@@ -2145,19 +2093,6 @@ public class TestScatterGatherRequestHandlerImpl {
         @Nonnull HostHealthMonitor<InetSocketAddress> hostHealthMonitor,
         @Nonnull List<List<State>> roles) throws RouterException {
       return new ArrayList<>(hosts);
-    }
-
-    @Nonnull
-    @Override
-    public Collection<InetSocketAddress> findAllHosts(@Nonnull String resourceName, List<List<State>> roles)
-        throws RouterException {
-      return findAllHosts(roles);
-    }
-
-    @Nonnull
-    @Override
-    public Collection<InetSocketAddress> findAllHosts(List<List<State>> roles) throws RouterException {
-      return Collections.unmodifiableCollection(hosts);
     }
   }
 }

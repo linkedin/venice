@@ -5,7 +5,6 @@ import com.linkedin.alpini.base.monitoring.CallTracker;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.EventLoopGroup;
 import java.net.SocketAddress;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
@@ -33,9 +32,15 @@ public class InstrumentedBootstrap extends Bootstrap {
   protected InstrumentedBootstrap(InstrumentedBootstrap old) {
     _connectCallTracker = old._connectCallTracker;
 
-    Optional.ofNullable(old.channelFactory()).ifPresent(this::channelFactory);
-    Optional.ofNullable(old.handler()).ifPresent(this::handler);
-    Optional.ofNullable(old.localAddress()).ifPresent(this::localAddress);
+    if (old.channelFactory() != null) {
+      channelFactory(old.channelFactory());
+    }
+    if (old.handler() != null) {
+      handler(old.handler());
+    }
+    if (old.localAddress() != null) {
+      localAddress(old.localAddress());
+    }
     synchronized (old.options0()) {
       options0().putAll(old.options0());
     }

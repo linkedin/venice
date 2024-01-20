@@ -1,6 +1,5 @@
 package com.linkedin.alpini.netty4.misc;
 
-import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.FullHttpMessage;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -9,7 +8,6 @@ import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.util.internal.StringUtil;
-import java.util.Optional;
 
 
 /**
@@ -34,10 +32,9 @@ public final class HttpToStringUtils {
     appendInitialLine(buf, res);
     appendHeaders(buf, res.headers());
     appendHeaders(buf, res.trailingHeaders());
-    Optional.ofNullable(res)
-        .map(FullHttpResponse::content)
-        .filter(ByteBuf::isDirect)
-        .ifPresent(byteBuf -> buf.append("refCnt: ").append(byteBuf.refCnt()).append(StringUtil.NEWLINE));
+    if (res != null && res.content().isDirect()) {
+      buf.append("refCnt: ").append(res.content().refCnt()).append(StringUtil.NEWLINE);
+    }
     removeLastNewLine(buf);
     return buf;
   }

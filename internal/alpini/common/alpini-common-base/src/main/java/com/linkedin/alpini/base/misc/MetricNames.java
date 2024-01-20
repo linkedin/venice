@@ -1,4 +1,4 @@
-package com.linkedin.alpini.router.api;
+package com.linkedin.alpini.base.misc;
 
 /**
  * @author Antony T Curtis {@literal <acurtis@linkedin.com>}

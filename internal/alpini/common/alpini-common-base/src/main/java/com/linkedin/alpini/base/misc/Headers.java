@@ -4,7 +4,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 
 /**
@@ -51,8 +50,6 @@ public interface Headers extends Iterable<Map.Entry<String, String>> {
 
   Iterator<Map.Entry<CharSequence, CharSequence>> iteratorCharSequence();
 
-  <T> Optional<T> unwrap(Class<T> type);
-
   Headers EMPTY_HEADERS = new Headers() {
     @Override
     public boolean isEmpty() {
@@ -97,11 +94,6 @@ public interface Headers extends Iterable<Map.Entry<String, String>> {
     @Override
     public Iterator<Map.Entry<CharSequence, CharSequence>> iteratorCharSequence() {
       return Collections.emptyIterator();
-    }
-
-    @Override
-    public <T> Optional<T> unwrap(Class<T> type) {
-      return Optional.empty();
     }
 
     @Override

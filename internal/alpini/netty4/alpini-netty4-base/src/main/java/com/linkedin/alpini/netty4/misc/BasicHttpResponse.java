@@ -9,7 +9,6 @@ import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
 import io.netty.util.AttributeMap;
 import io.netty.util.DefaultAttributeMap;
-import java.util.Optional;
 
 
 /**
@@ -52,7 +51,10 @@ public class BasicHttpResponse extends DefaultHttpResponse implements AttributeM
   }
 
   AttributeMap attributeMap() {
-    return Optional.ofNullable(_attributes).orElseGet(() -> _attributes = new DefaultAttributeMap());
+    if (_attributes == null) {
+      _attributes = new DefaultAttributeMap();
+    }
+    return _attributes;
   }
 
   /**
