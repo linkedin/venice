@@ -56,6 +56,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
@@ -399,26 +400,28 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       if (isClosed) {
         return;
       }
-      long startTime = System.currentTimeMillis();
-      logger.info("Closing VeniceWriter for topic: {}", topicName);
-      try {
-        // If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
-        // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
-        if (gracefulClose) {
-          endAllSegments(true);
-        }
-        // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
-        // For non-shared producer mode gracefulClose will flush the producer
 
-        producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
-        OPEN_VENICE_WRITER_COUNT.decrementAndGet();
-      } catch (Exception e) {
-        logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
-        VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
+      logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
+      try (Timer ignore = Timer.run(
+          elapsedTimeInMs -> logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs))) {
+        try {
+          // If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
+          // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
+          if (gracefulClose) {
+            endAllSegments(true);
+          }
+          // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
+          // For non-shared producer mode gracefulClose will flush the producer
+
+          producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
+          OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+        } catch (Exception e) {
+          handleExceptionInClose(e, gracefulClose);
+        } finally {
+          threadPoolExecutor.shutdown();
+          isClosed = true;
+        }
       }
-      threadPoolExecutor.shutdown();
-      isClosed = true;
-      logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
     }
   }
 
@@ -428,35 +431,54 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         if (isClosed) {
           return VeniceResourceCloseResult.ALREADY_CLOSED;
         }
-        long startTime = System.currentTimeMillis();
-        logger.info("Closing VeniceWriter for topic: {}", topicName);
-        try {
-          // try to end all segments before closing the producer
-          if (gracefulClose) {
-            CompletableFuture<Void> endSegmentsFuture =
-                CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
-            try {
-              endSegmentsFuture.get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
-            } catch (Exception e) {
-              // cancel the endSegmentsFuture if it's not done in time
-              if (!endSegmentsFuture.isDone()) {
-                endSegmentsFuture.cancel(true);
+        logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
+        try (Timer ignore = Timer.run(
+            elapsedTimeInMs -> logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs))) {
+          try {
+            // try to end all segments before closing the producer.
+            if (gracefulClose) {
+              CompletableFuture<Void> endSegmentsFuture =
+                  CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
+              try {
+                endSegmentsFuture.get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
+              } catch (Exception e) {
+                // cancel the endSegmentsFuture if it's not done in time.
+                if (!endSegmentsFuture.isDone()) {
+                  endSegmentsFuture.cancel(true);
+                }
+                logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
               }
-              logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
             }
+            producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
+            OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+          } catch (Exception e) {
+            handleExceptionInClose(e, gracefulClose);
+          } finally {
+            threadPoolExecutor.shutdown();
+            isClosed = true;
           }
-          producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
-          OPEN_VENICE_WRITER_COUNT.decrementAndGet();
-        } catch (Exception e) {
-          logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
-          VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
         }
-        threadPoolExecutor.shutdown();
-        isClosed = true;
-        logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
         return VeniceResourceCloseResult.SUCCESS;
       }
+
     }, threadPoolExecutor);
+  }
+
+  void handleExceptionInClose(Exception e, boolean gracefulClose) {
+    logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
+    VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
+
+    // For graceful close, swallow the exception and give another try to close it ungracefully.
+    try {
+      if (gracefulClose) {
+        producerAdapter.close(topicName, closeTimeOutInMs, false);
+        OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+      }
+    } catch (Exception ex) {
+      // Even ungraceful close fails, give up, swallow exception and move on.
+      logger.warn("Exception in ungraceful close for topic: {}", topicName, ex);
+      VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
+    }
   }
 
   @Override
