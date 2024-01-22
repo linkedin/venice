@@ -323,9 +323,9 @@ public class RecoverStoreMetadata {
         if (metadataFile.exists()) {
           metadataFile.delete();
         }
-        FileOutputStream outputStream = new FileOutputStream(metadataFilePath);
-        outputStream.write(serializedDeletedStore);
-        outputStream.close();
+        try (FileOutputStream outputStream = new FileOutputStream(metadataFilePath)) {
+          outputStream.write(serializedDeletedStore);
+        }
       }
       System.out.println("End working on cluster:" + clusterName);
     }
