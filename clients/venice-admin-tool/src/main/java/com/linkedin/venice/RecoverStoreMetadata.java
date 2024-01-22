@@ -57,16 +57,10 @@ public class RecoverStoreMetadata {
     /**
      * Try to see whether the store exists or not.
      */
-    ControllerClient controllerClient =
-        ControllerClientFactory.getControllerClient(graveyardClusterList.get(0), url, sslFactory);
-    try {
-      D2ServiceDiscoveryResponse discoveryResponse = controllerClient.discoverCluster(storeName);
-      if (discoveryResponse.getCluster() != null) {
-        throw new VeniceException(
-            "Store: " + storeName + " exists in cluster: " + discoveryResponse.getCluster() + ", no need to recover");
-      }
-    } finally {
-      controllerClient.close();
+    D2ServiceDiscoveryResponse discoveryResponse = ControllerClient.discoverCluster(url, storeName, sslFactory, 3);
+    if (discoveryResponse.getCluster() != null) {
+      throw new VeniceException(
+          "Store: " + storeName + " exists in cluster: " + discoveryResponse.getCluster() + ", no need to recover");
     }
 
     Map<String, List<String>> deletedStoreClusterMapping = new HashMap<>();
@@ -224,7 +218,6 @@ public class RecoverStoreMetadata {
               .setPartitionerParams(deletedStore.getPartitionerConfig().getPartitionerParams())
               .setAmplificationFactor(deletedStore.getPartitionerConfig().getAmplificationFactor());
         }
-        ;
         updateParams.setStorageQuotaInByte(deletedStore.getStorageQuotaInByte())
             .setHybridStoreDiskQuotaEnabled(deletedStore.isHybridStoreDiskQuotaEnabled())
             .setReadQuotaInCU(deletedStore.getReadQuotaInCU());
