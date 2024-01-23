@@ -71,10 +71,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   public static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final long ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS = 10;
   public static final long DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT = 20;
-  static final long INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS = 5;
+  static final long INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS = 5;
 
   private long refreshIntervalInSeconds;
-  private long connWarmupTimeoutInSeconds;
+  private final boolean isMetadataConnWarmupEnabled;
+  private final long connWarmupTimeoutInSeconds;
   /** scheduler to run {@link #refresh()} to periodically update metadata */
   private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
   /** scheduler within {@link #refresh()} to warmup new instances updated via metadata refresh.
@@ -110,6 +111,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient d2TransportClient) {
     super(clientConfig);
+    this.isMetadataConnWarmupEnabled = clientConfig.isMetadataConnWarmupEnabled();
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
@@ -182,13 +184,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     // build a base for future metadata updates then start periodic refresh
     refresh();
     try {
-      // wait till metadata is warmed up
+      // wait till metadata is fetched for the first time
       isReadyLatch.await();
     } catch (InterruptedException e) {
       // if there is an InterruptedException, let the periodic refresh continue with updating the metadata
       LOGGER.error(
-          "Metadata warmup failed and will be retried every {} seconds. Read requests will throw exception until then",
-          INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          "Metadata refresh failed and will be retried every {} seconds. Read requests will throw exception until then",
+          INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
           e);
     }
   }
@@ -429,13 +431,14 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
                 + "Will be retried on next refresh",
             e);
         // throw exception to make the start() blocking till the dictionary is fetched in case
-        // of initial warmup. For the non warmup case: returning an exception or just returning
-        // doesn't make any difference.
+        // of initial fetch. For other cases: returning an exception doesn't make any difference.
         throw new VeniceException(e);
       }
 
-      // warmup H2 conns before setting the fetched version as the current version
-      warmupConnectionToInstances(fetchedCurrentVersion, partitionCount);
+      if (isMetadataConnWarmupEnabled) {
+        // warmup H2 conns before setting the fetched version as the current version
+        warmupConnectionToInstances(fetchedCurrentVersion, partitionCount);
+      }
 
       // Evict entries from inactive versions
       Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
@@ -477,19 +480,19 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       if (!isReady) {
         isReadyLatch.countDown();
         isReady = true;
-        LOGGER.info("Metadata warmup completed successfully for store: {}", storeName);
+        LOGGER.info("Metadata initial fetch completed successfully for store: {}", storeName);
       }
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
       LOGGER.error(
           "Metadata periodic refresh for store: {} encountered unexpected error, will be retried in {} seconds",
           storeName,
-          isReady ? refreshIntervalInSeconds : INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
           e);
     } finally {
       scheduler.schedule(
           this::refresh,
-          isReady ? refreshIntervalInSeconds : INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS,
+          isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
           TimeUnit.SECONDS);
     }
   }

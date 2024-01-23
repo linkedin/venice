@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static com.linkedin.venice.fastclient.meta.RequestBasedMetadata.INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadata.INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.KEY_SCHEMA;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.NEW_REPLICA_NAME;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA1_NAME;
@@ -44,12 +44,15 @@ public class RequestBasedMetadataTest {
    * firstConnWarmupFails: This is on best effort basis and this failing or succeeding shouldn't have
    *                       any difference in how metadata refresh works.
    */
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testMetadataWarmupWithUpdateFailure(boolean firstMetadataUpdateFails, boolean firstConnWarmupFails)
-      throws IOException, InterruptedException {
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testMetadataInitialBlockingFetchWithUpdateFailure(
+      boolean firstMetadataUpdateFails,
+      boolean firstConnWarmupFails,
+      boolean isMetadataConnWarmupEnabled) throws IOException, InterruptedException {
     String storeName = "testStore";
 
-    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, firstConnWarmupFails);
+    ClientConfig clientConfig =
+        RequestBasedMetadataTestUtils.getMockClientConfig(storeName, firstConnWarmupFails, isMetadataConnWarmupEnabled);
     RequestBasedMetadata requestBasedMetadata = null;
     ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
     try {
@@ -63,10 +66,10 @@ public class RequestBasedMetadataTest {
       // 2. verify based on the scheduled retries
       RequestBasedMetadata finalRequestBasedMetadata = requestBasedMetadata;
       if (firstMetadataUpdateFails) {
-        // schedule retry after INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS
+        // schedule retry after INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS
         verify(requestBasedMetadata.getScheduler()).schedule(
             any(Runnable.class),
-            eq(INITIAL_METADATA_WARMUP_REFRESH_INTERVAL_IN_SECONDS),
+            eq(INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS),
             eq(TimeUnit.SECONDS));
       }
       // after success, both cases should schedule retry after configured refresh interval:
@@ -88,12 +91,15 @@ public class RequestBasedMetadataTest {
    * This is to test warmUpInstancesFutures in case if the one of the conn warmup fails
    *
    * @param firstConnWarmupFails REPLICA1_NAME conn warmup fails for the first time if true
+   * @param isMetadataConnWarmupEnabled if true, metadata conn warmup is enabled
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testMetadataWarmupWithConnWarmupFailure(boolean firstConnWarmupFails)
-      throws IOException, InterruptedException {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testMetadataInitialBlockingFetchWithConnWarmupFailure(
+      boolean firstConnWarmupFails,
+      boolean isMetadataConnWarmupEnabled) throws IOException, InterruptedException {
     String storeName = "testStore";
-    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, firstConnWarmupFails);
+    ClientConfig clientConfig =
+        RequestBasedMetadataTestUtils.getMockClientConfig(storeName, firstConnWarmupFails, isMetadataConnWarmupEnabled);
     RequestBasedMetadata requestBasedMetadata = null;
     try {
       requestBasedMetadata = getMockMetaData(clientConfig, storeName);
@@ -105,24 +111,30 @@ public class RequestBasedMetadataTest {
 
       // 2. verify based on warmUpInstancesFutures
       Map<String, CompletableFuture> warmUpInstancesFutures = requestBasedMetadata.getWarmUpInstancesFutures();
-      assertEquals(warmUpInstancesFutures.size(), 2);
-      assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
-      assertEquals(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally(), firstConnWarmupFails);
-      assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
-      assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
-      assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
-      assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
-
-      // after update runs for the 2nd time as per its scheduled run: both replicas should be warmed up
-      waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      if (isMetadataConnWarmupEnabled) {
         assertEquals(warmUpInstancesFutures.size(), 2);
         assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
-        assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
+        assertEquals(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally(), firstConnWarmupFails);
         assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
         assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
         assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
         assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
-      });
+      } else {
+        assertEquals(warmUpInstancesFutures.size(), 0);
+      }
+
+      // after update runs for the 2nd time as per its scheduled run: both replicas should be warmed up
+      if (isMetadataConnWarmupEnabled) {
+        waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+          assertEquals(warmUpInstancesFutures.size(), 2);
+          assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+          assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
+          assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
+          assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
+          assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
+          assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
+        });
+      }
     } finally {
       if (requestBasedMetadata != null) {
         requestBasedMetadata.close();
@@ -134,12 +146,15 @@ public class RequestBasedMetadataTest {
    * This is to test warmUpInstancesFutures in case if there is a change in the metadata
    *
    * @param isMetadataChange if true, there is a change in the metadata (NEW_REPLICA_NAME replaces REPLICA1_NAME) for the 2nd update
+   * @param isMetadataConnWarmupEnabled if true, metadata conn warmup is enabled
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testMetadataWarmupWithMetadataChange(boolean isMetadataChange) throws IOException, InterruptedException {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testMetadataWarmupWithMetadataChange(boolean isMetadataChange, boolean isMetadataConnWarmupEnabled)
+      throws IOException, InterruptedException {
     String storeName = "testStore";
 
-    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false);
+    ClientConfig clientConfig =
+        RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, isMetadataConnWarmupEnabled);
     RequestBasedMetadata requestBasedMetadata = null;
     try {
       requestBasedMetadata = getMockMetaData(clientConfig, storeName, isMetadataChange);
@@ -151,31 +166,37 @@ public class RequestBasedMetadataTest {
 
       // 2. verify based on warmUpInstancesFutures
       Map<String, CompletableFuture> warmUpInstancesFutures = requestBasedMetadata.getWarmUpInstancesFutures();
-      assertEquals(warmUpInstancesFutures.size(), 2);
-      assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
-      assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
-      assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
-      assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
-      assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
-      assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
-
-      // after update runs for the 2nd time as per its scheduled run: warmUpInstancesFutures
-      // should have the new replica if there is a metadata change
-      waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      if (isMetadataConnWarmupEnabled) {
         assertEquals(warmUpInstancesFutures.size(), 2);
-        if (isMetadataChange) {
-          assertTrue(warmUpInstancesFutures.containsKey(NEW_REPLICA_NAME));
-          assertFalse(warmUpInstancesFutures.get(NEW_REPLICA_NAME).isCompletedExceptionally());
-          assertTrue(warmUpInstancesFutures.get(NEW_REPLICA_NAME).isDone());
-        } else {
-          assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
-          assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
-          assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
-        }
+        assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+        assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
+        assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
         assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
         assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
         assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
-      });
+      } else {
+        assertEquals(warmUpInstancesFutures.size(), 0);
+      }
+
+      // after update runs for the 2nd time as per its scheduled run: warmUpInstancesFutures
+      // should have the new replica if there is a metadata change
+      if (isMetadataConnWarmupEnabled) {
+        waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+          assertEquals(warmUpInstancesFutures.size(), 2);
+          if (isMetadataChange) {
+            assertTrue(warmUpInstancesFutures.containsKey(NEW_REPLICA_NAME));
+            assertFalse(warmUpInstancesFutures.get(NEW_REPLICA_NAME).isCompletedExceptionally());
+            assertTrue(warmUpInstancesFutures.get(NEW_REPLICA_NAME).isDone());
+          } else {
+            assertTrue(warmUpInstancesFutures.containsKey(REPLICA1_NAME));
+            assertFalse(warmUpInstancesFutures.get(REPLICA1_NAME).isCompletedExceptionally());
+            assertTrue(warmUpInstancesFutures.get(REPLICA1_NAME).isDone());
+          }
+          assertTrue(warmUpInstancesFutures.containsKey(REPLICA2_NAME));
+          assertFalse(warmUpInstancesFutures.get(REPLICA2_NAME).isCompletedExceptionally());
+          assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
+        });
+      }
     } finally {
       if (requestBasedMetadata != null) {
         requestBasedMetadata.close();
@@ -193,7 +214,7 @@ public class RequestBasedMetadataTest {
       throws IOException, InterruptedException {
     String storeName = "testStore";
 
-    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false);
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName);
     RequestBasedMetadata requestBasedMetadata = null;
     try {
       requestBasedMetadata = getMockMetaData(clientConfig, storeName, isMetadataChange);
@@ -250,7 +271,6 @@ public class RequestBasedMetadataTest {
           assertTrue(warmUpInstancesFutures.get(REPLICA2_NAME).isDone());
         });
       }
-
     } finally {
       if (requestBasedMetadata != null) {
         requestBasedMetadata.close();
@@ -258,11 +278,12 @@ public class RequestBasedMetadataTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testMetadata() throws IOException, InterruptedException {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testMetadata(boolean isMetadataConnWarmupEnabled) throws IOException, InterruptedException {
     String storeName = "testStore";
 
-    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName);
+    ClientConfig clientConfig =
+        RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, isMetadataConnWarmupEnabled);
     RequestBasedMetadata requestBasedMetadata = null;
 
     try {

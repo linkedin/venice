@@ -13,6 +13,7 @@ import org.apache.hc.core5.http.nio.ssl.TlsStrategy;
 import org.apache.hc.core5.http.ssl.TLS;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.hc.core5.reactor.IOReactorConfig;
+import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 
 
@@ -40,9 +41,10 @@ public class HttpClient5Utils {
      * We need to use a high connect timeout to avoid reconnect issue, which might result in confusing logging and unhealthy requests.
      * For now, we remove the functions updating to connect timeout to avoid mistakes.
      */
-    private final Timeout CONNECT_TIMEOUT_IN_MILLISECONDS = Timeout.ofMilliseconds(TimeUnit.MINUTES.toMillis(1)); // 1m
-                                                                                                                  // by
-                                                                                                                  // default
+    private final Timeout CONNECT_TIMEOUT_IN_MINUTES = Timeout.ofMinutes(1);
+    // negative value is considered as indefinite timeout
+    private final TimeValue CONNECTION_INDEFINITE_TIMEOUT = TimeValue.NEG_ONE_MILLISECOND;
+
     private int ioThreadCount = 48;
     private boolean skipCipherCheck = false;
 
@@ -85,6 +87,25 @@ public class HttpClient5Utils {
       return this;
     }
 
+    private ConnectionConfig getDefaultConnectionConfig() {
+      return ConnectionConfig.custom()
+          .setConnectTimeout(CONNECT_TIMEOUT_IN_MINUTES)
+          .setSocketTimeout(CONNECT_TIMEOUT_IN_MINUTES)
+          // Override default value of 2seconds to CONNECTION_INDEFINITE_TIMEOUT
+          .setValidateAfterInactivity(CONNECTION_INDEFINITE_TIMEOUT)
+          .setTimeToLive(CONNECTION_INDEFINITE_TIMEOUT)
+          .build();
+    }
+
+    private RequestConfig getDefaultRequestConfig() {
+      return RequestConfig.custom()
+          .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
+          .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MINUTES)
+          // Override default keep alive time of 3 minutes to CONNECTION_INDEFINITE_TIMEOUT
+          .setConnectionKeepAlive(CONNECTION_INDEFINITE_TIMEOUT)
+          .build();
+    }
+
     public CloseableHttpAsyncClient build() {
       if (sslContext == null && !http1) {
         throw new IllegalArgumentException("'sslContext' needs to be specified.");
@@ -118,34 +139,17 @@ public class HttpClient5Utils {
                     .setMaxConnTotal(http1MaxConnectionsTotal)
                     .setMaxConnPerRoute(http1MaxConnectionsPerRoute)
                     .setTlsStrategy(tlsStrategy)
-                    .setDefaultConnectionConfig(
-                        ConnectionConfig.custom()
-                            .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                            .setSocketTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                            .build())
+                    .setDefaultConnectionConfig(getDefaultConnectionConfig())
                     .build())
-            .setDefaultRequestConfig(
-                RequestConfig.custom()
-                    .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
-                    .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                    .setDefaultKeepAlive(1, TimeUnit.HOURS)
-                    .build())
+            .setDefaultRequestConfig(getDefaultRequestConfig())
             .setUserTokenHandler((route, context) -> null)
             .build();
       } else {
         return HttpAsyncClients.customHttp2()
             .setTlsStrategy(tlsStrategy)
             .setIOReactorConfig(ioReactorConfig)
-            .setDefaultConnectionConfig(
-                ConnectionConfig.custom()
-                    .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                    .setSocketTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                    .build())
-            .setDefaultRequestConfig(
-                RequestConfig.custom()
-                    .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
-                    .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                    .build())
+            .setDefaultConnectionConfig(getDefaultConnectionConfig())
+            .setDefaultRequestConfig(getDefaultRequestConfig())
             .build();
       }
     }
