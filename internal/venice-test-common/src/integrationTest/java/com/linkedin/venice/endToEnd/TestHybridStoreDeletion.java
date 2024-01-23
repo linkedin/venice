@@ -1,7 +1,17 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.MIN_CONSUMER_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
@@ -21,9 +31,12 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -33,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -103,7 +117,7 @@ public class TestHybridStoreDeletion {
    * 2. Limit the shared consumer thread pool size to 1 on the server.
    * 3. Create two hybrid stores.
    * 4. Produce to the rt topic of the first store and allow the thread to produce some amount of data.
-   * 5. Delete the rt topic of the first store.
+   * 5. Delete the rt topic of the first store and wait for the rt topic to be fully deleted.
    * 6. Produce to the rt topic of the second store with 10 key-value pairs.
    * 7. Check that the second store has all the records.
    */
@@ -128,8 +142,16 @@ public class TestHybridStoreDeletion {
         ControllerClient controllerClient =
             new ControllerClient(veniceCluster.getClusterName(), parentController.getControllerUrl());
         AvroGenericStoreClient<Object, Object> clientToSecondStore = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeNameSecond)
-                .setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+            ClientConfig.defaultGenericClientConfig(storeNameSecond).setVeniceURL(veniceCluster.getRandomRouterURL()));
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100,
+                    0l,
+                    veniceCluster.getPubSubBrokerWrapper(),
+                    veniceCluster.getPubSubTopicRepository())
+                .getTopicManager()) {
 
       createStoresAndVersions(controllerClient, storeNames, streamingRewindSeconds, streamingMessageLag);
 
@@ -138,6 +160,13 @@ public class TestHybridStoreDeletion {
 
       // Delete the rt topic of the first store.
       controllerClient.deleteKafkaTopic(Version.composeRealTimeTopic(storeNameFirst));
+
+      // Wait until the rt topic of the first store is fully deleted.
+      PubSubTopic rtTopicFirst =
+          veniceCluster.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeNameFirst));
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+        Assert.assertFalse(topicManager.containsTopic(rtTopicFirst));
+      });
 
       // Produce to the rt topic of the second store with 10 key-value pairs.
       produceToStoreRTTopic(storeNameSecond, 10);
