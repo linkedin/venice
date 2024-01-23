@@ -396,6 +396,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   @Override
   public void close(boolean gracefulClose) {
+    close(gracefulClose, true);
+  }
+
+  public void close(boolean gracefulClose, boolean retryOnGracefulCloseFailure) {
     synchronized (closeLock) {
       if (isClosed) {
         return;
@@ -416,7 +420,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
           OPEN_VENICE_WRITER_COUNT.decrementAndGet();
         } catch (Exception e) {
-          handleExceptionInClose(e, gracefulClose);
+          handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
         } finally {
           threadPoolExecutor.shutdown();
           isClosed = true;
@@ -426,6 +430,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   public CompletableFuture<VeniceResourceCloseResult> closeAsync(boolean gracefulClose) {
+    return closeAsync(gracefulClose, true);
+  }
+
+  public CompletableFuture<VeniceResourceCloseResult> closeAsync(
+      boolean gracefulClose,
+      boolean retryOnGracefulCloseFailure) {
     return CompletableFuture.supplyAsync(() -> {
       synchronized (closeLock) {
         if (isClosed) {
@@ -452,7 +462,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
             OPEN_VENICE_WRITER_COUNT.decrementAndGet();
           } catch (Exception e) {
-            handleExceptionInClose(e, gracefulClose);
+            handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
           } finally {
             threadPoolExecutor.shutdown();
             isClosed = true;
@@ -464,13 +474,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }, threadPoolExecutor);
   }
 
-  void handleExceptionInClose(Exception e, boolean gracefulClose) {
+  void handleExceptionInClose(Exception e, boolean gracefulClose, boolean retryOnGracefulCloseFailure) {
     logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
     VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
 
     // For graceful close, swallow the exception and give another try to close it ungracefully.
     try {
-      if (gracefulClose) {
+      if (gracefulClose && retryOnGracefulCloseFailure) {
         producerAdapter.close(topicName, closeTimeOutInMs, false);
         OPEN_VENICE_WRITER_COUNT.decrementAndGet();
       }
