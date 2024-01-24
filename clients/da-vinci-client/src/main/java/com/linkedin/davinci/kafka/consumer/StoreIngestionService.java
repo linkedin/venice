@@ -9,7 +9,6 @@ import com.linkedin.davinci.storage.MetadataRetriever;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 
 
 /**
@@ -110,8 +109,6 @@ public interface StoreIngestionService extends MetadataRetriever {
   AggVersionedIngestionStats getAggVersionedIngestionStats();
 
   StoreIngestionTask getStoreIngestionTask(String topic);
-
-  void traverseAllIngestionTasksAndApply(Consumer<StoreIngestionTask> consumer);
 
   VeniceConfigLoader getVeniceConfigLoader();
 }

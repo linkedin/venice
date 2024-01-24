@@ -89,4 +89,5 @@ public class KafkaConsumerServiceStatsTest {
     assertTrue(getOffsetLag.value() > getLatestOffsetIsPresent.value());
     assertTrue(getOffsetLag.value() > getLatestOffsetIsAbsent.value());
   }
+
 }

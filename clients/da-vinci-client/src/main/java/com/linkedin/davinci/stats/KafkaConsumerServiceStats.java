@@ -5,12 +5,19 @@ import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
-import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Total;
 import java.util.function.LongSupplier;
 
+
+/**
+ * This class provides the stats for Kafka consumer service per region or per store.
+ * Stats inside this class can either:
+ * (1) Total only: The stat indicate total number of all the stores on this host per region.
+ * (2) Total and Per store only: The stat is registered for each store on this host.
+ */
 
 public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor pollRequestSensor;
@@ -24,7 +31,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor detectedNoRunningIngestionTopicPartitionNumSensor;
   private final Sensor delegateSubscribeLatencySensor;
   private final Sensor updateCurrentAssignmentLatencySensor;
-  private final Sensor consumerSelectionForTopicError;
   private final Sensor maxPartitionsPerConsumer;
   private final Sensor minPartitionsPerConsumer;
   private final Sensor avgPartitionsPerConsumer;
@@ -32,13 +38,30 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor getOffsetLagIsPresentSensor;
   private final Sensor getLatestOffsetIsAbsentSensor;
   private final Sensor getLatestOffsetIsPresentSensor;
+  private final Sensor byteSizeSensor;
+  private final Sensor idleTimeSensor;
 
   public KafkaConsumerServiceStats(
       MetricsRepository metricsRepository,
-      String nameWithKafkaClusterAlias,
+      String storeName,
       LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool) {
-    super(metricsRepository, nameWithKafkaClusterAlias);
+    super(metricsRepository, storeName);
+    /**
+     * Below are the sensors that are recording total stats per region and per-store stats.
+     */
 
+    // The bytes of polled pubsub messages for each poll request
+    byteSizeSensor = registerSensor("bytes_per_poll", new Max(), new Min());
+    // the number of messages returned by Kafka consumer poll.
+    pollResultNumSensor = registerSensor("consumer_poll_result_num", new Avg(), new Total(), new Min());
+
+    /**
+     * Below are the sensors that are recording total stats per each region
+     */
+
+    // the consumer idle time
+    idleTimeSensor = registerSensor("idle_time", new Max());
+    // the number of poll requests
     pollRequestSensor = registerSensor("consumer_poll_request", new OccurrenceRate());
     // Notice that "pollRequestLatencySensor" only reports correct data when consumer task threads are not stuck
     pollRequestLatencySensor = registerSensor("consumer_poll_request_latency", new Avg(), new Max());
@@ -47,12 +70,12 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
      *  this metric will still be reported per minute with the latest result from the function even if consumer task
      *  threads are stuck. No need to keep a class property for it since we never call record on it.
      */
+    pollNonZeroResultNumSensor = registerSensor("consumer_poll_non_zero_result_num", new Avg(), new Total());
     registerSensor(
         "max_elapsed_time_since_last_successful_poll",
         new Gauge(() -> getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong()));
     // consumer record number per second returned by Kafka consumer poll.
-    pollResultNumSensor = registerSensor("consumer_poll_result_num", new Avg(), new Total());
-    pollNonZeroResultNumSensor = registerSensor("consumer_poll_non_zero_result_num", new Avg(), new Total());
+
     pollRequestError = registerSensor("consumer_poll_error", new OccurrenceRate());
     // To measure 'put' latency of consumer records blocking queue
     consumerRecordsProducingToWriterBufferLatencySensor =
@@ -62,9 +85,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         registerSensor("detected_no_running_ingestion_topic_partition_num", new Total());
     delegateSubscribeLatencySensor = registerSensor("delegate_subscribe_latency", new Avg(), new Max());
     updateCurrentAssignmentLatencySensor = registerSensor("update_current_assignment_latency", new Avg(), new Max());
-
-    // To monitor cases when a shared consumer cannot be selected
-    consumerSelectionForTopicError = registerSensor("consumer_selection_for_topic_error", new Count());
 
     minPartitionsPerConsumer = registerSensor("min_partitions_per_consumer", new Gauge());
     maxPartitionsPerConsumer = registerSensor("max_partitions_per_consumer", new Gauge());
@@ -120,10 +140,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     updateCurrentAssignmentLatencySensor.record(value);
   }
 
-  public void recordConsumerSelectionForTopicError() {
-    consumerSelectionForTopicError.record();
-  }
-
   public void recordMinPartitionsPerConsumer(int count) {
     minPartitionsPerConsumer.record(count);
   }
@@ -150,5 +166,13 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordLatestOffsetIsPresent() {
     getLatestOffsetIsPresentSensor.record();
+  }
+
+  public void recordByteSizePerPoll(double count) {
+    byteSizeSensor.record(count);
+  }
+
+  public void recordConsumerIdleTime(double time) {
+    idleTimeSensor.record(time);
   }
 }

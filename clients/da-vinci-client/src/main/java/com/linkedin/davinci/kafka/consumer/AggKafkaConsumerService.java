@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -70,6 +71,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
   private final Function<String, Boolean> isAAOrWCEnabledFunc;
+  private final ReadOnlyStoreRepository metadataRepository;
 
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
@@ -82,7 +84,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       TopicExistenceChecker topicExistenceChecker,
       final PubSubMessageDeserializer pubSubDeserializer,
       Consumer<String> killIngestionTaskRunnable,
-      Function<String, Boolean> isAAOrWCEnabledFunc) {
+      Function<String, Boolean> isAAOrWCEnabledFunc,
+      ReadOnlyStoreRepository metadataRepository) {
     this.serverConfig = serverConfig;
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
@@ -100,6 +103,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.pubSubDeserializer = pubSubDeserializer;
     this.sslPropertiesSupplier = sslPropertiesSupplier;
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
+    this.metadataRepository = metadataRepository;
 
     if (serverConfig.isStuckConsumerRepairEnabled()) {
       this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
@@ -297,7 +301,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 pubSubDeserializer,
                 SystemTime.INSTANCE,
                 null,
-                isKafkaConsumerOffsetCollectionEnabled),
+                isKafkaConsumerOffsetCollectionEnabled,
+                metadataRepository,
+                serverConfig.isUnregisterMetricForDeletedStoreEnabled()),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {

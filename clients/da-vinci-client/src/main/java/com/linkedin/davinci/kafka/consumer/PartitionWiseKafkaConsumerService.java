@@ -1,7 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
@@ -54,8 +55,10 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
-      final KafkaConsumerServiceStats stats,
-      final boolean isKafkaConsumerOffsetCollectionEnabled) {
+      final AggKafkaConsumerServiceStats stats,
+      final boolean isKafkaConsumerOffsetCollectionEnabled,
+      final ReadOnlyStoreRepository metadataRepository,
+      final boolean isUnregisterMetricForDeletedStoreEnabled) {
     super(
         consumerFactory,
         consumerProperties,
@@ -72,7 +75,9 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         pubSubDeserializer,
         time,
         stats,
-        isKafkaConsumerOffsetCollectionEnabled);
+        isKafkaConsumerOffsetCollectionEnabled,
+        metadataRepository,
+        isUnregisterMetricForDeletedStoreEnabled);
     this.LOGGER = LogManager.getLogger(PartitionWiseKafkaConsumerService.class + " [" + kafkaUrlForLogger + "]");
   }
 

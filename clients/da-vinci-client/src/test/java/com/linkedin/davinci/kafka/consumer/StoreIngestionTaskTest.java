@@ -83,10 +83,10 @@ import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
+import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -407,7 +407,7 @@ public abstract class StoreIngestionTaskTest {
       createReplicationMetadataWithValueSchemaId(DELETE_KEY_FOO_TIMESTAMP, DELETE_KEY_FOO_OFFSET, EXISTING_SCHEMA_ID);
 
   private boolean databaseChecksumVerificationEnabled = false;
-  private KafkaConsumerServiceStats kafkaConsumerServiceStats = mock(KafkaConsumerServiceStats.class);
+  private AggKafkaConsumerServiceStats _kafkaConsumerServiceStats = mock(AggKafkaConsumerServiceStats.class);
   private PubSubConsumerAdapterFactory mockFactory = mock(PubSubConsumerAdapterFactory.class);
 
   private Supplier<StoreVersionState> storeVersionStateSupplier = () -> new StoreVersionState();
@@ -934,7 +934,9 @@ public abstract class StoreIngestionTaskTest {
         isLiveConfigEnabled,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        kafkaConsumerServiceStats,
+        _kafkaConsumerServiceStats,
+        false,
+        mock(ReadOnlyStoreRepository.class),
         false);
     localKafkaConsumerService.start();
 
@@ -955,7 +957,9 @@ public abstract class StoreIngestionTaskTest {
         isLiveConfigEnabled,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        kafkaConsumerServiceStats,
+        _kafkaConsumerServiceStats,
+        false,
+        mock(ReadOnlyStoreRepository.class),
         false);
     remoteKafkaConsumerService.start();
 
@@ -1729,7 +1733,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
-      verify(kafkaConsumerServiceStats, timeout(TEST_TIMEOUT_MS).atLeastOnce()).recordPollError();
+      verify(_kafkaConsumerServiceStats, timeout(TEST_TIMEOUT_MS).atLeastOnce()).recordTotalPollError();
     }, aaConfig);
   }
 
