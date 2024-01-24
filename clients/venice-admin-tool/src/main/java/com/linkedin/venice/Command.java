@@ -493,9 +493,8 @@ public enum Command {
 
   RECOVER_STORE_METADATA(
       "recover-store-metadata", "Recover store metadata in EI",
-      new Arg[] { URL, STORE, VENICE_ZOOKEEPER_URL, ZK_SSL_CONFIG_FILE, KAFKA_BOOTSTRAP_SERVERS,
-          KAFKA_CONSUMER_CONFIG_FILE, GRAVEYARD_CLUSTERS },
-      new Arg[] { RECOVER_CLUSTER, SKIP_LAST_STORE_CREATION, REPAIR }
+      new Arg[] { URL, STORE, VENICE_ZOOKEEPER_URL, KAFKA_BOOTSTRAP_SERVERS, GRAVEYARD_CLUSTERS },
+      new Arg[] { ZK_SSL_CONFIG_FILE, KAFKA_CONSUMER_CONFIG_FILE, RECOVER_CLUSTER, SKIP_LAST_STORE_CREATION, REPAIR }
   ),
   BACKUP_STORE_METADATA_FROM_GRAVEYARD(
       "backup-store-metadata-from-graveyard", "Backup store metadata from graveyard in EI",

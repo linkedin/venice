@@ -1191,28 +1191,30 @@ public class AdminTool {
   }
 
   private static ZkClient readZKConfigAndBuildZKClient(String veniceZookeeperUrl, String zkSSLFile) throws Exception {
-    Properties systemProperties = System.getProperties();
-    try (BufferedReader br =
-        new BufferedReader(new InputStreamReader(new FileInputStream(zkSSLFile), StandardCharsets.UTF_8))) {
-      String newLine = br.readLine();
-      while (newLine != null) {
-        String[] tokens = newLine.split("=");
-        if (tokens.length != 2) {
-          throw new VeniceException(
-              "ZK SSL config file format is incorrect: " + newLine
-                  + "\nZK SSL config file content example: zookeeper.client.secure=true");
+    if (!zkSSLFile.isEmpty()) {
+      Properties systemProperties = System.getProperties();
+      try (BufferedReader br =
+          new BufferedReader(new InputStreamReader(new FileInputStream(zkSSLFile), StandardCharsets.UTF_8))) {
+        String newLine = br.readLine();
+        while (newLine != null) {
+          String[] tokens = newLine.split("=");
+          if (tokens.length != 2) {
+            throw new VeniceException(
+                "ZK SSL config file format is incorrect: " + newLine
+                    + "\nZK SSL config file content example: zookeeper.client.secure=true");
+          }
+          systemProperties.put(tokens[0], tokens[1]);
+          newLine = br.readLine();
         }
-        systemProperties.put(tokens[0], tokens[1]);
-        newLine = br.readLine();
       }
-    }
-    // Verified all required ZK SSL configs are present
-    for (String requiredZKSSLProperty: REQUIRED_ZK_SSL_SYSTEM_PROPERTIES) {
-      if (!systemProperties.containsKey(requiredZKSSLProperty)) {
-        throw new VeniceException("Missing required ZK SSL property: " + requiredZKSSLProperty);
+      // Verified all required ZK SSL configs are present
+      for (String requiredZKSSLProperty: REQUIRED_ZK_SSL_SYSTEM_PROPERTIES) {
+        if (!systemProperties.containsKey(requiredZKSSLProperty)) {
+          throw new VeniceException("Missing required ZK SSL property: " + requiredZKSSLProperty);
+        }
       }
+      System.setProperties(systemProperties);
     }
-    System.setProperties(systemProperties);
     return ZkClientFactory.newZkClient(veniceZookeeperUrl);
   }
 
@@ -1254,11 +1256,13 @@ public class AdminTool {
     // Construct ZK client
     String veniceZookeeperUrl = getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.RECOVER_STORE_METADATA);
     // Check SSL configs in JVM system arguments for ZK
-    String zkSSLFile = getRequiredArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, Command.RECOVER_STORE_METADATA);
+    String zkSSLFile = getOptionalArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, "");
     ZkClient zkClient = readZKConfigAndBuildZKClient(veniceZookeeperUrl, zkSSLFile);
 
+    String consumerConfigFile = getOptionalArgument(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE, "");
     // Construct consumer to dump admin message
-    Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    Properties consumerProperties =
+        consumerConfigFile.isEmpty() ? new Properties() : loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS, Command.RECOVER_STORE_METADATA);
     consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
     PubSubConsumerAdapter consumer = getConsumer(consumerProperties);
