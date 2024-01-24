@@ -731,6 +731,9 @@ ext.createDiffFile = { ->
       // venice-standalone
       ':!services/venice-standalone/*', // exclude the entire standalone project
 
+      // admin-tool
+      ':!clients/venice-admin-tool/*',
+
       // Keep this last
       // Other files that have tests but are not executed in the regular unit test task
       ':!internal/alpini/*'
