@@ -159,6 +159,7 @@ import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang.StringUtils;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 
 
 public class AdminTool {
@@ -544,6 +545,12 @@ public class AdminTool {
           break;
         case CONFIGURE_STORE_VIEW:
           configureStoreView(cmd);
+          break;
+        case BACKUP_STORE_METADATA_FROM_GRAVEYARD:
+          backupStoreMetadataFromGraveyard(cmd);
+          break;
+        case RECOVER_STORE_METADATA:
+          recoverStoreMetadata(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -1183,6 +1190,100 @@ public class AdminTool {
     printObject(valueResponse);
   }
 
+  private static ZkClient readZKConfigAndBuildZKClient(String veniceZookeeperUrl, String zkSSLFile) throws Exception {
+    if (!zkSSLFile.isEmpty()) {
+      Properties systemProperties = System.getProperties();
+      try (BufferedReader br =
+          new BufferedReader(new InputStreamReader(new FileInputStream(zkSSLFile), StandardCharsets.UTF_8))) {
+        String newLine = br.readLine();
+        while (newLine != null) {
+          String[] tokens = newLine.split("=");
+          if (tokens.length != 2) {
+            throw new VeniceException(
+                "ZK SSL config file format is incorrect: " + newLine
+                    + "\nZK SSL config file content example: zookeeper.client.secure=true");
+          }
+          systemProperties.put(tokens[0], tokens[1]);
+          newLine = br.readLine();
+        }
+      }
+      // Verified all required ZK SSL configs are present
+      for (String requiredZKSSLProperty: REQUIRED_ZK_SSL_SYSTEM_PROPERTIES) {
+        if (!systemProperties.containsKey(requiredZKSSLProperty)) {
+          throw new VeniceException("Missing required ZK SSL property: " + requiredZKSSLProperty);
+        }
+      }
+      System.setProperties(systemProperties);
+    }
+    return ZkClientFactory.newZkClient(veniceZookeeperUrl);
+  }
+
+  private static void backupStoreMetadataFromGraveyard(CommandLine cmd) throws Exception {
+    String backupFolderPath = getRequiredArgument(cmd, Arg.BACKUP_FOLDER, Command.BACKUP_STORE_METADATA_FROM_GRAVEYARD);
+    // Construct ZK client
+    String veniceZookeeperUrl =
+        getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.BACKUP_STORE_METADATA_FROM_GRAVEYARD);
+    String graveyardClusters = getRequiredArgument(cmd, Arg.GRAVEYARD_CLUSTERS, "").trim();
+    if (graveyardClusters.isEmpty()) {
+      throw new VeniceException("Graveyard clusters argument shouldn't be empty");
+    }
+    List<String> graveyardClusterList =
+        Arrays.stream(graveyardClusters.split(",")).map(s -> s.trim()).collect(Collectors.toList());
+    String zkSSLFile = getRequiredArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, Command.BACKUP_STORE_METADATA_FROM_GRAVEYARD);
+
+    ZkClient zkClient = readZKConfigAndBuildZKClient(veniceZookeeperUrl, zkSSLFile);
+    try {
+      RecoverStoreMetadata.backupStoreGraveyard(zkClient, graveyardClusterList, backupFolderPath);
+    } finally {
+      zkClient.close();
+    }
+  }
+
+  private static void recoverStoreMetadata(CommandLine cmd) throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.RECOVER_STORE_METADATA);
+    String url = getRequiredArgument(cmd, Arg.URL, Command.RECOVER_STORE_METADATA);
+    boolean skipLastStoreCreation =
+        Boolean.parseBoolean(getOptionalArgument(cmd, Arg.SKIP_LAST_STORE_CREATION, "false"));
+    boolean doRepair = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.REPAIR, "false"));
+    String graveyardClusters = getRequiredArgument(cmd, Arg.GRAVEYARD_CLUSTERS, Command.RECOVER_STORE_METADATA).trim();
+    if (graveyardClusters.isEmpty()) {
+      throw new VeniceException("Graveyard clusters argument shouldn't be empty");
+    }
+    List<String> graveyardClusterList =
+        Arrays.stream(graveyardClusters.split(",")).map(s -> s.trim()).collect(Collectors.toList());
+    String recoverCluster = getOptionalArgument(cmd, Arg.RECOVER_CLUSTER, "");
+
+    // Construct ZK client
+    String veniceZookeeperUrl = getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.RECOVER_STORE_METADATA);
+    // Check SSL configs in JVM system arguments for ZK
+    String zkSSLFile = getOptionalArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, "");
+    ZkClient zkClient = readZKConfigAndBuildZKClient(veniceZookeeperUrl, zkSSLFile);
+
+    String consumerConfigFile = getOptionalArgument(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE, "");
+    // Construct consumer to dump admin message
+    Properties consumerProperties =
+        consumerConfigFile.isEmpty() ? new Properties() : loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS, Command.RECOVER_STORE_METADATA);
+    consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
+    PubSubConsumerAdapter consumer = getConsumer(consumerProperties);
+
+    try {
+      RecoverStoreMetadata.recover(
+          zkClient,
+          consumer,
+          sslFactory,
+          url,
+          store,
+          skipLastStoreCreation,
+          doRepair,
+          graveyardClusterList,
+          recoverCluster);
+    } finally {
+      consumer.close();
+      zkClient.close();
+    }
+  }
+
   private static void applyValueSchemaToZK(CommandLine cmd) throws Exception {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA_TO_ZK);
     String cluster = getRequiredArgument(cmd, Arg.CLUSTER, Command.ADD_SCHEMA_TO_ZK);
@@ -1193,57 +1294,38 @@ public class AdminTool {
         Arg.VALUE_SCHEMA_ID.toString());
     // Check SSL configs in JVM system arguments for ZK
     String zkSSLFile = getRequiredArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, Command.ADD_SCHEMA_TO_ZK);
-    Properties systemProperties = System.getProperties();
-    try (BufferedReader br =
-        new BufferedReader(new InputStreamReader(new FileInputStream(zkSSLFile), StandardCharsets.UTF_8))) {
-      String newLine = br.readLine();
-      while (newLine != null) {
-        String[] tokens = newLine.split("=");
-        if (tokens.length != 2) {
-          System.err.println("ZK SSL config file format is incorrect: " + newLine);
-          System.err.println("ZK SSL config file content example: zookeeper.client.secure=true");
-          return;
-        }
-        systemProperties.put(tokens[0], tokens[1]);
-        newLine = br.readLine();
-      }
-    }
-    // Verified all required ZK SSL configs are present
-    for (String requiredZKSSLProperty: REQUIRED_ZK_SSL_SYSTEM_PROPERTIES) {
-      if (!systemProperties.containsKey(requiredZKSSLProperty)) {
-        System.err.println("Missing required ZK SSL property: " + requiredZKSSLProperty);
-        return;
-      }
-    }
-    System.setProperties(systemProperties);
 
     String valueSchemaStr = readFile(valueSchemaFile);
     verifyValidSchema(valueSchemaStr);
     Schema newValueSchema = Schema.parse(valueSchemaStr);
 
-    HelixSchemaAccessor schemaAccessor =
-        new HelixSchemaAccessor(ZkClientFactory.newZkClient(veniceZookeeperUrl), new HelixAdapterSerializer(), cluster);
-    if (schemaAccessor.getValueSchema(store, String.valueOf(valueSchemaId)) != null) {
-      System.err.println(
-          "Schema version " + valueSchemaId + " is already registered in ZK for store " + store + ", do nothing!");
-      return;
-    }
-
-    // Check backward compatibility?
-    List<SchemaEntry> allValueSchemas = schemaAccessor.getAllValueSchemas(store);
-    for (SchemaEntry schemaEntry: allValueSchemas) {
-      SchemaCompatibility.SchemaPairCompatibility backwardCompatibility =
-          SchemaCompatibility.checkReaderWriterCompatibility(newValueSchema, schemaEntry.getSchema());
-      if (!backwardCompatibility.getType().equals(SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE)) {
+    ZkClient zkClient = readZKConfigAndBuildZKClient(veniceZookeeperUrl, zkSSLFile);
+    try {
+      HelixSchemaAccessor schemaAccessor = new HelixSchemaAccessor(zkClient, new HelixAdapterSerializer(), cluster);
+      if (schemaAccessor.getValueSchema(store, String.valueOf(valueSchemaId)) != null) {
         System.err.println(
-            "New value schema for store " + store + " is not backward compatible with a previous schema version "
-                + schemaEntry.getId() + ". Abort.");
+            "Schema version " + valueSchemaId + " is already registered in ZK for store " + store + ", do nothing!");
         return;
       }
-    }
 
-    // Register it
-    schemaAccessor.addValueSchema(store, new SchemaEntry(valueSchemaId, newValueSchema));
+      // Check backward compatibility?
+      List<SchemaEntry> allValueSchemas = schemaAccessor.getAllValueSchemas(store);
+      for (SchemaEntry schemaEntry: allValueSchemas) {
+        SchemaCompatibility.SchemaPairCompatibility backwardCompatibility =
+            SchemaCompatibility.checkReaderWriterCompatibility(newValueSchema, schemaEntry.getSchema());
+        if (!backwardCompatibility.getType().equals(SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE)) {
+          System.err.println(
+              "New value schema for store " + store + " is not backward compatible with a previous schema version "
+                  + schemaEntry.getId() + ". Abort.");
+          return;
+        }
+      }
+
+      // Register it
+      schemaAccessor.addValueSchema(store, new SchemaEntry(valueSchemaId, newValueSchema));
+    } finally {
+      zkClient.close();
+    }
   }
 
   private static void applyDerivedSchemaToStore(CommandLine cmd) throws Exception {
