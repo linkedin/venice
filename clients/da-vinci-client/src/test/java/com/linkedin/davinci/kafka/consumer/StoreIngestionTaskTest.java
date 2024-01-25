@@ -55,6 +55,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -87,6 +88,7 @@ import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -543,6 +545,11 @@ public abstract class StoreIngestionTaskTest {
     setDefaultStoreVersionStateSupplier();
 
     runnableForKillNonCurrentVersion = mock(Runnable.class);
+
+    KafkaConsumerServiceStats regionStats = mock(KafkaConsumerServiceStats.class);
+    doNothing().when(regionStats).recordByteSizePerPoll(anyDouble());
+    doNothing().when(regionStats).recordPollResultNum(anyInt());
+    doReturn(regionStats).when(_kafkaConsumerServiceStats).getStoreStats(anyString());
   }
 
   private VeniceWriter getVeniceWriter(String topic, PubSubProducerAdapter producerAdapter, int amplificationFactor) {

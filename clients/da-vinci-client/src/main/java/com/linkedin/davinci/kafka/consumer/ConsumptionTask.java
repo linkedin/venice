@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
@@ -132,7 +133,8 @@ class ConsumptionTask implements Runnable {
                 .entrySet()) {
               PubSubTopicPartition pubSubTopicPartition = entry.getKey();
               String storeName = Version.parseStoreFromKafkaTopicName(pubSubTopicPartition.getTopicName());
-              StorePollCounter counter = storePollCounterMap.getOrDefault(storeName, new StorePollCounter(0, 0));
+              StorePollCounter counter =
+                  storePollCounterMap.computeIfAbsent(storeName, k -> new StorePollCounter(0, 0));
               List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionMessages = entry.getValue();
               consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
               if (consumedDataReceiver == null) {
@@ -158,8 +160,11 @@ class ConsumptionTask implements Runnable {
             aggStats.recordTotalNonZeroPollResultNum(polledPubSubMessagesCount);
             aggStats.recordTotalBytesPerPoll(payloadBytesConsumedInOnePoll);
             storePollCounterMap.forEach((storeName, counter) -> {
-              aggStats.getStoreStats(storeName).recordPollResultNum(counter.msgCount);
-              aggStats.getStoreStats(storeName).recordByteSizePerPoll(counter.byteSize);
+              // do not emit stats for system stores.
+              if (!VeniceSystemStoreUtils.isSystemStore(storeName)) {
+                aggStats.getStoreStats(storeName).recordPollResultNum(counter.msgCount);
+                aggStats.getStoreStats(storeName).recordByteSizePerPoll(counter.byteSize);
+              }
             });
             bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
             recordsThrottler.accept(polledPubSubMessagesCount);

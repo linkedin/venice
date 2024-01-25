@@ -2,6 +2,8 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
+import com.linkedin.venice.stats.LongAdderRateGauge;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -20,10 +22,10 @@ import java.util.function.LongSupplier;
  */
 
 public class KafkaConsumerServiceStats extends AbstractVeniceStats {
-  private final Sensor pollRequestSensor;
+  private final LongAdderRateGauge pollRequestSensor;
   private final Sensor pollRequestLatencySensor;
   private final Sensor pollResultNumSensor;
-  private final Sensor pollNonZeroResultNumSensor;
+  private final LongAdderRateGauge pollNonZeroResultNumSensor;
 
   private final Sensor pollRequestError;
   private final Sensor consumerRecordsProducingToWriterBufferLatencySensor;
@@ -44,16 +46,25 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   public KafkaConsumerServiceStats(
       MetricsRepository metricsRepository,
       String storeName,
-      LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool) {
+      LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool,
+      KafkaConsumerServiceStats totalStats,
+      Time time) {
     super(metricsRepository, storeName);
     /**
      * Below are the sensors that are recording total stats per region and per-store stats.
      */
 
     // The bytes of polled pubsub messages for each poll request
-    byteSizeSensor = registerSensor("bytes_per_poll", new Max(), new Min());
+    byteSizeSensor =
+        registerPerStoreAndTotalSensor("bytes_per_poll", totalStats, () -> totalStats.byteSizeSensor, minAndMax());
     // the number of messages returned by Kafka consumer poll.
-    pollResultNumSensor = registerSensor("consumer_poll_result_num", new Avg(), new Total(), new Min());
+    pollResultNumSensor = registerPerStoreAndTotalSensor(
+        "consumer_poll_result_num",
+        totalStats,
+        () -> totalStats.pollResultNumSensor,
+        new Avg(),
+        new Total(),
+        new Min());
 
     /**
      * Below are the sensors that are recording total stats per each region
@@ -62,15 +73,20 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     // the consumer idle time
     idleTimeSensor = registerSensor("idle_time", new Max());
     // the number of poll requests
-    pollRequestSensor = registerSensor("consumer_poll_request", new OccurrenceRate());
+    pollRequestSensor =
+        registerOnlyTotalRate("consumer_poll_request", totalStats, () -> totalStats.pollRequestSensor, time);
     // Notice that "pollRequestLatencySensor" only reports correct data when consumer task threads are not stuck
     pollRequestLatencySensor = registerSensor("consumer_poll_request_latency", new Avg(), new Max());
+    pollNonZeroResultNumSensor = registerOnlyTotalRate(
+        "consumer_poll_non_zero_result_num",
+        totalStats,
+        () -> totalStats.pollNonZeroResultNumSensor,
+        time);
     /**
      * "max_elapsed_time_since_last_successful_poll" is a Gauge metric which calls a function inside KafkaConsumerService,
      *  this metric will still be reported per minute with the latest result from the function even if consumer task
      *  threads are stuck. No need to keep a class property for it since we never call record on it.
      */
-    pollNonZeroResultNumSensor = registerSensor("consumer_poll_non_zero_result_num", new Avg(), new Total());
     registerSensor(
         "max_elapsed_time_since_last_successful_poll",
         new Gauge(() -> getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong()));

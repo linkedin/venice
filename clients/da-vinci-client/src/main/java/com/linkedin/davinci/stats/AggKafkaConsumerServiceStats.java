@@ -1,7 +1,10 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
+import com.linkedin.venice.stats.StatsSupplier;
+import com.linkedin.venice.utils.SystemTime;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.function.LongSupplier;
 
@@ -20,9 +23,7 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     super(
         regionName,
         metricsRepository,
-        (
-            repo,
-            storeName) -> new KafkaConsumerServiceStats(repo, storeName, getMaxElapsedTimeSinceLastPollInConsumerPool),
+        new KafkaConsumerServiceStatsSupplier(getMaxElapsedTimeSinceLastPollInConsumerPool),
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled);
   }
@@ -97,5 +98,31 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
 
   public void recordTotalLatestOffsetIsPresent() {
     totalStats.recordLatestOffsetIsPresent();
+  }
+
+  static class KafkaConsumerServiceStatsSupplier implements StatsSupplier<KafkaConsumerServiceStats> {
+    private final LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool;
+
+    KafkaConsumerServiceStatsSupplier(LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool) {
+      this.getMaxElapsedTimeSinceLastPollInConsumerPool = getMaxElapsedTimeSinceLastPollInConsumerPool;
+    }
+
+    @Override
+    public KafkaConsumerServiceStats get(MetricsRepository metricsRepository, String storeName) {
+      throw new VeniceException("Should not be called.");
+    }
+
+    @Override
+    public KafkaConsumerServiceStats get(
+        MetricsRepository metricsRepository,
+        String storeName,
+        KafkaConsumerServiceStats totalStats) {
+      return new KafkaConsumerServiceStats(
+          metricsRepository,
+          storeName,
+          getMaxElapsedTimeSinceLastPollInConsumerPool,
+          totalStats,
+          SystemTime.INSTANCE);
+    }
   }
 }

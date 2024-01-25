@@ -2,6 +2,7 @@ package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
@@ -9,6 +10,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.Percentiles;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
@@ -30,7 +32,9 @@ public class AbstractVeniceStats {
     // name and attribute name, so they cause issues if we let them slip in...
     this.name = name.replace(':', '_').replace(".", "_");
     this.sensors = new VeniceConcurrentHashMap<>();
-    this.isTotalStats = name.equals(STORE_NAME_FOR_TOTAL_STAT);
+    // the name of total stats is usually "total" but for kafka consumer service, it is
+    // "total_kafka_consumer_service_for_<region>"
+    this.isTotalStats = name.equals(STORE_NAME_FOR_TOTAL_STAT) || name.startsWith(STORE_NAME_FOR_TOTAL_STAT + "_");
   }
 
   public MetricsRepository getMetricsRepository() {
@@ -134,6 +138,29 @@ public class AbstractVeniceStats {
     }
   }
 
+  protected Sensor registerPerStoreAndTotalSensor(
+      String sensorName,
+      AbstractVeniceStats totalStats,
+      Supplier<Sensor> totalSensor,
+      MeasurableStat... stats) {
+    Sensor[] parent = totalStats == null ? null : new Sensor[] { totalSensor.get() };
+    return registerSensor(sensorName, parent, stats);
+  }
+
+  protected LongAdderRateGauge registerOnlyTotalRate(
+      String sensorName,
+      AbstractVeniceStats totalStats,
+      Supplier<LongAdderRateGauge> totalSensor,
+      Time time) {
+    if (totalStats == null) {
+      LongAdderRateGauge longAdderRateGauge = new LongAdderRateGauge(time);
+      registerSensor(sensorName, longAdderRateGauge);
+      return longAdderRateGauge;
+    } else {
+      return totalSensor.get();
+    }
+  }
+
   protected Sensor registerSensorIfAbsent(String sensorName, MeasurableStat... stats) {
     return registerSensorIfAbsent(getName(), sensorName, null, null, stats);
   }
@@ -165,6 +192,10 @@ public class AbstractVeniceStats {
 
   protected final MeasurableStat[] avgAndMax() {
     return new MeasurableStat[] { new Avg(), new Max() };
+  }
+
+  protected final MeasurableStat[] minAndMax() {
+    return new MeasurableStat[] { new Min(), new Max() };
   }
 
   protected final MeasurableStat[] avgAndTotal() {
