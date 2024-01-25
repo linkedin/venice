@@ -91,8 +91,13 @@ public class HttpClient5Utils {
       return ConnectionConfig.custom()
           .setConnectTimeout(CONNECT_TIMEOUT_IN_MINUTES)
           .setSocketTimeout(CONNECT_TIMEOUT_IN_MINUTES)
-          // Override default value of 2seconds to CONNECTION_INDEFINITE_TIMEOUT
+          // http5 javadoc mentions the default for setValidateAfterInactivity is null,
+          // but as per usage, null is defaulted to 2 seconds. Setting it to negative
+          // value to not check for stale connections after the default 2 seconds.
           .setValidateAfterInactivity(CONNECTION_INDEFINITE_TIMEOUT)
+          // http5 javadoc mentions the default for setValidateAfterInactivity is null,
+          // and both null or negative value don't expire the connection. Setting it to
+          // be negative value to be similar to setValidateAfterInactivity
           .setTimeToLive(CONNECTION_INDEFINITE_TIMEOUT)
           .build();
     }
