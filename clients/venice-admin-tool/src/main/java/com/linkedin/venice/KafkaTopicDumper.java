@@ -341,7 +341,10 @@ public class KafkaTopicDumper implements AutoCloseable {
     }
   }
 
-  void logDataRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record, boolean logReplicationMetadata) {
+  void logDataRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
+      boolean logRecordMetadata,
+      boolean logReplicationMetadata) {
     KafkaKey kafkaKey = record.getKey();
     if (kafkaKey.isControlMessage()) {
       return;
@@ -353,6 +356,11 @@ public class KafkaTopicDumper implements AutoCloseable {
         record.getOffset(),
         msgType.toString(),
         buildDataRecordLog(record, logReplicationMetadata));
+
+    // Potentially print the record metadata for data record.
+    if (logRecordMetadata) {
+      logRecordMetadata(record);
+    }
   }
 
   String buildDataRecordLog(
@@ -411,12 +419,11 @@ public class KafkaTopicDumper implements AutoCloseable {
 
   private void processRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     if (logDataRecord) {
-      logDataRecord(record, logRmdRecord);
-    }
-    if (logMetadata) {
+      logDataRecord(record, logMetadata, logRmdRecord);
+    } else if (logMetadata) {
       logRecordMetadata(record);
-    }
-    if (!(logDataRecord || logMetadata)) {
+    } else {
+      // If no console logging is enabled, we will save data records into local file.
       writeToFile(record);
     }
   }
