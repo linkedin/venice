@@ -75,8 +75,18 @@ public class TestKafkaTopicDumper {
     when(apacheKafkaConsumer.offsetForTime(pubSubTopicPartition, endTimestamp)).thenReturn(endOffset);
     when(apacheKafkaConsumer.endOffset(pubSubTopicPartition)).thenReturn(endOffset);
 
-    KafkaTopicDumper kafkaTopicDumper =
-        new KafkaTopicDumper(controllerClient, apacheKafkaConsumer, topic, assignedPartition, 0, 2, "", 3, true);
+    KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
+        controllerClient,
+        apacheKafkaConsumer,
+        topic,
+        assignedPartition,
+        0,
+        2,
+        "",
+        3,
+        true,
+        false,
+        false);
 
     int firstChunkSegmentNumber = 1;
     int firstChunkSequenceNumber = 1;

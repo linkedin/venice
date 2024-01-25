@@ -19,21 +19,25 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.File;
 import java.io.IOException;
@@ -58,6 +62,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class contains logic to dump Venice Kafka topics.
+ * It has several modes:
+ * (1) Log metadata: Print out Kafka message metadata to console.
+ * (2) Log data record: Print out data record's key/value and optionally RMD to console.
+ * (3) Save data record to file: If both (1)&(2) is not enabled, it will save all the data record value payload to local disk.
+ */
 public class KafkaTopicDumper implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(KafkaTopicDumper.class);
   private static final String VENICE_ETL_KEY_FIELD = "key";
@@ -69,6 +80,8 @@ public class KafkaTopicDumper implements AutoCloseable {
   private static final String VENICE_ETL_BROKER_TIMESTAMP_FIELD = "brokerTimestamp";
   private static final String VENICE_ETL_PRODUCER_TIMESTAMP_FIELD = "producerTimestamp";
   private static final String VENICE_ETL_PARTITION_FIELD = "partition";
+  private static final String REGULAR_REC = "REG";
+  private static final String CONTROL_REC = "CTRL";
 
   private final String topicName;
   private final int partition;
@@ -76,13 +89,16 @@ public class KafkaTopicDumper implements AutoCloseable {
   private final Schema keySchema;
   private final String latestValueSchemaStr;
   private final Schema[] allValueSchemas;
+  private final Map<Integer, ValueAndDerivedSchemaData> schemaDataMap = new VeniceConcurrentHashMap<>();
   private final boolean isChunkingEnabled;
   private final String parentDirectory;
   private final PubSubConsumerAdapter consumer;
   private final long messageCount;
   private final long endOffset;
   private final int maxConsumeAttempts;
-  private final boolean logMetadataOnly;
+  private final boolean logMetadata;
+  private final boolean logDataRecord;
+  private final boolean logRmdRecord;
 
   private final ChunkKeyValueTransformer chunkKeyValueTransformer;
   private final AvroSpecificDeserializer<ChunkedKeySuffix> chunkedKeySuffixDeserializer;
@@ -104,17 +120,20 @@ public class KafkaTopicDumper implements AutoCloseable {
       int messageCount,
       String parentDir,
       int maxConsumeAttempts,
-      boolean logMetadataOnly) {
+      boolean logMetadata,
+      boolean logDataRecord,
+      boolean logRmdRecord) {
     this.consumer = consumer;
     this.maxConsumeAttempts = maxConsumeAttempts;
-    String storeName;
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
     if (Version.isATopicThatIsVersioned(topic)) {
-      storeName = Version.parseStoreFromKafkaTopicName(topic);
       int version = Version.parseVersionFromKafkaTopicName(topic);
-      this.isChunkingEnabled =
-          controllerClient.getStore(storeName).getStore().getVersion(version).get().isChunkingEnabled();
+      if (!storeInfo.getVersion(version).isPresent()) {
+        throw new VeniceException("Version: " + version + " does not exist for store: " + storeName);
+      }
+      this.isChunkingEnabled = storeInfo.getVersion(version).get().isChunkingEnabled();
     } else {
-      storeName = Version.parseStoreFromRealTimeTopic(topic);
       this.isChunkingEnabled = false;
     }
     this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
@@ -133,8 +152,11 @@ public class KafkaTopicDumper implements AutoCloseable {
     this.topicName = topic;
     this.partition = partitionNumber;
     this.parentDirectory = parentDir;
-    this.logMetadataOnly = logMetadataOnly;
-    if (logMetadataOnly) {
+    this.logMetadata = logMetadata;
+    this.logDataRecord = logDataRecord;
+    this.logRmdRecord = logRmdRecord;
+
+    if (logMetadata) {
       this.latestValueSchemaStr = null;
       this.allValueSchemas = null;
     } else if (topicName.contains(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
@@ -148,10 +170,39 @@ public class KafkaTopicDumper implements AutoCloseable {
       this.allValueSchemas = new Schema[schemas.length];
       int i = 0;
       for (MultiSchemaResponse.Schema valueSchema: schemas) {
-        this.allValueSchemas[i] = Schema.parse(valueSchema.getSchemaStr());
+        this.allValueSchemas[i] = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr());
         i++;
+        this.schemaDataMap
+            .put(valueSchema.getId(), new ValueAndDerivedSchemaData(valueSchema.getId(), valueSchema.getSchemaStr()));
+      }
+      if (storeInfo.isWriteComputationEnabled()) {
+        for (MultiSchemaResponse.Schema schema: controllerClient.getAllValueAndDerivedSchema(storeName).getSchemas()) {
+          if (!schema.isDerivedSchema()) {
+            continue;
+          }
+          int valueSchemaId = schema.getId();
+          int protocolId = schema.getDerivedSchemaId();
+          this.schemaDataMap.get(valueSchemaId).setUpdateSchema(protocolId, schema.getSchemaStr());
+        }
+      }
+
+      if (storeInfo.isActiveActiveReplicationEnabled()) {
+        for (MultiSchemaResponse.Schema schema: controllerClient.getAllReplicationMetadataSchemas(storeName)
+            .getSchemas()) {
+          if (!schema.isDerivedSchema()) {
+            continue;
+          }
+          /**
+           * This is intended, as {@link com.linkedin.venice.controller.server.SchemaRoutes} implementation is wrong
+           * for RMD schema entry.
+           */
+          int valueSchemaId = schema.getRmdValueSchemaId();
+          int protocolId = schema.getId();
+          this.schemaDataMap.get(valueSchemaId).setUpdateSchema(protocolId, schema.getSchemaStr());
+        }
       }
     }
+
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopicPartition partition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partitionNumber);
@@ -168,7 +219,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       this.messageCount = messageCount;
     }
 
-    if (!logMetadataOnly) {
+    if (!(logMetadata || logDataRecord)) {
       setupDumpFile();
     }
   }
@@ -214,14 +265,18 @@ public class KafkaTopicDumper implements AutoCloseable {
     List<Schema.Field> outputSchemaFields = new ArrayList<>();
     for (Schema.Field field: VeniceKafkaDecodedRecord.SCHEMA$.getFields()) {
       if (field.name().equals(VENICE_ETL_KEY_FIELD)) {
-        outputSchemaFields
-            .add(AvroCompatibilityHelper.newField(field).setSchema(Schema.parse(this.keySchemaStr)).build());
+        outputSchemaFields.add(
+            AvroCompatibilityHelper.newField(field)
+                .setSchema(AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(this.keySchemaStr))
+                .build());
       } else if (field.name().equals(VENICE_ETL_VALUE_FIELD)) {
         outputSchemaFields.add(
             AvroCompatibilityHelper.newField(field)
                 .setSchema(
                     Schema.createUnion(
-                        Arrays.asList(Schema.create(Schema.Type.NULL), Schema.parse(this.latestValueSchemaStr))))
+                        Arrays.asList(
+                            Schema.create(Schema.Type.NULL),
+                            AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(this.latestValueSchemaStr))))
                 .build());
       } else {
         // any fields except key and value will be added using the original schemas, like the offset field and the
@@ -250,9 +305,6 @@ public class KafkaTopicDumper implements AutoCloseable {
     decoderFactory = new DecoderFactory();
   }
 
-  private static final String REGULAR_REC = "REG";
-  private static final String CONTROL_REC = "CTRL";
-
   /**
    * Log the metadata for each kafka message.
    */
@@ -271,10 +323,10 @@ public class KafkaTopicDumper implements AutoCloseable {
       final String chunkMetadata = getChunkMetadataLog(record);
 
       LOGGER.info(
-          "{} {} Offset:{} ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}) LeaderMd=(host:{},uo:{},ukcId:{}){}",
+          "[Record Metadata] Offset:{}; {}; {}; ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}); LeaderMd=(host:{},uo:{},ukcId:{}){}",
+          record.getOffset(),
           kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
           msgType,
-          record.getOffset(),
           GuidUtils.getHexFromGuid(producerMetadata.producerGUID),
           producerMetadata.segmentNumber,
           producerMetadata.messageSequenceNumber,
@@ -285,16 +337,88 @@ public class KafkaTopicDumper implements AutoCloseable {
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
           chunkMetadata);
     } catch (Exception e) {
-      LOGGER.error("Failed when building record for offset {}", record.getOffset(), e);
+      LOGGER.error("Encounter exception when processing record for offset {}", record.getOffset(), e);
     }
   }
 
-  private void processRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
-    if (logMetadataOnly) {
-      logRecordMetadata(record);
+  void logDataRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record, boolean logReplicationMetadata) {
+    KafkaKey kafkaKey = record.getKey();
+    if (kafkaKey.isControlMessage()) {
       return;
     }
-    writeToFile(record);
+    KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
+    MessageType msgType = MessageType.valueOf(kafkaMessageEnvelope);
+    LOGGER.info(
+        "[Record Data] Offset:{}; {}; {}",
+        record.getOffset(),
+        msgType.toString(),
+        buildDataRecordLog(record, logReplicationMetadata));
+  }
+
+  String buildDataRecordLog(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
+      boolean logReplicationMetadata) {
+    KafkaKey kafkaKey = record.getKey();
+    KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
+    Object keyRecord = null;
+    Object valueRecord = null;
+    Object rmdRecord = null;
+    try {
+      byte[] keyBytes = kafkaKey.getKey();
+      Decoder keyDecoder = decoderFactory.binaryDecoder(keyBytes, null);
+      keyRecord = keyReader.read(null, keyDecoder);
+      switch (MessageType.valueOf(kafkaMessageEnvelope)) {
+        case PUT:
+          Put put = (Put) kafkaMessageEnvelope.payloadUnion;
+          Decoder valueDecoder = decoderFactory.binaryDecoder(ByteUtils.extractByteArray(put.putValue), null);
+          valueRecord = schemaDataMap.get(put.schemaId).getValueRecordReader().read(null, valueDecoder);
+          if (logReplicationMetadata && put.replicationMetadataPayload != null
+              && put.replicationMetadataPayload.remaining() > 0) {
+            Decoder rmdDecoder =
+                decoderFactory.binaryDecoder(ByteUtils.extractByteArray(put.replicationMetadataPayload), null);
+            rmdRecord = schemaDataMap.get(put.schemaId)
+                .getRmdRecordReader(put.replicationMetadataVersionId)
+                .read(null, rmdDecoder);
+          }
+          break;
+        case DELETE:
+          Delete delete = (Delete) kafkaMessageEnvelope.payloadUnion;
+          if (logReplicationMetadata && delete.replicationMetadataPayload != null
+              && delete.replicationMetadataPayload.remaining() > 0) {
+            Decoder rmdDecoder =
+                decoderFactory.binaryDecoder(ByteUtils.extractByteArray(delete.replicationMetadataPayload), null);
+            rmdRecord = schemaDataMap.get(delete.schemaId)
+                .getRmdRecordReader(delete.replicationMetadataVersionId)
+                .read(null, rmdDecoder);
+          }
+          break;
+        case UPDATE:
+          Update update = (Update) kafkaMessageEnvelope.payloadUnion;
+          Decoder updateDecoder = decoderFactory.binaryDecoder(ByteUtils.extractByteArray(update.updateValue), null);
+          valueRecord =
+              schemaDataMap.get(update.schemaId).getUpdateRecordReader(update.updateSchemaId).read(null, updateDecoder);
+          break;
+        default:
+          throw new VeniceException("Unknown data type.");
+      }
+    } catch (Exception e) {
+      LOGGER.error("Encounter exception when processing record for offset: {}", record.getOffset(), e);
+    }
+    return logReplicationMetadata
+        ? String.format("Key: %s; Value: %s; RMD: %s", keyRecord, valueRecord, rmdRecord)
+        : String.format("Key: %s; Value: %s", keyRecord, valueRecord);
+  }
+
+  private void processRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+    if (logDataRecord) {
+      logDataRecord(record, logRmdRecord);
+    }
+    if (logMetadata) {
+      logRecordMetadata(record);
+    }
+    if (!(logDataRecord || logMetadata)) {
+      writeToFile(record);
+    }
   }
 
   private void writeToFile(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
