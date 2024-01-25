@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_SECURE_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
@@ -239,8 +240,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           fabricAllowList =
               extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, StringUtils.EMPTY);
         } else {
-          // child controller should at least know the urls or D2 ZK address of its local region
-          fabricAllowList = options.getExtraProperties().getProperty(LOCAL_REGION_NAME, options.getRegionName());
+          // Use A/A fabric list for fabric allow list in case this controller is used in a multi-region test setup
+          String fabricList = options.getExtraProperties().getProperty(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, "");
+          // Child controller should at least know the urls or D2 ZK address of its local region
+          if (fabricList.isEmpty()) {
+            fabricAllowList = options.getExtraProperties().getProperty(LOCAL_REGION_NAME, options.getRegionName());
+          } else {
+            fabricAllowList = fabricList;
+          }
         }
 
         /**

@@ -189,7 +189,7 @@ public class TopicCleanupService extends AbstractVeniceService {
             if (storeVersionTopicCount.containsKey(topic.getStoreName())) {
               canDelete = false;
               LOGGER.info(
-                  "Topic deletion for topic: {} is delayed due to {} version topics found in a remote fabric",
+                  "Topic deletion for topic: {} is delayed due to {} version topics found in a local/remote fabric",
                   topic.getName(),
                   storeVersionTopicCount.get(topic.getStoreName()));
               break;
@@ -227,15 +227,17 @@ public class TopicCleanupService extends AbstractVeniceService {
     }
     Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicsWithRetention);
     allStoreTopics.forEach((storeName, topicRetentions) -> {
+      int minNumOfUnusedVersionTopicsOverride = minNumberOfUnusedKafkaTopicsToPreserve;
       PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
       if (topicRetentions.containsKey(realTimeTopic)) {
         if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
           topics.offer(realTimeTopic);
+          minNumOfUnusedVersionTopicsOverride = 0;
         }
         topicRetentions.remove(realTimeTopic);
       }
       List<PubSubTopic> oldTopicsToDelete =
-          extractVersionTopicsToCleanup(admin, topicRetentions, minNumberOfUnusedKafkaTopicsToPreserve, delayFactor);
+          extractVersionTopicsToCleanup(admin, topicRetentions, minNumOfUnusedVersionTopicsOverride, delayFactor);
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
       }
@@ -244,22 +246,24 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   private void refreshMultiDataCenterStoreToVersionTopicCountMap(Set<PubSubTopic> localTopics) {
     clearAndPopulateStoreToVersionTopicCountMap(localTopics, multiDataCenterStoreToVersionTopicCount.get(0));
-    if (localPubSubBootstrapServer == null) {
-      localPubSubBootstrapServer = getTopicManager().getPubSubBootstrapServers();
-    }
-    int i = 1;
-    for (String childFabric: childFabricList) {
-      // Best effort approach when fetching topics from other fabrics
-      try {
-        String pubSubBootstrapServer = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childFabric);
-        if (localPubSubBootstrapServer.equals(pubSubBootstrapServer)) {
-          continue;
+    if (childFabricList.size() > 1) {
+      if (localPubSubBootstrapServer == null) {
+        localPubSubBootstrapServer = getTopicManager().getPubSubBootstrapServers();
+      }
+      int i = 1;
+      for (String childFabric: childFabricList) {
+        // Best effort approach when fetching topics from other fabrics
+        try {
+          String pubSubBootstrapServer = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childFabric);
+          if (localPubSubBootstrapServer.equals(pubSubBootstrapServer)) {
+            continue;
+          }
+          Set<PubSubTopic> remoteTopics = getTopicManager(pubSubBootstrapServer).getAllTopicRetentions().keySet();
+          clearAndPopulateStoreToVersionTopicCountMap(remoteTopics, multiDataCenterStoreToVersionTopicCount.get(i));
+          i++;
+        } catch (Exception e) {
+          LOGGER.error("Failed to refresh store to version topic count map for fabric {}", childFabric, e);
         }
-        Set<PubSubTopic> remoteTopics = getTopicManager(pubSubBootstrapServer).getAllTopicRetentions().keySet();
-        clearAndPopulateStoreToVersionTopicCountMap(remoteTopics, multiDataCenterStoreToVersionTopicCount.get(i));
-        i++;
-      } catch (Exception e) {
-        LOGGER.error("Failed to refresh store to version topic count map for fabric {}", childFabric, e);
       }
     }
   }

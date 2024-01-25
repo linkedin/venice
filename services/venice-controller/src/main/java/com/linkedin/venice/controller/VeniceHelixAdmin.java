@@ -1032,7 +1032,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Delete All versions and push statues
         deleteAllVersionsInStore(clusterName, storeName);
         resources.getPushMonitor().cleanupStoreStatus(storeName);
-        // Clean up topics
+        // Truncate all the version topics, this is a prerequisite to delete the RT topic
+        truncateOldTopics(clusterName, store, true);
+
         if (!store.isMigrating()) {
           // for RT topic block on deletion so that next create store does not see the lingering RT topic which could
           // have different partition count
@@ -1042,7 +1044,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
           }
         }
-        truncateOldTopics(clusterName, store, true);
 
         // Cleanup system stores if applicable
         UserSystemStoreLifeCycleHelper.maybeDeleteSystemStoresForUserStore(
