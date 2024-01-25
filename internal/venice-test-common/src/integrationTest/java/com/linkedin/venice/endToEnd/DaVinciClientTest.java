@@ -58,6 +58,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
@@ -81,6 +82,7 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -94,6 +96,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -191,6 +194,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBatchStore(DaVinciConfig clientConfig) throws Exception {
+    // Consider creating store with GZIP and passing "s -> null" for compressionDictionary
     String storeName1 = createStoreWithMetaSystemStore(KEY_COUNT);
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
     String storeName3 = createStoreWithMetaSystemStore(KEY_COUNT);
@@ -206,11 +210,30 @@ public class DaVinciClientTest {
     // Test record transformation
 
     // Turn on GZIP compression
+    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
     cluster.useControllerClient(controllerClient -> {
       ControllerResponse response = controllerClient
-          .updateStore(storeName1, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
+          .updateStore(storeName1, new UpdateStoreQueryParams().setCompressionStrategy(compressionStrategy));
       assertFalse(response.isError(), response.getError());
+
+      // Force store to use new compression config
+      cluster.createVersion(
+          storeName1,
+          cluster.DEFAULT_KEY_SCHEMA,
+          cluster.DEFAULT_VALUE_SCHEMA,
+          IntStream.range(0, KEY_COUNT).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, 1)),
+          compressionStrategy,
+          s -> null);
+
+      // Ensure compression strategy has been set to GZIP
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        StoreInfo currStore = controllerClient.getStore(storeName1).getStore();
+        assertEquals(
+            currStore.getVersion(currStore.getCurrentVersion()).get().getCompressionStrategy(),
+            compressionStrategy);
+      });
     });
+
     TestRecordTransformer recordTransformer = new TestRecordTransformer();
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
@@ -242,6 +265,8 @@ public class DaVinciClientTest {
           .updateStore(storeName1, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.NO_OP));
       assertFalse(response.isError(), response.getError());
     });
+    // Force store to use new compression config
+    cluster.getNewVersion(storeName1);
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(

@@ -52,6 +52,7 @@ public class ChunkAssembler {
       Lazy<RecordDeserializer<T>> recordDeserializer,
       int readerSchemaId,
       VeniceCompressor compressor) {
+    System.out.println("CompressionStrategy in bufferAndAssembleRecord " + compressor.getCompressionStrategy().name());
     T assembledRecord = null;
 
     if (!inMemoryStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
