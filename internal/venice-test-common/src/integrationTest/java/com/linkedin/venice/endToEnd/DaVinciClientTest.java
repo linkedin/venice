@@ -194,7 +194,6 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBatchStore(DaVinciConfig clientConfig) throws Exception {
-    // Consider creating store with GZIP and passing "s -> null" for compressionDictionary
     String storeName1 = createStoreWithMetaSystemStore(KEY_COUNT);
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
     String storeName3 = createStoreWithMetaSystemStore(KEY_COUNT);
@@ -258,15 +257,6 @@ public class DaVinciClientTest {
     if (clientConfig.isRecordTransformerEnabled()) {
       clientConfig.setRecordTransformer(null);
     }
-
-    // Turn off GZIP compression
-    cluster.useControllerClient(controllerClient -> {
-      ControllerResponse response = controllerClient
-          .updateStore(storeName1, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.NO_OP));
-      assertFalse(response.isError(), response.getError());
-    });
-    // Force store to use new compression config
-    cluster.getNewVersion(storeName1);
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
