@@ -28,20 +28,12 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
         isUnregisterMetricForDeletedStoreEnabled);
   }
 
-  public void recordTotalBytesPerPoll(double count) {
-    totalStats.recordByteSizePerPoll(count);
-  }
-
   public void recordTotalConsumerIdleTime(double idleTime) {
     totalStats.recordConsumerIdleTime(idleTime);
   }
 
   public void recordTotalPollRequestLatency(double latency) {
     totalStats.recordPollRequestLatency(latency);
-  }
-
-  public void recordTotalPollResultNum(int count) {
-    totalStats.recordPollResultNum(count);
   }
 
   public void recordTotalNonZeroPollResultNum(int count) {

@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
@@ -123,7 +122,6 @@ class ConsumptionTask implements Runnable {
           polledPubSubMessages = pollFunction.get();
           lastSuccessfulPollTimestamp = System.currentTimeMillis();
           aggStats.recordTotalPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
-          aggStats.recordTotalPollResultNum(polledPubSubMessagesCount);
           if (!polledPubSubMessages.isEmpty()) {
             payloadBytesConsumedInOnePoll = 0;
             polledPubSubMessagesCount = 0;
@@ -158,13 +156,9 @@ class ConsumptionTask implements Runnable {
             aggStats.recordTotalConsumerRecordsProducingToWriterBufferLatency(
                 LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
             aggStats.recordTotalNonZeroPollResultNum(polledPubSubMessagesCount);
-            aggStats.recordTotalBytesPerPoll(payloadBytesConsumedInOnePoll);
             storePollCounterMap.forEach((storeName, counter) -> {
-              // do not emit stats for system stores.
-              if (!VeniceSystemStoreUtils.isSystemStore(storeName)) {
-                aggStats.getStoreStats(storeName).recordPollResultNum(counter.msgCount);
-                aggStats.getStoreStats(storeName).recordByteSizePerPoll(counter.byteSize);
-              }
+              aggStats.getStoreStats(storeName).recordPollResultNum(counter.msgCount);
+              aggStats.getStoreStats(storeName).recordByteSizePerPoll(counter.byteSize);
             });
             bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
             recordsThrottler.accept(polledPubSubMessagesCount);
