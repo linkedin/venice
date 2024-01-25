@@ -396,9 +396,25 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   @Override
   public void close(boolean gracefulClose) {
-    close(gracefulClose, true);
+    try {
+      closeAsync(gracefulClose).get();
+    } catch (ExecutionException | InterruptedException e) {
+      logger.warn("Future completed exceptionally in closing VeniceWriter for topic: {}", topicName, e);
+    }
   }
 
+  /**
+   * Close the {@link VeniceWriter}.
+   *
+   * Deprecating this method due to the concern of sending END_OF_SEGMENT control message to a non-existing topic can be
+   * blocked indefinitely as it is calling
+   * {@link #sendMessage(KeyProvider, KafkaMessageEnvelopeProvider, int, PubSubProducerCallback, boolean)}.get()
+   * without timeout.
+   *
+   * @param gracefulClose whether to end the segments and send END_OF_SEGMENT control message.
+   * @param retryOnGracefulCloseFailure whether to retry on graceful close failure.
+   */
+  @Deprecated
   public void close(boolean gracefulClose, boolean retryOnGracefulCloseFailure) {
     synchronized (closeLock) {
       if (isClosed) {
@@ -436,6 +452,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public CompletableFuture<VeniceResourceCloseResult> closeAsync(
       boolean gracefulClose,
       boolean retryOnGracefulCloseFailure) {
+    /*
+     * If the VeniceWriter is already closed, return a completed future. This is to avoid the case that a Thread pool
+     * RejectedExecutionException when a previous closeAsync is executed and the threadPool is already terminated.
+     */
+    synchronized (closeLock) {
+      if (isClosed) {
+        return CompletableFuture.completedFuture(VeniceResourceCloseResult.ALREADY_CLOSED);
+      }
+    }
+
     return CompletableFuture.supplyAsync(() -> {
       synchronized (closeLock) {
         if (isClosed) {
@@ -481,6 +507,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     // For graceful close, swallow the exception and give another try to close it ungracefully.
     try {
       if (gracefulClose && retryOnGracefulCloseFailure) {
+        logger.info(
+            "Ungracefully closing the VeniceWriter for topic: {}, closeTimeOut: {} ms",
+            topicName,
+            closeTimeOutInMs);
         producerAdapter.close(topicName, closeTimeOutInMs, false);
         OPEN_VENICE_WRITER_COUNT.decrementAndGet();
       }
@@ -1593,7 +1623,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param partition the Kafka partition to write to.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
-  private void sendStartOfSegment(int partition, Map<String, String> debugInfo) {
+  public void sendStartOfSegment(int partition, Map<String, String> debugInfo) {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     StartOfSegment startOfSegment = new StartOfSegment();
