@@ -2313,7 +2313,20 @@ public class VeniceParentHelixAdmin implements Admin {
       // Check if the store is being converted to a hybrid store
       boolean storeBeingConvertedToHybrid = !currStore.isHybrid() && updatedHybridStoreConfig != null
           && veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
-
+      // Check if the store is being converted to a batch store
+      boolean storeBeingConvertedToBatch = currStore.isHybrid() && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
+      if (storeBeingConvertedToBatch && activeActiveReplicationEnabled.orElse(false)) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "Cannot convert store to batch-only and enable Active/Active together.",
+            ErrorType.BAD_REQUEST);
+      }
+      if (storeBeingConvertedToBatch && incrementalPushEnabled.orElse(false)) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "Cannot convert store to batch-only and enable incremental push together.",
+            ErrorType.BAD_REQUEST);
+      }
       // Update active-active replication config.
       setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
@@ -2325,6 +2338,12 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.activeActiveReplicationEnabled = true;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
       }
+      // When turning off hybrid store, we will also turn off A/A store config.
+      if (storeBeingConvertedToBatch && setStore.activeActiveReplicationEnabled) {
+        setStore.activeActiveReplicationEnabled = false;
+        updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+      }
+
       // Update incremental push config.
       setStore.incrementalPushEnabled =
           incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
@@ -2337,18 +2356,12 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.incrementalPushEnabled = true;
         updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
       }
-
-      // If store is already hybrid then check to make sure the end state is valid. We do this because we allow enabling
-      // incremental push without enabling hybrid already (we will automatically convert to hybrid store with default
-      // configs).
-      if (veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig) && setStore.incrementalPushEnabled) {
-        throw new VeniceHttpException(
-            HttpStatus.SC_BAD_REQUEST,
-            "Cannot convert store to batch-only, incremental push enabled stores require valid hybrid configs. "
-                + "Please disable incremental push if you'd like to convert the store to batch-only",
-            ErrorType.BAD_REQUEST);
+      // When turning off hybrid store, we will also turn off incremental store config.
+      if (storeBeingConvertedToBatch && setStore.incrementalPushEnabled) {
+        setStore.incrementalPushEnabled = false;
+        updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
       }
+
       if (updatedHybridStoreConfig == null) {
         setStore.hybridStoreConfig = null;
       } else {
