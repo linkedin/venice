@@ -2315,6 +2315,14 @@ public class VeniceParentHelixAdmin implements Admin {
           && veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
       // Check if the store is being converted to a batch store
       boolean storeBeingConvertedToBatch = currStore.isHybrid() && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
+      LOGGER.info(
+          "DEBUGGING: {} {} {} {} {} ",
+          storeBeingConvertedToBatch,
+          activeActiveReplicationEnabled,
+          incrementalPushEnabled,
+          currStore.isHybrid(),
+          veniceHelixAdmin.isHybrid(updatedHybridStoreConfig));
+
       if (storeBeingConvertedToBatch && activeActiveReplicationEnabled.orElse(false)) {
         throw new VeniceHttpException(
             HttpStatus.SC_BAD_REQUEST,

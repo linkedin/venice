@@ -1847,7 +1847,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testDisableHybridConfigWhenAAandIncPushConfigIsEnabled() {
+  public void testDisableHybridConfigWhenActiveActiveOrIncPushConfigIsEnabled() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
 
@@ -1860,6 +1860,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             BufferReplayPolicy.REWIND_FROM_EOP));
     store.setActiveActiveReplicationEnabled(true);
     store.setIncrementalPushEnabled(true);
+    store.setNativeReplicationEnabled(true);
     store.setChunkingEnabled(true);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
@@ -1871,6 +1872,23 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
     parentAdmin.initStorageCluster(clusterName);
+    // When user disable hybrid but also try to manually turn on A/A or Incremental Push, update operation should fail
+    // loudly.
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(
+            clusterName,
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(-1)
+                .setHybridOffsetLagThreshold(-1)
+                .setActiveActiveReplicationEnabled(true)));
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(
+            clusterName,
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(-1)
+                .setHybridOffsetLagThreshold(-1)
+                .setIncrementalPushEnabled(true)));
+
     parentAdmin.updateStore(
         clusterName,
         storeName,
