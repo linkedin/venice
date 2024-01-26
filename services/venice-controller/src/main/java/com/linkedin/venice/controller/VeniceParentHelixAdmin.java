@@ -2338,7 +2338,7 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.activeActiveReplicationEnabled = true;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
       }
-      // When turning of hybrid store, we will also turn off A/A store config.
+      // When turning off hybrid store, we will also turn off A/A store config.
       if (storeBeingConvertedToBatch && setStore.activeActiveReplicationEnabled) {
         setStore.activeActiveReplicationEnabled = false;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
@@ -2356,7 +2356,7 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.incrementalPushEnabled = true;
         updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
       }
-      // When turning of hybrid store, we will also turn off incremental store config.
+      // When turning off hybrid store, we will also turn off incremental store config.
       if (storeBeingConvertedToBatch && setStore.incrementalPushEnabled) {
         setStore.incrementalPushEnabled = false;
         updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
