@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -24,8 +25,9 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
   public TopicCleanupServiceForParentController(
       Admin admin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
-      PubSubTopicRepository pubSubTopicRepository) {
-    super(admin, multiClusterConfigs, pubSubTopicRepository);
+      PubSubTopicRepository pubSubTopicRepository,
+      TopicCleanupServiceStats topicCleanupServiceStats) {
+    super(admin, multiClusterConfigs, pubSubTopicRepository, topicCleanupServiceStats);
   }
 
   @Override

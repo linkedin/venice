@@ -14,6 +14,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.kafka.TopicManager;
@@ -45,6 +46,7 @@ public class TestTopicCleanupService {
   private TopicManager remoteTopicManager;
   private TopicCleanupService topicCleanupService;
   private VeniceControllerMultiClusterConfig veniceControllerMultiClusterConfig;
+  private TopicCleanupServiceStats topicCleanupServiceStats;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod
@@ -72,8 +74,13 @@ public class TestTopicCleanupService {
     remoteTopicManager = mock(TopicManager.class);
     doReturn(remoteTopicManager).when(admin).getTopicManager("remote");
     doReturn(Collections.emptyMap()).when(remoteTopicManager).getAllTopicRetentions();
+    topicCleanupServiceStats = mock(TopicCleanupServiceStats.class);
 
-    topicCleanupService = new TopicCleanupService(admin, veniceControllerMultiClusterConfig, pubSubTopicRepository);
+    topicCleanupService = new TopicCleanupService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        pubSubTopicRepository,
+        topicCleanupServiceStats);
   }
 
   @AfterMethod
@@ -210,6 +217,9 @@ public class TestTopicCleanupService {
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_rt"));
     // Delete should be blocked by remote VT
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_rt"));
+    verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(5);
+    verify(topicCleanupServiceStats, never()).recordTopicDeletionError();
+    verify(topicCleanupServiceStats, atLeastOnce()).recordDeletedTopicsCount();
 
     topicCleanupService.cleanupVeniceTopics();
 
@@ -217,6 +227,8 @@ public class TestTopicCleanupService {
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_rt"));
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_rt"));
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_rt"));
+    verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(2);
+    verify(topicCleanupServiceStats, never()).recordTopicDeletionError();
   }
 
   private PubSubTopic getPubSubTopic(String storeName, String suffix) {
@@ -368,8 +380,11 @@ public class TestTopicCleanupService {
     VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
     doReturn(veniceControllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
     doReturn("remote").when(veniceControllerConfig).getChildDatacenters();
-    TopicCleanupService blockedTopicCleanupService =
-        new TopicCleanupService(admin, veniceControllerMultiClusterConfig, pubSubTopicRepository);
+    TopicCleanupService blockedTopicCleanupService = new TopicCleanupService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        pubSubTopicRepository,
+        topicCleanupServiceStats);
     String storeName = Utils.getUniqueString("testStore");
     Map<PubSubTopic, Long> storeTopics = new HashMap<>();
     storeTopics.put(getPubSubTopic(storeName, "_rt"), 1000L);
@@ -381,6 +396,8 @@ public class TestTopicCleanupService {
     blockedTopicCleanupService.cleanupVeniceTopics();
     verify(topicManager, atLeastOnce()).getPubSubBootstrapServers();
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName, "_rt"));
+    verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(1);
+    verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeletionError();
   }
 
   @Test
@@ -399,6 +416,8 @@ public class TestTopicCleanupService {
 
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName, "_rt"));
     verify(remoteTopicManager, atLeastOnce()).getAllTopicRetentions();
+    verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(1);
+    verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeletionError();
 
     topicCleanupService.cleanupVeniceTopics();
 

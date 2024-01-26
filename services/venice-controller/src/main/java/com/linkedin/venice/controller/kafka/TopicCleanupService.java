@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
@@ -67,18 +68,19 @@ public class TopicCleanupService extends AbstractVeniceService {
   private final AtomicBoolean stop = new AtomicBoolean(false);
   private final List<String> childFabricList;
   private final Map<String, Map<String, Integer>> multiDataCenterStoreToVersionTopicCount;
+  private final PubSubTopicRepository pubSubTopicRepository;
+  private final TopicCleanupServiceStats topicCleanupServiceStats;
   private String localDatacenter;
   private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
-
-  private PubSubTopicRepository pubSubTopicRepository;
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
 
   public TopicCleanupService(
       Admin admin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      TopicCleanupServiceStats topicCleanupServiceStats) {
     this.admin = admin;
     this.sleepIntervalBetweenTopicListFetchMs =
         multiClusterConfigs.getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
@@ -87,6 +89,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     this.cleanupThread = new Thread(new TopicCleanupTask(), "TopicCleanupTask");
     this.multiClusterConfigs = multiClusterConfigs;
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.topicCleanupServiceStats = topicCleanupServiceStats;
     this.childFabricList =
         Utils.parseCommaSeparatedStringToList(multiClusterConfigs.getCommonConfig().getChildDatacenters());
     if (!admin.isParent()) {
@@ -168,6 +171,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   void cleanupVeniceTopics() {
     PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>((s1, s2) -> s1.isRealTime() ? -1 : 0);
     populateDeprecatedTopicQueue(allTopics);
+    topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
     long refreshTime = System.currentTimeMillis();
     while (!allTopics.isEmpty()) {
       PubSubTopic topic = allTopics.poll();
@@ -178,6 +182,7 @@ public class TopicCleanupService extends AbstractVeniceService {
             LOGGER.warn(
                 "Topic deletion for topic: {} is blocked due to unable to fetch version topic info",
                 topic.getName());
+            topicCleanupServiceStats.recordTopicDeletionError();
             continue;
           }
           boolean canDelete = true;
@@ -197,8 +202,10 @@ public class TopicCleanupService extends AbstractVeniceService {
           }
         }
         getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+        topicCleanupServiceStats.recordDeletedTopicsCount();
       } catch (VeniceException e) {
         LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
+        topicCleanupServiceStats.recordTopicDeletionError();
         // No op, will try again in the next cleanup cycle.
       }
 
