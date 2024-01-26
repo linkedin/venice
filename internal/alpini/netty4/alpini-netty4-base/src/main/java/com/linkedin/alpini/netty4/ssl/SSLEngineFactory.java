@@ -3,7 +3,6 @@ package com.linkedin.alpini.netty4.ssl;
 import com.linkedin.alpini.base.ssl.SslFactory;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.handler.ssl.SslContext;
-import java.util.Optional;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLParameters;
@@ -36,24 +35,32 @@ public interface SSLEngineFactory extends SslFactory {
     }
 
     boolean sslEnabled = factory.isSslEnabled();
-    Optional<SSLContext> sslContext = Optional.ofNullable(sslEnabled ? factory.getSSLContext() : null);
+    SSLContext sslContext = sslEnabled ? factory.getSSLContext() : null;
     SSLParameters sslParameters = sslEnabled ? factory.getSSLParameters() : null;
 
     return new SSLEngineFactory() {
       @Override
       public SSLEngine createSSLEngine(ByteBufAllocator alloc, String host, int port, boolean isServer) {
-        return init(sslContext.orElseThrow(IllegalStateException::new).createSSLEngine(host, port), isServer);
+        if (sslContext == null) {
+          throw new IllegalStateException();
+        }
+        return init(sslContext.createSSLEngine(host, port), isServer);
       }
 
       @Override
       public SSLEngine createSSLEngine(ByteBufAllocator alloc, boolean isServer) {
-        return init(sslContext.orElseThrow(IllegalStateException::new).createSSLEngine(), isServer);
+        if (sslContext == null) {
+          throw new IllegalStateException();
+        }
+        return init(sslContext.createSSLEngine(), isServer);
       }
 
       @Override
       public SSLSessionContext sessionContext(boolean isServer) {
-        return sslContext.map(sslCtx -> isServer ? sslCtx.getServerSessionContext() : sslCtx.getClientSessionContext())
-            .orElseThrow(IllegalStateException::new);
+        if (sslContext == null) {
+          throw new IllegalStateException();
+        }
+        return isServer ? sslContext.getServerSessionContext() : sslContext.getClientSessionContext();
       }
 
       private SSLEngine init(SSLEngine engine, boolean isServer) {
@@ -64,7 +71,7 @@ public interface SSLEngineFactory extends SslFactory {
 
       @Override
       public SSLContext getSSLContext() {
-        return sslContext.orElse(null);
+        return sslContext;
       }
 
       @Override

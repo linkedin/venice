@@ -10,9 +10,7 @@ import com.linkedin.alpini.base.monitoring.CallCompletion;
 import com.linkedin.alpini.base.monitoring.CallTracker;
 import com.linkedin.alpini.base.monitoring.NullCallTracker;
 import com.linkedin.alpini.consts.QOS;
-import com.linkedin.alpini.netty4.handlers.AllChannelsHandler;
 import com.linkedin.alpini.netty4.handlers.Http2PingSendHandler;
-import com.linkedin.alpini.netty4.misc.BalancedEventLoopGroup;
 import com.linkedin.alpini.netty4.misc.ExceptionWithResponseStatus;
 import com.linkedin.alpini.netty4.misc.Futures;
 import com.linkedin.alpini.netty4.misc.Http2Utils;
@@ -39,22 +37,18 @@ import io.netty.util.concurrent.ScheduledFuture;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentMap;
@@ -71,7 +65,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.Level;
@@ -87,8 +80,6 @@ import org.apache.logging.log4j.Logger;
 public class ChannelPoolManagerImpl implements ChannelPoolManager {
   private static final ImmediateEventExecutor IMMEDIATE = ImmediateEventExecutor.INSTANCE;
   private static final Future<Void> COMPLETED_VOID_FUTURE = IMMEDIATE.newSucceededFuture(null);
-
-  private static final long CLOSE_ALL_DELAY = 1000L;
 
   private static final QOS[] QOS_HIGH_NORMAL_LOW = { QOS.HIGH, QOS.NORMAL, QOS.LOW };
   private static final QOS[] QOS_NORMAL_HIGH_LOW = { QOS.NORMAL, QOS.HIGH, QOS.LOW };
@@ -115,15 +106,11 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
   private final IntSupplier _eventLoopConcurrency;
   private final EventLoopGroup _workerEventLoopGroup;
   private final Consumer<Runnable> _runInEveryThread;
-  private final LongAdder _globalActiveCount = new LongAdder();
-  private final LongAdder _globalChannelCount = new LongAdder();
 
-  private AllChannelsHandler _allChannelsHandler;
+  private final int _maxWaitersPerPool;
 
-  private int _maxWaitersPerPool;
-
-  private BooleanSupplier _enableFairScheduling = () -> true;
-  private BooleanSupplier _enableDeferredExecution = () -> false;
+  private final BooleanSupplier _enableFairScheduling = () -> true;
+  private final BooleanSupplier _enableDeferredExecution = () -> false;
 
   /** Use a named thread factory for the handling channel released */
   private static final ThreadFactory CHANNEL_RELEASED_FACTORY = new NamedThreadFactory("channel-released");
@@ -239,89 +226,41 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
     return _eventLoopConcurrency.getAsInt();
   }
 
-  @Override
-  public int activeCount() {
-    return _globalActiveCount.intValue();
-  }
-
-  @Override
-  public int openConnections() {
-    return _globalChannelCount.intValue();
-  }
-
   @Nonnull
-  protected CallTracker createHostAcquireCallTracker(@Nonnull String hostAndPort) {
+  protected CallTracker createHostAcquireCallTracker() {
     return NullCallTracker.INSTANCE;
   }
 
   @Nonnull
-  protected CallTracker createHostBusyCallTracker(@Nonnull String hostAndPort) {
+  protected CallTracker createHostBusyCallTracker() {
     return NullCallTracker.INSTANCE;
   }
 
   @Nonnull
   @Deprecated
-  protected CallTracker createQueueAcquireCallTracker(@Nonnull String queueName) {
+  protected CallTracker createQueueAcquireCallTracker() {
     return NullCallTracker.INSTANCE;
   }
 
   @Nonnull
   @Deprecated
-  protected CallTracker createQueueBusyCallTracker(@Nonnull String queueName) {
+  protected CallTracker createQueueBusyCallTracker() {
     return NullCallTracker.INSTANCE;
   }
 
-  @Override
-  @Nonnull
-  public Optional<PoolStats> getPoolStats(@Nonnull String hostAndPort) {
-    return Optional.ofNullable(_pools.get(hostAndPort)).map(Pool::poolStats);
-  }
-
-  @Override
-  @Nonnull
-  public Map<String, PoolStats> getPoolStats() {
-    return new ArrayList<>(_pools.values()).stream()
-        .map(Pool::poolStats)
-        .collect(Collectors.toMap(PoolStats::name, Function.identity()));
-  }
-
-  public void setEnableFairScheduling(@Nonnull BooleanSupplier enableFairScheduling) {
-    _enableFairScheduling = enableFairScheduling;
-  }
-
-  public void setEnableDeferredExecution(@Nonnull BooleanSupplier enableDeferredExecution) {
-    _enableDeferredExecution = enableDeferredExecution;
-  }
-
-  public void setAllChannelsHandler(@Nonnull AllChannelsHandler allChannelsHandler) {
-    _allChannelsHandler = allChannelsHandler;
-  }
-
-  private class Pool implements ChannelPoolHandler, PoolStats {
+  private class Pool implements ChannelPoolHandler {
     final String _hostAndPort;
     final InetSocketAddress _address;
     final Set<ThreadQueue> _all = new CopyOnWriteArraySet<>();
     // Single Queue for all threads.
     private final ThreadQueue _globalThreadQueue;
     private final ThreadLocal<ThreadQueue> _local;
-    private final LongAdder _activeCount = new LongAdder();
-    private final LongAdder _createCount = new LongAdder();
-    private final LongAdder _closeCount = new LongAdder();
     private final LongAdder _waitingCount = new LongAdder();
-    private final LongAdder _inFlightCount = new LongAdder();
-    private final LongAdder _closeErrorCount = new LongAdder();
-    private final LongAdder _closeBadCount = new LongAdder();
-
     private final Http2PingHelper _http2PingHelper;
     private Iterator<ThreadQueue> _channelPoolIterator = Collections.emptyIterator();
     private boolean _isClosing = false;
 
     private final ChannelFutureListener _closeCountListener = future -> {
-      if (!future.isSuccess()) {
-        _closeErrorCount.increment();
-      } else if (Boolean.TRUE.equals(future.channel().attr(FAILED_HEALTH_CHECK).get())) {
-        _closeBadCount.increment();
-      }
       channelClosed(future.channel());
     };
 
@@ -332,8 +271,8 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
       assert address.isUnresolved();
       _address = address;
       _hostAndPort = address.getHostString() + ":" + address.getPort();
-      _acquireCallTracker = createHostAcquireCallTracker(_hostAndPort);
-      _busyCallTracker = createHostBusyCallTracker(_hostAndPort);
+      _acquireCallTracker = createHostAcquireCallTracker();
+      _busyCallTracker = createHostBusyCallTracker();
       if (enablePeriodicPing()) {
         _http2PingHelper = new Http2PingHelper();
       } else {
@@ -376,19 +315,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
       }
     }
 
-    @Nonnull
-    PoolStats poolStats() {
-      return this;
-    }
-
-    public Map<String, ThreadPoolStats> getThreadPoolStats() {
-      Map<String, ThreadPoolStats> map = new HashMap<>();
-      for (ThreadQueue threadQueue: _all) {
-        map.put(threadQueue._threadName, threadQueue);
-      }
-      return map;
-    }
-
     private void sendPing() {
       if (_http2PingHelper != null) {
         Channel channel = getHttp2ChannelToPingFromChannelPool();
@@ -400,55 +326,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
 
     public Http2PingSendHandler getHttp2PingSendHandler() {
       return _http2PingHelper == null ? null : _http2PingHelper.getHttp2PingSendHandler();
-    }
-
-    @Override
-    public double getAvgResponseTimeOfLatestPings() {
-      return _http2PingHelper == null ? 0 : _http2PingHelper.getAvgResponseTimeOfLatestPings();
-    }
-
-    @Override
-    public long totalActiveStreamCounts() {
-      return getThreadPoolStats().entrySet()
-          .stream()
-          .map(Map.Entry::getValue)
-          .mapToLong(ThreadPoolStats::getActiveStreamCount)
-          .sum();
-    }
-
-    @Override
-    public long currentStreamChannelsReused() {
-      return getThreadPoolStats().values().stream().mapToLong(ThreadPoolStats::getActiveStreamChannelReUsed).sum();
-    }
-
-    @Override
-    public long totalStreamChannelsReused() {
-      return getThreadPoolStats().values().stream().mapToLong(ThreadPoolStats::getStreamChannelReUsedCount).sum();
-    }
-
-    @Override
-    public long totalStreamCreations() {
-      return getThreadPoolStats().values().stream().mapToLong(ThreadPoolStats::getTotalStreamCreations).sum();
-    }
-
-    @Override
-    public long totalChannelReusePoolSize() {
-      return getThreadPoolStats().values().stream().mapToLong(ThreadPoolStats::getChannelReusePoolSize).sum();
-    }
-
-    @Override
-    public long getActiveStreamsLimitReachedCount() {
-      return getThreadPoolStats().values().stream().mapToLong(ThreadPoolStats::getActiveStreamsLimitReachedCount).sum();
-    }
-
-    @Override
-    public long getTotalAcquireRetries() {
-      return getThreadPoolStats().values().stream().mapToLong(ThreadPoolStats::getTotalAcquireRetries).sum();
-    }
-
-    @Override
-    public long getTotalActiveStreamChannels() {
-      return getThreadPoolStats().values().stream().mapToLong(ThreadPoolStats::getTotalActiveStreamChannels).sum();
     }
 
     Future<Void> close() {
@@ -469,8 +346,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
 
     private void channelClosed(Channel ch) {
       _log.debug("channelClosed({}/{})", ch.id(), ch.eventLoop());
-      _closeCount.increment();
-      _globalChannelCount.decrement();
       channelReleased(ch);
     }
 
@@ -482,14 +357,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
       _waitingCount.decrement();
     }
 
-    void incrementInFlight() {
-      _inFlightCount.increment();
-    }
-
-    void decrementInFlight() {
-      _inFlightCount.decrement();
-    }
-
     @Override
     public void channelReleased(Channel ch) {
       // TODO: Uncomment after we fix logging
@@ -499,9 +366,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
 
     void complete(long now, Supplier<CallCompletion> callCompletion) {
       if (callCompletion != null) {
-        _activeCount.decrement();
-        _globalActiveCount.decrement();
-
         // Offload the call graphs to a different thread
         CHANNEL_RELEASED_EXECUTOR.get().execute(() -> callCompletion.get().close(now));
       }
@@ -516,72 +380,14 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
     public void channelCreated(Channel ch) {
       if (!(ch instanceof Http2StreamChannel)) {
         _log.debug("channelCreated({}/{})", ch.id(), ch.eventLoop());
-        _createCount.increment();
-        _globalChannelCount.increment();
         ch.closeFuture().addListener(_closeCountListener);
       }
     }
 
-    @Override
-    @Nonnull
-    public String name() {
-      return _hostAndPort;
-    }
-
-    @Override
-    public int activeCount() {
-      int h2ActiveCount = 0;
-      boolean isUsingHttp2Connections = false;
-      for (ThreadPoolStats stats: getThreadPoolStats().values()) {
-        int h2Active = stats.getH2ActiveConnections();
-        if (h2Active > -1) {
-          h2ActiveCount += h2Active;
-          isUsingHttp2Connections = true;
-        }
-      }
-      return isUsingHttp2Connections ? h2ActiveCount : _activeCount.intValue();
-    }
-
-    @Override
     public SocketAddress remoteAddress() {
       return _address;
     }
 
-    @Override
-    public long createCount() {
-      return _createCount.longValue();
-    }
-
-    @Override
-    public long closeCount() {
-      return _closeCount.longValue();
-    }
-
-    @Override
-    public long closeErrorCount() {
-      return _closeErrorCount.longValue();
-    }
-
-    @Override
-    public long closeBadCount() {
-      return _closeBadCount.longValue();
-    }
-
-    @Override
-    public int inFlightCount() {
-      return _inFlightCount.intValue();
-    }
-
-    @Override
-    public int openConnections() {
-      return getThreadPoolStats().entrySet()
-          .stream()
-          .map(Map.Entry::getValue)
-          .mapToInt(ThreadPoolStats::getConnectedChannels)
-          .sum();
-    }
-
-    @Override
     public boolean isHealthy() {
       for (ThreadQueue q: _all.toArray(new ThreadQueue[0])) {
         // The concurrentHashMap can't have a null q.
@@ -596,32 +402,18 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
       return _isClosing;
     }
 
-    @Override
     public int waitingCount() {
       return _waitingCount.intValue();
     }
 
-    @Override
     @Nonnull
     public CallTracker acquireCallTracker() {
       return _acquireCallTracker;
     }
 
-    @Override
     @Nonnull
     public CallTracker busyCallTracker() {
       return _busyCallTracker;
-    }
-
-    @Override
-    public CallTracker http2PingCallTracker() {
-      return _http2PingHelper == null ? NullCallTracker.INSTANCE : _http2PingHelper.pingCallTracker();
-    }
-
-    @Override
-    public String toString() {
-      return "activeCount=" + activeCount() + ", openConnections=" + openConnections() + ", waitingCount="
-          + waitingCount();
     }
   }
 
@@ -638,7 +430,7 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
    *  ThreadQueue - Maintains a map <DBName, PoolQueue>
    *  PoolQueue - Maintains a map <QOS, Promise<Channel>>
    */
-  private class ThreadQueue implements ThreadPoolStats {
+  private class ThreadQueue {
     final ManagedChannelPool _pool;
     final Map<String, PoolQueue> _perDBPoolQueue = _useH2GlobalPool ? new ConcurrentHashMap<>() : new HashMap<>();
     Supplier<Future<Void>> _close;
@@ -658,11 +450,7 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
       _pool = _channelPoolFactory.construct(
           ChannelPoolManagerImpl.this,
           pool,
-          _createConnectionsOnWorkerGroup
-              ? (_allChannelsHandler != null
-                  ? new BalancedEventLoopGroup(_workerEventLoopGroup, _allChannelsHandler)
-                  : _workerEventLoopGroup)
-              : eventLoopGroup,
+          _createConnectionsOnWorkerGroup ? _workerEventLoopGroup : eventLoopGroup,
           Objects.requireNonNull(address));
 
       Supplier<Future<Void>> closeNow = Lazy.of(() -> {
@@ -700,81 +488,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
         }
         return _channelIterator.hasNext() ? _channelIterator.next() : null;
       }
-    }
-
-    @Override
-    public int getMaxConnections() {
-      return _pool.getMaxConnections();
-    }
-
-    @Override
-    public int getMaxPendingAcquires() {
-      return _pool.getMaxPendingAcquires();
-    }
-
-    @Override
-    public int getAcquiredChannelCount() {
-      return _pool.getAcquiredChannelCount();
-    }
-
-    @Override
-    public int getPendingAcquireCount() {
-      return _pool.getPendingAcquireCount();
-    }
-
-    @Override
-    public long getActiveStreamCount() {
-      return _pool.getTotalActiveStreams();
-    }
-
-    @Override
-    public long getActiveStreamChannelReUsed() {
-      return _pool.getCurrentStreamChannelsReused();
-    }
-
-    @Override
-    public long getStreamChannelReUsedCount() {
-      return _pool.getTotalStreamChannelsReused();
-    }
-
-    @Override
-    public long getTotalStreamCreations() {
-      return _pool.getTotalStreamCreations();
-    }
-
-    @Override
-    public long getChannelReusePoolSize() {
-      return _pool.getChannelReusePoolSize();
-    }
-
-    @Override
-    public long getActiveStreamsLimitReachedCount() {
-      return _pool.getActiveStreamsLimitReachedCount();
-    }
-
-    @Override
-    public long getTotalAcquireRetries() {
-      return _pool.getTotalAcquireRetries();
-    }
-
-    @Override
-    public long getTotalActiveStreamChannels() {
-      return _pool.getTotalActiveStreamChannels();
-    }
-
-    @Override
-    public boolean isClosed() {
-      return _pool.isClosed();
-    }
-
-    @Override
-    public int getConnectedChannels() {
-      return _pool.getConnectedChannels();
-    }
-
-    @Override
-    public int getH2ActiveConnections() {
-      return _pool.getH2ActiveConnections();
     }
 
     public boolean isClosing() {
@@ -853,19 +566,13 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
   private final class PromiseHolder implements Runnable {
     private final Promise<Channel> _promise;
     private final Supplier<CallCompletion> _completion;
-    private final LongAdder _activeCount;
     private final Pool _pool;
     private long _completionTime;
     private Supplier<CallCompletion> _busyCallCompletion;
 
-    private PromiseHolder(
-        @Nonnull Promise<Channel> promise,
-        @Nonnull Supplier<CallCompletion> completion,
-        LongAdder activeCount,
-        Pool pool) {
+    private PromiseHolder(@Nonnull Promise<Channel> promise, @Nonnull Supplier<CallCompletion> completion, Pool pool) {
       _promise = promise;
       _completion = Lazy.of(completion);
-      _activeCount = activeCount;
       _pool = pool;
     }
 
@@ -906,9 +613,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
         return false;
       }
       long now = Time.nanoTime();
-      debugAcquireInTrySuccess(_promise);
-      _activeCount.increment();
-      _globalActiveCount.increment();
       Supplier<CallCompletion> supplier = Lazy.of(() -> _pool.busyCallTracker().startCall(now));
       _pool.complete(now, channel.attr(_busyKey).getAndSet(supplier));
       if (_promise.trySuccess(channel)) {
@@ -918,8 +622,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
         return true;
       } else {
         channel.attr(_busyKey).set(null);
-        _activeCount.decrement();
-        _globalActiveCount.decrement();
         return false;
       }
     }
@@ -1032,38 +734,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
     } else {
       return pool.close();
     }
-  }
-
-  @Override
-  @Nonnull
-  public Future<Void> closeAll() {
-    // stop the periodic ping if all host pools are closed
-    stopPeriodicPing();
-    return Futures.asNettyFuture(
-        CompletableFuture.completedFuture(new ArrayList<>(_pools.keySet()))
-            .thenCompose(new Function<List<String>, CompletionStage<Void>>() {
-              @Override
-              public CompletionStage<Void> apply(List<String> poolNames) {
-                if (poolNames.isEmpty()) {
-                  return CompletableFuture.completedFuture(null);
-                }
-
-                return CompletableFuture
-                    .allOf(
-                        poolNames.stream()
-                            .map(ChannelPoolManagerImpl.this::close)
-                            .map(Futures::asCompletableFuture)
-                            .toArray(CompletableFuture[]::new))
-                    .thenCompose(aVoid -> {
-                      CompletableFuture<Void> delay = new CompletableFuture<>();
-                      _localThreadGroup.schedule(() -> delay.complete(null), CLOSE_ALL_DELAY, TimeUnit.MILLISECONDS);
-                      return delay;
-                    })
-                    .thenCompose(
-                        (aVoid -> CompletableFuture.completedFuture(new ArrayList<>(_pools.keySet()))
-                            .thenCompose(this)));
-              }
-            }));
   }
 
   protected Future<EventLoopGroup> localThreadGroup() {
@@ -1215,8 +885,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
       QOS qos,
       EventLoopGroup group,
       Promise<Channel> promise) {
-
-    debugAcquireResolved(promise);
     if (promise.isDone()) {
       _log.debug("promise completed before acquire");
       return promise;
@@ -1239,8 +907,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
       String queueName,
       QOS qos,
       Promise<Channel> promise) {
-
-    debugAcquireInEventLoop(promise);
     if (promise.isDone()) {
       _log.debug("promise completed before acquire");
       return promise;
@@ -1255,7 +921,7 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
     queue.incrementWait();
 
     PromiseHolder promiseHolder =
-        new PromiseHolder(promise, () -> pool.acquireCallTracker().startCall(startTime), pool._activeCount, pool);
+        new PromiseHolder(promise, () -> pool.acquireCallTracker().startCall(startTime), pool);
 
     if (threadQueue._inFlight.get() > _maxWaitersPerPool / 2) {
       threadQueue.clearDoneWaiters(pool);
@@ -1288,7 +954,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
             : loop::execute;
 
         public void run() {
-          debugAcquireInEventLoopListener(promiseHolder.getFuture());
           Promise<Channel> acquirePromise = loop.newPromise();
           acquirePromise.addListener(this);
           deferred.execute(() -> threadQueue._pool.acquire(acquirePromise));
@@ -1296,7 +961,7 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
 
         @Override
         public void operationComplete(Future<Channel> future) throws Exception {
-          decrementInFlightCount(threadQueue, pool);
+          decrementInFlightCount(threadQueue);
           if (!future.isSuccess() && pool.waitingCount() > 0) {
             if (isReschedulableError(future.cause())) {
               _log.debug("Retrying because {}", future.cause().getMessage());
@@ -1305,7 +970,7 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
               // Reschedule only if the waiters are greater than the number of requests inflight.
               if (threadQueue._inFlight.get() < waiters) {
                 // small back-off
-                incrementInFlightCount(pool, threadQueue);
+                incrementInFlightCount(threadQueue);
                 loop.schedule(this, 100, TimeUnit.MICROSECONDS);
               }
               return;
@@ -1316,7 +981,7 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
           threadQueue.dispatch(pool, future);
         }
       }
-      incrementInFlightCount(pool, threadQueue);
+      incrementInFlightCount(threadQueue);
       new Listener().run();
     } else {
       pool.incrementDone();
@@ -1340,14 +1005,12 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
     return t instanceof TimeoutException || Http2Utils.isTooManyActiveStreamsError(t);
   }
 
-  private void incrementInFlightCount(Pool pool, ThreadQueue threadQueue) {
-    pool.incrementInFlight();
+  private void incrementInFlightCount(ThreadQueue threadQueue) {
     threadQueue._inFlight.incrementAndGet();
   }
 
-  private void decrementInFlightCount(ThreadQueue threadQueue, Pool pool) {
+  private void decrementInFlightCount(ThreadQueue threadQueue) {
     threadQueue._inFlight.decrementAndGet();
-    pool.decrementInFlight();
   }
 
   static Throwable mapException(Throwable ex) {
@@ -1387,30 +1050,6 @@ public class ChannelPoolManagerImpl implements ChannelPoolManager {
       }
       return promise;
     }
-  }
-
-  /**
-   * Used for unit-test verification
-   */
-  void debugAcquireResolved(Future<Channel> promise) {
-  }
-
-  /**
-   * Used for unit-test verification
-   */
-  void debugAcquireInEventLoop(Future<Channel> promise) {
-  }
-
-  /**
-   * Used for unit-test verification
-   */
-  void debugAcquireInEventLoopListener(Future<Channel> promise) {
-  }
-
-  /**
-   * Used for unit-test verification
-   */
-  void debugAcquireInTrySuccess(Future<Channel> promise) {
   }
 
   /**
