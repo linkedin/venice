@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
@@ -22,6 +23,7 @@ import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -84,6 +86,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(topicName));
 
     internalAdmin = mock(VeniceHelixAdmin.class);
+    when(internalAdmin.isHybrid((HybridStoreConfig) any())).thenCallRealMethod();
     doReturn(topicManager).when(internalAdmin).getTopicManager();
     SchemaEntry mockEntry = new SchemaEntry(0, TEST_SCHEMA);
     doReturn(mockEntry).when(internalAdmin).getKeySchema(anyString(), anyString());
