@@ -9,10 +9,12 @@ import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WR
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -48,12 +50,15 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -532,5 +537,27 @@ public class VeniceWriterUnitTest {
         assertEquals(leaderCompleteHeader.value()[0], leaderCompleteState.getValue());
       }
     }
+  }
+
+  // Write a unit test for the retry mechanism in VeniceWriter.close(true) method.
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10 * Time.MS_PER_SECOND)
+  public void testVeniceWriterCloseRetry(boolean gracefulClose) throws ExecutionException, InterruptedException {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    doThrow(new TimeoutException()).when(mockedProducer).close(anyString(), anyInt(), eq(true));
+
+    String testTopic = "test";
+    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setPartitionCount(1).build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Verify that if the producer throws a TimeoutException, the VeniceWriter will retry the close() method
+    // with doFlash = false for both close() and closeAsync() methods.
+    writer.close(gracefulClose);
+
+    writer = new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+    writer.closeAsync(gracefulClose).get();
+
+    // Verify that the close(false) method will be called twice.
+    verify(mockedProducer, times(2)).close(anyString(), anyInt(), eq(false));
   }
 }
