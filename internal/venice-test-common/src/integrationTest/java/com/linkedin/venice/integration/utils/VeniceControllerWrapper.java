@@ -245,6 +245,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           // Child controller should at least know the urls or D2 ZK address of its local region
           if (fabricList.isEmpty()) {
             fabricAllowList = options.getExtraProperties().getProperty(LOCAL_REGION_NAME, options.getRegionName());
+            String bootstrapServers = options.isSslToKafka()
+                ? options.getKafkaBroker().getSSLAddress()
+                : options.getKafkaBroker().getAddress();
+            builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + fabricAllowList, bootstrapServers);
+            builder.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, fabricAllowList);
           } else {
             fabricAllowList = fabricList;
           }

@@ -947,7 +947,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * Now there is no store exists in the store repository, we will try to retrieve the info from the graveyard.
        * Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
        */
-      configureNewStore(newStore, config, storeGraveyard.getLargestUsedVersionNumber(storeName));
+      int largestUsedStoreVersion = storeGraveyard.getLargestUsedVersionNumber(storeName);
+      if (largestUsedStoreVersion == Store.NON_EXISTING_VERSION) {
+        LOGGER.info(
+            "Store: {} does NOT exist in the store graveyard. Will initialize the new store at version: {}.",
+            storeName,
+            Store.NON_EXISTING_VERSION);
+      } else {
+        LOGGER.info(
+            "Found store: {} in the store graveyard. Will initialize the new store at version: {}.",
+            storeName,
+            largestUsedStoreVersion);
+      }
+      configureNewStore(newStore, config, largestUsedStoreVersion);
 
       storeRepo.addStore(newStore);
       // Create global config for that store.
