@@ -11,11 +11,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -65,10 +62,8 @@ public class BasicFullHttpMultiPartRequest extends BasicHttpRequest implements F
       long requestTimestamp,
       long requestNanos) {
     super(httpVersion, method, uri, validateHeaders, requestTimestamp, requestNanos);
-    this.content = Optional.of(Objects.requireNonNull(content, "content"))
-        .filter(collection -> !collection.isEmpty())
-        .map((Function<Collection<FullHttpMultiPart>, List<FullHttpMultiPart>>) ArrayList::new)
-        .orElseGet(Collections::emptyList);
+    Objects.requireNonNull(content, "content");
+    this.content = content.isEmpty() ? Collections.emptyList() : new ArrayList<>(content);
     trailingHeader = new DefaultHttpHeaders(validateHeaders);
     headers().set(HttpHeaderNames.CONTENT_TYPE, "multipart/mixed");
   }
@@ -87,10 +82,8 @@ public class BasicFullHttpMultiPartRequest extends BasicHttpRequest implements F
     if (!HeaderUtils.parseContentType(headers.get(HttpHeaderNames.CONTENT_TYPE, "text/plain")).isMultipart()) {
       throw new IllegalArgumentException("Expected content-type to be multipart");
     }
-    this.content = Optional.of(Objects.requireNonNull(content, "content"))
-        .filter(collection -> !collection.isEmpty())
-        .map((Function<Collection<FullHttpMultiPart>, List<FullHttpMultiPart>>) ArrayList::new)
-        .orElseGet(Collections::emptyList);
+    Objects.requireNonNull(content, "content");
+    this.content = content.isEmpty() ? Collections.emptyList() : new ArrayList<>(content);
     this.trailingHeader = Objects.requireNonNull(trailingHeader, "trailingHeader");
   }
 

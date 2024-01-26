@@ -6,7 +6,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 
@@ -81,14 +80,6 @@ public class BasicHeaders implements Headers {
   @Override
   public boolean contains(CharSequence name, CharSequence value, boolean ignoreCase) {
     return _headers.contains(name, value, ignoreCase);
-  }
-
-  @Override
-  public <T> Optional<T> unwrap(Class<T> type) {
-    if (type.isAssignableFrom(_headers.getClass())) {
-      return Optional.of(type.cast(_headers));
-    }
-    return Optional.empty();
   }
 
   @Override

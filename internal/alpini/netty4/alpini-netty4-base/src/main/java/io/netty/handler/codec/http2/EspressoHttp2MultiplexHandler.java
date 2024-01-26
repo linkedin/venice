@@ -11,13 +11,11 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.EventLoop;
-import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
 import io.netty.handler.codec.http2.Http2FrameCodec.DefaultHttp2FrameStream;
 import io.netty.util.AttributeKey;
 import io.netty.util.internal.ObjectUtil;
 import java.util.ArrayDeque;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
@@ -241,12 +239,10 @@ public final class EspressoHttp2MultiplexHandler extends Http2ChannelDuplexHandl
                 // Register child channel on different event loop.
                 ch = new EspressoHttp2MultiplexHandlerStreamChannel(stream, inboundStreamHandler);
                 // Register the channel on either parent or offload to a different I/O worker.
-                ChannelFuture future = !offloadChildChannels
-                    ? ctx.channel().eventLoop().register(ch)
-                    : Optional.ofNullable(ctx.channel().eventLoop().parent())
-                        .map(EventLoopGroup::next)
-                        .orElse(ctx.channel().eventLoop())
-                        .register(ch);
+                EventLoop eventLoop = ctx.channel().eventLoop();
+                ChannelFuture future = (!offloadChildChannels || eventLoop.parent() == null)
+                    ? eventLoop.register(ch)
+                    : eventLoop.parent().next().register(ch);
                 if (future.isDone()) {
                   registerDone(future);
                 } else {

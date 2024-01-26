@@ -1,14 +1,11 @@
 package com.linkedin.alpini.router;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
-import com.linkedin.alpini.base.misc.Metrics;
-import com.linkedin.alpini.base.misc.TimeValue;
 import com.linkedin.alpini.router.api.ResourcePath;
 import com.linkedin.alpini.router.api.RouterTimeoutProcessor;
 import com.linkedin.alpini.router.api.ScatterGatherHelper;
 import java.util.Objects;
 import java.util.concurrent.Executor;
-import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -65,15 +62,6 @@ public abstract class ScatterGatherRequestHandler<H, P extends ResourcePath<K>, 
   }
 
   public abstract @Nonnull ScatterGatherHelper<H, P, K, R, ?, ?, ?> getScatterGatherHelper();
-
-  public static <M extends Enum<M>> void setMetric(
-      Metrics metric,
-      @Nonnull M metricName,
-      @Nonnull Supplier<TimeValue> supplier) {
-    if (metric != null) {
-      metric.setMetric(metricName.name(), supplier.get());
-    }
-  }
 
   protected abstract boolean isTooLongFrameException(Throwable cause);
 }

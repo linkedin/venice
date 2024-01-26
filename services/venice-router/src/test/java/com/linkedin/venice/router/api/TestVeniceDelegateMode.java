@@ -15,7 +15,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
-import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.router.api.HostFinder;
 import com.linkedin.alpini.router.api.HostHealthMonitor;
 import com.linkedin.alpini.router.api.PartitionFinder;
@@ -267,15 +266,8 @@ public class TestVeniceDelegateMode {
 
     scatterMode.initReadRequestThrottler(throttler);
 
-    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        partitionFinder,
-        hostFinder,
-        monitor,
-        VeniceRole.REPLICA,
-        new Metrics());
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode
+        .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
 
     // Throttling for single-get request is not happening in VeniceDelegateMode
     verify(throttler, never()).mayThrottleRead(eq(storeName), eq(1));
@@ -315,15 +307,7 @@ public class TestVeniceDelegateMode {
         new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
-    scatterMode.scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        partitionFinder,
-        hostFinder,
-        monitor,
-        VeniceRole.REPLICA,
-        new Metrics());
+    scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
   }
 
   @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available to serve retry request of type: MULTI_GET")
@@ -381,15 +365,8 @@ public class TestVeniceDelegateMode {
         mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
-    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        partitionFinder,
-        hostFinder,
-        monitor,
-        VeniceRole.REPLICA,
-        new Metrics());
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode
+        .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
 
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 3);
@@ -486,15 +463,8 @@ public class TestVeniceDelegateMode {
         new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
-    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        partitionFinder,
-        hostFinder,
-        monitor,
-        VeniceRole.REPLICA,
-        new Metrics());
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode
+        .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
 
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 3);
@@ -598,15 +568,8 @@ public class TestVeniceDelegateMode {
         new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
 
-    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        partitionFinder,
-        hostFinder,
-        monitor,
-        VeniceRole.REPLICA,
-        new Metrics());
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode
+        .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
 
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOfflineRequests();
     Assert.assertEquals(requests.size(), 1);
@@ -710,15 +673,8 @@ public class TestVeniceDelegateMode {
         mock(TimeoutProcessor.class));
     scatterMode.initHelixGroupSelector(helixGroupSelector);
 
-    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        partitionFinder,
-        hostFinder,
-        monitor,
-        VeniceRole.REPLICA,
-        new Metrics());
+    Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode
+        .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
 
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 2);
@@ -734,15 +690,8 @@ public class TestVeniceDelegateMode {
 
     // The second request should pick up another group
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
-    finalScatter = scatterMode.scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        partitionFinder,
-        hostFinder,
-        monitor,
-        VeniceRole.REPLICA,
-        new Metrics());
+    finalScatter = scatterMode
+        .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
 
     requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 2);
@@ -764,15 +713,8 @@ public class TestVeniceDelegateMode {
     VenicePath pathForAllSlowReplicas =
         getVenicePath(storeName, version, resourceName, RequestType.MULTI_GET_STREAMING, keys, slowStorageNodeSet);
     scatter = new Scatter(pathForAllSlowReplicas, getPathParser(), VeniceRole.REPLICA);
-    finalScatter = scatterMode.scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        partitionFinder,
-        hostFinder,
-        monitor,
-        VeniceRole.REPLICA,
-        new Metrics());
+    finalScatter = scatterMode
+        .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
 
     requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 1);

@@ -5,7 +5,6 @@ import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 
 import com.linkedin.alpini.router.api.HostFinder;
 import com.linkedin.alpini.router.api.HostHealthMonitor;
-import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.Version;
@@ -13,9 +12,7 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.utils.HelixUtils;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
@@ -134,15 +131,5 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
     Collections.shuffle(newHosts);
 
     return newHosts;
-  }
-
-  @Override
-  public Collection<Instance> findAllHosts(VeniceRole roles) throws RouterException {
-    throw new RouterException(
-        HttpResponseStatus.class,
-        HttpResponseStatus.BAD_REQUEST,
-        HttpResponseStatus.BAD_REQUEST.code(),
-        "Find All Hosts is not a supported operation",
-        true);
   }
 }
