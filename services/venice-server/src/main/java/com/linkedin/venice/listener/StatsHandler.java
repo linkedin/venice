@@ -208,7 +208,10 @@ public class StatsHandler extends ChannelDuplexHandler {
         // records a successRequest in stats. Otherwise, records a errorRequest in stats;
         if (result.isSuccess() && (serverStatsContext.getResponseStatus().equals(OK)
             || serverStatsContext.getResponseStatus().equals(NOT_FOUND))) {
-          serverStatsContext.successRequest(serverHttpRequestStats, elapsedTime);
+          if (serverHttpRequestStats != null) {
+            // For /health request, there is no store name
+            serverStatsContext.successRequest(serverHttpRequestStats, elapsedTime);
+          }
         } else {
           serverStatsContext.errorRequest(serverHttpRequestStats, elapsedTime);
         }
