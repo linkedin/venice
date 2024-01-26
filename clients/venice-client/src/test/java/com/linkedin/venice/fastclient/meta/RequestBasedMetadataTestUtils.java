@@ -57,15 +57,19 @@ public class RequestBasedMetadataTestUtils {
   private static final byte[] DICTIONARY = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
 
   public static ClientConfig getMockClientConfig(String storeName) {
-    return getMockClientConfig(storeName, false);
+    return getMockClientConfig(storeName, false, true);
   }
 
-  public static ClientConfig getMockClientConfig(String storeName, boolean firstConnWarmupFails) {
+  public static ClientConfig getMockClientConfig(
+      String storeName,
+      boolean firstConnWarmupFails,
+      boolean isMetadataConnWarmupEnabled) {
     ClientConfig clientConfig = mock(ClientConfig.class);
     ClusterStats clusterStats = new ClusterStats(new MetricsRepository(), storeName);
     doReturn(getMockR2Client(firstConnWarmupFails)).when(clientConfig).getR2Client();
     doReturn(1L).when(clientConfig).getMetadataRefreshIntervalInSeconds();
     doReturn(1L).when(clientConfig).getMetadataConnWarmupTimeoutInSeconds();
+    doReturn(isMetadataConnWarmupEnabled).when(clientConfig).isMetadataConnWarmupEnabled();
     doReturn(storeName).when(clientConfig).getStoreName();
     doReturn(clusterStats).when(clientConfig).getClusterStats();
     doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
