@@ -66,7 +66,8 @@ import org.apache.logging.log4j.Logger;
  * This class contains logic to dump Venice Kafka topics.
  * It has several modes:
  * (1) Log metadata: Print out Kafka message metadata to console.
- * (2) Log data record: Print out data record's key/value and optionally RMD to console.
+ * (2) Log data record: Print out data record's key/value and optionally RMD to console. For now it only supports version
+ * topic and realtime topic.
  * (3) Save data record to file: If both (1)&(2) is not enabled, it will save all the data record value payload to local disk.
  */
 public class KafkaTopicDumper implements AutoCloseable {
@@ -108,7 +109,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   private DataFileWriter<GenericRecord> dataFileWriter;
   private GenericDatumReader<Object> keyReader;
   private GenericDatumReader<Object>[] valueReaders;
-  private DecoderFactory decoderFactory;
+  private DecoderFactory decoderFactory = new DecoderFactory();
   private Schema outputSchema;
 
   public KafkaTopicDumper(
@@ -138,6 +139,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     }
     this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
     this.keySchema = AvroCompatibilityHelper.parse(keySchemaStr);
+    this.keyReader = new GenericDatumReader<>(keySchema, keySchema);
 
     if (isChunkingEnabled) {
       chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(keySchema);
@@ -156,10 +158,11 @@ public class KafkaTopicDumper implements AutoCloseable {
     this.logDataRecord = logDataRecord;
     this.logRmdRecord = logRmdRecord;
 
-    if (logMetadata) {
+    if (logMetadata && !logDataRecord) {
       this.latestValueSchemaStr = null;
       this.allValueSchemas = null;
     } else if (topicName.contains(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+      // For now dump data record to console mode does not support change capture topic.
       this.latestValueSchemaStr = RecordChangeEvent.getClassSchema().toString();
       this.allValueSchemas = new Schema[1];
       this.allValueSchemas[0] = RecordChangeEvent.getClassSchema();
@@ -294,15 +297,11 @@ public class KafkaTopicDumper implements AutoCloseable {
       throw new VeniceException("Failed on creating avro file", e);
     }
 
-    // build key/value reader
-    keyReader = new GenericDatumReader<>(keySchema, keySchema);
-
     int valueSchemaNum = allValueSchemas.length;
     valueReaders = new GenericDatumReader[valueSchemaNum];
     for (int schemaId = 0; schemaId < valueSchemaNum; schemaId++) {
       valueReaders[schemaId] = new GenericDatumReader<>(allValueSchemas[schemaId], allValueSchemas[valueSchemaNum - 1]);
     }
-    decoderFactory = new DecoderFactory();
   }
 
   /**
@@ -371,6 +370,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     Object keyRecord = null;
     Object valueRecord = null;
     Object rmdRecord = null;
+    String valuePayloadSchemaId = "";
     try {
       byte[] keyBytes = kafkaKey.getKey();
       Decoder keyDecoder = decoderFactory.binaryDecoder(keyBytes, null);
@@ -380,6 +380,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           Put put = (Put) kafkaMessageEnvelope.payloadUnion;
           Decoder valueDecoder = decoderFactory.binaryDecoder(ByteUtils.extractByteArray(put.putValue), null);
           valueRecord = schemaDataMap.get(put.schemaId).getValueRecordReader().read(null, valueDecoder);
+          valuePayloadSchemaId = String.valueOf(put.schemaId);
           if (logReplicationMetadata && put.replicationMetadataPayload != null
               && put.replicationMetadataPayload.remaining() > 0) {
             Decoder rmdDecoder =
@@ -391,6 +392,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           break;
         case DELETE:
           Delete delete = (Delete) kafkaMessageEnvelope.payloadUnion;
+          valuePayloadSchemaId = String.valueOf(delete.schemaId);
           if (logReplicationMetadata && delete.replicationMetadataPayload != null
               && delete.replicationMetadataPayload.remaining() > 0) {
             Decoder rmdDecoder =
@@ -402,6 +404,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           break;
         case UPDATE:
           Update update = (Update) kafkaMessageEnvelope.payloadUnion;
+          valuePayloadSchemaId = String.format("%d-%d", update.schemaId, update.updateSchemaId);
           Decoder updateDecoder = decoderFactory.binaryDecoder(ByteUtils.extractByteArray(update.updateValue), null);
           valueRecord =
               schemaDataMap.get(update.schemaId).getUpdateRecordReader(update.updateSchemaId).read(null, updateDecoder);
@@ -413,8 +416,9 @@ public class KafkaTopicDumper implements AutoCloseable {
       LOGGER.error("Encounter exception when processing record for offset: {}", record.getOffset(), e);
     }
     return logReplicationMetadata
-        ? String.format("Key: %s; Value: %s; RMD: %s", keyRecord, valueRecord, rmdRecord)
-        : String.format("Key: %s; Value: %s", keyRecord, valueRecord);
+        ? String
+            .format("Key: %s; Value: %s; Schema: %s; RMD: %s", keyRecord, valueRecord, valuePayloadSchemaId, rmdRecord)
+        : String.format("Key: %s; Value: %s; Schema: %s", keyRecord, valueRecord, valuePayloadSchemaId);
   }
 
   private void processRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
