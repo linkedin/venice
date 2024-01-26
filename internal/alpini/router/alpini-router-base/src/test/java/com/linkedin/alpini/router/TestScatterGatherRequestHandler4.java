@@ -121,19 +121,6 @@ public class TestScatterGatherRequestHandler4 {
           @Nonnull List<List<State>> roles) throws RouterException {
         throw new IllegalStateException();
       }
-
-      @Nonnull
-      @Override
-      public Collection<InetSocketAddress> findAllHosts(@Nonnull String resourceName, List<List<State>> roles)
-          throws RouterException {
-        throw new IllegalStateException();
-      }
-
-      @Nonnull
-      @Override
-      public Collection<InetSocketAddress> findAllHosts(List<List<State>> roles) throws RouterException {
-        throw new IllegalStateException();
-      }
     }
 
     ResourceRegistry registry = new ResourceRegistry();

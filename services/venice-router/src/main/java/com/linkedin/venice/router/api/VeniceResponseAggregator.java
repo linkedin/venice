@@ -1,9 +1,9 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.alpini.router.api.MetricNames.ROUTER_PARSE_URI;
-import static com.linkedin.alpini.router.api.MetricNames.ROUTER_RESPONSE_WAIT_TIME;
-import static com.linkedin.alpini.router.api.MetricNames.ROUTER_ROUTING_TIME;
-import static com.linkedin.alpini.router.api.MetricNames.ROUTER_SERVER_TIME;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_PARSE_URI;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_RESPONSE_WAIT_TIME;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_ROUTING_TIME;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_SERVER_TIME;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.HttpConstants.VENICE_REQUEST_RCU;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_GATEWAY;
@@ -15,6 +15,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.alpini.base.misc.HeaderNames;
+import com.linkedin.alpini.base.misc.MetricNames;
 import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.base.misc.TimeValue;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
@@ -230,18 +231,18 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
 
     HttpResponseStatus responseStatus = finalResponse.status();
-    Map<String, TimeValue> allMetrics = metrics.getMetrics();
+    Map<MetricNames, TimeValue> allMetrics = metrics.getMetrics();
     /**
      * All the metrics in {@link com.linkedin.ddsstorage.router.api.MetricNames} are supported in {@link Metrics}.
      * We are not exposing the following metrics inside Venice right now.
      * 1. {@link ROUTER_PARSE_URI}
      * 2. {@link ROUTER_ROUTING_TIME}
      */
-    if (allMetrics.containsKey(ROUTER_SERVER_TIME.name())) {
+    TimeValue timeValue = allMetrics.get(ROUTER_SERVER_TIME);
+    if (timeValue != null) {
       // TODO: When a batch get throws a quota exception, the ROUTER_SERVER_TIME is missing, so we can't record anything
       // here...
-      double latency = LatencyUtils
-          .convertLatencyFromNSToMS(allMetrics.get(ROUTER_SERVER_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
+      double latency = LatencyUtils.convertLatencyFromNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordLatency(storeName, latency);
       if (HEALTHY_STATUSES.contains(responseStatus)) {
         routerStats.getStatsByType(RequestType.SINGLE_GET)
@@ -259,19 +260,19 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         stats.recordUnhealthyRequest(storeName, latency);
       }
     }
-    if (allMetrics.containsKey(ROUTER_RESPONSE_WAIT_TIME.name())) {
-      double waitingTime = LatencyUtils
-          .convertLatencyFromNSToMS(allMetrics.get(ROUTER_RESPONSE_WAIT_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
+    timeValue = allMetrics.get(ROUTER_RESPONSE_WAIT_TIME);
+    if (timeValue != null) {
+      double waitingTime = LatencyUtils.convertLatencyFromNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordResponseWaitingTime(storeName, waitingTime);
     }
-    if (allMetrics.containsKey(ROUTER_PARSE_URI.name())) {
-      double parsingTime = LatencyUtils
-          .convertLatencyFromNSToMS(allMetrics.get(ROUTER_PARSE_URI.name()).getRawValue(TimeUnit.NANOSECONDS));
+    timeValue = allMetrics.get(ROUTER_PARSE_URI);
+    if (timeValue != null) {
+      double parsingTime = LatencyUtils.convertLatencyFromNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordRequestParsingLatency(storeName, parsingTime);
     }
-    if (allMetrics.containsKey(ROUTER_ROUTING_TIME.name())) {
-      double routingTime = LatencyUtils
-          .convertLatencyFromNSToMS(allMetrics.get(ROUTER_ROUTING_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
+    timeValue = allMetrics.get(ROUTER_ROUTING_TIME);
+    if (timeValue != null) {
+      double routingTime = LatencyUtils.convertLatencyFromNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordRequestRoutingLatency(storeName, routingTime);
     }
     if (HEALTHY_STATUSES.contains(responseStatus) && !venicePath.isStreamingRequest()) {

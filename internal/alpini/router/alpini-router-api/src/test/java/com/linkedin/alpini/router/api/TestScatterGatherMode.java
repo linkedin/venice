@@ -128,8 +128,7 @@ public class TestScatterGatherMode {
                     AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                     hostFinder,
                     hostHealthMonitor,
-                    roles,
-                    null))
+                    roles))
             .thenCompose(Function.identity())
             .join(),
         scatter);
@@ -167,8 +166,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("OnePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(true).when(hostHealthMonitor).isHostHealthy(Mockito.eq(host), Mockito.eq("OnePartition"));
 
@@ -182,8 +180,7 @@ public class TestScatterGatherMode {
                     AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                     hostFinder,
                     hostHealthMonitor,
-                    roles,
-                    null))
+                    roles))
             .thenCompose(Function.identity())
             .join(),
         scatter);
@@ -222,8 +219,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("OnePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(Collections.singletonList(host2))
         .when(hostFinder)
@@ -232,8 +228,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("TwoPartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(true).when(hostHealthMonitor).isHostHealthy(Mockito.eq(host1), Mockito.eq("OnePartition"));
 
@@ -249,8 +244,7 @@ public class TestScatterGatherMode {
                     AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                     hostFinder,
                     hostHealthMonitor,
-                    roles,
-                    null))
+                    roles))
             .thenCompose(Function.identity())
             .join(),
         scatter);
@@ -296,8 +290,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("OnePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(Collections.singletonList(host2))
         .when(hostFinder)
@@ -306,8 +299,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("TwoPartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(true).when(hostHealthMonitor).isHostHealthy(Mockito.eq(host1), Mockito.eq("OnePartition"));
 
@@ -323,8 +315,7 @@ public class TestScatterGatherMode {
                     AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                     hostFinder,
                     hostHealthMonitor,
-                    roles,
-                    null))
+                    roles))
             .thenCompose(Function.identity())
             .join(),
         scatter);
@@ -390,8 +381,7 @@ public class TestScatterGatherMode {
                     AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                     hostFinder,
                     hostHealthMonitor,
-                    roles,
-                    null))
+                    roles))
             .thenCompose(Function.identity())
             .join(),
         scatter);
@@ -432,8 +422,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("OnePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(true).when(hostHealthMonitor).isHostHealthy(Mockito.eq(host), Mockito.eq("OnePartition"));
 
@@ -447,8 +436,7 @@ public class TestScatterGatherMode {
                     AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                     hostFinder,
                     hostHealthMonitor,
-                    roles,
-                    null))
+                    roles))
             .thenCompose(Function.identity())
             .join(),
         scatter);
@@ -500,8 +488,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("OnePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(Collections.singletonList(host2))
         .when(hostFinder)
@@ -510,8 +497,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("TwoPartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(true).when(hostHealthMonitor).isHostHealthy(Mockito.eq(host1), Mockito.eq("OnePartition"));
 
@@ -527,8 +513,7 @@ public class TestScatterGatherMode {
                     AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                     hostFinder,
                     hostHealthMonitor,
-                    roles,
-                    null))
+                    roles))
             .thenCompose(Function.identity())
             .join(),
         scatter);
@@ -602,8 +587,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("OnePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(CollectionUtil.listOf(host2, host1))
         .when(hostFinder)
@@ -612,8 +596,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("TwoPartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(CollectionUtil.listOf(host1, host2))
         .when(hostFinder)
@@ -622,8 +605,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("ThreePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(CollectionUtil.listOf(host2, host1))
         .when(hostFinder)
@@ -632,8 +614,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("FourPartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(true).when(hostHealthMonitor).isHostHealthy(Mockito.eq(host1), Mockito.eq("OnePartition"));
 
@@ -653,8 +634,7 @@ public class TestScatterGatherMode {
                     AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                     hostFinder,
                     hostHealthMonitor,
-                    roles,
-                    null))
+                    roles))
             .thenCompose(Function.identity())
             .join(),
         scatter);
@@ -741,8 +721,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("OnePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(CollectionUtil.listOf(host2, host3))
         .when(hostFinder)
@@ -751,8 +730,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("TwoPartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(CollectionUtil.listOf(host1, host2, host3))
         .when(hostFinder)
@@ -761,8 +739,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("ThreePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(CollectionUtil.listOf(host2, host3))
         .when(hostFinder)
@@ -771,8 +748,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("FourPartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(true).when(hostHealthMonitor).isHostHealthy(any(Host.class), Mockito.anyString());
 
@@ -786,8 +762,7 @@ public class TestScatterGatherMode {
                     AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                     hostFinder,
                     hostHealthMonitor,
-                    roles,
-                    null))
+                    roles))
             .thenCompose(Function.identity())
             .join(),
         scatter);
@@ -862,8 +837,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("OnePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(CollectionUtil.listOf(host2, host3))
         .when(hostFinder)
@@ -872,8 +846,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("TwoPartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doThrow(RouterException.class)
         .when(hostFinder)
@@ -882,8 +855,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("ThreePartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(CollectionUtil.listOf(host2, host3))
         .when(hostFinder)
@@ -892,8 +864,7 @@ public class TestScatterGatherMode {
             Mockito.eq(resourceName),
             Mockito.eq("FourPartition"),
             any(),
-            Mockito.eq(roles),
-            any());
+            Mockito.eq(roles));
 
     Mockito.doReturn(true).when(hostHealthMonitor).isHostHealthy(any(Host.class), Mockito.anyString());
 
@@ -907,8 +878,7 @@ public class TestScatterGatherMode {
                   AsyncPartitionFinder.adapt(partitionFinder, Runnable::run),
                   hostFinder,
                   hostHealthMonitor,
-                  roles,
-                  null))
+                  roles))
           .thenCompose(Function.identity())
           .join();
       Assert.fail();

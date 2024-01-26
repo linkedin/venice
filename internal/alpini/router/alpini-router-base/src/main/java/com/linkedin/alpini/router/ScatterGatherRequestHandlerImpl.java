@@ -10,15 +10,14 @@ import com.linkedin.alpini.base.concurrency.impl.CancelledAsyncFuture;
 import com.linkedin.alpini.base.concurrency.impl.SuccessAsyncFuture;
 import com.linkedin.alpini.base.misc.BasicRequest;
 import com.linkedin.alpini.base.misc.ExceptionWithStatus;
-import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.Headers;
 import com.linkedin.alpini.base.misc.Http2TooManyStreamsException;
+import com.linkedin.alpini.base.misc.MetricNames;
 import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.base.misc.Time;
 import com.linkedin.alpini.base.misc.TimeValue;
 import com.linkedin.alpini.netty4.misc.Http2Utils;
 import com.linkedin.alpini.router.api.HostHealthMonitor;
-import com.linkedin.alpini.router.api.MetricNames;
 import com.linkedin.alpini.router.api.ResourcePath;
 import com.linkedin.alpini.router.api.ResourcePathParser;
 import com.linkedin.alpini.router.api.RouterException;
@@ -32,10 +31,8 @@ import io.netty.util.concurrent.EventExecutor;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -46,7 +43,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 
 
@@ -98,12 +94,9 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
     return _scatterGatherHelper;
   }
 
-  public static <M extends Enum<M>> void setMetric(
-      Metrics metric,
-      @Nonnull M metricName,
-      @Nonnull Supplier<TimeValue> supplier) {
+  public static void setMetric(Metrics metric, @Nonnull MetricNames metricName, @Nonnull Supplier<TimeValue> supplier) {
     if (metric != null) {
-      metric.setMetric(metricName.name(), supplier.get());
+      metric.setMetric(metricName, supplier.get());
     }
   }
 
@@ -934,47 +927,16 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
     CompletionStage<?> complete = COMPLETED;
     R roles = _scatterGatherHelper.parseRoles(request.getMethodName(), request.getRequestHeaders());
     StringBuilder contentMsg = new StringBuilder(contentMessage);
+
     if (part.getPartitionKeys().isEmpty()) {
-      // Some requests, like table level queries, do not have keys. For these errors, send one message per request with
-      // the Served-By and Partition header
-      // if available. We can't send a Content-Location since we don't have a key for the request.
-      Map<String, String> errorHeaders = new HashMap<>();
-
-      if (!part.getPartitionNamesToQuery().isEmpty()) {
-        String partitions =
-            part.getPartitionNamesToQuery().stream().map(Object::toString).collect(Collectors.joining(","));
-        errorHeaders.put(HeaderNames.X_PARTITION, partitions);
-      }
-      List<H> hosts = part.getHosts();
-      if (hosts != null && !hosts.isEmpty()) {
-        errorHeaders.put(HeaderNames.X_SERVED_BY, hosts.get(0).toString());
-      }
-
-      appendError(
-          request,
-          responses,
-          status,
-          contentMsg.append(", RoutingPolicy=").append(roles).toString(),
-          ex,
-          errorHeaders);
+      appendError(request, responses, status, contentMsg.append(", RoutingPolicy=").append(roles).toString(), ex);
     } else {
-      // For requests with keys, send an error for each key. The response includes Content-Location, as well as
-      // Served-By and Partition headers if available.
+      // For requests with keys, send an error for each key. TODO: Consider if we could rip all of that out?
       for (K key: part.getPartitionKeys()) {
-        Map<String, String> errorHeaders = new HashMap<>();
         complete = complete.thenApply(aVoid -> pathParser.substitutePartitionKey(basePath, key))
             .thenCompose(pathForThisKey -> {
-              errorHeaders.put(HeaderNames.CONTENT_LOCATION, pathForThisKey.getLocation());
-              return _scatterGatherHelper.findPartitionName(pathForThisKey.getResourceName(), key);
-            })
-            .thenApply(partitionName -> {
-              errorHeaders.put(HeaderNames.X_PARTITION, partitionName);
-              contentMsg.append(", PartitionName=").append(partitionName);
-
-              List<H> hosts = part.getHosts();
-              if (hosts != null && !hosts.isEmpty()) {
-                errorHeaders.put(HeaderNames.X_SERVED_BY, hosts.get(0).toString());
-              }
+              contentMsg.append(", PartitionName=")
+                  .append(_scatterGatherHelper.findPartitionName(pathForThisKey.getResourceName(), key));
               return null;
             })
             .exceptionally(e -> {
@@ -987,8 +949,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
                   responses,
                   status,
                   contentMsg.append(", RoutingPolicy=").append(roles).toString(),
-                  ex,
-                  errorHeaders);
+                  ex);
               return null;
             });
       }
@@ -1001,11 +962,10 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       @Nonnull List<HR> responses,
       @Nonnull HRS status,
       String contentMessage,
-      Throwable ex,
-      @Nonnull Map<String, String> errorHeaders) {
+      Throwable ex) {
     LOG.debug("appendError");
     ex = unwrapCompletion(ex);
-    responses.add(buildErrorResponse(request, status, contentMessage, ex, errorHeaders));
+    responses.add(buildErrorResponse(request, status, contentMessage, ex));
   }
 
   protected abstract boolean isTooLongFrameException(Throwable cause);
@@ -1017,18 +977,16 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
     HR response;
     boolean closeChannel;
 
-    Map<String, String> errorHeaders = Collections.emptyMap();
-
     if (cause instanceof ExceptionWithStatus) {
       ExceptionWithStatus rex = (ExceptionWithStatus) cause;
       if (rex.code() >= 500) {
         LOG.warn("RouterException 5XX exception caught", rex);
       }
-      response = buildErrorResponse(request, statusOf(rex.code()), rex.getMessage(), rex, errorHeaders);
+      response = buildErrorResponse(request, statusOf(rex.code()), rex.getMessage(), rex);
       closeChannel = rex instanceof RouterException && ((RouterException) rex).shouldCloseChannel();
     } else if (isTooLongFrameException(cause)) {
       // Send a 400 error and close the channel
-      response = buildErrorResponse(request, badRequest(), cause.getMessage(), cause, errorHeaders);
+      response = buildErrorResponse(request, badRequest(), cause.getMessage(), cause);
       closeChannel = true;
     } else if (cause instanceof URISyntaxException) {
       URISyntaxException uex = (URISyntaxException) cause;
@@ -1036,12 +994,10 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
           request,
           badRequest(),
           "Bad request path (" + uex.getInput() + "). " + uex.getMessage(),
-          uex,
-          errorHeaders);
+          uex);
       closeChannel = false;
     } else if (Http2Utils.isTooManyActiveStreamsError(cause)) {
-      response =
-          buildErrorResponse(request, serviceUnavailable(), null, Http2TooManyStreamsException.INSTANCE, errorHeaders);
+      response = buildErrorResponse(request, serviceUnavailable(), null, Http2TooManyStreamsException.INSTANCE);
       // No need to close the client connection
       closeChannel = false;
     } else {
@@ -1049,7 +1005,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       LOG.error(
           "Unexpected exception caught in ScatterGatherRequestHandler.exceptionCaught. Sending error and closing client channel. ",
           cause);
-      response = buildErrorResponse(request, internalServerError(), null, cause, errorHeaders);
+      response = buildErrorResponse(request, internalServerError(), null, cause);
       closeChannel = true;
     }
 
@@ -1066,8 +1022,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       @Nonnull BHS request,
       @Nonnull HRS status,
       String contentMessage,
-      Throwable ex,
-      @Nonnull Map<String, String> errorHeaders);
+      Throwable ex);
 
   protected final void dispatch(
       @Nonnull Scatter<H, P, K> scatter,
