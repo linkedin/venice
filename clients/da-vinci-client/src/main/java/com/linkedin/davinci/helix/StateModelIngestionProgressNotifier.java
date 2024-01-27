@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
  * The class also holds latches that can be used in SM in the cases when state transitions
  * need to coordinate with ingestion progress.
  */
-public abstract class StateModelIngestionProgressNotifier implements VeniceNotifier {
+public class StateModelIngestionProgressNotifier implements VeniceNotifier {
   private final Logger logger = LogManager.getLogger(this.getClass());
   private final Map<String, CountDownLatch> stateModelToIngestionCompleteFlagMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Boolean> stateModelToSuccessMap = new VeniceConcurrentHashMap<>();

@@ -70,8 +70,8 @@ import static org.testng.Assert.fail;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.helix.LeaderFollowerIngestionProgressNotifier;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.helix.StateModelIngestionProgressNotifier;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -455,7 +455,7 @@ public abstract class StoreIngestionTaskTest {
     }).when(mockLogNotifier).error(anyString(), anyInt(), anyString(), any());
 
     mockPartitionStatusNotifier = mock(PartitionPushStatusNotifier.class);
-    mockLeaderFollowerStateModelNotifier = mock(LeaderFollowerIngestionProgressNotifier.class);
+    mockLeaderFollowerStateModelNotifier = mock(StateModelIngestionProgressNotifier.class);
 
     mockStorageMetadataService = mock(StorageMetadataService.class);
 

@@ -21,6 +21,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -153,6 +154,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final Set<String> nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
   private final VeniceWriterFactory veniceWriterFactory;
 
+  private final HeartbeatMonitoringService heartbeatMonitoringService;
+
   /**
    * Leader must maintain producer DIV states separate from drainers, because leader is always ahead of drainer;
    * if leader and drainer share the same DIV validator, leader will pollute the data in shared DIV validator;
@@ -207,6 +210,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheBackend,
         recordTransformer,
         builder.getLeaderFollowerNotifiers());
+    this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the
      * split-brain problem happens in prod, we could design a way to periodically produce snapshot to the meta system
@@ -2049,6 +2053,36 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  protected void recordHeartbeatReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      String kafkaUrl) {
+    if (heartbeatMonitoringService == null) {
+      // Not enabled!
+      return;
+    }
+    long producerTimeStamp =
+        max(consumerRecord.getPubSubMessageTime(), consumerRecord.getValue().producerMetadata.messageTimestamp);
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      for (int subPartition: PartitionUtils
+          .getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {
+        heartbeatMonitoringService.recordLeaderHeartbeat(
+            storeName,
+            versionNumber,
+            subPartition,
+            serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+            producerTimeStamp);
+      }
+    } else {
+      heartbeatMonitoringService.recordFollowerHeartbeat(
+          storeName,
+          versionNumber,
+          partitionConsumptionState.getUserPartition(),
+          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          producerTimeStamp);
+    }
+  }
+
   /**
    * The goal of this function is to possibly produce the incoming kafka message consumed from local VT, remote VT, RT or SR topic to
    * local VT if needed. It's decided based on the function output of {@link #shouldProduceToVersionTopic} and message type.
@@ -2250,6 +2284,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             } else {
               if (controlMessageType == START_OF_SEGMENT
                   && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+                recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
                 propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
                     partitionConsumptionState,
                     consumerRecord,

@@ -9,13 +9,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.meta.Store;
+import io.tehuti.metrics.MetricsRepository;
+import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 import org.testng.annotations.Test;
 
 
 public class VeniceLeaderFollowerStateModelTest extends
-    AbstractVenicePartitionStateModelTest<LeaderFollowerPartitionStateModel, LeaderFollowerIngestionProgressNotifier> {
+    AbstractVenicePartitionStateModelTest<LeaderFollowerPartitionStateModel, StateModelIngestionProgressNotifier> {
   @Override
   protected LeaderFollowerPartitionStateModel getParticipantStateModel() {
     return new LeaderFollowerPartitionStateModel(
@@ -26,12 +29,13 @@ public class VeniceLeaderFollowerStateModelTest extends
         mockReadOnlyStoreRepository,
         CompletableFuture.completedFuture(mockPushStatusAccessor),
         null,
-        mockParticipantStateTransitionStats);
+        mockParticipantStateTransitionStats,
+        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, new HashSet<>(), "local"));
   }
 
   @Override
-  protected LeaderFollowerIngestionProgressNotifier getNotifier() {
-    return mock(LeaderFollowerIngestionProgressNotifier.class);
+  protected StateModelIngestionProgressNotifier getNotifier() {
+    return mock(StateModelIngestionProgressNotifier.class);
   }
 
   @Test
