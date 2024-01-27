@@ -244,6 +244,14 @@ public enum Arg {
       "interval", "itv", true,
       "monitor data recovery progress at seconds close to the number specified by the interval parameter until tasks are finished"
   ), DATETIME("datetime", "dtm", true, "Date and time stamp (YYYY-MM-DDTHH:MM:SS) in UTC time zone for data recovery"),
+  SKIP_LAST_STORE_CREATION(
+      "skip-last-store-creation", "slsc", true,
+      "Skip last round of store creation and the following schema manipulation"
+  ), REPAIR("repair", "re", true, "Repair the store"),
+  GRAVEYARD_CLUSTERS(
+      "graveyard-clusters", "gc", true, "Clusters to scan store graveyard to retrieve metadata, eg. cluster-1,cluster-2"
+  ), RECOVER_CLUSTER("recover-cluster", "rc", true, "Cluster to recover from"),
+  BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;

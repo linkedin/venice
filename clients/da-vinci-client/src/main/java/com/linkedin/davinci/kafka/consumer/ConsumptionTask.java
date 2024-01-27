@@ -88,84 +88,93 @@ class ConsumptionTask implements Runnable {
     Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
     int payloadBytesConsumedInOnePoll;
     int polledPubSubMessagesCount = 0;
-    while (running) {
-      try {
-        if (addSomeDelay) {
-          synchronized (this) {
-            /**
-             * N.B. Using {@link #wait(long)} here so that it can be interrupted by the notification of {@link #stop()}
-             * or {@link #setDataReceiver(TopicPartition, ConsumedDataReceiver)}.
-             */
-            wait(readCycleDelayMs);
+    try {
+      while (running) {
+        try {
+          if (addSomeDelay) {
+            synchronized (this) {
+              /**
+               * N.B. Using {@link #wait(long)} here so that it can be interrupted by the notification of {@link #stop()}
+               * or {@link #setDataReceiver(TopicPartition, ConsumedDataReceiver)}.
+               */
+              wait(readCycleDelayMs);
+            }
+            addSomeDelay = false;
           }
-          addSomeDelay = false;
-        }
-        beforePollingTimeStamp = System.currentTimeMillis();
-        topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub); // N.B. cheap call
-        for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
-          ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
-              dataReceiverMap.remove(topicPartitionToUnSub);
-          if (dataReceiver != null) {
-            dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.getPubSubTopic().getName());
+          beforePollingTimeStamp = System.currentTimeMillis();
+          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub); // N.B. cheap call
+          for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
+            ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
+                dataReceiverMap.remove(topicPartitionToUnSub);
+            if (dataReceiver != null) {
+              dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.getPubSubTopic().getName());
+            }
           }
-        }
-        topicPartitionsToUnsub.clear();
+          topicPartitionsToUnsub.clear();
 
-        /**
-         * N.B. The poll function could be synchronized here if implementing the idea presented in the top of class
-         * JavaDoc, about how this class could become the sole entry point for all consumer-related interactions,
-         * and thus be capable of operating on a non-threadsafe consumer.
-         */
-        polledPubSubMessages = pollFunction.get();
-        lastSuccessfulPollTimestamp = System.currentTimeMillis();
-        stats.recordPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
-        stats.recordPollResultNum(polledPubSubMessagesCount);
-        payloadBytesConsumedInOnePoll = 0;
-        polledPubSubMessagesCount = 0;
-        if (!polledPubSubMessages.isEmpty()) {
-          beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-          for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
-              .entrySet()) {
-            PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-            List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionMessages = entry.getValue();
-            consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
-            if (consumedDataReceiver == null) {
-              // defensive code
-              LOGGER.error(
-                  "Couldn't find consumed data receiver for topic partition : {} after receiving records from `poll` request",
-                  pubSubTopicPartition);
-              topicPartitionsToUnsub.add(pubSubTopicPartition);
-              continue;
+          /**
+           * N.B. The poll function could be synchronized here if implementing the idea presented in the top of class
+           * JavaDoc, about how this class could become the sole entry point for all consumer-related interactions,
+           * and thus be capable of operating on a non-threadsafe consumer.
+           */
+          polledPubSubMessages = pollFunction.get();
+          lastSuccessfulPollTimestamp = System.currentTimeMillis();
+          stats.recordPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
+          stats.recordPollResultNum(polledPubSubMessagesCount);
+          payloadBytesConsumedInOnePoll = 0;
+          polledPubSubMessagesCount = 0;
+          if (!polledPubSubMessages.isEmpty()) {
+            beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
+            for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
+                .entrySet()) {
+              PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+              List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionMessages = entry.getValue();
+              consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
+              if (consumedDataReceiver == null) {
+                // defensive code
+                LOGGER.error(
+                    "Couldn't find consumed data receiver for topic partition : {} after receiving records from `poll` request",
+                    pubSubTopicPartition);
+                topicPartitionsToUnsub.add(pubSubTopicPartition);
+                continue;
+              }
+              polledPubSubMessagesCount += topicPartitionMessages.size();
+              for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: topicPartitionMessages) {
+                payloadBytesConsumedInOnePoll += pubSubMessage.getPayloadSize();
+              }
+              consumedDataReceiver.write(topicPartitionMessages);
             }
-            polledPubSubMessagesCount += topicPartitionMessages.size();
-            for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: topicPartitionMessages) {
-              payloadBytesConsumedInOnePoll += pubSubMessage.getPayloadSize();
-            }
-            consumedDataReceiver.write(topicPartitionMessages);
+            stats.recordConsumerRecordsProducingToWriterBufferLatency(
+                LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
+            stats.recordNonZeroPollResultNum(polledPubSubMessagesCount);
+            bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
+            recordsThrottler.accept(polledPubSubMessagesCount);
+            cleaner.unsubscribe(topicPartitionsToUnsub);
+            stats.recordDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsToUnsub.size());
+          } else {
+            // No result came back, here will add some delay
+            addSomeDelay = true;
           }
-          stats.recordConsumerRecordsProducingToWriterBufferLatency(
-              LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
-          stats.recordNonZeroPollResultNum(polledPubSubMessagesCount);
-          bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
-          recordsThrottler.accept(polledPubSubMessagesCount);
-          cleaner.unsubscribe(topicPartitionsToUnsub);
-          stats.recordDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsToUnsub.size());
-        } else {
-          // No result came back, here will add some delay
+        } catch (Exception e) {
+          if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+            // We sometimes wrap InterruptedExceptions, so not taking any chances...
+            LOGGER.error("Received InterruptedException, will exit");
+            break;
+          }
+          LOGGER.error("Received exception while polling, will retry", e);
           addSomeDelay = true;
+          stats.recordPollError();
         }
-      } catch (Exception e) {
-        if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
-          // We sometimes wrap InterruptedExceptions, so not taking any chances...
-          LOGGER.error("Received InterruptedException, will exit");
-          break;
-        }
-        LOGGER.error("Received exception while polling, will retry", e);
-        addSomeDelay = true;
-        stats.recordPollError();
       }
+    } catch (Throwable t) {
+      // This is a catch-all to ensure that the thread doesn't die unexpectedly. If it does, we want to know about it.
+      LOGGER.error(
+          "Shared consumer thread: {} exited due to an unexpected exception",
+          Thread.currentThread().getName(),
+          t);
+    } finally {
+      LOGGER.info("Shared consumer thread: {} exited", Thread.currentThread().getName());
     }
-    LOGGER.info("Shared consumer thread: {} exited", Thread.currentThread().getName());
   }
 
   void stop() {

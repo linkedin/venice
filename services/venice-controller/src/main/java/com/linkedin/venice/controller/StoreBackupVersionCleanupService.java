@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
@@ -23,6 +24,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -101,8 +103,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       clusterNameCleanupStatsMap
           .put(clusterName, new StoreBackupVersionCleanupServiceStats(metricsRepository, clusterName));
     });
+    Optional<SSLFactory> sslFactory = admin.getSslFactory();
     this.httpAsyncClient = HttpAsyncClients.custom()
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
+        .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
         .build();
   }
 
@@ -144,11 +148,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private boolean validateAllRouterOnCurrentVersion(Store store, String clusterName, int versionToValidate) {
     Set<Instance> liveRouterInstances =
         admin.getHelixVeniceClusterResources(clusterName).getRoutersClusterManager().getLiveRouterInstances();
-
     for (Instance routerInstance: liveRouterInstances) {
       try {
         HttpGet routerRequest =
-            new HttpGet(routerInstance.getUrl(true) + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
+            new HttpGet(routerInstance.getHostUrl(true) + "/" + TYPE_CURRENT_VERSION + "/" + store.getName());
         HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
@@ -168,7 +171,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           return false;
         }
       } catch (Exception e) {
-        LOGGER.error("Got exception while getting router current version for store {}", store.getName(), e);
+        LOGGER.error(
+            "Got exception while getting router current version for store {} from host {}",
+            store.getName(),
+            routerInstance,
+            e);
         return false;
       }
     }
@@ -180,9 +187,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
 
     for (Instance instance: instances) {
       try {
-        HttpGet routerRequest = new HttpGet(
-            instance.getUrl(true) + "/" + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + store.getName());
-        HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
+        HttpGet serverRequest = new HttpGet(
+            instance.getHostUrl(true) + "/" + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/"
+                + store.getName());
+        HttpResponse response = getHttpAsyncClient().execute(serverRequest, null).get(500, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
               "Got status code {} from host {} while querying server current version for store {}",
@@ -201,7 +209,11 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           return false;
         }
       } catch (Exception e) {
-        LOGGER.error("Got exception while getting server current version for store {}", store.getName(), e);
+        LOGGER.error(
+            "Got exception while getting server current version for store {} from host {}",
+            store.getName(),
+            instance.getHostUrl(true),
+            e);
         return false;
       }
     }

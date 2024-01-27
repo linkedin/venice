@@ -36,6 +36,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
@@ -55,6 +56,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
@@ -210,8 +212,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER =
       new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID);
 
-  public static final PubSubMessageHeaders EMPTY_MSG_HEADERS = new PubSubMessageHeaders();
-
   // Immutable state
   private final PubSubMessageHeaders protocolSchemaHeaders;
 
@@ -343,7 +343,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
 
     this.protocolSchemaHeaders = overrideProtocolSchema == null
-        ? EMPTY_MSG_HEADERS
+        ? EmptyPubSubMessageHeaders.SINGLETON
         : new PubSubMessageHeaders()
             .add(VENICE_TRANSPORT_PROTOCOL_HEADER, overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
     try {
@@ -396,68 +396,129 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   @Override
   public void close(boolean gracefulClose) {
+    try {
+      closeAsync(gracefulClose).get();
+    } catch (ExecutionException | InterruptedException e) {
+      logger.warn("Future completed exceptionally in closing VeniceWriter for topic: {}", topicName, e);
+    }
+  }
+
+  /**
+   * Close the {@link VeniceWriter}.
+   *
+   * Deprecating this method due to the concern of sending END_OF_SEGMENT control message to a non-existing topic can be
+   * blocked indefinitely as it is calling
+   * {@link #sendMessage(KeyProvider, KafkaMessageEnvelopeProvider, int, PubSubProducerCallback, boolean)}.get()
+   * without timeout.
+   *
+   * @param gracefulClose whether to end the segments and send END_OF_SEGMENT control message.
+   * @param retryOnGracefulCloseFailure whether to retry on graceful close failure.
+   */
+  @Deprecated
+  public void close(boolean gracefulClose, boolean retryOnGracefulCloseFailure) {
     synchronized (closeLock) {
       if (isClosed) {
         return;
       }
-      long startTime = System.currentTimeMillis();
-      logger.info("Closing VeniceWriter for topic: {}", topicName);
-      try {
-        // If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
-        // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
-        if (gracefulClose) {
-          endAllSegments(true);
-        }
-        // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
-        // For non-shared producer mode gracefulClose will flush the producer
 
-        producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
-        OPEN_VENICE_WRITER_COUNT.decrementAndGet();
-      } catch (Exception e) {
-        logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
-        VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
+      logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
+      try (Timer ignore = Timer.run(
+          elapsedTimeInMs -> logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs))) {
+        try {
+          // If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
+          // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
+          if (gracefulClose) {
+            endAllSegments(true);
+          }
+          // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
+          // For non-shared producer mode gracefulClose will flush the producer
+
+          producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
+          OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+        } catch (Exception e) {
+          handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
+        } finally {
+          threadPoolExecutor.shutdown();
+          isClosed = true;
+        }
       }
-      threadPoolExecutor.shutdown();
-      isClosed = true;
-      logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
     }
   }
 
   public CompletableFuture<VeniceResourceCloseResult> closeAsync(boolean gracefulClose) {
+    return closeAsync(gracefulClose, true);
+  }
+
+  public CompletableFuture<VeniceResourceCloseResult> closeAsync(
+      boolean gracefulClose,
+      boolean retryOnGracefulCloseFailure) {
+    /*
+     * If the VeniceWriter is already closed, return a completed future. This is to avoid the case that a Thread pool
+     * RejectedExecutionException when a previous closeAsync is executed and the threadPool is already terminated.
+     */
+    synchronized (closeLock) {
+      if (isClosed) {
+        return CompletableFuture.completedFuture(VeniceResourceCloseResult.ALREADY_CLOSED);
+      }
+    }
+
     return CompletableFuture.supplyAsync(() -> {
       synchronized (closeLock) {
         if (isClosed) {
           return VeniceResourceCloseResult.ALREADY_CLOSED;
         }
-        long startTime = System.currentTimeMillis();
-        logger.info("Closing VeniceWriter for topic: {}", topicName);
-        try {
-          // try to end all segments before closing the producer
-          if (gracefulClose) {
-            CompletableFuture<Void> endSegmentsFuture =
-                CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
-            try {
-              endSegmentsFuture.get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
-            } catch (Exception e) {
-              // cancel the endSegmentsFuture if it's not done in time
-              if (!endSegmentsFuture.isDone()) {
-                endSegmentsFuture.cancel(true);
+        logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
+        try (Timer ignore = Timer.run(
+            elapsedTimeInMs -> logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs))) {
+          try {
+            // try to end all segments before closing the producer.
+            if (gracefulClose) {
+              CompletableFuture<Void> endSegmentsFuture =
+                  CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
+              try {
+                endSegmentsFuture.get(Math.max(100, closeTimeOutInMs / 2), TimeUnit.MILLISECONDS);
+              } catch (Exception e) {
+                // cancel the endSegmentsFuture if it's not done in time.
+                if (!endSegmentsFuture.isDone()) {
+                  endSegmentsFuture.cancel(true);
+                }
+                logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
               }
-              logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
             }
+            producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
+            OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+          } catch (Exception e) {
+            handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
+          } finally {
+            threadPoolExecutor.shutdown();
+            isClosed = true;
           }
-          producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
-          OPEN_VENICE_WRITER_COUNT.decrementAndGet();
-        } catch (Exception e) {
-          logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
-          VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
         }
-        threadPoolExecutor.shutdown();
-        isClosed = true;
-        logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, System.currentTimeMillis() - startTime);
         return VeniceResourceCloseResult.SUCCESS;
       }
+
     }, threadPoolExecutor);
+  }
+
+  void handleExceptionInClose(Exception e, boolean gracefulClose, boolean retryOnGracefulCloseFailure) {
+    logger.warn("Swallowed an exception while trying to close the VeniceWriter for topic: {}", topicName, e);
+    VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
+
+    // For graceful close, swallow the exception and give another try to close it ungracefully.
+    try {
+      if (gracefulClose && retryOnGracefulCloseFailure) {
+        logger.info(
+            "Ungracefully closing the VeniceWriter for topic: {}, closeTimeOut: {} ms",
+            topicName,
+            closeTimeOutInMs);
+        producerAdapter.close(topicName, closeTimeOutInMs, false);
+        OPEN_VENICE_WRITER_COUNT.decrementAndGet();
+      }
+    } catch (Exception ex) {
+      // Even ungraceful close fails, give up, swallow exception and move on.
+      logger.warn("Exception in ungraceful close for topic: {}", topicName, ex);
+      VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
+    }
   }
 
   @Override
@@ -1357,7 +1418,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER} or {@link VeniceWriter#EMPTY_MSG_HEADERS} is used for
+   * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER} or {@link EmptyPubSubMessageHeaders} is used for
    * all messages to a partition based on {@link VeniceWriter} param overrideProtocolSchema and whether it's a first message.
    * {@link PubSubMessageHeaders#VENICE_LEADER_COMPLETION_STATE_HEADER} is added to the above headers for HB SOS message.
    *
@@ -1378,7 +1439,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     PubSubMessageHeaders pubSubMessageHeaders =
         producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0
             ? protocolSchemaHeaders
-            : EMPTY_MSG_HEADERS;
+            : EmptyPubSubMessageHeaders.SINGLETON;
 
     if (addLeaderCompleteState) {
       // copy protocolSchemaHeaders locally and add extra header for leaderCompleteState
@@ -1562,7 +1623,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param partition the Kafka partition to write to.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
-  private void sendStartOfSegment(int partition, Map<String, String> debugInfo) {
+  public void sendStartOfSegment(int partition, Map<String, String> debugInfo) {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     StartOfSegment startOfSegment = new StartOfSegment();

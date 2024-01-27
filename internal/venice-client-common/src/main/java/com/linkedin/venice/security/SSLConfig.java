@@ -6,6 +6,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 
 import java.util.Properties;
 
@@ -15,6 +16,7 @@ public class SSLConfig {
   private String _keyStorePassword = "";
   private String _keyStoreType = "jks";
   private String _keyStoreFilePath = "";
+  private String _trustStoreType = "jks";
   private String _trustStoreFilePath = "";
   private String _trustStoreFilePassword = "";
   private boolean _sslEnabled = false;
@@ -69,6 +71,14 @@ public class SSLConfig {
     return _keyStoreType;
   }
 
+  public void setTrustStoreType(String trustStoreType) {
+    _trustStoreType = trustStoreType;
+  }
+
+  public String getTrustStoreType() {
+    return _trustStoreType;
+  }
+
   public void setSslEnabled(boolean sslEnabled) {
     _sslEnabled = sslEnabled;
   }
@@ -101,6 +111,7 @@ public class SSLConfig {
     config.setSslEnabled(Boolean.valueOf(sslProperties.getProperty(SSL_ENABLED)));
     config.setKeyStoreType(sslProperties.getProperty(SSL_KEYSTORE_TYPE));
     config.setKeyStoreFilePath(sslProperties.getProperty(SSL_KEYSTORE_LOCATION));
+    config.setTrustStoreType(sslProperties.getProperty(SSL_TRUSTSTORE_TYPE));
     config.setTrustStoreFilePath(sslProperties.getProperty(SSL_TRUSTSTORE_LOCATION));
     config.setKeyStorePassword(sslProperties.getProperty(SSL_KEYSTORE_PASSWORD));
     config.setTrustStoreFilePassword(sslProperties.getProperty(SSL_TRUSTSTORE_PASSWORD));

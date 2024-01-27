@@ -127,19 +127,6 @@ public class TestScatterGatherHelperBuilder {
         return Collections
             .singletonList(hosts.get((int) ((0xffffffffL & (long) partitionName.hashCode()) % hosts.size())));
       }
-
-      @Nonnull
-      @Override
-      public Collection<InetSocketAddress> findAllHosts(@Nonnull String resourceName, List<List<State>> roles)
-          throws RouterException {
-        return findAllHosts(roles);
-      }
-
-      @Nonnull
-      @Override
-      public Collection<InetSocketAddress> findAllHosts(List<List<State>> roles) throws RouterException {
-        return Collections.unmodifiableCollection(hosts);
-      }
     }
 
     Assert.assertNotNull(

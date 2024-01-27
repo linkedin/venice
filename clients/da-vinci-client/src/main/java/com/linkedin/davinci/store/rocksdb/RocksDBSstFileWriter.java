@@ -476,8 +476,11 @@ public class RocksDBSstFileWriter {
       rocksDB.ingestExternalFile(columnFamilyHandle, sstFilePaths, ingestOptions);
 
       LOGGER.info(
-          "Finished ingestion to store: " + storeName + ", partition id: " + partitionId + " from files: "
-              + sstFilePaths);
+          "Finished {} ingestion to store: {}, partition id: {} from files: {}",
+          isRMD ? "RMD" : "data",
+          storeName,
+          partitionId,
+          sstFilePaths);
     } catch (RocksDBException e) {
       throw new VeniceException("Received exception during RocksDB#ingestExternalFile", e);
     }

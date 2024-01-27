@@ -162,7 +162,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       storeConfig.setRestoreDataPartitions(false);
       switch (ingestionCommandType) {
         case START_CONSUMPTION:
-          isolatedIngestionServer.maybeSubscribeNewResource(topicName, partitionId);
+          isolatedIngestionServer.maybeInitializeResourceHostingMetadata(topicName, partitionId);
           validateAndExecuteCommand(ingestionCommandType, report, () -> {
             ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
             // For subscription based store repository, we will need to subscribe to the store explicitly.
@@ -201,6 +201,12 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           isolatedIngestionServer.cleanupTopicState(topicName);
           break;
         case REMOVE_PARTITION:
+          /**
+           * For this command, we will try to initialize the isolated process metadata for the topic partition, if the
+           * topic partition has never been associated with the server. This is needed as data partition is by default
+           * restored in the isolated process, and thus it should be able to be removed by Helix command.
+           */
+          isolatedIngestionServer.maybeInitializeResourceHostingMetadata(topicName, partitionId);
           validateAndExecuteCommand(ingestionCommandType, report, () -> {
             /**
              * Here we do not allow storage service to clean up "empty" storage engine. When ingestion isolation is turned on,

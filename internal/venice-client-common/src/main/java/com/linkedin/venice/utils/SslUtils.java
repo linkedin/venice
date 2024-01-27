@@ -49,23 +49,6 @@ public class SslUtils {
   /**
    * This function should be used in test cases only.
    *
-   * @return an instance of {@link SSLConfig} with local SSL config.
-   */
-  public static SSLConfig getLocalSslConfig() {
-    String keyStorePath = getPathForResource(LOCAL_KEYSTORE_JKS);
-    SSLConfig sslConfig = new SSLConfig();
-    sslConfig.setKeyStoreFilePath(keyStorePath);
-    sslConfig.setKeyStorePassword(LOCAL_PASSWORD);
-    sslConfig.setKeyStoreType("JKS");
-    sslConfig.setTrustStoreFilePath(keyStorePath);
-    sslConfig.setTrustStoreFilePassword(LOCAL_PASSWORD);
-    sslConfig.setSslEnabled(true);
-    return sslConfig;
-  }
-
-  /**
-   * This function should be used in test cases only.
-   *
    * @return a local SSL factory that uses a self-signed development certificate.
    */
   public static SSLFactory getVeniceLocalSslFactory() {

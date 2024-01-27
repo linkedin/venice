@@ -89,7 +89,7 @@ public class IngestionHeartBeatTest {
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
-        3,
+        1,
         4,
         1,
         2,
@@ -105,11 +105,9 @@ public class IngestionHeartBeatTest {
     this.parentController = parentControllers.get(0);
   }
 
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS)
-  public void testIngestionHeartBeat(
-      boolean isAmplificationFactorEnabled,
-      boolean isNativeReplicationEnabled,
-      boolean isActiveActiveEnabled) throws IOException {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS)
+  public void testIngestionHeartBeat(boolean isAmplificationFactorEnabled, boolean isActiveActiveEnabled)
+      throws IOException {
     final String storeName = Utils.getUniqueString("ingestionHeartBeatTest");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
@@ -130,20 +128,15 @@ public class IngestionHeartBeatTest {
               .setCompressionStrategy(CompressionStrategy.NO_OP)
               .setIncrementalPushEnabled(true)
               .setHybridRewindSeconds(500L)
-              .setHybridOffsetLagThreshold(0L)
+              .setHybridOffsetLagThreshold(10L)
               .setPartitionCount(2)
               .setReplicationFactor(2)
-              .setNativeReplicationEnabled(isNativeReplicationEnabled)
+              .setNativeReplicationEnabled(true)
               .setActiveActiveReplicationEnabled(isActiveActiveEnabled)
               .setAmplificationFactor(amplificationFactor);
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
-      if (!isNativeReplicationEnabled && isActiveActiveEnabled) {
-        assertTrue(
-            updateStoreResponse.isError(),
-            "Update store should fail when native replication is disabled and active-active replication is enabled");
-        return;
-      } else if (isAmplificationFactorEnabled && isActiveActiveEnabled) {
+      if (isAmplificationFactorEnabled && isActiveActiveEnabled) {
         assertTrue(
             updateStoreResponse.isError(),
             "Update store should fail when both amplification factor and active-active replication are enabled");

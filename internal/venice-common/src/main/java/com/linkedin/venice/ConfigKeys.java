@@ -609,6 +609,9 @@ public class ConfigKeys {
   public static final String SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER =
       "server.consumer.pool.size.per.kafka.cluster";
 
+  public static final String MIN_CONSUMER_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER =
+      "min.consumer.in.consumer.pool.per.kafka.cluster";
+
   /**
    * Whether to enable partition wise balanced shared consumer assignment.
    */

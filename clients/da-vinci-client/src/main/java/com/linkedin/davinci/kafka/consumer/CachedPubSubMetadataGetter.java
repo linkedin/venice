@@ -42,6 +42,8 @@ class CachedPubSubMetadataGetter {
    * @return Users of this method should be aware that Kafka will actually
    * return the next available offset rather the latest used offset. Therefore,
    * the value will be 1 offset greater than what's expected.
+   *
+   * TODO: Refactor this using PubSubTopicPartition
    */
   long getOffset(TopicManager topicManager, PubSubTopic pubSubTopic, int partitionId) {
     final String sourcePubSubServer = topicManager.getPubSubBootstrapServers();

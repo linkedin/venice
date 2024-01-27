@@ -19,14 +19,10 @@ import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.FutureListener;
 import io.netty.util.concurrent.ImmediateEventExecutor;
 import io.netty.util.concurrent.Promise;
-import io.netty.util.concurrent.PromiseCombiner;
 import io.netty.util.internal.PlatformDependent;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
@@ -112,11 +108,7 @@ public class SimpleChannelPoolManagerImpl implements ChannelPoolManager {
     return CallTracker.create();
   }
 
-  protected void initializeChannel(Channel ch) {
-
-  }
-
-  class HostPool implements ChannelPoolHandler, PoolStats {
+  class HostPool implements ChannelPoolHandler {
     private final Supplier<ManagedChannelPool> _channelPool;
     private final ChannelGroup _channelGroup;
     private final ChannelGroup _activeGroup;
@@ -164,21 +156,25 @@ public class SimpleChannelPoolManagerImpl implements ChannelPoolManager {
     public void channelReleased(Channel ch) throws Exception {
       CompletableFuture<Long> acquireTime = CompletableFuture.completedFuture(Time.nanoTime());
       boolean success = _activeGroup.remove(ch);
-      Optional.ofNullable(ch.attr(BUSY_ATTRIBUTE_KEY).getAndSet(null))
-          .ifPresent(
-              success
-                  ? cc -> cc.thenAcceptBothAsync(acquireTime, CallCompletion::close, _statsExecutor)
-                  : cc -> cc.thenAcceptBothAsync(acquireTime, CallCompletion::closeWithError, _statsExecutor));
+
+      CompletableFuture<CallCompletion> cc = ch.attr(BUSY_ATTRIBUTE_KEY).getAndSet(null);
+      if (cc != null) {
+        if (success) {
+          cc.thenAcceptBothAsync(acquireTime, CallCompletion::close, _statsExecutor);
+        } else {
+          cc.thenAcceptBothAsync(acquireTime, CallCompletion::closeWithError, _statsExecutor);
+        }
+      }
     }
 
     @Override
     public void channelAcquired(Channel ch) throws Exception {
       CompletableFuture<Long> acquireTime = CompletableFuture.completedFuture(Time.nanoTime());
-      Optional
-          .ofNullable(
-              ch.attr(BUSY_ATTRIBUTE_KEY)
-                  .getAndSet(acquireTime.thenApplyAsync(busyCallTracker()::startCall, _statsExecutor)))
-          .ifPresent(cc -> cc.thenAcceptBothAsync(acquireTime, CallCompletion::closeWithError, _statsExecutor));
+      CompletableFuture<CallCompletion> cc = ch.attr(BUSY_ATTRIBUTE_KEY)
+          .getAndSet(acquireTime.thenApplyAsync(busyCallTracker()::startCall, _statsExecutor));
+      if (cc != null) {
+        cc.thenAcceptBothAsync(acquireTime, CallCompletion::closeWithError, _statsExecutor);
+      }
       _activeGroup.add(ch);
     }
 
@@ -186,61 +182,22 @@ public class SimpleChannelPoolManagerImpl implements ChannelPoolManager {
     public void channelCreated(Channel ch) throws Exception {
       _channelGroup.add(ch);
       ch.attr(POOL_ATTRIBUTE_KEY).set(this);
-      initializeChannel(ch);
     }
 
-    @Override
     public InetSocketAddress remoteAddress() {
       return _socketAddress;
     }
 
-    @Override
     public int openConnections() {
       return _channelGroup.size();
     }
 
-    @Override
-    public long createCount() {
-      return _createCount.longValue();
-    }
-
-    @Override
-    public long closeCount() {
-      return _closeCount.longValue();
-    }
-
-    @Override
-    public long closeErrorCount() {
-      return 0;
-    }
-
-    @Override
-    public long closeBadCount() {
-      return 0;
-    }
-
-    @Override
     public boolean isHealthy() {
       return _channelPool.get().isHealthy();
     }
 
     public boolean isClosing() {
       return closing || _channelPool.get().isClosing();
-    }
-
-    @Override
-    public long totalActiveStreamCounts() {
-      return _channelPool.get().getTotalActiveStreams();
-    }
-
-    @Override
-    public long currentStreamChannelsReused() {
-      return _channelPool.get().getCurrentStreamChannelsReused();
-    }
-
-    @Override
-    public long totalStreamChannelsReused() {
-      return _channelPool.get().getTotalStreamChannelsReused();
     }
 
     private FutureListener<Channel> acquireListener0(Promise<Channel> channelPromise) {
@@ -317,29 +274,20 @@ public class SimpleChannelPoolManagerImpl implements ChannelPoolManager {
     }
 
     @Nonnull
-    @Override
     public String name() {
       return _channelGroup.name();
     }
 
-    @Override
     public int activeCount() {
       return _activeGroup.size();
     }
 
-    @Override
-    public int waitingCount() {
-      return acquireCallTracker().getCurrentConcurrency();
-    }
-
     @Nonnull
-    @Override
     public CallTracker acquireCallTracker() {
       return _acquireCallTracker;
     }
 
     @Nonnull
-    @Override
     public CallTracker busyCallTracker() {
       return _busyCallTracker;
     }
@@ -356,22 +304,13 @@ public class SimpleChannelPoolManagerImpl implements ChannelPoolManager {
     return 1;
   }
 
-  @Override
-  public int activeCount() {
-    return _map.values().stream().mapToInt(HostPool::activeCount).sum();
-  }
-
-  @Override
-  public int openConnections() {
-    return _map.values().stream().mapToInt(HostPool::openConnections).sum();
-  }
-
   @Nonnull
   @Override
   public Future<Channel> acquire(@Nonnull String hostNameAndPort, @Nonnull String queueName, @Nonnull QOS qos) {
-    return Optional.ofNullable(_map.get(hostNameAndPort))
-        .map(HostPool::acquire)
-        .orElseGet(() -> ImmediateEventExecutor.INSTANCE.newFailedFuture(new UnknownHostException(hostNameAndPort)));
+    HostPool hostPool = _map.get(hostNameAndPort);
+    return hostPool == null
+        ? ImmediateEventExecutor.INSTANCE.newFailedFuture(new UnknownHostException(hostNameAndPort))
+        : hostPool.acquire();
   }
 
   @Nonnull
@@ -381,15 +320,16 @@ public class SimpleChannelPoolManagerImpl implements ChannelPoolManager {
       @Nonnull String hostNameAndPort,
       @Nonnull String queueName,
       @Nonnull QOS qos) {
-    return Optional.ofNullable(_map.get(hostNameAndPort)).map(hostPool -> {
-      if (eventLoop.inEventLoop()) {
-        return hostPool.acquire(eventLoop.newPromise());
-      } else {
-        Promise<Channel> promise = eventLoop.newPromise();
-        eventLoop.execute(() -> hostPool.acquire(promise));
-        return promise;
-      }
-    }).orElseGet(() -> eventLoop.newFailedFuture(new UnknownHostException(hostNameAndPort)));
+    HostPool hostPool = _map.get(hostNameAndPort);
+    if (hostPool == null) {
+      return eventLoop.newFailedFuture(new UnknownHostException(hostNameAndPort));
+    }
+    if (eventLoop.inEventLoop()) {
+      return hostPool.acquire(eventLoop.newPromise());
+    }
+    Promise<Channel> promise = eventLoop.newPromise();
+    eventLoop.execute(() -> hostPool.acquire(promise));
+    return promise;
   }
 
   @Nonnull
@@ -419,30 +359,7 @@ public class SimpleChannelPoolManagerImpl implements ChannelPoolManager {
   @Nonnull
   @Override
   public Future<Void> close(@Nonnull String hostNameAndPort) {
-    return Optional.ofNullable(_map.get(hostNameAndPort))
-        .map(HostPool::closeAsync)
-        .orElseGet(() -> ImmediateEventExecutor.INSTANCE.newSucceededFuture(null));
-  }
-
-  @Nonnull
-  @Override
-  public Future<Void> closeAll() {
-    PromiseCombiner combiner = new PromiseCombiner(ImmediateEventExecutor.INSTANCE);
-    _map.values().stream().map(HostPool::closeAsync).forEach(combiner::add);
-    Promise<Void> promise = ImmediateEventExecutor.INSTANCE.newPromise();
-    combiner.finish(promise);
-    return promise;
-  }
-
-  @Nonnull
-  @Override
-  public Optional<PoolStats> getPoolStats(@Nonnull String hostNameAndPort) {
-    return Optional.ofNullable(_map.get(hostNameAndPort));
-  }
-
-  @Nonnull
-  @Override
-  public Map<String, PoolStats> getPoolStats() {
-    return new HashMap<>(_map);
+    HostPool hostPool = _map.get(hostNameAndPort);
+    return hostPool == null ? ImmediateEventExecutor.INSTANCE.newSucceededFuture(null) : hostPool.closeAsync();
   }
 }

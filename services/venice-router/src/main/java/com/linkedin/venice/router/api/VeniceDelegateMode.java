@@ -6,7 +6,6 @@ import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERR
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
-import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.router.api.HostFinder;
 import com.linkedin.alpini.router.api.HostHealthMonitor;
 import com.linkedin.alpini.router.api.PartitionFinder;
@@ -143,8 +142,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       @Nonnull PartitionFinder<K> partitionFinder,
       @Nonnull HostFinder<H, R> hostFinder,
       @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-      @Nonnull R roles,
-      Metrics metrics) throws RouterException {
+      @Nonnull R roles) throws RouterException {
     if (readRequestThrottler == null) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
           Optional.empty(),
@@ -206,7 +204,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             "Unknown request type: " + venicePath.getRequestType());
     }
     Scatter finalScatter = scatterMode
-        .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, hostHealthMonitor, roles, metrics);
+        .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, hostHealthMonitor, roles);
     int offlineRequestNum = scatter.getOfflineRequestCount();
     int onlineRequestNum = scatter.getOnlineRequestCount();
 
@@ -363,8 +361,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         @Nonnull PartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics metrics) throws RouterException {
+        @Nonnull R roles) throws RouterException {
       P path = scatter.getPath();
       VenicePath venicePath;
       VeniceHostFinder veniceHostFinder;
@@ -465,8 +462,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         @Nonnull PartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder,
         @Nonnull HostHealthMonitor<H> hostHealthMonitor,
-        @Nonnull R roles,
-        Metrics metrics) throws RouterException {
+        @Nonnull R roles) throws RouterException {
       P path = scatter.getPath();
       Scatter<Instance, VenicePath, RouterKey> veniceScatter;
       VenicePath venicePath;

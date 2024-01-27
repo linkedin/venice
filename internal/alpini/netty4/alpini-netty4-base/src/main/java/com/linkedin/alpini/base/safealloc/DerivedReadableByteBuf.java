@@ -16,7 +16,6 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
 import java.nio.charset.Charset;
-import java.util.Optional;
 
 
 /**
@@ -380,7 +379,7 @@ abstract class DerivedReadableByteBuf extends AbstractByteBuf {
 
   @Override
   public final boolean hasArray() {
-    return Optional.ofNullable(_buf).map(ByteBuf::hasArray).orElse(false);
+    return _buf != null && _buf.hasArray();
   }
 
   @Override
@@ -395,7 +394,7 @@ abstract class DerivedReadableByteBuf extends AbstractByteBuf {
 
   @Override
   public boolean hasMemoryAddress() {
-    return Optional.ofNullable(_buf).map(ByteBuf::hasMemoryAddress).orElse(false);
+    return _buf != null && _buf.hasMemoryAddress();
   }
 
   @Override
@@ -411,7 +410,7 @@ abstract class DerivedReadableByteBuf extends AbstractByteBuf {
 
   @Override
   public int refCnt() {
-    return Optional.ofNullable(_buf).map(ByteBuf::refCnt).orElse(0);
+    return _buf == null ? 0 : _buf.refCnt();
   }
 
   @Override

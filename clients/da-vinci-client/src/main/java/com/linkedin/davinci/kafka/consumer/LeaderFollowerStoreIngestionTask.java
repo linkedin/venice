@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.LEADER_TO_STANDBY;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER;
@@ -19,6 +20,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -99,8 +101,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
+import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.generic.GenericRecord;
@@ -720,7 +722,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private boolean isLocalVersionTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
     long localVTOff = pcs.getLatestProcessedLocalVersionTopicOffset();
-    long localVTEndOffset = getKafkaTopicPartitionEndOffSet(localKafkaServer, versionTopic, pcs.getPartition());
+    long localVTEndOffset = getTopicPartitionEndOffSet(localKafkaServer, versionTopic, pcs.getPartition());
     if (localVTEndOffset == StatsErrorCode.LAG_MEASUREMENT_FAILURE.code) {
       return false;
     }
@@ -1071,16 +1073,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     if (!isDataRecoveryCompleted) {
-      long dataRecoverySourceVTEndOffset = cachedPubSubMetadataGetter.getOffset(
-          topicManagerRepository.getTopicManager(nativeReplicationSourceVersionTopicKafkaURL),
-          versionTopic,
-          partitionConsumptionState.getPartition());
-
-      // If the last few records in source VT is old then we can also complete data recovery if the leader idles and we
+      // If the last few records in source VT is old then we can also complete data recovery if the leader idles, and we
       // have reached/passed the end offset of the VT (around the time when ingestion is started for that partition).
-      long localVTOffsetProgress = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
-      // -2 because getOffset returns the next available offset (-1) and we are skipping the remote TS message (-1).
-      boolean isAtEndOfSourceVT = dataRecoverySourceVTEndOffset - 2 <= localVTOffsetProgress;
+      // We subtract 1 because we are skipping the remote TS message.
+      long localVTOffsetProgress = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset() - 1;
+      long dataRecoveryLag = measureLagWithCallToPubSub(
+          nativeReplicationSourceVersionTopicKafkaURL,
+          versionTopic,
+          partitionConsumptionState.getPartition(),
+          localVTOffsetProgress);
+      boolean isAtEndOfSourceVT = dataRecoveryLag <= 0;
       long lastTimestamp = getLastConsumedMessageTimestamp(partitionConsumptionState.getPartition());
       if (isAtEndOfSourceVT && LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
         LOGGER.info(
@@ -1609,8 +1611,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Followers and Davinci clients, use local VT to compute hybrid lag.
     if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-      return cachedPubSubMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partition)
-          - partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
+      return measureLagWithCallToPubSub(
+          localKafkaServer,
+          versionTopic,
+          partition,
+          partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
     }
 
     // leaderTopic is the real-time topic now
@@ -1624,17 +1629,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       return measureRTOffsetLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
     }
-  }
-
-  protected long measureRTOffsetLagForSingleRegion(
-      String sourceRealTimeTopicKafkaURL,
-      PartitionConsumptionState partitionConsumptionState,
-      boolean shouldLogLag) {
-    return getLatestLeaderPersistedOffsetAndHybridTopicOffset(
-        sourceRealTimeTopicKafkaURL,
-        partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
-        partitionConsumptionState,
-        shouldLogLag);
   }
 
   protected long measureRTOffsetLagForMultiRegions(
@@ -1677,8 +1671,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     int partition = pcs.getPartition();
 
     if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
-      if (cachedPubSubMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partition) - 1 <= pcs
-          .getLatestProcessedLocalVersionTopicOffset()) {
+      long lag = measureLagWithCallToPubSub(
+          localKafkaServer,
+          versionTopic,
+          partition,
+          pcs.getLatestProcessedLocalVersionTopicOffset());
+      if (lag <= 0) {
         statusReportAdapter.reportCatchUpVersionTopicOffsetLag(pcs);
 
         /**
@@ -1923,24 +1921,43 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long offsetLag,
       long offsetThreshold,
       boolean shouldLogLag,
-      boolean isOffsetBasedLag,
+      LagType lagType,
       long latestConsumedProducerTimestamp) {
     boolean isLagAcceptable = offsetLag <= offsetThreshold;
 
     if (shouldLogLag) {
-      LOGGER.info(
-          "{} [{} lag] partition {} is {}lagging. {}Lag: [{}] {} Threshold [{}]",
-          isOffsetBasedLag ? "Offset" : "Time",
-          consumerTaskId,
+      logLag(
+          lagType,
           pcs.getPartition(),
-          (isLagAcceptable ? "not " : ""),
-          (isOffsetBasedLag ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+          isLagAcceptable,
+          latestConsumedProducerTimestamp,
           offsetLag,
-          (isLagAcceptable ? "<" : ">"),
-          offsetThreshold);
+          offsetThreshold,
+          "");
     }
 
     return isLagAcceptable;
+  }
+
+  protected void logLag(
+      LagType lagType,
+      int partition,
+      boolean isLagAcceptable,
+      long latestConsumedProducerTimestamp,
+      long lag,
+      long threshold,
+      String lagLogFooter) {
+    LOGGER.info(
+        "{} [{} lag] partition {} is {}. {}Lag: [{}] {} Threshold [{}]. {}",
+        this.consumerTaskId,
+        lagType.prettyString(),
+        partition,
+        (isLagAcceptable ? "not lagging" : "lagging"),
+        (lagType == OFFSET_LAG ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+        lag,
+        (isLagAcceptable ? "<" : ">"),
+        threshold,
+        lagLogFooter);
   }
 
   /**
@@ -2553,36 +2570,34 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return 0;
     }
 
-    long replicationLag = partitionConsumptionStateMap.values()
-        .stream()
-        .filter(BATCH_REPLICATION_LAG_FILTER)
-        // the lag is (latest VT offset in remote kafka - latest VT offset in local kafka)
-        .mapToLong((pcs) -> {
+    long replicationLag =
+        partitionConsumptionStateMap.values().stream().filter(BATCH_REPLICATION_LAG_FILTER).mapToLong((pcs) -> {
           PubSubTopic currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
           if (currentLeaderTopic == null) {
             currentLeaderTopic = versionTopic;
           }
 
           String sourceKafkaURL = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
-          // Consumer might not existed after the consumption state is created, but before attaching the corresponding
+          // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
           long offsetLagOptional = getPartitionOffsetLag(sourceKafkaURL, currentLeaderTopic, pcs.getUserPartition());
           if (offsetLagOptional >= 0) {
             return offsetLagOptional;
           }
-          // Fall back to use the old way
-          return (cachedPubSubMetadataGetter.getOffset(
-              getTopicManager(nativeReplicationSourceVersionTopicKafkaURL),
+          // Fall back to use the old way (latest VT offset in remote kafka - latest VT offset in local kafka)
+          long localOffset = cachedPubSubMetadataGetter
+              .getOffset(getTopicManager(localKafkaServer), currentLeaderTopic, pcs.getPartition()) - 1;
+          return measureLagWithCallToPubSub(
+              nativeReplicationSourceVersionTopicKafkaURL,
               currentLeaderTopic,
-              pcs.getPartition()) - 1)
-              - (cachedPubSubMetadataGetter
-                  .getOffset(getTopicManager(localKafkaServer), currentLeaderTopic, pcs.getPartition()) - 1);
-        })
-        .sum();
+              pcs.getPartition(),
+              localOffset);
+        }).filter(VALID_LAG).sum();
 
     return minZeroLag(replicationLag);
   }
 
+  protected static final LongPredicate VALID_LAG = value -> value < Long.MAX_VALUE;
   public static final Predicate<? super PartitionConsumptionState> LEADER_OFFSET_LAG_FILTER =
       pcs -> pcs.getLeaderFollowerState().equals(LEADER);
   private static final Predicate<? super PartitionConsumptionState> BATCH_LEADER_OFFSET_LAG_FILTER =
@@ -2631,11 +2646,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (currentLeaderTopic.isRealTime()) {
             return this.measureHybridOffsetLag(pcs, false);
           } else {
-            return (cachedPubSubMetadataGetter
-                .getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getPartition()) - 1)
-                - pcs.getLatestProcessedLocalVersionTopicOffset();
+            return measureLagWithCallToPubSub(
+                kafkaSourceAddress,
+                currentLeaderTopic,
+                pcs.getPartition(),
+                pcs.getLatestProcessedLocalVersionTopicOffset());
           }
         })
+        .filter(VALID_LAG)
         .sum();
 
     return minZeroLag(offsetLag);
@@ -2700,10 +2718,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             return offsetLagOptional;
           }
           // Fall back to calculate offset lag in the old way
-          return (cachedPubSubMetadataGetter
-              .getOffset(getTopicManager(localKafkaServer), versionTopic, pcs.getPartition()) - 1)
-              - pcs.getLatestProcessedLocalVersionTopicOffset();
+          return measureLagWithCallToPubSub(
+              localKafkaServer,
+              versionTopic,
+              pcs.getPartition(),
+              pcs.getLatestProcessedLocalVersionTopicOffset());
         })
+        .filter(VALID_LAG)
         .sum();
 
     return minZeroLag(offsetLag);
@@ -3238,34 +3259,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long apply(String sourceKafkaUrl, PubSubTopic upstreamTopic);
   }
 
+  private boolean isIngestingSystemStore() {
+    return VeniceSystemStoreUtils.isSystemStore(storeName);
+  }
+
   /**
    * This method fetches/calculates latest leader persisted offset and last offset in RT topic. The method relies on
    * {@link #getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState, String)} to fetch
    * latest leader persisted offset for different data replication policy.
    * @return the lag (lastOffsetInRealTimeTopic - latestPersistedLeaderOffset)
    */
-  protected long getLatestLeaderPersistedOffsetAndHybridTopicOffset(
+  protected long measureRTOffsetLagForSingleRegion(
       String sourceRealTimeTopicKafkaURL,
-      PubSubTopic leaderTopic,
       PartitionConsumptionState pcs,
-      boolean shouldLog) {
-    return getLatestLeaderOffsetAndHybridTopicOffset(
-        sourceRealTimeTopicKafkaURL,
-        leaderTopic,
-        pcs,
-        this::getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement,
-        shouldLog);
-  }
-
-  private boolean isIngestingSystemStore() {
-    return VeniceSystemStoreUtils.isSystemStore(storeName);
-  }
-
-  private long getLatestLeaderOffsetAndHybridTopicOffset(
-      String sourceRealTimeTopicKafkaURL,
-      PubSubTopic leaderTopic,
-      PartitionConsumptionState pcs,
-      BiFunction<PartitionConsumptionState, String, Long> getLeaderLatestOffset,
       boolean shouldLog) {
     int partition = pcs.getPartition();
     long latestLeaderOffset;
@@ -3289,7 +3295,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       for (int i = 0; i < subPartitions.size(); i++) {
         subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartitions.getInt(i));
         if (subPartitionConsumptionState != null && subPartitionConsumptionState.getOffsetRecord() != null) {
-          upstreamOffset = getLeaderLatestOffset.apply(subPartitionConsumptionState, sourceRealTimeTopicKafkaURL);
+          upstreamOffset = getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
+              subPartitionConsumptionState,
+              sourceRealTimeTopicKafkaURL);
           if (upstreamOffset > latestLeaderOffset) {
             latestLeaderOffset = upstreamOffset;
           }
@@ -3297,16 +3305,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     } else {
       partitionToGetLatestOffsetFor = partition;
-      latestLeaderOffset = getLeaderLatestOffset.apply(pcs, sourceRealTimeTopicKafkaURL);
+      latestLeaderOffset =
+          getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, sourceRealTimeTopicKafkaURL);
     }
 
-    long offsetFromConsumer =
-        getPartitionLatestOffset(sourceRealTimeTopicKafkaURL, leaderTopic, partitionToGetLatestOffsetFor);
+    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
 
-    long lastOffsetInRealTimeTopic = offsetFromConsumer >= 0
-        ? offsetFromConsumer
-        : cachedPubSubMetadataGetter
-            .getOffset(getTopicManager(sourceRealTimeTopicKafkaURL), leaderTopic, partitionToGetLatestOffsetFor);
+    long lastOffsetInRealTimeTopic =
+        getTopicPartitionEndOffSet(sourceRealTimeTopicKafkaURL, leaderTopic, partitionToGetLatestOffsetFor);
+
+    if (lastOffsetInRealTimeTopic < 0) {
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException("Got a negative lastOffsetInRealTimeTopic")) {
+        LOGGER.warn(
+            "Unexpected! Got a negative lastOffsetInRealTimeTopic ({})! Will return Long.MAX_VALUE ({}) as the lag.",
+            lastOffsetInRealTimeTopic,
+            Long.MAX_VALUE,
+            new VeniceException("Exception not thrown, just for logging purposes."));
+      }
+      return Long.MAX_VALUE;
+    }
 
     if (latestLeaderOffset == -1) {
       // If leader hasn't consumed anything yet we should use the value of 0 to calculate the exact offset lag.

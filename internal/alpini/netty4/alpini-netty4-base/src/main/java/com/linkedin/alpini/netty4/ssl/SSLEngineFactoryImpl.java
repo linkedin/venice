@@ -16,10 +16,8 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Stream;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -48,8 +46,6 @@ public class SSLEngineFactoryImpl implements SSLEngineFactory {
   @Deprecated
   private String _keyStoreData;
   private SSLParameters _parameters;
-
-  private static final File NULL_FILE = new File("/dev/null");
 
   private SslContext _serverContext;
   private SslContext _clientContext;
@@ -97,9 +93,8 @@ public class SSLEngineFactoryImpl implements SSLEngineFactory {
         _parameters.setWantClientAuth(true);
       }
 
-      Object keyStoreData = Optional.ofNullable(config.getKeyStoreData())
-          .filter(((Predicate<String>) String::isEmpty).negate())
-          .orElse(null);
+      String keyStoreDataString = config.getKeyStoreData();
+      Object keyStoreData = keyStoreDataString.isEmpty() ? null : keyStoreDataString;
 
       Function<Function<KeyManagerFactory, SslContextBuilder>, SslContextBuilder> setup =
           SSLContextBuilder.setupContext(

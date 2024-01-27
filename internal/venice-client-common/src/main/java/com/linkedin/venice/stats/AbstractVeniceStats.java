@@ -63,12 +63,13 @@ public class AbstractVeniceStats {
     return registerSensor(getSensorFullName(getName(), sensorName), null, parents, stats);
   }
 
+  /**
+   * N.B.: This function is private because it requires the full sensor name, which should be generated from
+   *       {@link #getSensorFullName(String)}, and is therefore less user-friendly for developers of subclasses.
+   *       The other functions which call this one require just the partial sensor name, which is less error-prone.
+   */
   @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
-  protected Sensor registerSensor(
-      String sensorFullName,
-      MetricConfig config,
-      Sensor[] parents,
-      MeasurableStat... stats) {
+  private Sensor registerSensor(String sensorFullName, MetricConfig config, Sensor[] parents, MeasurableStat... stats) {
     return sensors.computeIfAbsent(sensorFullName, key -> {
       /**
        * The sensors concurrentmap will not prevent other objects working on the same metrics repository to execute
@@ -155,7 +156,7 @@ public class AbstractVeniceStats {
     return getSensorFullName(getName(), sensorName);
   }
 
-  protected String getSensorFullName(String resourceName, String sensorName) {
+  public static String getSensorFullName(String resourceName, String sensorName) {
     if (resourceName.charAt(0) != '.') {
       resourceName = "." + resourceName;
     }

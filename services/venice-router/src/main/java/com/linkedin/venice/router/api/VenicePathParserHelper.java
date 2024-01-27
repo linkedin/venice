@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.util.Attribute;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -27,18 +28,15 @@ public class VenicePathParserHelper {
   public static VenicePathParserHelper parseRequest(HttpRequest request) {
     if (request instanceof BasicFullHttpRequest) {
       BasicFullHttpRequest basicFullHttpRequest = (BasicFullHttpRequest) request;
-      if (basicFullHttpRequest.hasAttr(VeniceRouterUtils.PATHPARSER_ATTRIBUTE_KEY)) {
-        return basicFullHttpRequest.attr(VeniceRouterUtils.PATHPARSER_ATTRIBUTE_KEY).get();
+      Attribute<VenicePathParserHelper> attr = basicFullHttpRequest.attr(VeniceRouterUtils.PATHPARSER_ATTRIBUTE_KEY);
+      VenicePathParserHelper helper = attr.get();
+      if (helper == null) {
+        helper = new VenicePathParserHelper(request.uri());
+        attr.set(helper);
       }
+      return helper;
     }
-
-    VenicePathParserHelper helper = new VenicePathParserHelper(request.uri());
-
-    if (request instanceof BasicFullHttpRequest) {
-      BasicFullHttpRequest basicFullHttpRequest = (BasicFullHttpRequest) request;
-      basicFullHttpRequest.attr(VeniceRouterUtils.PATHPARSER_ATTRIBUTE_KEY).set(helper);
-    }
-    return helper;
+    return new VenicePathParserHelper(request.uri());
   }
 
   /**
