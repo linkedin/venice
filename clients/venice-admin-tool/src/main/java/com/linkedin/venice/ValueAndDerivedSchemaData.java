@@ -9,29 +9,27 @@ import org.apache.avro.generic.GenericDatumReader;
 
 public class ValueAndDerivedSchemaData {
   private final Schema valueSchema;
-  private final int id;
   private final Map<Integer, Schema> updateSchemaMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, Schema> rmdSchemaMap = new VeniceConcurrentHashMap<>();
   private final GenericDatumReader<Object> valueRecordReader;
   private final Map<Integer, GenericDatumReader<Object>> updateRecordReaderMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, GenericDatumReader<Object>> rmdRecordReaderMap = new VeniceConcurrentHashMap<>();
 
-  public ValueAndDerivedSchemaData(int id, String valueSchemaStr) {
+  public ValueAndDerivedSchemaData(String valueSchemaStr) {
     this.valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(valueSchemaStr);
-    this.id = id;
-    this.valueRecordReader = new GenericDatumReader<>(valueSchema);
+    this.valueRecordReader = new GenericDatumReader<>(valueSchema, valueSchema);
   }
 
   public void setUpdateSchema(int protocolId, String updateSchemaStr) {
     Schema schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(updateSchemaStr);
     updateSchemaMap.put(protocolId, schema);
-    updateRecordReaderMap.put(protocolId, new GenericDatumReader<>(schema));
+    updateRecordReaderMap.put(protocolId, new GenericDatumReader<>(schema, schema));
   }
 
   public void setRmdSchema(int protocolId, String rmdSchemaStr) {
     Schema schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(rmdSchemaStr);
     rmdSchemaMap.put(protocolId, schema);
-    rmdRecordReaderMap.put(protocolId, new GenericDatumReader<>(schema));
+    rmdRecordReaderMap.put(protocolId, new GenericDatumReader<>(schema, schema));
   }
 
   GenericDatumReader<Object> getValueRecordReader() {

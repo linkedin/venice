@@ -175,8 +175,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       for (MultiSchemaResponse.Schema valueSchema: schemas) {
         this.allValueSchemas[i] = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr());
         i++;
-        this.schemaDataMap
-            .put(valueSchema.getId(), new ValueAndDerivedSchemaData(valueSchema.getId(), valueSchema.getSchemaStr()));
+        this.schemaDataMap.put(valueSchema.getId(), new ValueAndDerivedSchemaData(valueSchema.getSchemaStr()));
       }
       if (storeInfo.isWriteComputationEnabled()) {
         for (MultiSchemaResponse.Schema schema: controllerClient.getAllValueAndDerivedSchema(storeName).getSchemas()) {
@@ -192,16 +191,13 @@ public class KafkaTopicDumper implements AutoCloseable {
       if (storeInfo.isActiveActiveReplicationEnabled()) {
         for (MultiSchemaResponse.Schema schema: controllerClient.getAllReplicationMetadataSchemas(storeName)
             .getSchemas()) {
-          if (!schema.isDerivedSchema()) {
-            continue;
-          }
           /**
            * This is intended, as {@link com.linkedin.venice.controller.server.SchemaRoutes} implementation is wrong
            * for RMD schema entry.
            */
           int valueSchemaId = schema.getRmdValueSchemaId();
           int protocolId = schema.getId();
-          this.schemaDataMap.get(valueSchemaId).setUpdateSchema(protocolId, schema.getSchemaStr());
+          this.schemaDataMap.get(valueSchemaId).setRmdSchema(protocolId, schema.getSchemaStr());
         }
       }
     }
@@ -385,6 +381,12 @@ public class KafkaTopicDumper implements AutoCloseable {
               && put.replicationMetadataPayload.remaining() > 0) {
             Decoder rmdDecoder =
                 decoderFactory.binaryDecoder(ByteUtils.extractByteArray(put.replicationMetadataPayload), null);
+            LOGGER.info(
+                "{} {} {} {}",
+                schemaDataMap.get(put.schemaId).getRmdRecordReader(put.replicationMetadataVersionId),
+                schemaDataMap.get(put.schemaId),
+                put.schemaId,
+                put.replicationMetadataVersionId);
             rmdRecord = schemaDataMap.get(put.schemaId)
                 .getRmdRecordReader(put.replicationMetadataVersionId)
                 .read(null, rmdDecoder);
