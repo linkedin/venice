@@ -36,7 +36,6 @@ public class StoreBackend {
     LOGGER.info("Opening local store {}", storeName);
     this.backend = backend;
     this.storeName = storeName;
-
     this.config =
         new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
     this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeName);
