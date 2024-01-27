@@ -99,7 +99,6 @@ public class DaVinciBackend implements Closeable {
   private final Optional<ObjectCacheBackend> cacheBackend;
   private DaVinciIngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
-  private DaVinciRecordTransformer recordTransformer;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -125,8 +124,6 @@ public class DaVinciBackend implements Closeable {
       }
       storeRepository = (SubscriptionBasedReadOnlyStoreRepository) readOnlyStoreRepository;
       schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
-
-      this.recordTransformer = recordTransformer;
 
       VeniceProperties backendProps = backendConfig.getClusterProperties();
 
@@ -497,7 +494,7 @@ public class DaVinciBackend implements Closeable {
   public synchronized StoreBackend getStoreOrThrow(String storeName) {
     StoreBackend storeBackend = storeByNameMap.get(storeName);
     if (storeBackend == null) {
-      storeBackend = new StoreBackend(this, storeName, this.recordTransformer);
+      storeBackend = new StoreBackend(this, storeName);
       storeByNameMap.put(storeName, storeBackend);
     }
     return storeBackend;

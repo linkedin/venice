@@ -1,6 +1,5 @@
 package com.linkedin.davinci;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
@@ -32,14 +31,11 @@ public class StoreBackend {
   private final AvroStoreDeserializerCache storeDeserializerCache;
   private VersionBackend daVinciCurrentVersion;
   private VersionBackend daVinciFutureVersion;
-  private DaVinciRecordTransformer recordTransformer;
 
-  StoreBackend(DaVinciBackend backend, String storeName, DaVinciRecordTransformer recordTransformer) {
+  StoreBackend(DaVinciBackend backend, String storeName) {
     LOGGER.info("Opening local store {}", storeName);
     this.backend = backend;
     this.storeName = storeName;
-
-    this.recordTransformer = recordTransformer;
 
     this.config =
         new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
@@ -147,8 +143,7 @@ public class StoreBackend {
                               .orElseThrow(
                                   () -> new VeniceException(
                                       "Cannot subscribe to an empty store, storeName=" + storeName)))),
-              stats,
-              this.recordTransformer));
+              stats));
 
     } else if (bootstrapVersion.isPresent()) {
       throw new VeniceException(
@@ -240,7 +235,7 @@ public class StoreBackend {
       return;
     }
     LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
-    setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats, this.recordTransformer));
+    setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
     daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
   }
 

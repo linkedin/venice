@@ -4,12 +4,10 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
@@ -71,11 +69,7 @@ public class VersionBackend {
   private Future heartbeat;
   private final int heartbeatInterval;
 
-  VersionBackend(
-      DaVinciBackend backend,
-      Version version,
-      StoreBackendStats storeBackendStats,
-      DaVinciRecordTransformer recordTransformer) {
+  VersionBackend(DaVinciBackend backend, Version version, StoreBackendStats storeBackendStats) {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
@@ -102,14 +96,8 @@ public class VersionBackend {
         backend.getConfigLoader().getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 60);
     this.storeDeserializerCache = backend.getStoreOrThrow(store.getName()).getStoreDeserializerCache();
 
-    // If recordTransformer is enabled, we need to disable compression since it is already done by the recordTransformer
-    if (recordTransformer != null) {
-      this.compressor = Lazy.of(NoopCompressor::new);
-    } else {
-      this.compressor = Lazy.of(
-          () -> backend.getCompressorFactory()
-              .getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
-    }
+    this.compressor = Lazy.of(
+        () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
   }
 
