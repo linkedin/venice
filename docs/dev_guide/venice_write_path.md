@@ -1,9 +1,8 @@
 ---
 layout: default
 title: Venice Write Path
-parent: Venice Internal
-grand_parent: Developer Guides
-permalink: /docs/dev_guide/venice_internal/venice_write_path
+parent: Developer Guides
+permalink: /docs/dev_guide/venice_write_path
 ---
 
 # Introduction
@@ -34,11 +33,11 @@ will create multiple `StoreIngestionTask`s to handle ingestion for the partition
 version. Multiple partitions of the same store and version are handled by the same SIT instance. The diagram belows 
 describes the data flow of how a store ingestion task's created and ingest data on the server side.
 
-![Server Ingestion Diagram](../../assets/images/server_ingestion.svg)
+![Server Ingestion Diagram](../assets/images/server_ingestion.svg)
 
 ### Venice Store Ingestion report 
 
 When ingestion is in different stages, the server reports the ingestion status. The ingestion signal is propagated to 
 various downstream for different business logics. The diagram below describes the signal flow of the ingestion report.
 
-![Server Ingestion Report Diagram](../../assets/images/server_ingestion_report.svg)
+![Server Ingestion Report Diagram](../assets/images/server_ingestion_report.svg)

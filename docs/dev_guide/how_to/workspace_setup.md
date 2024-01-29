@@ -1,8 +1,9 @@
 ---
 layout: default
 title: Venice Workspace Setup
-parent: Developer Guides
-permalink: /docs/dev_guide/workspace_setup
+parent: How to Contribute to Venice
+grand_parent: Developer Guides
+permalink: /docs/dev_guide/how_to/workspace_setup
 ---
 
 # Venice Workspace Setup
