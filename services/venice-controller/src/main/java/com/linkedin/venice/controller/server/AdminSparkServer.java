@@ -24,6 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_OLD_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_VALUE_SCHEMAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.EMPTY_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_QUOTA_REBALANCED;
@@ -41,6 +42,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SC
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KAFKA_TOPIC_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
@@ -102,6 +104,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_P
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPLOAD_PUSH_JOB_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.SSLConfig;
