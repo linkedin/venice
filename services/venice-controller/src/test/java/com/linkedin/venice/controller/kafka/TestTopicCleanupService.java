@@ -219,7 +219,7 @@ public class TestTopicCleanupService {
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_rt"));
     verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(5);
     verify(topicCleanupServiceStats, never()).recordTopicDeletionError();
-    verify(topicCleanupServiceStats, atLeastOnce()).recordDeletedTopicsCount();
+    verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeleted();
 
     topicCleanupService.cleanupVeniceTopics();
 

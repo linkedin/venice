@@ -202,7 +202,7 @@ public class TopicCleanupService extends AbstractVeniceService {
           }
         }
         getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
-        topicCleanupServiceStats.recordDeletedTopicsCount();
+        topicCleanupServiceStats.recordTopicDeleted();
       } catch (VeniceException e) {
         LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
         topicCleanupServiceStats.recordTopicDeletionError();
