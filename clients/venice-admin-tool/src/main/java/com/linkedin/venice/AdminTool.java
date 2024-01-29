@@ -1616,7 +1616,9 @@ public class AdminTool {
       maxConsumeAttempts = Integer.parseInt(getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
     }
 
-    boolean logMetadataOnly = cmd.hasOption(Arg.LOG_METADATA.toString());
+    boolean logMetadata = cmd.hasOption(Arg.LOG_METADATA.toString());
+    boolean logDataRecord = cmd.hasOption(Arg.LOG_DATA_RECORD.toString());
+    boolean logRmdRecord = cmd.hasOption(Arg.LOG_RMD_RECORD.toString());
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
       try (KafkaTopicDumper ktd = new KafkaTopicDumper(
           controllerClient,
@@ -1627,7 +1629,9 @@ public class AdminTool {
           messageCount,
           parentDir,
           maxConsumeAttempts,
-          logMetadataOnly)) {
+          logMetadata,
+          logDataRecord,
+          logRmdRecord)) {
         ktd.fetchAndProcess();
       } catch (Exception e) {
         System.err.println("Something went wrong during topic dump");
