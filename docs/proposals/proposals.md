@@ -9,7 +9,7 @@ permalink: /docs/proposals
 
 This folder includes all the Venice Improvement Proposals. Click to read further details about
 
-[VIP process](../dev_guide/design_doc.md). 
+[VIP process](../dev_guide/how_to/design_doc.md). 
 
 | VIP-#                                                | Proposal                                                                       | Status           |
 |------------------------------------------------------|--------------------------------------------------------------------------------|------------------|

@@ -44,18 +44,24 @@ The above makes Venice particularly suitable as the stateful component backing a
 AI applications feed the output of their ML training jobs into Venice and then query the data for use during online 
 inference workloads.
 
-Write Path
-----------
+# Overview
+Venice is a system which straddles the offline, nearline and online worlds, as illustrated below.
+
+![High Level Architecture Diagram](assets/images/high_level_architecture.drawio.svg)
+
+## Write Path
 
 The Venice write path can be broken down into three granularities: full dataset swap, insertion of many rows into an 
-existing dataset, and updates of some columns of some rows. All three granularities are supported by Hadoop and Samza, 
-thus leading to the below full matrix of supported operations:
+existing dataset, and updates of some columns of some rows. All three granularities are supported by Hadoop and Samza.
+In addition, any service can asynchronously produce single row inserts and updates as well, using the 
+[Online Producer](user_guide/write_api/online_producer.md) library. The table below summarizes the write operations 
+supported by each platform:
 
-|                                                 | Hadoop                                   | Samza                             |
-| ----------------------------------------------- | ---------------------------------------- | --------------------------------- |
-| Full dataset swap                               | Full Push Job                            | Reprocessing Job                  |
-| Insertion of some rows into an existing dataset | Incremental Push Job                     | Real-Time Job                     |
-| Updates to some columns of some rows            | Incremental Push Job doing Write Compute | Real-Time Job doing Write Compute |
+|                                                  | [Hadoop](user_guide/write_api/push_job.md) | [Samza](user_guide/write_api/stream_processor.md)  | [Any Service](user_guide/write_api/online_producer.md)  |
+|-------------------------------------------------:|:---------------------------------------:|:-----------------------------------------------:|:----------------------------------------------------:|
+|                                Full dataset swap |                    ✅                    |                        ✅                        |                                                      |
+|  Insertion of some rows into an existing dataset |                    ✅                    |                        ✅                        |                          ✅                           |
+|             Updates to some columns of some rows |                    ✅                    |                        ✅                        |                          ✅                           |
 
 ### Hybrid Stores
 Moreover, the three granularities of write operations can all be mixed within a single dataset. A dataset which gets 
@@ -77,74 +83,69 @@ Write Compute includes two kinds of operations, which can be performed on the va
 N.B.: Currently, write compute is only supported in conjunction with active-passive replication. Support for 
 active-active replication is under development. 
 
-Read Path
----------
+## Read Path
 
 Venice supports the following read APIs:
 
 - **Single get**: get the value associated with a single key
 - **Batch get**: get the values associated with a set of keys
 - **Read compute**: project some fields and/or compute some function on the fields of values associated with a set of 
-  keys.
-
-### Read Compute
-When using the read compute DSL, the following functions are currently supported:
-
-- **Dot product**: perform a dot product on the float vector stored in a given field, against another float vector 
-  provided as query param, and return the resulting scalar.
-- **Cosine similarity**: perform a cosine similarity on the float vector stored in a given field, against another float 
-  vector provided as query param, and return the resulting scalar.
-- **Hadamard product**: perform a Hadamard product on the float vector stored in a given field, against another float 
-  vector provided as query param, and return the resulting vector.
-- **Collection count**: return the number of items in the collection stored in a given field.
+  keys. When using the read compute DSL, the following functions are currently supported:
+  - **Dot product**: perform a dot product on the float vector stored in a given field, against another float vector 
+    provided as query param, and return the resulting scalar.
+  - **Cosine similarity**: perform a cosine similarity on the float vector stored in a given field, against another 
+    float vector provided as query param, and return the resulting scalar.
+  - **Hadamard product**: perform a Hadamard product on the float vector stored in a given field, against another float 
+    vector provided as query param, and return the resulting vector.
+  - **Collection count**: return the number of items in the collection stored in a given field.
 
 ### Client Modes
 
-There are two main client modes for accessing Venice data:
+There are two main modes for accessing Venice data:
 
-- **Classical Venice**: perform remote queries against Venice's distributed backend service. In this mode, read compute 
-  queries are pushed down to the backend and only the computation results are returned to the client. 
-- **Da Vinci**: eagerly load some or all partitions of the dataset and perform queries against the resulting local
-  cache. Future updates to the data continue to be streamed in and applied to the local cache.
+- **Classical Venice** (stateless): You can perform remote queries against Venice's distributed backend service. If 
+  using read compute operations in this mode, the queries are pushed down to the backend and only the computation
+  results are returned to the client. There are two clients capable of such remote queries:
+  - **Thin Client**: This is the simplest client, which sends requests to the router tier, which itself sends requests
+    to the server tier.
+  - **Fast Client**: This client is partitioning-aware, and can therefore send requests directly to the correct server
+    instance, skipping the routing tier. Note that this client is still under development and may not be as stable nor
+    at functional parity with the Thin Client.
+- **Da Vinci** (stateful): Alternatively, you can eagerly load some or all partitions of the dataset and perform queries 
+  against the resulting local cache. Future updates to the data continue to be streamed in and applied to the local 
+  cache.
 
-# Getting Started
-Refer to the [Venice quickstart](./quickstart/quickstart.md) to create your own Venice cluster and play around with some 
+The table below summarizes the clients' characteristics:
+
+|                                |  Network Hops  |  Typical latency (p99)  |          State Footprint          |
+|-------------------------------:|:--------------:|:-----------------------:|:---------------------------------:|
+|                    Thin Client |       2        |    < 10 milliseconds    |             Stateless             |
+|                    Fast Client |       1        |    < 2 milliseconds     |  Minimal (routing metadata only)  |
+|    Da Vinci Client (RAM + SSD) |       0        |     < 1 millisecond     | Bounded RAM, full dataset on SSD  |
+|   Da Vinci Client (all-in-RAM) |       0        |    < 10 microseconds    |        Full dataset in RAM        |
+
+All of these clients share the same read APIs described above. This enables users to make changes to their 
+cost/performance tradeoff without needing to rewrite their applications.
+
+# Resources
+
+The Open Sourcing Venice [blog](https://engineering.linkedin.com/blog/2022/open-sourcing-venice--linkedin-s-derived-data-platform)
+and [conference talk](https://www.youtube.com/watch?v=pJeg4V3JgYo) are good starting points to get an overview of what
+use cases and scale can Venice support. For more Venice posts, talks and podcasts, see our [Learn More](user_guide/learn_more.md)
+page.
+
+## Getting Started
+Refer to the [Venice quickstart](quickstart/quickstart.md) to create your own Venice cluster and play around with some 
 features like creating a data store, batch push, incremental push, and single get. We recommend sticking to our latest 
 [stable release](https://blog.venicedb.org/stable-releases).
 
-# Previously Published Content
-
-The following blog posts have previously been published about Venice:
-
-- 2015: [Prototyping Venice: Derived Data Platform](https://engineering.linkedin.com/distributed-systems/prototyping-venice-derived-data-platform)
-- 2017: [Building Venice with Apache Helix](https://engineering.linkedin.com/blog/2017/02/building-venice-with-apache-helix)
-- 2017: [Building Venice: A Production Software Case Study](https://engineering.linkedin.com/blog/2017/04/building-venice--a-production-software-case-study)
-- 2017: [Venice Hybrid: Doing Lambda Better](https://engineering.linkedin.com/blog/2017/12/venice-hybrid--doing-lambda-better)
-- 2018: [Venice Performance Optimization](https://engineering.linkedin.com/blog/2018/04/venice-performance-optimization)
-- 2021: [Taming memory fragmentation in Venice with Jemalloc](https://engineering.linkedin.com/blog/2021/taming-memory-fragmentation-in-venice-with-jemalloc)
-- 2022: [Supporting large fanout use cases at scale in Venice](https://engineering.linkedin.com/blog/2022/supporting-large-fanout-use-cases-at-scale-in-venice)
-- 2022: [Open Sourcing Venice – LinkedIn’s Derived Data Platform](https://engineering.linkedin.com/blog/2022/open-sourcing-venice--linkedin-s-derived-data-platform)
-
-The following talks have been given about Venice:
-
-- 2018: [Venice with Apache Kafka & Samza](https://www.youtube.com/watch?v=Usz8E4S-hZE)
-- 2019: [People You May Know: Fast Recommendations over Massive Data](https://www.infoq.com/presentations/recommendation-massive-data/)
-- 2019: [Enabling next generation models for PYMK Scale](https://www.youtube.com/watch?v=znd-Q6IvCqY)
-- 2022: [Open Sourcing Venice](https://www.youtube.com/watch?v=pJeg4V3JgYo)
-- 2023: [What is Derived Data? (and Do You Already Have Any?)](https://www.infoq.com/presentations/derived-data/)
-- 2023: [Partial Updates in Venice](https://www.youtube.com/watch?v=WlfvpZuIa6Q&t=3880s)
-- 2023: [When Only the Last Writer Wins We All Lose: Active-Active Geo-Replication in Venice](https://events.bizzabo.com/468544/agenda/session/1136942)
-
-Keep in mind that older content reflects an earlier phase of the project and may not be entirely correct anymore.
-
-# Community Resources
-
+## Community
 Feel free to engage with the community using our:
 - [Slack workspace](http://slack.venicedb.org)
   - Archived and publicly searchable on [Linen](http://linen.venicedb.org)
 - [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [GitHub issues](https://github.com/linkedin/venice/issues)
-- [Contributor's guide](CONTRIBUTING.md)
+- [Contributor's guide](dev_guide/how_to/contribution_agreement)
 
 Follow us to hear more about the progress of the Venice project and community:
 - [Official blog](https://blog.venicedb.org)
