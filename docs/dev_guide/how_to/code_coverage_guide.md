@@ -1,8 +1,9 @@
 ---
 layout: default
 title: Code Coverage Guide
-parent: Developer Guides
-permalink: /docs/dev_guide/code_coverage_guide
+parent: How to Contribute to Venice
+grand_parent: Developer Guides
+permalink: /docs/dev_guide/how_to/code_coverage_guide
 ---
 # Code Coverage Guide
 
