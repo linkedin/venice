@@ -6,7 +6,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -32,6 +34,9 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1000l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(2).when(config).getTopicCleanupDelayFactor();
+    VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(veniceControllerConfig).when(config).getCommonConfig();
+    doReturn("fabric1,fabric2").when(veniceControllerConfig).getChildDatacenters();
 
     String kafkaClusterKey1 = "fabric1";
     String kafkaClusterKey2 = "fabric2";
@@ -55,8 +60,10 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
     topicManager2 = mock(TopicManager.class);
     doReturn(kafkaClusterServerUrl2).when(topicManager2).getPubSubBootstrapServers();
     doReturn(topicManager2).when(admin).getTopicManager(kafkaClusterServerUrl2);
+    TopicCleanupServiceStats topicCleanupServiceStats = mock(TopicCleanupServiceStats.class);
 
-    topicCleanupService = new TopicCleanupServiceForParentController(admin, config, pubSubTopicRepository);
+    topicCleanupService =
+        new TopicCleanupServiceForParentController(admin, config, pubSubTopicRepository, topicCleanupServiceStats);
   }
 
   @Test

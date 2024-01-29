@@ -11,6 +11,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.d2.D2ClientFactory;
@@ -182,8 +183,11 @@ public class VeniceController {
     disabledPartitionEnablerService = Optional.empty();
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
-      topicCleanupService =
-          new TopicCleanupServiceForParentController(admin, multiClusterConfigs, pubSubTopicRepository);
+      topicCleanupService = new TopicCleanupServiceForParentController(
+          admin,
+          multiClusterConfigs,
+          pubSubTopicRepository,
+          new TopicCleanupServiceStats(metricsRepository));
       if (!(admin instanceof VeniceParentHelixAdmin)) {
         throw new VeniceException(
             "'VeniceParentHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in parent mode");
@@ -197,7 +201,11 @@ public class VeniceController {
         LOGGER.info("SystemStoreRepairServiceEnabled is enabled");
       }
     } else {
-      topicCleanupService = new TopicCleanupService(admin, multiClusterConfigs, pubSubTopicRepository);
+      topicCleanupService = new TopicCleanupService(
+          admin,
+          multiClusterConfigs,
+          pubSubTopicRepository,
+          new TopicCleanupServiceStats(metricsRepository));
       if (!(admin instanceof VeniceHelixAdmin)) {
         throw new VeniceException(
             "'VeniceHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in child mode");
