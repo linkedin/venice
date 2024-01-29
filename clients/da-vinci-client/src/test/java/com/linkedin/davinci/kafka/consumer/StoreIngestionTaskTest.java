@@ -40,8 +40,17 @@ import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETE
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static com.linkedin.venice.writer.VeniceWriter.generateHeartbeatMessage;
 import static com.linkedin.venice.writer.VeniceWriter.getHeartbeatKME;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyDouble;
@@ -94,6 +103,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -4241,6 +4251,44 @@ public abstract class StoreIngestionTaskTest {
       assertTrue(failedPartitions.get().contains("0"));
       assertTrue(failedPartitions.get().contains("1"));
     });
+  }
+
+  @Test
+  public void testStoreIngestionRecordTransformer() {
+    Version version = mock(Version.class);
+    doReturn(1).when(version).getPartitionCount();
+    doReturn(VersionStatus.STARTED).when(version).getStatus();
+    doReturn(true).when(version).isNativeReplicationEnabled();
+
+    Store store = mock(Store.class);
+    doReturn(Optional.of(version)).when(store).getVersion(eq(1));
+
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(topic).when(storeConfig).getStoreVersionName();
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        1,
+        Collections.emptyMap(),
+        true).build();
+
+    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        store,
+        version,
+        new Properties(),
+        isCurrentVersion,
+        storeConfig,
+        1,
+        false,
+        Optional.empty(),
+        recordTransformer);
+
+    VenicePartitioner partitioner = getVenicePartitioner(1);
+    int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
+    mockAbstractStorageEngine.put(targetPartitionPutKeyFoo, ingestionTaskFactory, putValue);
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
