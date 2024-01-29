@@ -3,16 +3,15 @@ package com.linkedin.venice.controller.kafka;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -67,16 +66,21 @@ public class TopicCleanupService extends AbstractVeniceService {
   protected final int delayFactor;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private final AtomicBoolean stop = new AtomicBoolean(false);
+  private final List<String> childFabricList;
+  private final Map<String, Map<String, Integer>> multiDataCenterStoreToVersionTopicCount;
+  private final PubSubTopicRepository pubSubTopicRepository;
+  private final TopicCleanupServiceStats topicCleanupServiceStats;
+  private String localDatacenter;
+  private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
-
-  private PubSubTopicRepository pubSubTopicRepository;
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
 
   public TopicCleanupService(
       Admin admin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      TopicCleanupServiceStats topicCleanupServiceStats) {
     this.admin = admin;
     this.sleepIntervalBetweenTopicListFetchMs =
         multiClusterConfigs.getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
@@ -85,6 +89,18 @@ public class TopicCleanupService extends AbstractVeniceService {
     this.cleanupThread = new Thread(new TopicCleanupTask(), "TopicCleanupTask");
     this.multiClusterConfigs = multiClusterConfigs;
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.topicCleanupServiceStats = topicCleanupServiceStats;
+    this.childFabricList =
+        Utils.parseCommaSeparatedStringToList(multiClusterConfigs.getCommonConfig().getChildDatacenters());
+    if (!admin.isParent()) {
+      // Only perform cross fabric VT check for RT deletion in child fabrics.
+      this.multiDataCenterStoreToVersionTopicCount = new HashMap<>(childFabricList.size());
+      for (String datacenter: childFabricList) {
+        multiDataCenterStoreToVersionTopicCount.put(datacenter, new HashMap<>());
+      }
+    } else {
+      this.multiDataCenterStoreToVersionTopicCount = Collections.emptyMap();
+    }
   }
 
   @Override
@@ -155,32 +171,41 @@ public class TopicCleanupService extends AbstractVeniceService {
   void cleanupVeniceTopics() {
     PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>((s1, s2) -> s1.isRealTime() ? -1 : 0);
     populateDeprecatedTopicQueue(allTopics);
+    topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
     long refreshTime = System.currentTimeMillis();
     while (!allTopics.isEmpty()) {
       PubSubTopic topic = allTopics.poll();
-      /**
-       * Until now, we haven't figured out a good way to handle real-time topic cleanup:
-       *     1. If {@link TopicCleanupService} doesn't delete real-time topic, the truncated real-time topic could cause inconsistent data problem
-       *       between parent cluster and prod cluster if the deleted hybrid store gets re-created;
-       *     2. If {@link TopicCleanupService} deletes the real-time topic, it might crash MM if application is still producing to the real-time topic
-       *       in parent cluster;
-       *
-       *     Since Kafka nurse script will automatically kick in if MM crashes (which should still happen very infrequently),
-       *     for the time being, we choose to delete the real-time topic.
-       */
       try {
-        try {
-          // Best effort to clean up staled replica statuses from meta system store.
-          cleanupReplicaStatusesFromMetaSystemStore(topic);
-        } catch (Exception e) {
-          LOGGER.error(
-              "Received exception: {} while trying to clean up replica statuses from meta system store for topic: {}, but topic deletion will continue",
-              e,
-              topic);
+        if (topic.isRealTime() && !multiDataCenterStoreToVersionTopicCount.isEmpty()) {
+          // Only delete realtime topic in child fabrics if all version topics are deleted in all child fabrics.
+          if (isRTTopicDeletionBlocked) {
+            LOGGER.warn(
+                "Topic deletion for topic: {} is blocked due to unable to fetch version topic info",
+                topic.getName());
+            topicCleanupServiceStats.recordTopicDeletionError();
+            continue;
+          }
+          boolean canDelete = true;
+          for (Map.Entry<String, Map<String, Integer>> mapEntry: multiDataCenterStoreToVersionTopicCount.entrySet()) {
+            if (mapEntry.getValue().containsKey(topic.getStoreName())) {
+              canDelete = false;
+              LOGGER.info(
+                  "Topic deletion for topic: {} is delayed due to {} version topics found in datacenter {}",
+                  topic.getName(),
+                  mapEntry.getValue().get(topic.getStoreName()),
+                  mapEntry.getKey());
+              break;
+            }
+          }
+          if (!canDelete) {
+            continue;
+          }
         }
         getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+        topicCleanupServiceStats.recordTopicDeleted();
       } catch (VeniceException e) {
-        LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic, e.toString());
+        LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic.getName(), e.toString());
+        topicCleanupServiceStats.recordTopicDeletionError();
         // No op, will try again in the next cleanup cycle.
       }
 
@@ -200,28 +225,90 @@ public class TopicCleanupService extends AbstractVeniceService {
   }
 
   private void populateDeprecatedTopicQueue(PriorityQueue<PubSubTopic> topics) {
-    Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(getTopicManager());
+    Map<PubSubTopic, Long> topicsWithRetention = getTopicManager().getAllTopicRetentions();
+    Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicsWithRetention);
+    AtomicBoolean realTimeTopicDeletionNeeded = new AtomicBoolean(false);
     allStoreTopics.forEach((storeName, topicRetentions) -> {
+      int minNumOfUnusedVersionTopicsOverride = minNumberOfUnusedKafkaTopicsToPreserve;
       PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
       if (topicRetentions.containsKey(realTimeTopic)) {
         if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
           topics.offer(realTimeTopic);
+          minNumOfUnusedVersionTopicsOverride = 0;
+          realTimeTopicDeletionNeeded.set(true);
         }
         topicRetentions.remove(realTimeTopic);
       }
       List<PubSubTopic> oldTopicsToDelete =
-          extractVersionTopicsToCleanup(admin, topicRetentions, minNumberOfUnusedKafkaTopicsToPreserve, delayFactor);
+          extractVersionTopicsToCleanup(admin, topicRetentions, minNumOfUnusedVersionTopicsOverride, delayFactor);
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
       }
     });
+    if (realTimeTopicDeletionNeeded.get() && !multiDataCenterStoreToVersionTopicCount.isEmpty()) {
+      refreshMultiDataCenterStoreToVersionTopicCountMap(topicsWithRetention.keySet());
+    }
+  }
+
+  private void refreshMultiDataCenterStoreToVersionTopicCountMap(Set<PubSubTopic> localTopics) {
+    if (localDatacenter == null) {
+      String localPubSubBootstrapServer = getTopicManager().getPubSubBootstrapServers();
+      for (String childFabric: childFabricList) {
+        if (localPubSubBootstrapServer.equals(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childFabric))) {
+          localDatacenter = childFabric;
+          break;
+        }
+      }
+      if (localDatacenter == null) {
+        String childFabrics = String.join(",", childFabricList);
+        LOGGER.error(
+            "Blocking RT topic deletion. Cannot find local datacenter in child datacenter list: {}",
+            childFabrics);
+        isRTTopicDeletionBlocked = true;
+        return;
+      }
+    }
+    clearAndPopulateStoreToVersionTopicCountMap(
+        localTopics,
+        multiDataCenterStoreToVersionTopicCount.get(localDatacenter));
+    if (childFabricList.size() > 1) {
+      for (String childFabric: childFabricList) {
+        try {
+          if (childFabric.equals(localDatacenter)) {
+            continue;
+          }
+          String pubSubBootstrapServer = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childFabric);
+          Set<PubSubTopic> remoteTopics = getTopicManager(pubSubBootstrapServer).getAllTopicRetentions().keySet();
+          clearAndPopulateStoreToVersionTopicCountMap(
+              remoteTopics,
+              multiDataCenterStoreToVersionTopicCount.get(childFabric));
+        } catch (Exception e) {
+          LOGGER.error("Failed to refresh store to version topic count map for fabric {}", childFabric, e);
+          isRTTopicDeletionBlocked = true;
+          return;
+        }
+      }
+    }
+    isRTTopicDeletionBlocked = false;
+  }
+
+  private static void clearAndPopulateStoreToVersionTopicCountMap(
+      Set<PubSubTopic> topics,
+      Map<String, Integer> storeToVersionTopicCountMap) {
+    storeToVersionTopicCountMap.clear();
+    for (PubSubTopic topic: topics) {
+      String storeName = topic.getStoreName();
+      if (!storeName.isEmpty() && topic.isVersionTopic()) {
+        storeToVersionTopicCountMap.merge(storeName, 1, Integer::sum);
+      }
+    }
   }
 
   /**
    * @return a map object that maps from the store name to the Kafka topic name and its configured Kafka retention time.
    */
-  public static Map<String, Map<PubSubTopic, Long>> getAllVeniceStoreTopicsRetentions(TopicManager topicManager) {
-    Map<PubSubTopic, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
+  public static Map<String, Map<PubSubTopic, Long>> getAllVeniceStoreTopicsRetentions(
+      Map<PubSubTopic, Long> topicsWithRetention) {
     Map<String, Map<PubSubTopic, Long>> allStoreTopics = new HashMap<>();
 
     for (Map.Entry<PubSubTopic, Long> entry: topicsWithRetention.entrySet()) {
@@ -313,66 +400,5 @@ public class TopicCleanupService extends AbstractVeniceService {
           return true;
         })
         .collect(Collectors.toList());
-  }
-
-  /**
-   * Clean up staled replica status from meta system store if necessary.
-   * @param topic
-   * @return whether the staled replica status cleanup happens or not.
-   */
-  protected boolean cleanupReplicaStatusesFromMetaSystemStore(PubSubTopic topic) {
-    if (admin.isParent()) {
-      // No op in Parent Controller
-      return false;
-    }
-    if (!topic.isVersionTopic()) {
-      // Only applicable to version topic
-      return false;
-    }
-
-    String storeName = Version.parseStoreFromKafkaTopicName(topic.getName());
-    int version = Version.parseVersionFromKafkaTopicName(topic.getName());
-    HelixReadOnlyStoreConfigRepository storeConfigRepository = admin.getStoreConfigRepo();
-    Optional<StoreConfig> storeConfig = storeConfigRepository.getStoreConfig(storeName);
-    // Get cluster name for current store
-    if (!storeConfig.isPresent()) {
-      throw new VeniceException("Failed to get store config for store: " + storeName);
-    }
-    /**
-     * This logic won't take care of store migration scenarios properly since it will just look at the current cluster
-     * when topic deletion happens.
-     * But it is fine at this stage since a minor leaking of store replica statuses in meta system store is acceptable.
-     * If the size of meta system store becomes unacceptable because of unknown issue, we could always do an empty push
-     * to clean it up.
-     */
-    String clusterName = storeConfig.get().getCluster();
-    /**
-     * Check whether RT topic for the meta system store exists or not to decide whether we should clean replica statuses from meta System Store or not.
-     * Since {@link TopicCleanupService} will be running in the leader Controller of Controller Cluster, so
-     * we won't have access to store repository for every Venice cluster, and the existence of RT topic for
-     * meta System store is the way to check whether meta System store is enabled or not.
-     */
-    PubSubTopic rtTopicForMetaSystemStore = pubSubTopicRepository
-        .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName)));
-    TopicManager topicManager = getTopicManager();
-    if (topicManager.containsTopic(rtTopicForMetaSystemStore)) {
-      /**
-       * Find out the total number of partition of version topic, and we will use this info to clean up replica statuses for each partition.
-       */
-      int partitionCount = topicManager.partitionsFor(topic).size();
-      MetaStoreWriter metaStoreWriter = admin.getMetaStoreWriter();
-      for (int i = 0; i < partitionCount; ++i) {
-        metaStoreWriter.deleteStoreReplicaStatus(clusterName, storeName, version, i);
-      }
-      LOGGER.info(
-          "Successfully removed store replica status from meta system store for store: {} , "
-              + "version: {} with partition count: {} in cluster: {}",
-          storeName,
-          version,
-          partitionCount,
-          clusterName);
-      return true;
-    }
-    return false;
   }
 }

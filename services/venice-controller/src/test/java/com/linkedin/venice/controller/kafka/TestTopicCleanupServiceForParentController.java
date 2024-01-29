@@ -6,7 +6,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -31,7 +33,12 @@ public class TestTopicCleanupServiceForParentController {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1000l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(2).when(config).getTopicCleanupDelayFactor();
-    topicCleanupService = new TopicCleanupServiceForParentController(admin, config, pubSubTopicRepository);
+    VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(veniceControllerConfig).when(config).getCommonConfig();
+    doReturn("dc1").when(veniceControllerConfig).getChildDatacenters();
+    TopicCleanupServiceStats topicCleanupServiceStats = mock(TopicCleanupServiceStats.class);
+    topicCleanupService =
+        new TopicCleanupServiceForParentController(admin, config, pubSubTopicRepository, topicCleanupServiceStats);
   }
 
   @Test

@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYB
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -15,10 +16,12 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.TestUtils;
@@ -49,6 +52,7 @@ public class TestParentControllerWithMultiDataCenter {
                                                                                                          // "venice-cluster1",
                                                                                                          // ...];
 
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
@@ -464,6 +468,60 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(storeInfo.getCurrentVersion(), 2);
         });
       }
+    }
+  }
+
+  @Test
+  public void testDeleteStoreRTDeletion() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testDeleteStore");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+        ControllerClient dc0Client =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      ControllerResponse response = parentControllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1).setHybridRewindSeconds(60));
+      Assert.assertFalse(response.isError(), "Update hybrid store returned an error");
+      List<ControllerClient> childControllerClients = new ArrayList<>();
+      childControllerClients.add(dc0Client);
+      childControllerClients.add(dc1Client);
+      emptyPushToStore(parentControllerClient, childControllerClients, storeName, 1);
+      List<TopicManager> childDatacenterTopicManagers = new ArrayList<>(2);
+      childDatacenterTopicManagers
+          .add(childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+      childDatacenterTopicManagers
+          .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+      String pushStatusSystemStoreRT =
+          Version.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
+      String metaSystemStoreRT = Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName));
+      // Ensure all the RT topics are created in all child datacenters
+      TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, false, true, () -> {
+        for (TopicManager topicManager: childDatacenterTopicManagers) {
+          Assert.assertTrue(
+              topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName))));
+          Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(pushStatusSystemStoreRT)));
+          Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
+        }
+      });
+      response = parentControllerClient.disableAndDeleteStore(storeName);
+      Assert.assertFalse(response.isError(), "Delete store returned an error");
+      // Ensure all the RT topics are deleted in all child datacenters
+      TestUtils.waitForNonDeterministicAssertion(600, TimeUnit.SECONDS, false, true, () -> {
+        for (TopicManager topicManager: childDatacenterTopicManagers) {
+          Assert.assertFalse(
+              topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName))));
+          Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(pushStatusSystemStoreRT)));
+          Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
+        }
+      });
     }
   }
 

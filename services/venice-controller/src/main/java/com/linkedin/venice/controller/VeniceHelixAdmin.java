@@ -947,7 +947,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * Now there is no store exists in the store repository, we will try to retrieve the info from the graveyard.
        * Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
        */
-      configureNewStore(newStore, config, storeGraveyard.getLargestUsedVersionNumber(storeName));
+      int largestUsedStoreVersion = storeGraveyard.getLargestUsedVersionNumber(storeName);
+      if (largestUsedStoreVersion == Store.NON_EXISTING_VERSION) {
+        LOGGER.info(
+            "Store: {} does NOT exist in the store graveyard. Will initialize the new store at version: {}.",
+            storeName,
+            Store.NON_EXISTING_VERSION);
+      } else {
+        LOGGER.info(
+            "Found store: {} in the store graveyard. Will initialize the new store at version: {}.",
+            storeName,
+            largestUsedStoreVersion);
+      }
+      configureNewStore(newStore, config, largestUsedStoreVersion);
 
       storeRepo.addStore(newStore);
       // Create global config for that store.
@@ -1032,7 +1044,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Delete All versions and push statues
         deleteAllVersionsInStore(clusterName, storeName);
         resources.getPushMonitor().cleanupStoreStatus(storeName);
-        // Clean up topics
+        // Truncate all the version topics, this is a prerequisite to delete the RT topic
+        truncateOldTopics(clusterName, store, true);
+
         if (!store.isMigrating()) {
           // for RT topic block on deletion so that next create store does not see the lingering RT topic which could
           // have different partition count
@@ -1042,7 +1056,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
           }
         }
-        truncateOldTopics(clusterName, store, true);
 
         // Cleanup system stores if applicable
         UserSystemStoreLifeCycleHelper.maybeDeleteSystemStoresForUserStore(
