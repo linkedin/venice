@@ -75,7 +75,7 @@ public final class SchemaData {
       this.maxValueSchemaId = Math.max(valueSchema.getId(), this.maxValueSchemaId);
     }
     this.valueSchemaMap.set(valueSchema.getId(), valueSchema);
-    this.valueSchemaRMap.put(valueSchema, Integer.valueOf(valueSchema.getId()));
+    this.valueSchemaRMap.put(valueSchema, valueSchema.getId());
   }
 
   public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int derivedSchemaId) {
@@ -134,7 +134,7 @@ public final class SchemaData {
 
   public void deleteValueSchema(SchemaEntry valueSchema) {
     // value schema should be unique in store level, same as schema id
-    Integer id = valueSchema.getId();
+    int id = valueSchema.getId();
     valueSchemaMap.remove(id);
     valueSchemaRMap.remove(valueSchema);
   }
