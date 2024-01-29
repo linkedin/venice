@@ -40,6 +40,8 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -369,6 +371,15 @@ public interface Admin extends AutoCloseable, Closeable {
       int supersetSchemaId);
 
   DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, String derivedSchemaStr);
+
+  Set<Integer> getInUseValueSchemaIds(String clusterName, String storeName);
+
+  /**
+   * Deletes a store's values schema with ids `except` the ids passed in the argument inuseValueSchemaIds
+   */
+  void deleteValueSchemas(String clusterName, String storeName, Set<Integer> inuseValueSchemaIds);
+
+  StoreMetaValue getMetaStoreValue(StoreMetaKey storeMetaKey, String storeName);
 
   /**
    * This method skips most precondition checks and is intended for only internal use.

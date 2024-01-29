@@ -186,8 +186,11 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -324,6 +327,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
 
+  private static final long USUSED_SCHEMA_DELETION_TIME_GAP = TimeUnit.DAYS.toMillis(15);
   private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
   private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
@@ -3962,6 +3966,57 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       store.setAccessControlled(accessControlled);
 
       return store;
+    });
+  }
+
+  /**
+   * @return the value to which the specified key is mapped from the Venice internal <code>BATCH_JOB_HEARTBEAT_STORE</code> topic store.
+   */
+  @Override
+  public StoreMetaValue getMetaStoreValue(StoreMetaKey metaKey, String storeName) {
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    String d2Service = discoverCluster(storeName).getSecond();
+
+    try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> client = ClientFactory.getAndStartSpecificAvroClient(
+        ClientConfig.defaultSpecificClientConfig(metaStoreName, StoreMetaValue.class)
+            .setD2ServiceName(d2Service)
+            .setD2Client(this.d2Client))) {
+      return client.get(metaKey).get();
+    } catch (Exception e) {
+      LOGGER.warn("Could not fetch meta store value for key " + metaKey, e);
+      return null;
+    }
+  }
+
+  @Override
+  public Set<Integer> getInUseValueSchemaIds(String clusterName, String storeName) {
+    Store store = getStore(clusterName, storeName);
+    Set<Integer> schemaIds = new HashSet<>();
+
+    // Fetch value schema id used by all existing store verion
+    for (Version version: store.getVersions()) {
+      Map<String, String> map = new HashMap<>(2);
+      map.put(MetaStoreWriter.KEY_STRING_VERSION_NUMBER, Integer.toString(version.getNumber()));
+      StoreMetaKey key = MetaStoreDataType.VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION.getStoreMetaKey(map);
+      StoreMetaValue metaValue = getMetaStoreValue(key, storeName);
+
+      if (metaValue == null) {
+        return Collections.emptySet();
+      }
+      // Skip if its recorded recently
+      if (System.currentTimeMillis() < metaValue.timestamp + USUSED_SCHEMA_DELETION_TIME_GAP) {
+        return Collections.emptySet();
+      }
+      schemaIds.addAll(metaValue.storeValueSchemaIdsWrittenPerStoreVersion);
+    }
+    return schemaIds;
+  }
+
+  public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedSchemaIds) {
+    // delete the unused schemas.
+    unusedSchemaIds.forEach(id -> {
+      getHelixVeniceClusterResources(clusterName).getSchemaRepository().removeValueSchema(storeName, id);
+      LOGGER.info("Removed value schema with ID " + id + " for store " + storeName);
     });
   }
 

@@ -189,6 +189,16 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
+  public void removeValueSchema(String storeName, int schemaID) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
+      readWriteRegularStoreSchemaRepository.removeValueSchema(storeName, schemaID);
+    }
+    throw new VeniceException(
+        errorMsgForUnsupportedOperationsAgainstSystemStore(storeName, systemStoreType, "removeValueSchema"));
+  }
+
+  @Override
   public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {

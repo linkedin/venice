@@ -507,6 +507,12 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
+  public void removeValueSchema(String storeName, int valueSchemaId) {
+    preCheckStoreCondition(storeName);
+    accessor.removeValueSchema(storeName, valueSchemaId);
+  }
+
+  @Override
   public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     preCheckStoreCondition(storeName);
 
@@ -557,11 +563,5 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     if (!storeRepository.hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
-  }
-
-  // For testing purpose only.
-  void removeValueSchema(String storeName, int schemaId) {
-    preCheckStoreCondition(storeName);
-    accessor.removeValueSchema(storeName, String.valueOf(schemaId));
   }
 }

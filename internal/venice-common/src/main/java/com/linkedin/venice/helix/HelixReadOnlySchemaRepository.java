@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -531,10 +532,19 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
       SchemaData schemaData = schemaMap.get(storeName);
+      Set<Integer> schemaSet = new HashSet<>();
 
       for (String id: currentChildren) {
+        int schemaId = Integer.parseInt(id);
+
         if (schemaData.getValueSchema(Integer.parseInt(id)) == null) {
           schemaData.addValueSchema(accessor.getValueSchema(storeName, id));
+        }
+        schemaSet.add(schemaId);
+      }
+      for (SchemaEntry schemaEntry: schemaData.getValueSchemas()) {
+        if (!schemaSet.contains(schemaEntry.getId())) {
+          schemaData.deleteValueSchema(schemaEntry);
         }
       }
     }
