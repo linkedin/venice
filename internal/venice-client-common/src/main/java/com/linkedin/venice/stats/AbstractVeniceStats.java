@@ -74,7 +74,6 @@ public class AbstractVeniceStats {
     return registerSensor(getSensorFullName(getName(), sensorName), null, parents, stats);
   }
 
-
   private void checkCompatibility(MeasurableStat... stats) {
     /**
      * {@link AsyncGauge} doesn't support record() API, it cannot be registered with other stats that support record()
