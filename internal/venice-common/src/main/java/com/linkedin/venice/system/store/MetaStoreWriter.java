@@ -33,7 +33,6 @@ import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -216,8 +215,7 @@ public class MetaStoreWriter implements Closeable {
       // Construct an update
       UpdateBuilder updateBuilder = new UpdateBuilderImpl(this.derivedComputeSchema);
       updateBuilder.setNewFieldValue("timestamp", System.currentTimeMillis());
-      updateBuilder
-          .setElementsToAddToListField("storeValueSchemaIdsWrittenPerStoreVersion", Arrays.asList(valueSchemaId));
+      updateBuilder.setElementsToAddToListField("storeValueSchemaIdsWrittenPerStoreVersion", List.of(valueSchemaId));
       return updateBuilder.build();
     });
   }

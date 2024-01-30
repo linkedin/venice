@@ -327,7 +327,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
 
-  private static final long USUSED_SCHEMA_DELETION_TIME_GAP = TimeUnit.DAYS.toMillis(15);
+  private static final long UNUSED_SCHEMA_DELETION_TIME_GAP = TimeUnit.DAYS.toMillis(15);
   private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
   private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
@@ -3993,7 +3993,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Store store = getStore(clusterName, storeName);
     Set<Integer> schemaIds = new HashSet<>();
 
-    // Fetch value schema id used by all existing store verion
+    // Fetch value schema id used by all existing store version
     for (Version version: store.getVersions()) {
       Map<String, String> map = new HashMap<>(2);
       map.put(MetaStoreWriter.KEY_STRING_VERSION_NUMBER, Integer.toString(version.getNumber()));
@@ -4001,11 +4001,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       StoreMetaValue metaValue = getMetaStoreValue(key, storeName);
 
       if (metaValue == null) {
-        return Collections.emptySet();
+        continue;
       }
       // Skip if its recorded recently
-      if (System.currentTimeMillis() < metaValue.timestamp + USUSED_SCHEMA_DELETION_TIME_GAP) {
-        return Collections.emptySet();
+      if (System.currentTimeMillis() < metaValue.timestamp + UNUSED_SCHEMA_DELETION_TIME_GAP) {
+        continue;
       }
       schemaIds.addAll(metaValue.storeValueSchemaIdsWrittenPerStoreVersion);
     }

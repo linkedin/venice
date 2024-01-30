@@ -509,6 +509,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   @Override
   public void removeValueSchema(String storeName, int valueSchemaId) {
     preCheckStoreCondition(storeName);
+    if (getSupersetOrLatestValueSchema(storeName).getId() == valueSchemaId) {
+      logger.error("Should not remove latest schema id {} for store {}", valueSchemaId, storeName);
+      return;
+    }
     accessor.removeValueSchema(storeName, valueSchemaId);
   }
 

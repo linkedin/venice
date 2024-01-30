@@ -72,22 +72,27 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
 
           // assumes `getValueSchemas` returns ascending schema ids so that the older schemas are deleted first
           for (SchemaEntry schemaEntry: allSchemas) {
-            if (schemaEntry.getId() == store.getLatestSuperSetValueSchemaId()) {
+            int schemaId = schemaEntry.getId();
+            // skip latest value schema or super-set schema id
+            if (schemaId == store.getLatestSuperSetValueSchemaId() || admin.getHelixVeniceClusterResources(clusterName)
+                .getSchemaRepository()
+                .getSupersetOrLatestValueSchema(storeName)
+                .getId() == schemaId) {
               continue;
             }
 
             // delete only if its not used and less than minimum of used schema id
-            if (!usedSchemaSet.contains(schemaEntry.getId()) && schemaEntry.getId() < minSchemaIdInUse) {
-              schemasToDelete.add(schemaEntry.getId());
+            if (!usedSchemaSet.contains(schemaId) && schemaId < minSchemaIdInUse) {
+              schemasToDelete.add(schemaId);
               // maintain minimum of SCHEMA_COUNT_THRESHOLD schemas in repo
               if (schemasToDelete.size() > allSchemas.size() - minSchemaCountToKeep) {
                 break;
               }
             }
           }
-          // delete from parent
-          admin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
           // delete from child colos
+          admin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
+          // delete from parent
           veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
         }
       }

@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -50,11 +51,17 @@ public class TestUnusedValueSchemaCleanupService {
     String clusterName = "test_cluster";
     stores.add(store.getName());
     Set<String> clusters = new HashSet<>();
+    HelixVeniceClusterResources helixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
+    ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
     clusters.add(clusterName);
     doReturn(clusters).when(config).getClusters();
     List<Store> storeList = new ArrayList<>();
     storeList.add(store);
     doReturn(storeList).when(admin).getAllStores(any());
+    doReturn(helixVeniceClusterResources).when(admin).getHelixVeniceClusterResources(anyString());
+    doReturn(schemaRepository).when(helixVeniceClusterResources).getSchemaRepository();
+    SchemaEntry schemaEntry = new SchemaEntry(4, SCHEMA);
+    doReturn(schemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(anyString());
     Collection<SchemaEntry> schemaEntries = new ArrayList<>();
     schemaEntries.add(new SchemaEntry(1, SCHEMA));
     schemaEntries.add(new SchemaEntry(2, SCHEMA));
