@@ -51,6 +51,7 @@ public class PushMonitorUtils {
     int completedPartitions = 0;
     int totalReplicaCount = 0;
     int liveReplicaCount = 0;
+    int completedReplicaCount = 0;
     Set<Integer> incompletePartition = new HashSet<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       Map<CharSequence, Integer> instances =
@@ -59,15 +60,17 @@ public class PushMonitorUtils {
       totalReplicaCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
+        if (status == completeStatus) {
+          completedReplicaCount++;
+          continue;
+        }
+        // For live replica change, we will skip completed replicas.
         boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
         if (!isInstanceAlive) {
           continue;
         }
         // We only compute status based on live instances.
         liveReplicaCount++;
-        if (status == completeStatus) {
-          continue;
-        }
         if (status == middleStatus) {
           allInstancesCompleted = false;
           continue;
@@ -87,17 +90,18 @@ public class PushMonitorUtils {
       }
     }
     boolean noDaVinciStatusReported = totalReplicaCount == 0;
-
-    // Report error if too many davinci instances are not alive for over 5 mins
-    if (totalReplicaCount - liveReplicaCount > maxOfflineInstance) {
+    int offlineReplicaCount = totalReplicaCount - liveReplicaCount - completedReplicaCount;
+    LOGGER.info("DEBUGGING: {} {} {}", totalReplicaCount, liveReplicaCount, completedReplicaCount);
+    // Report error if too many Da Vinci instances are not alive for over 5 minutes.
+    if (offlineReplicaCount > maxOfflineInstance) {
       Long lastUpdateTime = storeVersionToDVCDeadInstanceTimeMap.get(topicName);
+      LOGGER.info("DEBUGGING ENTER: {} {}", lastUpdateTime, System.currentTimeMillis());
       if (lastUpdateTime != null) {
         if (lastUpdateTime + TimeUnit.MINUTES.toMillis(daVinciErrorInstanceWaitTime) < System.currentTimeMillis()) {
           storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
           return new ExecutionStatusWithDetails(
               ExecutionStatus.ERROR,
-              " Too many dead instances: " + (totalReplicaCount - liveReplicaCount) + ", total instances: "
-                  + totalReplicaCount,
+              " Too many dead instances: " + offlineReplicaCount + ", total instances: " + totalReplicaCount,
               noDaVinciStatusReported);
         }
       } else {
@@ -124,6 +128,8 @@ public class PushMonitorUtils {
           .append(erroredReplica.get())
           .append(". Live replica count: ")
           .append(liveReplicaCount)
+          .append(", completed replica count: ")
+          .append(completedReplicaCount)
           .append(", total replica count: ")
           .append(totalReplicaCount);
     }
@@ -133,6 +139,8 @@ public class PushMonitorUtils {
           .append(incompletePartition)
           .append(". Live replica count: ")
           .append(liveReplicaCount)
+          .append(", completed replica count: ")
+          .append(completedReplicaCount)
           .append(", total replica count: ")
           .append(totalReplicaCount);
     }

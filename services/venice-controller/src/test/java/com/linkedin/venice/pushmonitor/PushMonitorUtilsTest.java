@@ -5,6 +5,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -29,12 +30,30 @@ public class PushMonitorUtilsTest {
     doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("c"));
     doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("d"));
 
+    /**
+     * It is still valid, because we have 4 replicas, 1 completed, 2 offline, 1 online, threshold number is 2.
+     */
     ExecutionStatusWithDetails executionStatusWithDetails =
         PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 2);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.STARTED);
+
+    /**
+     * The offline instances number exceed the max offline threshold count, but it will remain STARTED, as we need to wait
+     * until daVinciErrorInstanceWaitTime has passed since it first occurs.
+     */
+    Utils.sleep(1);
     executionStatusWithDetails =
-        PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 2);
+        PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 1);
+    Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.STARTED);
+
+    /**
+     * This time it should fail, as we override the wait time to 0, and after 1ms, the 2nd query should meet the failure
+     * condition check.
+     */
+    Utils.sleep(1);
+    executionStatusWithDetails =
+        PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 1);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.ERROR);
-    Assert.assertEquals(executionStatusWithDetails.getDetails(), " Too many dead instances: 3, total instances: 4");
+    Assert.assertEquals(executionStatusWithDetails.getDetails(), " Too many dead instances: 2, total instances: 4");
   }
 }
