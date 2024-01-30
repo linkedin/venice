@@ -60,16 +60,17 @@ public class PushMonitorUtils {
       totalReplicaCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
+        // We will skip completed replicas, as they have stopped emitting heartbeats and will not be counted as live
+        // replicas.
         if (status == completeStatus) {
           completedReplicaCount++;
           continue;
         }
-        // For live replica change, we will skip completed replicas.
         boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
         if (!isInstanceAlive) {
           continue;
         }
-        // We only compute status based on live instances.
+        // Derive the partition replica ingestion status based on live replica ingestion status.
         liveReplicaCount++;
         if (status == middleStatus) {
           allInstancesCompleted = false;
