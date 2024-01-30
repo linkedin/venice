@@ -202,7 +202,7 @@ public class HelixUtils {
   }
 
   public static <T> boolean exists(ZkBaseDataAccessor<T> dataAccessor, String path) {
-    return exists(dataAccessor, path);
+    return dataAccessor.exists(path, AccessOption.PERSISTENT);
   }
 
   public static <T> void remove(ZkBaseDataAccessor<T> dataAccessor, String path) {

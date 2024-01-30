@@ -280,7 +280,7 @@ public class HelixSchemaAccessor {
   }
 
   public void removeValueSchema(String storeName, int schemaID) {
-    if (HelixUtils.exists(schemaAccessor, getValueSchemaPath(storeName, String.valueOf(schemaID)))) {
+    if (!HelixUtils.exists(schemaAccessor, getValueSchemaPath(storeName, String.valueOf(schemaID)))) {
       logger.info("Value schema with id : " + schemaID + " does not exist for store: " + storeName);
       return;
     }
