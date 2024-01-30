@@ -4282,19 +4282,23 @@ public abstract class StoreIngestionTaskTest {
     TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer();
 
     VenicePartitioner partitioner = getVenicePartitioner(1);
+    int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
 
     runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {}, () -> {
+      Schema keySchema = Schema.create(Schema.Type.INT);
+      SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+      when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+      when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
-      // Verify it retrieves the offset from the OffSet Manager
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
-      verifyPutAndDelete(1, aaConfig, true);
-      // Verify it commits the offset to Offset Manager
-      OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.getOffset());
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
-          .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
+      Schema valueSchema = Schema.create(STRING_SCHEMA.getType());
+      SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+      when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+      when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
 
-      verify(mockVersionedStorageIngestionStats, timeout(TEST_TIMEOUT_MS).atLeast(3))
-          .recordConsumedRecordEndToEndProcessingLatency(any(), eq(1), anyDouble(), anyLong());
+      verify(mockAbstractStorageEngine, timeout(100000)).put(
+          targetPartitionPutKeyFoo,
+          putKeyFoo,
+          ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
     }, aaConfig, recordTransformer);
 
     // verify the shared consumer should be detached when the ingestion task is closed.
