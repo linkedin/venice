@@ -110,8 +110,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final ChunkAssembler chunkAssembler;
 
-  protected final AvroStoreDeserializerCache avrostoreDeserializerCache;
-
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer) {
@@ -149,7 +147,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
     }
 
-    avrostoreDeserializerCache = new AvroStoreDeserializerCache(storeRepository, storeName, true);
     LOGGER.info(
         "Start a change log consumer client for store: {}, with partition count: {} and view class: {} ",
         storeName,
@@ -765,7 +762,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   private V deserializeValueFromBytes(ByteBuffer byteBuffer, int valueSchemaId) {
-    RecordDeserializer<V> valueDeserializer = avrostoreDeserializerCache.getDeserializer(valueSchemaId, valueSchemaId);
+    RecordDeserializer<V> valueDeserializer = storeDeserializerCache.getDeserializer(valueSchemaId, valueSchemaId);
     if (byteBuffer != null) {
       return valueDeserializer.deserialize(byteBuffer);
     }
