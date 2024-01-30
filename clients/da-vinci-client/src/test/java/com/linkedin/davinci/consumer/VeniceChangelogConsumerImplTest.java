@@ -37,6 +37,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
@@ -75,6 +76,7 @@ public class VeniceChangelogConsumerImplTest {
   private Schema rmdSchema;
   private SchemaReader schemaReader;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final Schema valueSchema = AvroCompatibilityHelper.parse("\"string\"");
 
   @BeforeMethod
   public void setUp() {
@@ -82,7 +84,6 @@ public class VeniceChangelogConsumerImplTest {
     schemaReader = mock(SchemaReader.class);
     Schema keySchema = AvroCompatibilityHelper.parse("\"string\"");
     doReturn(keySchema).when(schemaReader).getKeySchema();
-    Schema valueSchema = AvroCompatibilityHelper.parse("\"string\"");
     doReturn(valueSchema).when(schemaReader).getValueSchema(1);
     rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema, 1);
 
@@ -134,6 +135,7 @@ public class VeniceChangelogConsumerImplTest {
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
     Mockito.when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
+    Mockito.when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
 
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
@@ -257,6 +259,7 @@ public class VeniceChangelogConsumerImplTest {
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
+    Mockito.when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
     Mockito.when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
