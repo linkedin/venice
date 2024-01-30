@@ -91,11 +91,9 @@ public class PushMonitorUtils {
     }
     boolean noDaVinciStatusReported = totalReplicaCount == 0;
     int offlineReplicaCount = totalReplicaCount - liveReplicaCount - completedReplicaCount;
-    LOGGER.info("DEBUGGING: {} {} {}", totalReplicaCount, liveReplicaCount, completedReplicaCount);
     // Report error if too many Da Vinci instances are not alive for over 5 minutes.
     if (offlineReplicaCount > maxOfflineInstance) {
       Long lastUpdateTime = storeVersionToDVCDeadInstanceTimeMap.get(topicName);
-      LOGGER.info("DEBUGGING ENTER: {} {}", lastUpdateTime, System.currentTimeMillis());
       if (lastUpdateTime != null) {
         if (lastUpdateTime + TimeUnit.MINUTES.toMillis(daVinciErrorInstanceWaitTime) < System.currentTimeMillis()) {
           storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
