@@ -132,7 +132,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     if (heartbeatTimestamps.get(store) != null) {
       if (heartbeatTimestamps.get(store).get(version) != null) {
         if (heartbeatTimestamps.get(store).get(version).get(partition) != null) {
-          heartbeatTimestamps.get(store).get(version).get(partition).put(region, timestamp);
+          if (region != null) {
+            heartbeatTimestamps.get(store).get(version).get(partition).put(region, timestamp);
+          }
         }
       }
     }
