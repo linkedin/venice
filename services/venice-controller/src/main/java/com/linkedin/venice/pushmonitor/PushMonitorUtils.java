@@ -70,7 +70,7 @@ public class PushMonitorUtils {
         if (!isInstanceAlive) {
           continue;
         }
-        // Derive the partition replica ingestion status based on live replica ingestion status.
+        // Derive the overall partition ingestion status based on all live replica ingestion status.
         liveReplicaCount++;
         if (status == middleStatus) {
           allInstancesCompleted = false;
