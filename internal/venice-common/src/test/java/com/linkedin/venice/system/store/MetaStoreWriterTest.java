@@ -119,10 +119,6 @@ public class MetaStoreWriterTest {
     doReturn(generatedSchemaID).when(schemaRepo).getDerivedSchemaId(any(), any());
     MetaStoreWriter metaStoreWriter =
         new MetaStoreWriter(topicManager, writerFactory, schemaRepo, pubSubTopicRepository, 10, 100);
-    ArgumentCaptor<StoreMetaKey> keyArgumentCaptor = ArgumentCaptor.forClass(StoreMetaKey.class);
-    ArgumentCaptor<StoreMetaValue> valueArgumentCaptor = ArgumentCaptor.forClass(StoreMetaValue.class);
-    ArgumentCaptor<Integer> schemaArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
-
     Instance instance = new Instance("host1", "host1", 1234);
     metaStoreWriter.writeStoreReplicaStatus("cluster", "storeName", 1, 0, instance, ExecutionStatus.COMPLETED);
   }
