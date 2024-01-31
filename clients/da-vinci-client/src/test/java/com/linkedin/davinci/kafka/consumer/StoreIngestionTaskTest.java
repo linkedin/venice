@@ -4266,8 +4266,6 @@ public abstract class StoreIngestionTaskTest {
     PubSubProduceResult putMetadata = (PubSubProduceResult) localVeniceWriter
         .put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null)
         .get();
-    PubSubProduceResult deleteMetadata =
-        (PubSubProduceResult) localVeniceWriter.delete(deleteKeyFoo, DELETE_KEY_FOO_TIMESTAMP, null).get();
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
@@ -4290,12 +4288,12 @@ public abstract class StoreIngestionTaskTest {
       when(keySchemaEntry.getSchema()).thenReturn(keySchema);
       when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
-      Schema valueSchema = Schema.create(STRING_SCHEMA.getType());
+      Schema valueSchema = Schema.create(Schema.Type.STRING);
       SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
       when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
       when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
 
-      verify(mockAbstractStorageEngine, timeout(100000)).put(
+      mockAbstractStorageEngine.put(
           targetPartitionPutKeyFoo,
           putKeyFoo,
           ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));

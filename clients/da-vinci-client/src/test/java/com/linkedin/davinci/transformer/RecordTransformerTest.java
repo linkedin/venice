@@ -51,7 +51,7 @@ public class RecordTransformerTest {
 
   @Test
   public void testRecordTransformer() {
-    DaVinciRecordTransformer<Integer, String, TransformedRecord<Integer, String>> recordTransformer =
+    DaVinciRecordTransformer<Integer, Object, TransformedRecord<Integer, Object>> recordTransformer =
         new TestStringRecordTransformer();
 
     Schema keyOutputSchema = recordTransformer.getKeyOutputSchema();
@@ -61,13 +61,13 @@ public class RecordTransformerTest {
     assertEquals(valueOutputSchema.getType(), Schema.Type.STRING);
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
-    Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
-    TransformedRecord<Integer, String> transformedRecord = recordTransformer.put(lazyKey, lazyValue);
+    Lazy<Object> lazyValue = Lazy.of(() -> "SampleValue");
+    TransformedRecord<Integer, Object> transformedRecord = recordTransformer.put(lazyKey, lazyValue);
     assertEquals(Optional.ofNullable(transformedRecord.getKey()), Optional.ofNullable(42));
     assertEquals(transformedRecord.getValue(), "SampleValueTransformed");
 
     Lazy<Integer> lazyDeleteKey = Lazy.of(() -> 99);
-    TransformedRecord<Integer, String> deletedRecord = recordTransformer.delete(lazyDeleteKey);
+    TransformedRecord<Integer, Object> deletedRecord = recordTransformer.delete(lazyDeleteKey);
     assertNull(deletedRecord);
   }
 

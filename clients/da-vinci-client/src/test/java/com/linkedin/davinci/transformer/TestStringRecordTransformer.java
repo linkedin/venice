@@ -7,7 +7,7 @@ import org.apache.avro.Schema;
 
 
 public class TestStringRecordTransformer
-    implements DaVinciRecordTransformer<Integer, String, TransformedRecord<Integer, String>> {
+    implements DaVinciRecordTransformer<Integer, Object, TransformedRecord<Integer, Object>> {
   public Schema getKeyOutputSchema() {
     return Schema.create(Schema.Type.INT);
   }
@@ -16,8 +16,8 @@ public class TestStringRecordTransformer
     return Schema.create(Schema.Type.STRING);
   }
 
-  public TransformedRecord<Integer, String> put(Lazy<Integer> key, Lazy<String> value) {
-    TransformedRecord<Integer, String> transformedRecord = new TransformedRecord<>();
+  public TransformedRecord<Integer, Object> put(Lazy<Integer> key, Lazy<Object> value) {
+    TransformedRecord<Integer, Object> transformedRecord = new TransformedRecord<>();
     transformedRecord.setKey(key.get());
     transformedRecord.setValue(value.get() + "Transformed");
     return transformedRecord;
