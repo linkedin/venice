@@ -32,7 +32,8 @@ public class PushMonitorUtils {
       String topicName,
       int partitionCount,
       Optional<String> incrementalPushVersion,
-      int maxOfflineInstance) {
+      int maxOfflineInstanceCount,
+      double maxOfflineInstanceRatio) {
     if (reader == null) {
       throw new VeniceException("PushStatusStoreReader is null");
     }
@@ -93,7 +94,9 @@ public class PushMonitorUtils {
     boolean noDaVinciStatusReported = totalReplicaCount == 0;
     int offlineReplicaCount = totalReplicaCount - liveReplicaCount - completedReplicaCount;
     // Report error if too many Da Vinci instances are not alive for over 5 minutes.
-    if (offlineReplicaCount > maxOfflineInstance) {
+    int maxOfflineInstanceAllowed =
+        Math.min(maxOfflineInstanceCount, (int) (maxOfflineInstanceRatio * totalReplicaCount));
+    if (offlineReplicaCount > maxOfflineInstanceAllowed) {
       Long lastUpdateTime = storeVersionToDVCDeadInstanceTimeMap.get(topicName);
       if (lastUpdateTime != null) {
         if (lastUpdateTime + TimeUnit.MINUTES.toMillis(daVinciErrorInstanceWaitTime) < System.currentTimeMillis()) {

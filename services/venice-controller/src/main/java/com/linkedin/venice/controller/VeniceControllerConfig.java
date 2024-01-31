@@ -57,7 +57,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_S
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_COUNT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
@@ -229,7 +230,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final int daVinciPushStatusScanNoReportRetryMaxAttempt;
 
-  private final int daVinciPushStatusScanMaxOfflineInstance;
+  private final int daVinciPushStatusScanMaxOfflineInstanceCount;
+
+  private final double daVinciPushStatusScanMaxOfflineInstanceRatio;
 
   private final boolean zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
 
@@ -486,7 +489,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.daVinciPushStatusScanThreadNumber = props.getInt(DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER, 4);
     this.daVinciPushStatusScanNoReportRetryMaxAttempt =
         props.getInt(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 6);
-    this.daVinciPushStatusScanMaxOfflineInstance = props.getInt(DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE, 10);
+    this.daVinciPushStatusScanMaxOfflineInstanceCount =
+        props.getInt(DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_COUNT, 10);
+    this.daVinciPushStatusScanMaxOfflineInstanceRatio =
+        props.getDouble(DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO, 0.1d);
 
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true);
@@ -639,8 +645,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return disabledReplicaEnablerServiceIntervalMs;
   }
 
-  public int getDaVinciPushStatusScanMaxOfflineInstance() {
-    return daVinciPushStatusScanMaxOfflineInstance;
+  public int getDaVinciPushStatusScanMaxOfflineInstanceCount() {
+    return daVinciPushStatusScanMaxOfflineInstanceCount;
+  }
+
+  public double getDaVinciPushStatusScanMaxOfflineInstanceRatio() {
+    return daVinciPushStatusScanMaxOfflineInstanceRatio;
   }
 
   public int getTopicCleanupDelayFactor() {
