@@ -64,6 +64,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
@@ -103,7 +104,8 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(StorageReadRequestHandler.class);
-
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   private final DiskHealthCheckService diskHealthCheckService;
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
@@ -316,11 +318,23 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           }
           context.writeAndFlush(response);
         } catch (VeniceNoStoreException e) {
+          String msg = "No storage exists for store: " + e.getStoreName();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+            LOGGER.error(msg, e);
+          }
           HttpResponseStatus status = getHttpResponseStatus(e);
           context.writeAndFlush(new HttpShortcutResponse("No storage exists for: " + e.getStoreName(), status));
         } catch (VeniceRequestEarlyTerminationException e) {
+          String msg = "Request timed out for store: " + e.getStoreName();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+            LOGGER.error(msg, e);
+          }
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.REQUEST_TIMEOUT));
         } catch (OperationNotAllowedException e) {
+          String msg = "METHOD_NOT_ALLOWED: " + e.getMessage();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+            LOGGER.error(msg, e);
+          }
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.METHOD_NOT_ALLOWED));
         } catch (Exception e) {
           LOGGER.error("Exception thrown for {}", request.getResourceName(), e);

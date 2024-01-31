@@ -148,6 +148,8 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
         int statusCode = response != null ? response.getStatusCode() : HttpStatus.SC_INTERNAL_SERVER_ERROR;
         if (!retryFuture.isCancelled() && RETRIABLE_ERROR_CODES.contains(statusCode)) {
           retryFuture.setSuccess(HttpResponseStatus.valueOf(statusCode));
+          AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
+          stats.recordErrorRetryCount(storeName);
           return;
         }
 
