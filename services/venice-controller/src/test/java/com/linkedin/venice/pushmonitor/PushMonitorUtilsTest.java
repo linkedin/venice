@@ -19,6 +19,11 @@ public class PushMonitorUtilsTest {
     String topicName = "store_v1";
     PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
     PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("a"));
+    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("b"));
+    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("c"));
+    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("d"));
+
     Map<CharSequence, Integer> map = new HashMap<>();
     map.put("a", 3);
     map.put("b", 3);
@@ -26,64 +31,69 @@ public class PushMonitorUtilsTest {
     map.put("d", 10);
     doReturn(map).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
     doReturn(map).when(reader).getPartitionStatus("store", 2, 0, Optional.empty());
-    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("a"));
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("b"));
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("c"));
-    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("d"));
 
-    // Testing count-based threshold.
     /**
-     * It is still valid, because we have 4 replicas, 1 completed, 2 offline, 1 online, threshold number is 2.
+     * Testing count-based threshold.
      */
-    ExecutionStatusWithDetails executionStatusWithDetails =
-        PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 2, 1.0);
+    // It is still valid, because we have 4 replicas, 1 completed, 2 offline, 1 online, threshold number is min(2,
+    // 1.0*4) = 2.
+    validateOfflineReplicaInPushStatus(reader, "store_v1", 2, 1.0, ExecutionStatus.STARTED, null);
+    // Expected to fail.
+    validateOfflineReplicaInPushStatus(
+        reader,
+        "store_v1",
+        1,
+        1.0,
+        ExecutionStatus.ERROR,
+        "Too many dead instances: 2, total instances: 4");
+
+    /**
+     * Testing ratio-based threshold.
+     */
+    // It is still valid, because we have 4 replicas, 1 completed, 2 offline, 1 online, threshold number is min(100,
+    // 0.5*4) = 2.
+    validateOfflineReplicaInPushStatus(reader, "store_v2", 100, 0.5, ExecutionStatus.STARTED, null);
+    // Expected to fail.
+    validateOfflineReplicaInPushStatus(
+        reader,
+        "store_v2",
+        100,
+        0.25,
+        ExecutionStatus.ERROR,
+        "Too many dead instances: 2, total instances: 4");
+  }
+
+  private void validateOfflineReplicaInPushStatus(
+      PushStatusStoreReader reader,
+      String topicName,
+      int maxOfflineInstanceCount,
+      double maxOfflineInstanceRatio,
+      ExecutionStatus expectedStatus,
+      String expectedErrorDetails) {
+    /**
+     * Even if offline instances number exceed the max offline threshold count it will remain STARTED for the first check,
+     * as we need to wait until daVinciErrorInstanceWaitTime has passed since it first occurs.
+     */
+    ExecutionStatusWithDetails executionStatusWithDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(
+        reader,
+        topicName,
+        1,
+        Optional.empty(),
+        maxOfflineInstanceCount,
+        maxOfflineInstanceRatio);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.STARTED);
-
-    /**
-     * The offline instances number exceed the max offline threshold count, but it will remain STARTED, as we need to wait
-     * until daVinciErrorInstanceWaitTime has passed since it first occurs.
-     */
+    // Sleep 1ms and try again.
     Utils.sleep(1);
-    executionStatusWithDetails =
-        PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 1, 1.0);
-    Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.STARTED);
-
-    /**
-     * This time it should fail, as we override the wait time to 0, and after 1ms, the 2nd query should meet the failure
-     * condition check.
-     */
-    Utils.sleep(1);
-    executionStatusWithDetails =
-        PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 1, 1.0);
-    Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.ERROR);
-    Assert.assertEquals(executionStatusWithDetails.getDetails(), " Too many dead instances: 2, total instances: 4");
-
-    // Testing ratio-based threshold.
-    topicName = "store_v2";
-    /**
-     * It is still valid, because we have 4 replicas, 1 completed, 2 offline, 1 online, threshold number is 4 * 0.5 = 2.
-     */
-    executionStatusWithDetails =
-        PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 100, 0.5);
-    Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.STARTED);
-
-    /**
-     * The offline instances number exceed the max offline threshold count, but it will remain STARTED, as we need to wait
-     * until daVinciErrorInstanceWaitTime has passed since it first occurs.
-     */
-    Utils.sleep(1);
-    executionStatusWithDetails =
-        PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 100, 0.25);
-    Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.STARTED);
-
-    /**
-     * This time it should fail, as we override the wait time to 0, and after 1ms, the 2nd query should meet the failure
-     * condition check.
-     */
-    Utils.sleep(1);
-    executionStatusWithDetails =
-        PushMonitorUtils.getDaVinciPushStatusAndDetails(reader, topicName, 1, Optional.empty(), 100, 0.25);
-    Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.ERROR);
-    Assert.assertEquals(executionStatusWithDetails.getDetails(), " Too many dead instances: 2, total instances: 4");
+    executionStatusWithDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(
+        reader,
+        topicName,
+        1,
+        Optional.empty(),
+        maxOfflineInstanceCount,
+        maxOfflineInstanceRatio);
+    Assert.assertEquals(executionStatusWithDetails.getStatus(), expectedStatus);
+    if (expectedStatus.equals(ExecutionStatus.ERROR)) {
+      Assert.assertEquals(executionStatusWithDetails.getDetails(), expectedErrorDetails);
+    }
   }
 }
