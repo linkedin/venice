@@ -53,6 +53,7 @@ public class PushMonitorUtils {
     int totalReplicaCount = 0;
     int liveReplicaCount = 0;
     int completedReplicaCount = 0;
+    Set<String> offlineInstanceList = new HashSet<>();
     Set<Integer> incompletePartition = new HashSet<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       Map<CharSequence, Integer> instances =
@@ -69,6 +70,10 @@ public class PushMonitorUtils {
         }
         boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
         if (!isInstanceAlive) {
+          // Keep at most 5 offline instances for logging purpose.
+          if (offlineInstanceList.size() < 5) {
+            offlineInstanceList.add(entry.getKey().toString());
+          }
           continue;
         }
         // Derive the overall partition ingestion status based on all live replica ingestion status.
@@ -95,7 +100,7 @@ public class PushMonitorUtils {
     int offlineReplicaCount = totalReplicaCount - liveReplicaCount - completedReplicaCount;
     // Report error if too many Da Vinci instances are not alive for over 5 minutes.
     int maxOfflineInstanceAllowed =
-        Math.min(maxOfflineInstanceCount, (int) (maxOfflineInstanceRatio * totalReplicaCount));
+        Math.max(maxOfflineInstanceCount, (int) (maxOfflineInstanceRatio * totalReplicaCount));
     if (offlineReplicaCount > maxOfflineInstanceAllowed) {
       Long lastUpdateTime = storeVersionToDVCDeadInstanceTimeMap.get(topicName);
       if (lastUpdateTime != null) {
@@ -103,7 +108,8 @@ public class PushMonitorUtils {
           storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
           return new ExecutionStatusWithDetails(
               ExecutionStatus.ERROR,
-              "Too many dead instances: " + offlineReplicaCount + ", total instances: " + totalReplicaCount,
+              "Too many dead instances: " + offlineReplicaCount + ", total instances: " + totalReplicaCount
+                  + ", example offline instances: " + offlineInstanceList,
               noDaVinciStatusReported);
         }
       } else {

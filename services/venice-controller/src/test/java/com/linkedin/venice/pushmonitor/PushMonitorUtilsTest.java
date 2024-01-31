@@ -7,8 +7,10 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -16,7 +18,6 @@ import org.testng.annotations.Test;
 public class PushMonitorUtilsTest {
   @Test
   public void testDaVinciPushStatusScan() {
-    String topicName = "store_v1";
     PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
     PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
     doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("a"));
@@ -32,35 +33,36 @@ public class PushMonitorUtilsTest {
     doReturn(map).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
     doReturn(map).when(reader).getPartitionStatus("store", 2, 0, Optional.empty());
 
+    Set<String> offlineInstances = new HashSet<>();
+    offlineInstances.add("b");
+    offlineInstances.add("c");
     /**
      * Testing count-based threshold.
      */
-    // It is still valid, because we have 4 replicas, 1 completed, 2 offline, 1 online, threshold number is min(2,
-    // 1.0*4) = 2.
-    validateOfflineReplicaInPushStatus(reader, "store_v1", 2, 1.0, ExecutionStatus.STARTED, null);
+    // Valid, because we have 4 replicas, 1 completed, 2 offline, 1 online, threshold number is max(2, 0.25*4) = 2.
+    validateOfflineReplicaInPushStatus(reader, "store_v1", 2, 0.25, ExecutionStatus.STARTED, null);
     // Expected to fail.
     validateOfflineReplicaInPushStatus(
         reader,
         "store_v1",
         1,
-        1.0,
+        0.25,
         ExecutionStatus.ERROR,
-        "Too many dead instances: 2, total instances: 4");
+        "Too many dead instances: 2, total instances: 4, example offline instances: " + offlineInstances);
 
     /**
      * Testing ratio-based threshold.
      */
-    // It is still valid, because we have 4 replicas, 1 completed, 2 offline, 1 online, threshold number is min(100,
-    // 0.5*4) = 2.
-    validateOfflineReplicaInPushStatus(reader, "store_v2", 100, 0.5, ExecutionStatus.STARTED, null);
+    // Valid, because we have 4 replicas, 1 completed, 2 offline, 1 online, threshold number is max(1, 0.5*4) = 2.
+    validateOfflineReplicaInPushStatus(reader, "store_v2", 1, 0.5, ExecutionStatus.STARTED, null);
     // Expected to fail.
     validateOfflineReplicaInPushStatus(
         reader,
         "store_v2",
-        100,
+        1,
         0.25,
         ExecutionStatus.ERROR,
-        "Too many dead instances: 2, total instances: 4");
+        "Too many dead instances: 2, total instances: 4, example offline instances: " + offlineInstances);
   }
 
   private void validateOfflineReplicaInPushStatus(
