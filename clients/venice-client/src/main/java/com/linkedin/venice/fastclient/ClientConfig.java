@@ -56,6 +56,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   private final AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
   /**
+   * Config to enable/disable warm up connection to instances from fetched metadata.
+   */
+  private final boolean isMetadataConnWarmupEnabled;
+  /**
    * The interval in seconds to refresh metadata. If not configured, it will be set to
    * {@link com.linkedin.venice.fastclient.meta.RequestBasedMetadata#DEFAULT_REFRESH_INTERVAL_IN_SECONDS} by default.
    */
@@ -106,6 +110,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       int maxAllowedKeyCntInBatchGetReq,
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
       AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore,
+      boolean isMetadataConnWarmupEnabled,
       long metadataRefreshIntervalInSeconds,
       long metadataConnWarmupTimeoutInSeconds,
       boolean longTailRetryEnabledForSingleGet,
@@ -190,6 +195,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.daVinciClientForMetaStore = daVinciClientForMetaStore;
     this.thinClientForMetaStore = thinClientForMetaStore;
+    this.isMetadataConnWarmupEnabled = isMetadataConnWarmupEnabled;
     this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
     this.metadataConnWarmupTimeoutInSeconds = metadataConnWarmupTimeoutInSeconds;
 
@@ -322,6 +328,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return thinClientForMetaStore;
   }
 
+  public boolean isMetadataConnWarmupEnabled() {
+    return isMetadataConnWarmupEnabled;
+  }
+
   public long getMetadataRefreshIntervalInSeconds() {
     return metadataRefreshIntervalInSeconds;
   }
@@ -424,6 +434,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
 
+    private boolean isMetadataConnWarmupEnabled = true;
     private long metadataRefreshIntervalInSeconds = -1;
     private long metadataConnWarmupTimeoutInSeconds = -1;
 
@@ -543,6 +554,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setIsMetadataConnWarmupEnabled(boolean isMetadataConnWarmupEnabled) {
+      this.isMetadataConnWarmupEnabled = isMetadataConnWarmupEnabled;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> setMetadataRefreshIntervalInSeconds(long metadataRefreshIntervalInSeconds) {
       this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
       return this;
@@ -647,6 +663,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeyCntInBatchGetReq)
           .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
           .setThinClientForMetaStore(thinClientForMetaStore)
+          .setIsMetadataConnWarmupEnabled(isMetadataConnWarmupEnabled)
           .setMetadataRefreshIntervalInSeconds(metadataRefreshIntervalInSeconds)
           .setMetadataConnWarmupTimeoutInSeconds(metadataConnWarmupTimeoutInSeconds)
           .setLongTailRetryEnabledForSingleGet(longTailRetryEnabledForSingleGet)
@@ -685,6 +702,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           maxAllowedKeyCntInBatchGetReq,
           daVinciClientForMetaStore,
           thinClientForMetaStore,
+          isMetadataConnWarmupEnabled,
           metadataRefreshIntervalInSeconds,
           metadataConnWarmupTimeoutInSeconds,
           longTailRetryEnabledForSingleGet,

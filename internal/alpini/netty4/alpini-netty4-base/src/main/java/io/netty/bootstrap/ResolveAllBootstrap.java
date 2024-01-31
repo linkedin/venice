@@ -22,7 +22,6 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
@@ -222,8 +221,8 @@ public class ResolveAllBootstrap extends InstrumentedBootstrap {
       if (resolveFailureCause != null || resolveFuture.getNow().isEmpty()) {
         // Failed to resolve immediately
         channel.close();
-        resolve
-            .completeExceptionally(Optional.ofNullable(resolveFailureCause).orElseGet(UnresolvedAddressException::new));
+        resolve.completeExceptionally(
+            resolveFailureCause == null ? new UnresolvedAddressException() : resolveFailureCause);
       } else {
         resolve.complete(Pair.make(channel, resolveFuture.getNow()));
       }

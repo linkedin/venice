@@ -144,7 +144,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     String resourceName = getResourceName(currentVersion);
     long nanoTsBeforeSerialization = System.nanoTime();
     byte[] keyBytes = keySerializer.serialize(key);
-    requestContext.requestSerializationTime = getLatencyInNS(nanoTsBeforeSerialization);
+    requestContext.requestSerializationTime = LatencyUtils.getLatencyInMS(nanoTsBeforeSerialization);
     int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
     String b64EncodedKeyBytes = EncodingUtils.base64EncodeToString(keyBytes);
 

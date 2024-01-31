@@ -62,10 +62,6 @@ public class HelixStoreGraveyard implements StoreGraveyard {
 
     List<Store> stores = getStoreFromAllClusters(storeName);
     if (stores.isEmpty()) {
-      LOGGER.info(
-          "Store: {} does NOT exist in the store graveyard. Will initialize the new store at version: {}.",
-          storeName,
-          Store.NON_EXISTING_VERSION);
       // If store does NOT existing in graveyard, it means store has never been deleted, return 0 which is the default
       // value of largestUsedVersionNumber for a new store.
       return Store.NON_EXISTING_VERSION;
@@ -76,11 +72,6 @@ public class HelixStoreGraveyard implements StoreGraveyard {
         largestUsedVersionNumber = deletedStore.getLargestUsedVersionNumber();
       }
     }
-
-    LOGGER.info(
-        "Found store: {} in the store graveyard. Will initialize the new store at version: {}.",
-        storeName,
-        largestUsedVersionNumber);
     return largestUsedVersionNumber;
   }
 

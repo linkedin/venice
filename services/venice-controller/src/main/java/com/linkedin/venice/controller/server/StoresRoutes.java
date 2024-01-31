@@ -842,8 +842,9 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, MultiStoreTopicsResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_DELETABLE_STORE_TOPICS.getParams(), admin);
         try {
+          Map<PubSubTopic, Long> allTopicRetentions = admin.getTopicManager().getAllTopicRetentions();
           Map<String, Map<PubSubTopic, Long>> allStoreTopics =
-              TopicCleanupService.getAllVeniceStoreTopicsRetentions(admin.getTopicManager());
+              TopicCleanupService.getAllVeniceStoreTopicsRetentions(allTopicRetentions);
           List<String> deletableTopicsList = new ArrayList<>();
           int minNumberOfUnusedKafkaTopicsToPreserve = admin.getMinNumberOfUnusedKafkaTopicsToPreserve();
           allStoreTopics.forEach((storeName, topicsWithRetention) -> {

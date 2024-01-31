@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -34,6 +35,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   private final ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
   private static final int versionNumber = 0;
   private static final String topicName = Version.composeKafkaTopic(storeName, versionNumber);
+  private int testCount = 0;
 
   @Override
   public void createStorageEngineForTest() {
@@ -65,6 +67,24 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   public void cleanUp() throws Exception {
     storageService.dropStorePartition(storeConfig, PARTITION_ID);
     storageService.stop();
+  }
+
+  @AfterMethod
+  public void testCounter() {
+    this.testCount++;
+  }
+
+  /**
+   * Some tests require a reset if other tests have run before them, as they are sensitive to contamination.
+   *
+   * Alternatively, we could make {@link #setUp()} have {@link org.testng.annotations.BeforeMethod} and
+   * {@link #cleanUp()} have {@link AfterMethod}, though that makes the class take longer than the current approach.
+   */
+  private void reset() throws Exception {
+    if (this.testCount > 0) {
+      cleanUp();
+      setUp();
+    }
   }
 
   @Test
@@ -154,11 +174,13 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
 
   @Test
   public void testPartitioning() throws Exception {
+    reset();
     super.testPartitioning();
   }
 
   @Test
   public void testAddingAPartitionTwice() throws Exception {
+    reset();
     super.testAddingAPartitionTwice();
   }
 

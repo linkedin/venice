@@ -5,7 +5,6 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.router.api.HostFinder;
 import com.linkedin.alpini.router.api.HostHealthMonitor;
 import com.linkedin.alpini.router.api.PartitionFinder;
@@ -124,7 +123,6 @@ public class RouterRequestThrottlingTest {
     PartitionFinder<RouterKey> partitionFinder = mock(VenicePartitionFinder.class);
     HostFinder<Instance, VeniceRole> hostFinder = mock(VeniceHostFinder.class);
     HostHealthMonitor<Instance> hostHealthMonitor = mock(HostHealthMonitor.class);
-    Metrics metrics = mock(Metrics.class);
 
     // The router shouldn't throttle any request if the multi-get QPS is below 10
     for (int iter = 0; iter < 3; iter++) {
@@ -137,8 +135,7 @@ public class RouterRequestThrottlingTest {
               partitionFinder,
               hostFinder,
               hostHealthMonitor,
-              VeniceRole.REPLICA,
-              metrics);
+              VeniceRole.REPLICA);
         } catch (Exception e) {
           Assert.fail("router shouldn't throttle any multi-get requests if the QPS is below " + allowedQPS);
         }
@@ -159,8 +156,7 @@ public class RouterRequestThrottlingTest {
             partitionFinder,
             hostFinder,
             hostHealthMonitor,
-            VeniceRole.REPLICA,
-            metrics);
+            VeniceRole.REPLICA);
       } catch (Exception e) {
         multiGetThrottled = true;
         if (i < allowedQPS) {

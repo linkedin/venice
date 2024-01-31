@@ -146,6 +146,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       this.userEventChunkingAdapter = GenericChunkingAdapter.INSTANCE;
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
     }
+
     LOGGER.info(
         "Start a change log consumer client for store: {}, with partition count: {} and view class: {} ",
         storeName,
@@ -761,9 +762,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   private V deserializeValueFromBytes(ByteBuffer byteBuffer, int valueSchemaId) {
-    Schema currentValueSchema = schemaReader.getValueSchema(valueSchemaId);
-    RecordDeserializer<V> valueDeserializer =
-        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(currentValueSchema, currentValueSchema);
+    RecordDeserializer<V> valueDeserializer = storeDeserializerCache.getDeserializer(valueSchemaId, valueSchemaId);
     if (byteBuffer != null) {
       return valueDeserializer.deserialize(byteBuffer);
     }

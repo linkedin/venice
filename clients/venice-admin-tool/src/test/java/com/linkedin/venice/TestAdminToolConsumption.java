@@ -199,8 +199,18 @@ public class TestAdminToolConsumption {
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, new HashMap<>());
     int consumedMessageCount = pubSubMessageList.size() - 1;
-    KafkaTopicDumper kafkaTopicDumper =
-        new KafkaTopicDumper(controllerClient, apacheKafkaConsumer, topic, assignedPartition, 0, 2, "", 3, true);
+    KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
+        controllerClient,
+        apacheKafkaConsumer,
+        topic,
+        assignedPartition,
+        0,
+        2,
+        "",
+        3,
+        true,
+        false,
+        false);
     Assert.assertEquals(kafkaTopicDumper.fetchAndProcess(), consumedMessageCount);
   }
 }

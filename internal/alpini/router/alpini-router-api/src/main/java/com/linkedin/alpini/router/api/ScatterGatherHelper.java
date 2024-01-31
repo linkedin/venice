@@ -25,6 +25,7 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 
 /**
@@ -39,7 +40,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
   private final @Nonnull ScatterGatherMode _broadcastMode;
   private final @Nonnull ScatterGatherMode _scatterMode;
   private final @Nonnull PartitionDispatchHandler<H, P, K, BASIC_HTTP_REQUEST, HTTP_RESPONSE, HTTP_RESPONSE_STATUS> _dispatchHandler;
-  private final @Nonnull Optional<ResponseAggregatorFactory<BASIC_HTTP_REQUEST, HTTP_RESPONSE>> _responseAggregatorFactory;
+  private final @Nullable ResponseAggregatorFactory<BASIC_HTTP_REQUEST, HTTP_RESPONSE> _responseAggregatorFactory;
   private final @Nonnull Function<Headers, Long> _requestTimeout;
   private final @Nonnull LongTailRetrySupplier<P, K> _longTailRetrySupplier;
   private final @Nonnull Function<BasicRequest, Metrics> _metricsProvider;
@@ -97,7 +98,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
     _broadcastMode = Objects.requireNonNull(broadcastMode, "broadcastMode");
     _scatterMode = Objects.requireNonNull(scatterMode, "scatterMode");
     _dispatchHandler = Objects.requireNonNull(dispatchHandler, "dispatchHandler");
-    _responseAggregatorFactory = Objects.requireNonNull(responseAggregatorFactory, "responseFactory");
+    _responseAggregatorFactory = responseAggregatorFactory.orElse(null);
     _requestTimeout = Objects.requireNonNull(requestTimeout, "requestTimeout");
     _longTailRetrySupplier = Objects.requireNonNull(longTailRetrySupplier, "longTailRetrySupplier");
     _metricsProvider = Objects.requireNonNull(metricsProvider, "metricsProvider");
@@ -226,16 +227,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
     String resourceName = path.getResourceName();
     HostFinder<H, R> hostFinder = _hostFinder.getSnapshot();
     ScatterGatherMode mode = path.getPartitionKeys().isEmpty() ? _broadcastMode : _scatterMode;
-    return mode.scatter(
-        scatter,
-        requestMethod,
-        resourceName,
-        _partitionFinder,
-        hostFinder,
-        hostHealthMonitor,
-        roles,
-        metrics,
-        initialHost);
+    return mode.scatter(scatter, requestMethod, resourceName, _partitionFinder, hostFinder, hostHealthMonitor, roles);
   }
 
   public @Nonnull HTTP_RESPONSE aggregateResponse(
@@ -243,7 +235,10 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
       Metrics metrics,
       @Nonnull List<HTTP_RESPONSE> responses,
       @Nonnull ResponseAggregatorFactory<BASIC_HTTP_REQUEST, HTTP_RESPONSE> defaultAggregator) {
-    return _responseAggregatorFactory.orElse(defaultAggregator).buildResponse(request, metrics, responses);
+    if (_responseAggregatorFactory == null) {
+      return defaultAggregator.buildResponse(request, metrics, responses);
+    }
+    return _responseAggregatorFactory.buildResponse(request, metrics, responses);
   }
 
   public CompletionStage<String> findPartitionName(String resourceName, K key) {

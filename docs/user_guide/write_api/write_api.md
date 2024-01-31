@@ -7,4 +7,4 @@ permalink: /docs/user_guide/write_api
 ---
 # Write APIs
 
-This folder includes guides for writing data to Venice.
+This section includes guides for writing data to Venice.

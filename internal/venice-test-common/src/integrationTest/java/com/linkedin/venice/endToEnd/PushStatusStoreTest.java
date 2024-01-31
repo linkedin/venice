@@ -325,7 +325,7 @@ public class PushStatusStoreTest {
 
     String pushStatusStoreRT =
         Version.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
-    admin.truncateKafkaTopic(pushStatusStoreRT);
+    admin.getTopicManager().ensureTopicIsDeletedAndBlock(pubSubTopicRepository.getTopic(pushStatusStoreRT));
     TestUtils.waitForNonDeterministicAssertion(
         30,
         TimeUnit.SECONDS,
