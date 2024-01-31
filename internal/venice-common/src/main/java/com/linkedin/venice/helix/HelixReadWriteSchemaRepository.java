@@ -563,7 +563,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   public void clear() {
   }
 
-  private void preCheckStoreCondition(String storeName) {
+  void preCheckStoreCondition(String storeName) {
     if (!storeRepository.hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }

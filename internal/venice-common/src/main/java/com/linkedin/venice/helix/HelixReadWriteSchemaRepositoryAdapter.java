@@ -106,10 +106,14 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   public DerivedSchemaEntry removeDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return readWriteRegularStoreSchemaRepository.removeDerivedSchema(storeName, valueSchemaId, derivedSchemaId);
+      return getReadWriteSchemaRepository().removeDerivedSchema(storeName, valueSchemaId, derivedSchemaId);
     }
     throw new VeniceException(
         errorMsgForUnsupportedOperationsAgainstSystemStore(storeName, systemStoreType, "removeDerivedSchema"));
+  }
+
+  ReadWriteSchemaRepository getReadWriteSchemaRepository() {
+    return readWriteRegularStoreSchemaRepository;
   }
 
   @Override
@@ -193,6 +197,7 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
       readWriteRegularStoreSchemaRepository.removeValueSchema(storeName, schemaID);
+      return;
     }
     throw new VeniceException(
         errorMsgForUnsupportedOperationsAgainstSystemStore(storeName, systemStoreType, "removeValueSchema"));
