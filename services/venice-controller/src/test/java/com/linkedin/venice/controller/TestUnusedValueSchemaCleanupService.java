@@ -35,7 +35,7 @@ public class TestUnusedValueSchemaCleanupService {
   }
 
   @Test
-  public void testCleanupBackupVersionSleepValidation() throws Exception {
+  public void testCleanupUnusedSchema() throws Exception {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
@@ -47,9 +47,7 @@ public class TestUnusedValueSchemaCleanupService {
     doReturn(true).when(admin).isLeaderControllerFor(any());
     Store store = mockStore();
 
-    Set<String> stores = new HashSet<>();
     String clusterName = "test_cluster";
-    stores.add(store.getName());
     Set<String> clusters = new HashSet<>();
     HelixVeniceClusterResources helixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
