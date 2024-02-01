@@ -42,7 +42,8 @@ public class PushStatusCollector {
   private final int daVinciPushStatusScanThreadNumber;
   private final boolean daVinciPushStatusScanEnabled;
   private final int daVinciPushStatusNoReportRetryMaxAttempts;
-  private final int daVinciPushStatusScanMaxOfflineInstance;
+  private final int daVinciPushStatusScanMaxOfflineInstanceCount;
+  private final double daVinciPushStatusScanMaxOfflineInstanceRatio;
   private ScheduledExecutorService offlinePushCheckScheduler;
   private ExecutorService pushStatusStoreScanExecutor;
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
@@ -58,7 +59,8 @@ public class PushStatusCollector {
       int daVinciPushStatusScanIntervalInSeconds,
       int daVinciPushStatusScanThreadNumber,
       int daVinciPushStatusNoReportRetryMaxAttempts,
-      int daVinciPushStatusScanMaxOfflineInstance) {
+      int daVinciPushStatusScanMaxOfflineInstanceCount,
+      double daVinciPushStatusScanMaxOfflineInstanceRatio) {
     this.storeRepository = storeRepository;
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.pushCompletedHandler = pushCompletedHandler;
@@ -67,7 +69,8 @@ public class PushStatusCollector {
     this.daVinciPushStatusScanPeriodInSeconds = daVinciPushStatusScanIntervalInSeconds;
     this.daVinciPushStatusScanThreadNumber = daVinciPushStatusScanThreadNumber;
     this.daVinciPushStatusNoReportRetryMaxAttempts = daVinciPushStatusNoReportRetryMaxAttempts;
-    this.daVinciPushStatusScanMaxOfflineInstance = daVinciPushStatusScanMaxOfflineInstance;
+    this.daVinciPushStatusScanMaxOfflineInstanceCount = daVinciPushStatusScanMaxOfflineInstanceCount;
+    this.daVinciPushStatusScanMaxOfflineInstanceRatio = daVinciPushStatusScanMaxOfflineInstanceRatio;
   }
 
   public void start() {
@@ -131,7 +134,8 @@ public class PushStatusCollector {
               topicName,
               pushStatus.getPartitionCount(),
               Optional.empty(),
-              daVinciPushStatusScanMaxOfflineInstance);
+              daVinciPushStatusScanMaxOfflineInstanceCount,
+              daVinciPushStatusScanMaxOfflineInstanceRatio);
           pushStatus.setDaVinciStatus(statusWithDetails);
           return pushStatus;
         }, pushStatusStoreScanExecutor));
