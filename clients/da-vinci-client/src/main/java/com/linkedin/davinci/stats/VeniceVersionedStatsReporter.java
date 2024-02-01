@@ -84,26 +84,4 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
       reporter.setStats(stats);
     }
   }
-<<<<<<< HEAD
-=======
-
-  /**
-   * {@link VersionStat} works exactly the same as {@link AsyncGauge}. The reason we
-   * want to keep it here is for maintaining metric name's backward-compatibility. (We
-   * suffix class name to metric name to indicate metric's types.)
-   */
-  private static class VersionStat extends AsyncGauge {
-    VersionStat(DoubleSupplier supplier, String metricName) {
-      super((ignored, ignored2) -> supplier.getAsDouble(), metricName);
-    }
-  }
-
-  /**
-   * Only for tests, to reset the global state
-   * TODO: Fix, VOLDENG-4211
-   */
-  public static void resetStats() {
-    IS_VERSION_STATS_SETUP.set(false);
-  }
->>>>>>> 0295527c6 (changed from c,t to ignored,ignored)
 }
