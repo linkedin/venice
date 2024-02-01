@@ -6,6 +6,7 @@ import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRI
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
@@ -41,7 +42,8 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
       TransportClient transportClient,
       String storeName,
       Version.PushType pushType,
-      String topicName) {
+      String topicName,
+      TransportClientReinitProvider reinitProvider) {
     final String requestPath;
     if (Version.PushType.STREAM.equals(pushType)) {
       requestPath = buildStreamHybridStoreQuotaRequestPath(storeName);
@@ -54,7 +56,7 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
               + " can monitor hybrid store quota.");
     }
     executor = Executors.newSingleThreadExecutor(new DaemonThreadFactory("RouterBasedHybridQuotaMonitor"));
-    hybridQuotaMonitorTask = new HybridQuotaMonitorTask(transportClient, storeName, requestPath, this);
+    hybridQuotaMonitorTask = new HybridQuotaMonitorTask(transportClient, storeName, requestPath, this, reinitProvider);
   }
 
   public void start() {
@@ -87,7 +89,9 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
 
     private final AtomicBoolean isRunning;
     private final String storeName;
-    private final TransportClient transportClient;
+    private TransportClient transportClient;
+
+    private TransportClientReinitProvider reinitProvider;
     private final String requestPath;
     private final RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitorService;
 
@@ -95,12 +99,14 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
         TransportClient transportClient,
         String storeName,
         String requestPath,
-        RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitorService) {
+        RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitorService,
+        TransportClientReinitProvider reinitProvider) {
       this.transportClient = transportClient;
       this.storeName = storeName;
       this.requestPath = requestPath;
       this.hybridStoreQuotaMonitorService = hybridStoreQuotaMonitorService;
       this.isRunning = new AtomicBoolean(true);
+      this.reinitProvider = reinitProvider;
     }
 
     @Override
@@ -114,6 +120,13 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
           HybridStoreQuotaStatusResponse quotaStatusResponse =
               mapper.readValue(response.getBody(), HybridStoreQuotaStatusResponse.class);
           if (quotaStatusResponse.isError()) {
+            if (quotaStatusResponse.getErrorType().equals(ErrorType.STORE_NOT_FOUND)) {
+              LOGGER.warn("Store not found, reinitializing client! Error: {}", quotaStatusResponse.getError());
+              // TODO: It'd make sense to call shutdown on the transport client, but it's a shared object so that's
+              // a bit dangerous.
+              transportClient = reinitProvider.apply();
+              continue;
+            }
             LOGGER.error("Router was not able to get hybrid quota status: {}", quotaStatusResponse.getError());
             continue;
           }
@@ -143,5 +156,10 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
     public void close() {
       isRunning.set(false);
     }
+  }
+
+  @FunctionalInterface
+  public interface TransportClientReinitProvider {
+    TransportClient apply();
   }
 }
