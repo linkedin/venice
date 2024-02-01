@@ -492,7 +492,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.daVinciPushStatusScanMaxOfflineInstanceCount =
         props.getInt(DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_COUNT, 10);
     this.daVinciPushStatusScanMaxOfflineInstanceRatio =
-        props.getDouble(DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO, 0.1d);
+        props.getDouble(DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO, 0.05d);
 
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true);
