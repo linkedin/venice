@@ -114,7 +114,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private final RocksDBStorageEngineFactory factory;
   private final RocksDBThrottler rocksDBThrottler;
   /**
-   * Whether the input is sorted or not.
+   * Whether the input is sorted or not. <br>
+   * deferredWrite = sortedInput => ingested via batch push which is sorted in VPJ, can use {@link RocksDBSstFileWriter} to ingest
+   *                                the input data to RocksDB <br>
+   * !deferredWrite = !sortedInput => can not use RocksDBSstFileWriter for ingestion
    */
   protected final boolean deferredWrite;
 
@@ -739,9 +742,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         LOGGER.debug("Unexpected sync in RocksDB read-only mode");
       } else {
         try {
-          // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to avoid data loss
-          // during
-          // crash recovery
+          // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to
+          // avoid data loss during crash recovery
           rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList);
         } catch (RocksDBException e) {
           checkAndThrowMemoryLimitException(e);
