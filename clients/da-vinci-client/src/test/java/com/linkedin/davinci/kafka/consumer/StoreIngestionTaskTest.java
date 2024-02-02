@@ -409,7 +409,7 @@ public abstract class StoreIngestionTaskTest {
       createReplicationMetadataWithValueSchemaId(DELETE_KEY_FOO_TIMESTAMP, DELETE_KEY_FOO_OFFSET, EXISTING_SCHEMA_ID);
 
   private boolean databaseChecksumVerificationEnabled = false;
-  private AggKafkaConsumerServiceStats _kafkaConsumerServiceStats = mock(AggKafkaConsumerServiceStats.class);
+  private AggKafkaConsumerServiceStats kafkaConsumerServiceStats = mock(AggKafkaConsumerServiceStats.class);
   private PubSubConsumerAdapterFactory mockFactory = mock(PubSubConsumerAdapterFactory.class);
 
   private Supplier<StoreVersionState> storeVersionStateSupplier = () -> new StoreVersionState();
@@ -549,7 +549,7 @@ public abstract class StoreIngestionTaskTest {
     KafkaConsumerServiceStats regionStats = mock(KafkaConsumerServiceStats.class);
     doNothing().when(regionStats).recordByteSizePerPoll(anyDouble());
     doNothing().when(regionStats).recordPollResultNum(anyInt());
-    doReturn(regionStats).when(_kafkaConsumerServiceStats).getStoreStats(anyString());
+    doReturn(regionStats).when(kafkaConsumerServiceStats).getStoreStats(anyString());
   }
 
   private VeniceWriter getVeniceWriter(String topic, PubSubProducerAdapter producerAdapter, int amplificationFactor) {
@@ -941,7 +941,7 @@ public abstract class StoreIngestionTaskTest {
         isLiveConfigEnabled,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        _kafkaConsumerServiceStats,
+        kafkaConsumerServiceStats,
         false,
         mock(ReadOnlyStoreRepository.class),
         false);
@@ -964,7 +964,7 @@ public abstract class StoreIngestionTaskTest {
         isLiveConfigEnabled,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        _kafkaConsumerServiceStats,
+        kafkaConsumerServiceStats,
         false,
         mock(ReadOnlyStoreRepository.class),
         false);
@@ -1740,7 +1740,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
-      verify(_kafkaConsumerServiceStats, timeout(TEST_TIMEOUT_MS).atLeastOnce()).recordTotalPollError();
+      verify(kafkaConsumerServiceStats, timeout(TEST_TIMEOUT_MS).atLeastOnce()).recordTotalPollError();
     }, aaConfig);
   }
 

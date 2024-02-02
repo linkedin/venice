@@ -57,7 +57,7 @@ public class AdminResponse {
     snapshot.isLatchReleased = state.isLatchReleased();
     snapshot.processedRecordSizeSinceLastSync = state.getProcessedRecordSizeSinceLastSync();
     snapshot.consumeRemotely = state.consumeRemotely();
-    snapshot.latestMessageConsumptionTimestampInMs = state.getLatestMessageConsumptionTimestampInMs();
+    snapshot.latestMessageConsumptionTimestampInMs = state.getLatestMessageConsumedTimestampInMs();
     responseRecord.partitionConsumptionStates.add(snapshot);
   }
 

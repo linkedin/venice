@@ -90,6 +90,7 @@ class ConsumptionTask implements Runnable {
     Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
     int payloadBytesConsumedInOnePoll;
     int polledPubSubMessagesCount = 0;
+    Map<String, StorePollCounter> storePollCounterMap = new HashMap<>();
     try {
       while (running) {
         try {
@@ -126,7 +127,6 @@ class ConsumptionTask implements Runnable {
             payloadBytesConsumedInOnePoll = 0;
             polledPubSubMessagesCount = 0;
             beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-            Map<String, StorePollCounter> storePollCounterMap = new HashMap<>();
             for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
                 .entrySet()) {
               PubSubTopicPartition pubSubTopicPartition = entry.getKey();
@@ -164,6 +164,7 @@ class ConsumptionTask implements Runnable {
             recordsThrottler.accept(polledPubSubMessagesCount);
             cleaner.unsubscribe(topicPartitionsToUnsub);
             aggStats.recordTotalDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsToUnsub.size());
+            storePollCounterMap.clear();
           } else {
             // No result came back, here will add some delay
             addSomeDelay = true;
@@ -230,7 +231,7 @@ class ConsumptionTask implements Runnable {
   /**
    * This class is used to count the number of messages and the byte size of the messages for a given store per poll.
    */
-  class StorePollCounter {
+  static class StorePollCounter {
     protected int msgCount;
     protected int byteSize;
 

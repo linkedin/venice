@@ -212,7 +212,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
         LOGGER.error(
             "{} received exception in kafka callback thread; EOP received: {}, {}, Offset: {}",
-            ingestionTask.consumerTaskId,
+            ingestionTask.ingestionTaskName,
             endOfPushReceived,
             sourceConsumerRecord.getTopicPartition(),
             sourceConsumerRecord.getOffset(),

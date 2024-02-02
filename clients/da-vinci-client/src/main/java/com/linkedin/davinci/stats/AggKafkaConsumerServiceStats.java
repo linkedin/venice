@@ -12,6 +12,9 @@ import java.util.function.LongSupplier;
 /**
  * This class is an aggregate place that keeps stats objects for multiple stores and total stats for each region for
  * AggKafkaConsumerService.
+ *
+ * For total stats for a given region, use this class to record stats. For store-level stats, delegate them to
+ * {@link KafkaConsumerServiceStats}.
  */
 public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<KafkaConsumerServiceStats> {
   public AggKafkaConsumerServiceStats(

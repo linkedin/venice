@@ -506,7 +506,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
         .setAggKafkaConsumerService(aggKafkaConsumerService)
-        .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)
         .setIsDaVinciClient(isDaVinciClient)
         .setRemoteIngestionRepairService(remoteIngestionRepairService)

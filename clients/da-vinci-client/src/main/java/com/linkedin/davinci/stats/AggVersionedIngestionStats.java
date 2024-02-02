@@ -123,10 +123,6 @@ public class AggVersionedIngestionStats
     getStats(storeName, version).setIngestionTaskPushTimeoutGauge(0);
   }
 
-  public void recordStalePartitionsWithoutIngestionTask(String storeName, int version) {
-    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordStalePartitionsWithoutIngestionTask);
-  }
-
   public void recordSubscribePrepLatency(String storeName, int version, double value) {
     long currentTimeMs = System.currentTimeMillis();
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordSubscribePrepLatency(value, currentTimeMs));
@@ -167,6 +163,10 @@ public class AggVersionedIngestionStats
 
   public void recordTransformerLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerLatency(value, timestamp));
+  }
+
+  public void recordMaxIdleTime(String storeName, int version, long idleTimeMs) {
+    getStats(storeName, version).recordIdleTime(idleTimeMs);
   }
 
   public void registerTransformerLatencySensor(String storeName, int version) {

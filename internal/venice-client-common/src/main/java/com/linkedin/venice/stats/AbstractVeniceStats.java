@@ -138,6 +138,15 @@ public class AbstractVeniceStats {
     }
   }
 
+  /**
+   * Register sensor for both total and per store stats.
+   * When per-store stats is recorded, the total stats would be recorded as well.
+   * @param sensorName
+   * @param totalStats
+   * @param totalSensor
+   * @param stats
+   * @return
+   */
   protected Sensor registerPerStoreAndTotalSensor(
       String sensorName,
       AbstractVeniceStats totalStats,
@@ -147,6 +156,14 @@ public class AbstractVeniceStats {
     return registerSensor(sensorName, parent, stats);
   }
 
+  /**
+   * Only register sensor for total stats. If not provided, create a new one.
+   * @param sensorName
+   * @param totalStats
+   * @param totalSensor
+   * @param time
+   * @return
+   */
   protected LongAdderRateGauge registerOnlyTotalRate(
       String sensorName,
       AbstractVeniceStats totalStats,

@@ -19,6 +19,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -47,6 +48,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class AggKafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(AggKafkaConsumerService.class);
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final PubSubConsumerAdapterFactory consumerFactory;
   private final VeniceServerConfig serverConfig;
@@ -72,6 +75,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
   private final Function<String, Boolean> isAAOrWCEnabledFunc;
   private final ReadOnlyStoreRepository metadataRepository;
+
+  private final static String STUCK_CONSUMER_MSG =
+      "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
 
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
@@ -241,8 +247,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         }
       });
       if (!hasRepairedSomeIngestionTask.get()) {
-        LOGGER.error(
-            "Didn't find any suspicious ingestion task, and please contact developers to investigate it further");
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(STUCK_CONSUMER_MSG)) {
+          LOGGER.warn(STUCK_CONSUMER_MSG);
+        }
         stuckConsumerRepairStats.recordRepairFailure();
       }
     };
