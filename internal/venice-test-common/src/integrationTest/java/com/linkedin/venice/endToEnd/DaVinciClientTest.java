@@ -95,6 +95,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -192,7 +193,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBatchStore(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 = createStoreWithMetaSystemStore(KEY_COUNT);
+    String storeName1 = createStoreWithMetaSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
     String storeName3 = createStoreWithMetaSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
@@ -1052,6 +1053,15 @@ public class DaVinciClientTest {
 
   private String createStoreWithMetaSystemStore(int keyCount) throws Exception {
     String storeName = cluster.createStore(keyCount);
+    cluster.createMetaSystemStore(storeName);
+    return storeName;
+  }
+
+  private String createStoreWithMetaSystemStore(
+      int keyCount,
+      CompressionStrategy compressionStrategy,
+      Function<String, ByteBuffer> compressionDictionaryGenerator) throws Exception {
+    String storeName = cluster.createStore(keyCount, compressionStrategy, compressionDictionaryGenerator);
     cluster.createMetaSystemStore(storeName);
     return storeName;
   }

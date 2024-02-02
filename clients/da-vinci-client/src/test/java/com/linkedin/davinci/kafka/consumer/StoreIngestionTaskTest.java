@@ -40,8 +40,17 @@ import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETE
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static com.linkedin.venice.writer.VeniceWriter.generateHeartbeatMessage;
 import static com.linkedin.venice.writer.VeniceWriter.getHeartbeatKME;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyDouble;
@@ -73,6 +82,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -94,6 +104,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -626,7 +637,8 @@ public abstract class StoreIngestionTaskTest {
         aaConfig,
         1,
         Collections.emptyMap(),
-        storeVersionConfigOverride -> {});
+        storeVersionConfigOverride -> {},
+        null);
   }
 
   private void runTest(
@@ -646,7 +658,8 @@ public abstract class StoreIngestionTaskTest {
         aaConfig,
         1,
         Collections.emptyMap(),
-        storeVersionConfigOverride);
+        storeVersionConfigOverride,
+        null);
   }
 
   private void runTest(
@@ -654,7 +667,8 @@ public abstract class StoreIngestionTaskTest {
       Set<Integer> partitions,
       Runnable beforeStartingConsumption,
       Runnable assertions,
-      AAConfig aaConfig) throws Exception {
+      AAConfig aaConfig,
+      DaVinciRecordTransformer recordTransformer) throws Exception {
     runTest(
         pollStrategy,
         partitions,
@@ -666,7 +680,8 @@ public abstract class StoreIngestionTaskTest {
         aaConfig,
         1,
         Collections.emptyMap(),
-        storeVersionConfigOverride -> {});
+        storeVersionConfigOverride -> {},
+        recordTransformer);
   }
 
   private void runTest(
@@ -691,7 +706,8 @@ public abstract class StoreIngestionTaskTest {
         aaConfig,
         amplificationFactor,
         extraServerProperties,
-        storeVersionConfigOverride -> {});
+        storeVersionConfigOverride -> {},
+        null);
   }
 
   /**
@@ -723,7 +739,8 @@ public abstract class StoreIngestionTaskTest {
       AAConfig aaConfig,
       int amplificationFactor,
       Map<String, Object> extraServerProperties,
-      Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) throws Exception {
+      Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride,
+      DaVinciRecordTransformer recordTransformer) throws Exception {
 
     int partitionCount = PARTITION_COUNT / amplificationFactor;
     VenicePartitioner partitioner = getVenicePartitioner(1); // Only get base venice partitioner
@@ -764,7 +781,7 @@ public abstract class StoreIngestionTaskTest {
         leaderSubPartition,
         false,
         Optional.empty(),
-        null);
+        recordTransformer);
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -1212,7 +1229,7 @@ public abstract class StoreIngestionTaskTest {
 
       verify(mockVersionedStorageIngestionStats, timeout(TEST_TIMEOUT_MS).atLeast(3))
           .recordConsumedRecordEndToEndProcessingLatency(any(), eq(1), anyDouble(), anyLong());
-    }, aaConfig);
+    }, aaConfig, null);
 
     // verify the shared consumer should be detached when the ingestion task is closed.
     verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
@@ -1325,7 +1342,7 @@ public abstract class StoreIngestionTaskTest {
       OffsetRecord expectedOffsetRecordForLastMessage = getOffsetRecord(putMetadata4.getOffset());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForLastMessage);
-    }, aaConfig);
+    }, aaConfig, null);
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -1611,7 +1628,7 @@ public abstract class StoreIngestionTaskTest {
 
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
-    }, aaConfig);
+    }, aaConfig, null);
   }
 
   /**
@@ -1643,7 +1660,7 @@ public abstract class StoreIngestionTaskTest {
 
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
-    }, aaConfig);
+    }, aaConfig, null);
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -1656,7 +1673,7 @@ public abstract class StoreIngestionTaskTest {
       // START_OF_SEGMENT, START_OF_PUSH, PUT, DELETE
       verify(mockRecordsThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottle(1);
       verify(mockBandwidthThrottler, timeout(TEST_TIMEOUT_MS).times(4)).maybeThrottle(anyDouble());
-    }, aaConfig);
+    }, aaConfig, null);
   }
 
   /**
@@ -1843,7 +1860,7 @@ public abstract class StoreIngestionTaskTest {
             args[0].equals(topic) && args[1].equals(PARTITION_FOO) && ((String) args[2]).length() > 0
                 && args[3] instanceof FatalDataValidationException);
       }
-    }, aaConfig);
+    }, aaConfig, null);
   }
 
   /**
@@ -2159,7 +2176,7 @@ public abstract class StoreIngestionTaskTest {
         PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(partition);
         Assert.assertTrue(pcs.getLatestProcessedUpstreamRTOffsetMap().isEmpty());
       });
-    }, aaConfig);
+    }, aaConfig, null);
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -2189,7 +2206,7 @@ public abstract class StoreIngestionTaskTest {
       // of messages in bytes, since control message is being counted as 0 bytes (no data persisted in disk),
       // then no progress will be reported during start, but only for processed messages.
       verify(mockLogNotifier, after(TEST_TIMEOUT_MS).never()).progress(any(), anyInt(), anyInt());
-    }, aaConfig);
+    }, aaConfig, null);
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -4241,6 +4258,49 @@ public abstract class StoreIngestionTaskTest {
       assertTrue(failedPartitions.get().contains("0"));
       assertTrue(failedPartitions.get().contains("1"));
     });
+  }
+
+  @Test(dataProvider = "aaConfigProvider")
+  public void testStoreIngestionRecordTransformer(AAConfig aaConfig) throws Exception {
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    PubSubProduceResult putMetadata = (PubSubProduceResult) localVeniceWriter
+        .put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null)
+        .get();
+
+    Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
+    pollStrategies.add(new RandomPollStrategy());
+
+    // We re-deliver the old put out of order, so we can make sure it's ignored.
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
+    pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata));
+    pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
+
+    PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
+
+    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer();
+
+    VenicePartitioner partitioner = getVenicePartitioner(1);
+    int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
+
+    runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {}, () -> {
+      Schema keySchema = Schema.create(Schema.Type.INT);
+      SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+      when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+      when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+      Schema valueSchema = Schema.create(Schema.Type.STRING);
+      SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+      when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+      when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+
+      mockAbstractStorageEngine.put(
+          targetPartitionPutKeyFoo,
+          putKeyFoo,
+          ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
+    }, aaConfig, recordTransformer);
+
+    // verify the shared consumer should be detached when the ingestion task is closed.
+    verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

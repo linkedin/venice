@@ -29,6 +29,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -297,6 +298,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final StatusReportAdapter statusReportAdapter;
 
+  protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final DaVinciRecordTransformer recordTransformer;
   private final Runnable runnableForKillIngestionTasksForMissingSOP;
@@ -435,6 +437,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.runnableForKillIngestionTasksForMissingSOP = () -> waitForStateVersion(kafkaVersionTopic);
     this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
+    this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
     this.recordTransformer = recordTransformer;
     if (recordTransformer != null) {
@@ -3104,15 +3107,37 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
-        // Do transorfmation recompute key, value and partition
+        // Check if put.getSchemaId is positive, if not default to 1
+        int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
+
+        // Do transformation recompute key, value and partition
         if (recordTransformer != null) {
           long recordTransformStartTime = System.currentTimeMillis();
+          ByteBuffer valueBytes = put.getPutValue();
+          Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
+
+          // Decompress/assemble record
+          Object assembledObject = chunkAssembler.bufferAndAssembleRecord(
+              consumerRecord.getTopicPartition(),
+              putSchemaId,
+              keyBytes,
+              valueBytes,
+              consumerRecord.getOffset(),
+              Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
+              putSchemaId,
+              compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+
+          // Current record is a chunk. We only write to the storage engine for fully assembled records
+          if (assembledObject == null) {
+            return 0;
+          }
+
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, put.schemaId);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
-          Lazy<Object> lazyValue = Lazy.of(() -> deserializeAvroObjectAndReturn(put.putValue, valueSchema));
+          Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
           TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
           ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
+
           put.putValue = transformedBytes;
           versionedIngestionStats.recordTransformerLatency(
               storeName,
@@ -3133,8 +3158,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
-        if (put.schemaId > 0) {
-          valueSchemaId = put.schemaId;
+        if (putSchemaId > 0) {
+          valueSchemaId = putSchemaId;
         }
         break;
 
