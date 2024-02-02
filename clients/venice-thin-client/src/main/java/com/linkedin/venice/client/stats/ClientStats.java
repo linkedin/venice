@@ -111,8 +111,10 @@ public class ClientStats extends BasicClientStats {
     retryRequestSuccessKeyCountSensor =
         registerSensor("retry_request_success_key_count", retryRequestSuccessKeyCount, new Avg(), new Max());
     retryKeySuccessRatioSensor = registerSensor(
-        "retry_key_success_ratio",
-        new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, getSuccessRequestKeyCountRate()));
+        new TehutiUtils.SimpleRatioStat(
+            retryRequestSuccessKeyCount,
+            getSuccessRequestKeyCountRate(),
+            "retry_key_success_ratio"));
     multiGetFallbackSensor = registerSensor("multiget_fallback", new OccurrenceRate());
   }
 

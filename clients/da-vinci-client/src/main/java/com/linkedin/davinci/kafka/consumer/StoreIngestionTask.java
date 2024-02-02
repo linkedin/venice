@@ -2065,7 +2065,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
       PartitionConsumptionState partitionConsumptionState) {
     int partitionId = record.getTopicPartition().getPartitionNumber();
-    if (partitionIngestionExceptionList.get(partitionId) != null) {
+    if (failedPartitions.contains(partitionId)) {
       String msg = "Errors already exist in partition: " + partitionId + " for resource: " + kafkaVersionTopic
           + ", skipping this record";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {

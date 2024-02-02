@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
@@ -15,8 +15,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   final private Sensor adminConsumeFailRetriableMessageCountSensor;
   final private Sensor adminTopicDIVErrorReportCountSensor;
   final private Sensor adminConsumptionCycleDurationMsSensor;
-  final private Sensor pendingAdminMessagesCountSensor;
-  final private Sensor storesWithPendingAdminMessagesCountSensor;
   /**
    * The time it took MM to copy the message from parent to child controller's admin topic.
    */
@@ -81,21 +79,15 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminConsumeFailCountSensor = registerSensor("failed_admin_messages", new Count());
     adminConsumeFailRetriableMessageCountSensor = registerSensor("failed_retriable_admin_messages", new Count());
     adminTopicDIVErrorReportCountSensor = registerSensor("admin_message_div_error_report_count", new Count());
-    registerSensor("failed_admin_message_offset", new Gauge(() -> adminConsumptionFailedOffset));
+    registerSensor(new AsyncGauge((ignored, ignored2) -> adminConsumptionFailedOffset, "failed_admin_message_offset"));
     adminConsumptionCycleDurationMsSensor =
         registerSensor("admin_consumption_cycle_duration_ms", new Avg(), new Min(), new Max());
-    pendingAdminMessagesCountSensor = registerSensor(
-        "pending_admin_messages_count",
-        new Gauge(() -> pendingAdminMessagesCountGauge),
-        new Avg(),
-        new Min(),
-        new Max());
-    storesWithPendingAdminMessagesCountSensor = registerSensor(
-        "stores_with_pending_admin_messages_count",
-        new Gauge(() -> storesWithPendingAdminMessagesCountGauge),
-        new Avg(),
-        new Min(),
-        new Max());
+    registerSensor(
+        new AsyncGauge((ignored, ignored2) -> pendingAdminMessagesCountGauge, "pending_admin_messages_count"));
+    registerSensor(
+        new AsyncGauge(
+            (ignored, ignored2) -> storesWithPendingAdminMessagesCountGauge,
+            "stores_with_pending_admin_messages_count"));
     adminMessageMMLatencySensor = registerSensor("admin_message_mm_latency_ms", new Avg(), new Max());
     adminMessageDelegateLatencySensor = registerSensor("admin_message_delegate_latency_ms", new Avg(), new Max());
     adminMessageStartProcessingLatencySensor =
@@ -104,8 +96,10 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessageAddVersionProcessLatencySensor =
         registerSensor("admin_message_add_version_process_latency_ms", new Avg(), new Max());
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
-    registerSensor("admin_consumption_offset_lag", new Gauge(() -> this.adminConsumptionOffsetLag));
-    registerSensor("max_admin_consumption_offset_lag", new Gauge(() -> this.maxAdminConsumptionOffsetLag));
+    registerSensor(
+        new AsyncGauge((ignored, ignored2) -> this.adminConsumptionOffsetLag, "admin_consumption_offset_lag"));
+    registerSensor(
+        new AsyncGauge((ignored, ignored2) -> this.maxAdminConsumptionOffsetLag, "max_admin_consumption_offset_lag"));
   }
 
   /**
@@ -130,12 +124,10 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   }
 
   public void recordPendingAdminMessagesCount(double value) {
-    pendingAdminMessagesCountSensor.record(value);
     this.pendingAdminMessagesCountGauge = value;
   }
 
   public void recordStoresWithPendingAdminMessagesCount(double value) {
-    storesWithPendingAdminMessagesCountSensor.record(value);
     this.storesWithPendingAdminMessagesCountGauge = value;
   }
 
@@ -177,8 +169,9 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    */
   public void registerAdminConsumptionCheckpointOffset() {
     registerSensorIfAbsent(
-        "admin_consumption_checkpoint_offset",
-        new Gauge(() -> this.adminConsumptionCheckpointOffset));
+        new AsyncGauge(
+            (ignored, ignored2) -> this.adminConsumptionCheckpointOffset,
+            "admin_consumption_checkpoint_offset"));
   }
 
   public void setAdminConsumptionOffsetLag(long adminConsumptionOffsetLag) {

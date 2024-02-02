@@ -153,8 +153,8 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
     }
 
-    assertEquals(getMetric("current_version.Gauge"), (double) version1.getNumber());
-    assertEquals(getMetric("future_version.Gauge"), (double) version2.getNumber());
+    assertEquals(getMetric("current_version_number.Gauge"), (double) version1.getNumber());
+    assertEquals(getMetric("future_version_number.Gauge"), (double) version2.getNumber());
     assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version1.getAge().toMillis()) < 1000);
     assertTrue(Math.abs(getMetric("subscribe_duration_ms.Avg") - v1SubscribeDurationMs) < 50);
 
@@ -175,7 +175,7 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
     }
 
-    assertEquals(getMetric("current_version.Gauge"), (double) version2.getNumber());
+    assertEquals(getMetric("current_version_number.Gauge"), (double) version2.getNumber());
     assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
     assertTrue(
         Math.abs(getMetric("subscribe_duration_ms.Avg") - (v1SubscribeDurationMs + v2SubscribeDurationMs) / 2.) < 50);

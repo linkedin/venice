@@ -74,6 +74,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -735,7 +736,10 @@ public class DaVinciClientTest {
       }
     }
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    // Since the previous DaVinci client is closed, the static default Gauge metric measurement thread pool is also
+    // shutdown. In order to continue calculating Gauge metrics values in the new client, create a new thread pool
+    MetricsRepository metricsRepository =
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository("da-vinci_test_async_gauge_thread", 10000, 50);
     DaVinciTestContext<Integer, Object> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,
@@ -760,9 +764,11 @@ public class DaVinciClientTest {
       });
       // After restart, Da Vinci client will still get correct metrics for ingested stores.
       String metricName = "." + storeName + "_current--disk_usage_in_bytes.Gauge";
-      Metric storeDiskUsageMetric = metricsRepository.getMetric(metricName);
-      Assert.assertNotNull(storeDiskUsageMetric);
-      Assert.assertTrue(storeDiskUsageMetric.value() > 0);
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Metric storeDiskUsageMetric = metricsRepository.getMetric(metricName);
+        Assert.assertNotNull(storeDiskUsageMetric);
+        Assert.assertTrue(storeDiskUsageMetric.value() > 0);
+      });
     }
 
     daVinciConfig.setStorageClass(StorageClass.DISK);
