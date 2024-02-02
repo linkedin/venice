@@ -43,8 +43,6 @@ public class IngestionStats {
   protected static final String FOLLOWER_BYTES_CONSUMED_METRIC_NAME = "follower_bytes_consumed";
   protected static final String LEADER_RECORDS_PRODUCED_METRIC_NAME = "leader_records_produced";
   protected static final String LEADER_BYTES_PRODUCED_METRIC_NAME = "leader_bytes_produced";
-  protected static final String STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME =
-      "stale_partitions_without_ingestion_task";
   protected static final String SUBSCRIBE_ACTION_PREP_LATENCY = "subscribe_action_prep_latency";
   protected static final String CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY =
       "consumed_record_end_to_end_processing_latency";
