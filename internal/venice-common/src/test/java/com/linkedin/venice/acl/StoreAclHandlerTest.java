@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.acl.handler.StoreAclHandler;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -48,6 +49,8 @@ public class StoreAclHandlerTest {
   private boolean[] isHealthCheck = { false };
   private boolean[] isBadUri = { false };
 
+  private String storeName;
+
   private void resetAllConditions() {
     hasAccess[0] = false;
     hasAcl[0] = false;
@@ -61,6 +64,7 @@ public class StoreAclHandlerTest {
 
   @BeforeMethod
   public void setUp() throws Exception {
+    storeName = "testStore";
     accessController = mock(DynamicAccessController.class);
     ctx = mock(ChannelHandlerContext.class);
     req = mock(HttpRequest.class);
@@ -97,11 +101,12 @@ public class StoreAclHandlerTest {
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
 
-    // Store doesn't exist 8 times
-    verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    // Store doesn't exist 8 times but shouldn't throw exception because it could be a migrated store
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
-    // No access control (METADATA/HEALTH/ADMIN or system store) => 52 times, access control => 4 times
-    verify(ctx, times(56)).fireChannelRead(req);
+    // No access control (METADATA/HEALTH/ADMIN or system store) => 52 times, access control => 4 times, store DNE => 8
+    // times
+    verify(ctx, times(64)).fireChannelRead(req);
   }
 
   @Test
@@ -109,17 +114,17 @@ public class StoreAclHandlerTest {
     hasAccess[0] = false;
     enumerate(hasAcl, hasStore, isSystemStore, isFailOpen, isMetadata, isHealthCheck);
 
-    // Store doesn't exist 8 times
-    verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    // Store doesn't exist 8 times but shouldn't throw exception because it could be a migrated store
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
-    // No access control ((METADATA/HEALTH/ADMIN or system store) => 52 times
-    verify(ctx, times(52)).fireChannelRead(req);
+    // No access control ((METADATA/HEALTH/ADMIN or system store) + 4 times (!hasStore && isSystemStore) => 56 times
+    verify(ctx, times(56)).fireChannelRead(req);
 
-    // 1 of the 4 rejects is due to internal error
-    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
+    // 2 of the 8 rejects is due to internal error
+    verify(ctx, times(2)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
 
-    // The other 3 are regular rejects
-    verify(ctx, times(3)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
+    // The other 6 are regular rejects
+    verify(ctx, times(6)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
   }
 
   @Test
@@ -144,11 +149,12 @@ public class StoreAclHandlerTest {
     hasStore[0] = false;
     enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore, isMetadata, isHealthCheck);
 
-    // No access control (METADATA/HEALTH/ADMIN) => 48 times
-    verify(ctx, times(48)).fireChannelRead(req);
-    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
-    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
-    verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    // No access control (METADATA/HEALTH/ADMIN or system store) => 52 times + 8 times granted
+    verify(ctx, times(60)).fireChannelRead(req);
+    // Although we don't check for store existence due to potentially migrated store, we will still reject based on ACL
+    verify(ctx, times(3)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
+    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
   }
 
   @Test
@@ -196,11 +202,13 @@ public class StoreAclHandlerTest {
     hasAcl[0] = false;
     enumerate(hasStore, hasAccess, isSystemStore, isFailOpen, isMetadata, isHealthCheck);
 
-    // No access control (METADATA/HEALTH/ADMIN or system store) => 52 times, access control => 2 times granted
-    verify(ctx, times(54)).fireChannelRead(req);
-    verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
-    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
-    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
+    // No access control (METADATA/HEALTH/ADMIN or system store) => 52 times, access control => 8 times granted
+    // (including !hasStore)
+    verify(ctx, times(60)).fireChannelRead(req);
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    // Although we don't check for store existence due to potentially migrated store, we will still reject based on ACL
+    verify(ctx, times(2)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
+    verify(ctx, times(2)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
   }
 
   @Test
@@ -208,22 +216,24 @@ public class StoreAclHandlerTest {
     hasAcl[0] = true;
     enumerate(hasStore, hasAccess, isSystemStore, isFailOpen, isMetadata, isHealthCheck);
 
-    // No access control (METADATA/HEALTH/ADMIN or system store) => 52 times, access control => 2 times granted
-    verify(ctx, times(54)).fireChannelRead(req);
-    verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    // No access control (METADATA/HEALTH/ADMIN or system store) => 52 times, access control => 8 times granted
+    // (including !hasStore)
+    verify(ctx, times(60)).fireChannelRead(req);
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
-    verify(ctx, times(2)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
+    // Although we don't check for store existence due to potentially migrated store, we will still reject based on ACL
+    verify(ctx, times(4)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
   }
 
   @Test
   public void testAllCases() throws Exception {
     enumerate(hasAcl, hasStore, hasAccess, isSystemStore, isFailOpen, isMetadata, isHealthCheck, isBadUri);
 
-    verify(ctx, times(108)).fireChannelRead(req);
-    verify(ctx, times(144)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
-    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
+    verify(ctx, times(120)).fireChannelRead(req);
+    verify(ctx, times(128)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+    verify(ctx, times(2)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
     // One of the cases is impossible in reality. See StoreAclHandler.java comments
-    verify(ctx, times(3)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
+    verify(ctx, times(6)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
   }
 
   private void update() throws Exception {
@@ -234,17 +244,21 @@ public class StoreAclHandlerTest {
     if (hasStore[0]) {
       when(metadataRepo.getStoreOrThrow(any())).thenReturn(store);
     } else {
-      when(metadataRepo.getStoreOrThrow(any())).thenThrow(new VeniceNoStoreException("storename"));
+      when(metadataRepo.getStoreOrThrow(any())).thenThrow(new VeniceNoStoreException(storeName));
+    }
+    String storeNameInRequest = storeName;
+    if (isSystemStore[0]) {
+      storeNameInRequest = VeniceSystemStoreUtils.getMetaStoreName(storeName);
     }
     when(store.isSystemStore()).thenReturn(isSystemStore[0]);
     if (isBadUri[0]) {
       when(req.uri()).thenReturn("/badUri");
     } else if (isMetadata[0]) {
-      when(req.uri()).thenReturn("/metadata/storename/random");
+      when(req.uri()).thenReturn(String.format("/metadata/%s/random", storeNameInRequest));
     } else if (isHealthCheck[0]) {
       when(req.uri()).thenReturn("/health");
     } else {
-      when(req.uri()).thenReturn("/storage/storename/random");
+      when(req.uri()).thenReturn(String.format("/storage/%s/random", storeNameInRequest));
     }
   }
 

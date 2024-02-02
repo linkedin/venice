@@ -3,6 +3,7 @@ package com.linkedin.venice.acl.handler;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.QueryAction;
@@ -127,8 +128,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
 
     String method = req.method().name();
     try {
-      Store store = metadataRepository.getStoreOrThrow(storeName);
-      if (store.isSystemStore()) {
+      if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
         // Ignore ACL for Venice system stores. System stores should be world readable and only contain public
         // information.
         ReferenceCountUtil.retain(req);
@@ -259,19 +259,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
           call.close(Status.INVALID_ARGUMENT.withDescription("Invalid request"), new Metadata());
         }
 
-        Store store;
-        try {
-          store = metadataRepository.getStoreOrThrow(storeName);
-        } catch (VeniceNoStoreException noStoreException) {
-          String client = Objects.requireNonNull(call.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR)).toString();
-          LOGGER.debug("Requested store does not exist: {} requested {} {}", client, method, storeName);
-          call.close(
-              Status.INVALID_ARGUMENT.withDescription("Invalid Venice store name: " + storeName),
-              new Metadata());
-          return;
-        }
-
-        if (store.isSystemStore()) {
+        if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
           super.onMessage(message);
           return;
         }
