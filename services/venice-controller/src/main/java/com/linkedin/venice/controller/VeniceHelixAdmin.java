@@ -4012,12 +4012,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return schemaIds;
   }
 
-  public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedSchemaIds) {
+  public boolean deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedSchemaIds) {
     // delete the unused schemas.
-    unusedSchemaIds.forEach(id -> {
-      getHelixVeniceClusterResources(clusterName).getSchemaRepository().removeValueSchema(storeName, id);
-      LOGGER.info("Removed value schema with ID " + id + " for store " + storeName);
-    });
+    try {
+      unusedSchemaIds.forEach(id -> {
+        getHelixVeniceClusterResources(clusterName).getSchemaRepository().removeValueSchema(storeName, id);
+        LOGGER.info("Removed value schema with ID " + id + " for store " + storeName);
+      });
+    } catch (Exception e) {
+      return false;
+    }
+    return true;
   }
 
   private void setStoreCompressionStrategy(

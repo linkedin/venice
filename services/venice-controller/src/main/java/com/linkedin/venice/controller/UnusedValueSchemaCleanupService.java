@@ -64,6 +64,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
 
           Set<Integer> usedSchemaSet = veniceParentHelixAdmin.getInUseValueSchemaIds(clusterName, storeName);
 
+          // if any of the child colo is unreachable, skip deletion.
           if (usedSchemaSet.isEmpty()) {
             continue;
           }
@@ -90,10 +91,11 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
               }
             }
           }
-          // delete from child colos
-          admin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
-          // delete from parent
-          veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
+          // delete from child colos before parent
+          if (veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete)) {
+            // delete from parent only if child colo deletion succeeds
+            admin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
+          }
         }
       }
     };

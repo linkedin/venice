@@ -632,13 +632,20 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> inuseValueSchemaIds) {
+  public boolean deleteValueSchemas(String clusterName, String storeName, Set<Integer> inuseValueSchemaIds) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     List<String> schemaIds = inuseValueSchemaIds.stream().map(String::valueOf).collect(Collectors.toList());
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerClient controllerClient = entry.getValue();
-      controllerClient.deleteValueSchemas(storeName, schemaIds);
+      ControllerResponse response = controllerClient.deleteValueSchemas(storeName, schemaIds);
+      if (response.isError()) {
+        LOGGER.error(
+            "Could not delete value schema from region: " + entry.getKey() + " for store " + storeName + ". "
+                + response.getError());
+        return false;
+      }
     }
+    return true;
   }
 
   @Override

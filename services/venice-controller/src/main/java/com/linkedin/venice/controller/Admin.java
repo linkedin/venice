@@ -376,8 +376,10 @@ public interface Admin extends AutoCloseable, Closeable {
 
   /**
    * Deletes a store's values schema with ids `except` the ids passed in the argument inuseValueSchemaIds
+   *
+   * @return
    */
-  void deleteValueSchemas(String clusterName, String storeName, Set<Integer> inuseValueSchemaIds);
+  boolean deleteValueSchemas(String clusterName, String storeName, Set<Integer> inuseValueSchemaIds);
 
   StoreMetaValue getMetaStoreValue(StoreMetaKey storeMetaKey, String storeName);
 
