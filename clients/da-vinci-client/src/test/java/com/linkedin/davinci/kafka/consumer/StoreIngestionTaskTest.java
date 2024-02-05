@@ -52,13 +52,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.after;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyDouble;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyLong;
-import static org.mockito.Mockito.anySet;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.atMost;
@@ -67,8 +60,6 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.longThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -80,6 +71,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -2573,10 +2565,15 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).stopped(eq(topic), eq(PARTITION_FOO), anyLong());
       verify(mockLogNotifier, never()).error(eq(topic), eq(PARTITION_BAR), anyString(), any());
       assertTrue(storeIngestionTaskUnderTest.isRunning(), "The StoreIngestionTask should still be running");
-      assertNull(
-          storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO),
-          "Exception for the errored partition should be cleared after unsubscription");
-      assertEquals(storeIngestionTaskUnderTest.getFailedPartitions().size(), 1, "Only one partition should be failed");
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
+        assertNull(
+            storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO),
+            "Exception for the errored partition should be cleared after unsubscription");
+        assertEquals(
+            storeIngestionTaskUnderTest.getFailedPartitions().size(),
+            1,
+            "Only one partition should be failed");
+      });
     }, aaConfig);
     for (int i = 0; i < 10000; ++i) {
       storeIngestionTaskUnderTest
@@ -3106,7 +3103,7 @@ public abstract class StoreIngestionTaskTest {
     // Since host has caught up to lag in local VT, DaVinci replica will be marked ready to serve
     PartitionConsumptionState mockPcsMultipleSourceKafkaServers = mock(PartitionConsumptionState.class);
     doReturn(true).when(mockPcsMultipleSourceKafkaServers).isEndOfPushReceived();
-    doReturn(false).when(mockPcsMultipleSourceKafkaServers).isComplete();
+    doReturn(hybridConfig != HYBRID).when(mockPcsMultipleSourceKafkaServers).isComplete();
     doReturn(true).when(mockPcsMultipleSourceKafkaServers).isWaitingForReplicationLag();
     doReturn(hybridConfig == HYBRID).when(mockPcsMultipleSourceKafkaServers).isHybrid();
     doReturn(topicSwitchWithMultipleSourceKafkaServersWrapper).when(mockPcsMultipleSourceKafkaServers).getTopicSwitch();
@@ -4312,6 +4309,55 @@ public abstract class StoreIngestionTaskTest {
 
     // verify the shared consumer should be detached when the ingestion task is closed.
     verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
+  }
+
+  @Test
+  public void testGetOffsetToOnlineLagThresholdPerPartition() {
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    String storeName = "test-store";
+    int subPartitionCount = 10;
+
+    // Non-hybrid store should throw
+    assertThrows(
+        VeniceException.class,
+        () -> StoreIngestionTask.getOffsetToOnlineLagThresholdPerPartition(
+            Optional.empty(),
+            storeRepository,
+            storeName,
+            subPartitionCount));
+
+    // Negative threshold
+    HybridStoreConfigImpl hybridStoreConfig1 = new HybridStoreConfigImpl(
+        100l,
+        -1l,
+        100l,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_SOP);
+    assertEquals(
+        StoreIngestionTask.getOffsetToOnlineLagThresholdPerPartition(
+            Optional.of(hybridStoreConfig1),
+            storeRepository,
+            storeName,
+            subPartitionCount),
+        -1l);
+
+    // For current version, the partition-level offset lag threshold should be divided by partition count
+    HybridStoreConfigImpl hybridStoreConfig2 = new HybridStoreConfigImpl(
+        100l,
+        100l,
+        100l,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_SOP);
+    Store store = mock(Store.class);
+    doReturn(10).when(store).getCurrentVersion();
+    doReturn(store).when(storeRepository).getStore(storeName);
+    assertEquals(
+        StoreIngestionTask.getOffsetToOnlineLagThresholdPerPartition(
+            Optional.of(hybridStoreConfig2),
+            storeRepository,
+            storeName,
+            subPartitionCount),
+        10l);
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
