@@ -180,8 +180,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getConsumedRecordEndToEndProcessingLatencyMax(),
               0,
               CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY + "_max"));
-      // TODO: change me
-      registerSensor(IDLE_TIME + "_max", new IngestionStatsGauge(this, () -> getStats().getIdleTime()));
+      registerSensor(new IngestionStatsGauge(this, () -> getStats().getIdleTime(), 0, IDLE_TIME + "_max"));
     }
   }
 
