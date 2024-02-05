@@ -21,6 +21,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
