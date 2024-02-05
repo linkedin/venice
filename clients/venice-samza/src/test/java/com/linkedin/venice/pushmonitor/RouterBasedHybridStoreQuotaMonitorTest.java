@@ -22,7 +22,8 @@ public class RouterBasedHybridStoreQuotaMonitorTest {
   private static final String TOPIC_NAME = "fake_Store_v1";
 
   @Test
-  public void testGetCurrentStatus() throws IOException, ExecutionException, InterruptedException, TimeoutException {
+  public void testTransportClientReinit()
+      throws IOException, ExecutionException, InterruptedException, TimeoutException {
     TransportClient mockTransportclient = Mockito.mock(TransportClient.class);
     TransportClientResponse mockResponse = Mockito.mock(TransportClientResponse.class);
     ObjectMapper mockMapper = Mockito.mock(ObjectMapper.class);
