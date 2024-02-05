@@ -99,7 +99,7 @@ public class DaVinciLiveUpdateSuppressionTest {
       cluster.createMetaSystemStore(storeName);
       client.updateStore(
           storeName,
-          new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10));
+          new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(30));
     });
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
