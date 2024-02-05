@@ -167,7 +167,9 @@ public enum Arg {
   SOURCE_FABRIC("source-fabric", "sf", true, "The fabric where metadata/data copy over starts from"),
   DEST_FABRIC("dest-fabric", "df", true, "The fabric where metadata/data gets copy over into"),
   ACL_PERMS("acl-perms", "ap", true, "Acl permissions for the store"),
-  LOG_METADATA("log-metadata", "lm", false, "Only log the metadata for each kafka message on console"),
+  LOG_METADATA("log-metadata", "lm", false, "Log the metadata for each kafka message on console"),
+  LOG_DATA_RECORD("log-data-record", "ldr", false, "Log the data record for each kafka message on console"),
+  LOG_RMD_RECORD("log-rmd-record", "lrr", false, "Log the RMD record for each kafka message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC(
       "native-replication-source-fabric", "nrsf", true,
       "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."
@@ -244,6 +246,14 @@ public enum Arg {
       "interval", "itv", true,
       "monitor data recovery progress at seconds close to the number specified by the interval parameter until tasks are finished"
   ), DATETIME("datetime", "dtm", true, "Date and time stamp (YYYY-MM-DDTHH:MM:SS) in UTC time zone for data recovery"),
+  SKIP_LAST_STORE_CREATION(
+      "skip-last-store-creation", "slsc", true,
+      "Skip last round of store creation and the following schema manipulation"
+  ), REPAIR("repair", "re", true, "Repair the store"),
+  GRAVEYARD_CLUSTERS(
+      "graveyard-clusters", "gc", true, "Clusters to scan store graveyard to retrieve metadata, eg. cluster-1,cluster-2"
+  ), RECOVER_CLUSTER("recover-cluster", "rc", true, "Cluster to recover from"),
+  BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;

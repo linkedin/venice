@@ -97,7 +97,7 @@ public class AggVersionedDIVStatsTest {
   @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })
   public void testStatsCanUpdateVersionStatus() {
     String storeName = mockStore.getName();
-    Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 0d);
+    Assert.assertEquals(reporter.query("." + storeName + "--future_version.Gauge").value(), 0d);
 
     // v1 starts pushing
     Version version = new VersionImpl(storeName, 1);
@@ -105,7 +105,7 @@ public class AggVersionedDIVStatsTest {
     stats.handleStoreChanged(mockStore);
 
     // expect to see v1's stats on future reporter
-    Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 1d);
+    Assert.assertEquals(reporter.query("." + storeName + "--future_version.Gauge").value(), 1d);
 
     long consumerTimestampMs = System.currentTimeMillis();
     double v1ProducerBrokerLatencyMs = 801d;
@@ -157,8 +157,8 @@ public class AggVersionedDIVStatsTest {
     stats.handleStoreChanged(mockStore);
 
     // expect to see v1's stats on current reporter and v2's stats on future reporter
-    Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 2d);
-    Assert.assertEquals(reporter.query("." + storeName + "--current_version.VersionStat").value(), 1d);
+    Assert.assertEquals(reporter.query("." + storeName + "--future_version.Gauge").value(), 2d);
+    Assert.assertEquals(reporter.query("." + storeName + "--current_version.Gauge").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 1d);
 
     double v2ProducerToSourceBrokerLatencyMs = 812d;

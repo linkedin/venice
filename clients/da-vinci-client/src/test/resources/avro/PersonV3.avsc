@@ -3,6 +3,17 @@
   "type": "record",
   "fields": [
     {
+      "name": "nullableListField",
+      "type": [
+        "null",
+        {
+          "type": "array",
+          "items": "int"
+        }
+      ],
+      "default": null
+    },
+    {
       "name": "age",
       "type": "int",
       "default": -1

@@ -52,15 +52,14 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     unhealthySensor = registerSensor("unhealthy_request", new OccurrenceRate());
     healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg());
     successRequestRatioSensor =
-        registerSensor("success_request_ratio", new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
+        registerSensor(new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate, "success_request_ratio"));
     Rate requestKeyCountRate = new Rate();
     requestKeyCountSensor = registerSensor("request_key_count", requestKeyCountRate, new Avg(), new Max());
     successRequestKeyCountSensor =
         registerSensor("success_request_key_count", successRequestKeyCountRate, new Avg(), new Max());
 
     successRequestKeyRatioSensor = registerSensor(
-        "success_request_key_ratio",
-        new TehutiUtils.SimpleRatioStat(successRequestKeyCountRate, requestKeyCountRate));
+        new TehutiUtils.SimpleRatioStat(successRequestKeyCountRate, requestKeyCountRate, "success_request_key_ratio"));
   }
 
   private void recordRequest() {

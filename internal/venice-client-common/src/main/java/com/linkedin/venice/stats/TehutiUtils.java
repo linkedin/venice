@@ -156,7 +156,7 @@ public class TehutiUtils {
    * The ultimate solution should be to use the consistent windowing (based on absolute time) across all the metrics.
    */
   public static class RatioStat extends LambdaStat {
-    public RatioStat(Rate one, Rate two) {
+    public RatioStat(Rate one, Rate two, String metricName) {
       super((config, now) -> {
         double numerator = one.measure(config, now);
         double denominator = two.measure(config, now);
@@ -167,7 +167,7 @@ public class TehutiUtils {
         }
 
         return numerator / (numerator + denominator);
-      });
+      }, metricName);
     }
   }
 
@@ -176,7 +176,7 @@ public class TehutiUtils {
    * numerator stat over the denominator stat.
    */
   public static class SimpleRatioStat extends LambdaStat {
-    public SimpleRatioStat(Rate numeratorStat, Rate denominatorStat) {
+    public SimpleRatioStat(Rate numeratorStat, Rate denominatorStat, String metricName) {
       super((config, now) -> {
         double numerator = numeratorStat.measure(config, now);
         double denominator = denominatorStat.measure(config, now);
@@ -187,7 +187,7 @@ public class TehutiUtils {
         }
 
         return numerator / denominator;
-      });
+      }, metricName);
     }
   }
 }

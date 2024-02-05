@@ -30,7 +30,6 @@ import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -48,8 +47,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -119,11 +116,9 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
                   fullHttpRequest,
                   badRequest(),
                   "HTTP decoder error: " + decoderResult,
-                  Optional.ofNullable(decoderResult)
-                      .map(DecoderResult::cause)
-                      .map(ScatterGatherRequestHandlerImpl::unwrapCompletion)
-                      .orElse(null),
-                  Collections.emptyMap()));
+                  decoderResult == null
+                      ? null
+                      : ScatterGatherRequestHandlerImpl.unwrapCompletion(decoderResult.cause())));
         }
         return handler(ctx, fullHttpRequest);
       } finally {
@@ -252,27 +247,10 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
         FullHttpResponse message =
             new BasicFullHttpResponse(request, HttpResponseStatus.NO_CONTENT, Unpooled.EMPTY_BUFFER);
 
-        headers.forEach(header -> {
-          Optional.ofNullable(header.get(HttpHeaderNames.SERVER))
-              .ifPresent(server -> message.headers().add(HttpHeaderNames.SERVER, server));
-          Optional.ofNullable(header.get(HeaderNames.X_SERVED_BY))
-              .ifPresent(server -> message.headers().add(HeaderNames.X_SERVED_BY, server));
-          Optional.of(header.getAll(HeaderNames.X_PARTITION))
-              .filter(partitions -> !partitions.isEmpty())
-              .ifPresent(partitions -> message.headers().add(HeaderNames.X_PARTITION, partitions));
-          Optional.ofNullable(metrics)
-              .ifPresent(m -> m.addSubrequest(getScatterGatherHelper().responseMetrics(new BasicHeaders(header))));
-        });
-
         getScatterGatherHelper().decorateResponse(getResponseHeaders(message), request.getRequestHeaders(), metrics);
 
         return message;
       }
-
-      Optional.ofNullable(metrics)
-          .ifPresent(
-              m -> headers.forEach(
-                  header -> m.addSubrequest(getScatterGatherHelper().responseMetrics(new BasicHeaders(header)))));
 
       return buildResponse(request, metrics, remaining);
     }
@@ -308,8 +286,6 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
               if (!part.headers().contains(HeaderNames.X_MULTIPART_CONTENT_STATUS)) {
                 part.setStatus(r.status());
               }
-              Optional.ofNullable(metrics)
-                  .ifPresent(m -> m.addSubrequest(getScatterGatherHelper().responseMetrics(getResponseHeaders(r))));
               future = ctx.write(part);
             }
           }
@@ -334,11 +310,6 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
 
             GenericFutureListener<Future<LastHttpContent>> listener = cf -> {
               if (cf.isSuccess()) {
-                Optional.ofNullable(metrics)
-                    .ifPresent(
-                        m -> m.addSubrequest(
-                            getScatterGatherHelper().responseMetrics(new BasicHeaders(cf.getNow().trailingHeaders()))));
-
                 multipartResponses.stream().map(Pair::getSecond).filter(p -> !p.isDone()).findAny().orElseGet(() -> {
                   promise.setSuccess();
                   return null;
@@ -356,11 +327,6 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
             AtomicReference<Promise<LastHttpContent>> f = new AtomicReference<>(first);
             chunkedResponses.forEach(p -> f.getAndSet(p.getSecond()).addListener((Future<LastHttpContent> fp) -> {
               if (fp.isSuccess()) {
-                Optional.ofNullable(metrics)
-                    .filter(m -> fp.getNow() != null)
-                    .ifPresent(
-                        m -> m.addSubrequest(
-                            getScatterGatherHelper().responseMetrics(new BasicHeaders(fp.getNow().trailingHeaders()))));
                 LOG.debug("writeChunkedContent {}", p.getFirst());
                 p.getFirst().writeChunkedContent(ctx, p.getSecond());
               } else {
@@ -380,11 +346,6 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
               future = cp;
               f.get().addListener((Future<LastHttpContent> fp) -> {
                 if (fp.isSuccess()) {
-                  Optional.ofNullable(metrics)
-                      .ifPresent(
-                          m -> m.addSubrequest(
-                              getScatterGatherHelper()
-                                  .responseMetrics(new BasicHeaders(fp.getNow().trailingHeaders()))));
                   cp.setSuccess();
                 } else {
                   cp.setFailure(fp.cause());
@@ -446,8 +407,7 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
       @Nonnull BasicFullHttpRequest request,
       @Nonnull HttpResponseStatus status,
       String contentMessage,
-      Throwable ex,
-      @Nonnull Map<String, String> errorHeaders) {
+      Throwable ex) {
     boolean returnStackTrace = false;
     ByteBuf contentByteBuf;
     if (getScatterGatherHelper().isEnableStackTraceResponseForException() && ex != null) {
@@ -480,8 +440,6 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
     if (contentMessage != null) {
       response.headers().set(HeaderNames.X_ERROR_MESSAGE, HeaderUtils.cleanHeaderValue(contentMessage));
     }
-
-    errorHeaders.forEach((key, value) -> response.headers().set(key, HeaderUtils.cleanHeaderValue(value)));
 
     HttpUtil.setContentLength(response, contentByteBuf.readableBytes());
 

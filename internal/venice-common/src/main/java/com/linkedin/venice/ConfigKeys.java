@@ -609,6 +609,9 @@ public class ConfigKeys {
   public static final String SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER =
       "server.consumer.pool.size.per.kafka.cluster";
 
+  public static final String MIN_CONSUMER_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER =
+      "min.consumer.in.consumer.pool.per.kafka.cluster";
+
   /**
    * Whether to enable partition wise balanced shared consumer assignment.
    */
@@ -1699,8 +1702,13 @@ public class ConfigKeys {
   public static final String DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS =
       "davinci.push.status.scan.no.report.retry.max.attempts";
 
-  public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE =
-      "davinci.push.status.scan.max.offline.instance";
+  // Config to control how many DVC replica instances are allowed to be offline before failing VPJ push.
+  public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_COUNT =
+      "davinci.push.status.scan.max.offline.instance.count";
+
+  // Config to control how much percentage of DVC replica instances are allowed to be offline before failing VPJ push.
+  public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO =
+      "davinci.push.status.scan.max.offline.instance.ratio";
 
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";

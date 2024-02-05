@@ -1,16 +1,20 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.validation.checksum.CheckSum;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.io.FileUtils;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.Options;
+import org.rocksdb.RocksDBException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -232,7 +236,7 @@ public class RocksDBSstFileWriterTest {
   }
 
   @Test
-  public void testOpenWithAllValidFiles() throws IOException {
+  public void testOpenAndSyncWithAllValidFiles() throws IOException {
     RocksDBSstFileWriter rocksDBSstFileWriter = null;
     try {
       rocksDBSstFileWriter = new RocksDBSstFileWriter(
@@ -255,6 +259,124 @@ public class RocksDBSstFileWriterTest {
       // check that only 7 files exists (0-5 after cleanup by checkDatabaseIntegrity)
       // and 6 after rocksDBSstFileWriter.open opens a new file
       Assert.assertEquals(getNumberOfFilesInTempDirectory(), 7);
+      rocksDBSstFileWriter.sync();
+    } finally {
+      if (rocksDBSstFileWriter != null) {
+        rocksDBSstFileWriter.close();
+      }
+      deleteTempDatabaseDir();
+    }
+  }
+
+  @Test
+  public void testSyncWithCorrectChecksum() throws IOException, RocksDBException {
+    RocksDBSstFileWriter rocksDBSstFileWriter = null;
+    try {
+      rocksDBSstFileWriter = new RocksDBSstFileWriter(
+          STORE_NAME,
+          PARTITION_ID,
+          "",
+          new EnvOptions(),
+          new Options(),
+          DB_DIR,
+          IS_RMD,
+          ROCKS_DB_SERVER_CONFIG);
+      Map<String, String> checkpointedInfo = new HashMap<>();
+
+      // Checkpoint that 1 sst file should be found
+      checkpointedInfo.put(rocksDBSstFileWriter.getLastCheckPointedSSTFileNum(), "0");
+      // create 5 sst file
+      createSstFiles(5);
+
+      rocksDBSstFileWriter.open(checkpointedInfo, Optional.of(() -> {
+        CheckSum sstFileFinalCheckSum = CheckSum.getInstance(CheckSumType.MD5);
+        sstFileFinalCheckSum.update("key".getBytes());
+        sstFileFinalCheckSum.update("value".getBytes());
+        return sstFileFinalCheckSum.getCheckSum();
+      }));
+      // check that only 1 files exists ("0" after cleanup by checkDatabaseIntegrity)
+      // and "1" after rocksDBSstFileWriter.open opens a new file
+      Assert.assertEquals(getNumberOfFilesInTempDirectory(), 2);
+      rocksDBSstFileWriter.put("key".getBytes(), ByteBuffer.wrap("value".getBytes()));
+      // call sync to verify checksum
+      rocksDBSstFileWriter.sync();
+    } finally {
+      if (rocksDBSstFileWriter != null) {
+        rocksDBSstFileWriter.close();
+      }
+      deleteTempDatabaseDir();
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "verifyChecksum: failure. last sstFile checksum didn't match for store.*")
+  public void testSyncWithInCorrectChecksum() throws IOException, RocksDBException {
+    RocksDBSstFileWriter rocksDBSstFileWriter = null;
+    try {
+      rocksDBSstFileWriter = new RocksDBSstFileWriter(
+          STORE_NAME,
+          PARTITION_ID,
+          "",
+          new EnvOptions(),
+          new Options(),
+          DB_DIR,
+          IS_RMD,
+          ROCKS_DB_SERVER_CONFIG);
+      Map<String, String> checkpointedInfo = new HashMap<>();
+
+      // Checkpoint that 1 sst file should be found
+      checkpointedInfo.put(rocksDBSstFileWriter.getLastCheckPointedSSTFileNum(), "0");
+      // create 10 sst file
+      createSstFiles(5);
+
+      rocksDBSstFileWriter.open(checkpointedInfo, Optional.of(() -> {
+        CheckSum sstFileFinalCheckSum = CheckSum.getInstance(CheckSumType.MD5);
+        sstFileFinalCheckSum.update("wrong_key".getBytes());
+        sstFileFinalCheckSum.update("wrong_value".getBytes());
+        return sstFileFinalCheckSum.getCheckSum();
+      }));
+      // check that only 2 files exists ("0" after cleanup by checkDatabaseIntegrity)
+      // and "1" after rocksDBSstFileWriter.open opens a new file
+      Assert.assertEquals(getNumberOfFilesInTempDirectory(), 2);
+      rocksDBSstFileWriter.put("key".getBytes(), ByteBuffer.wrap("value".getBytes()));
+      // call sync to verify checksum
+      rocksDBSstFileWriter.sync();
+    } finally {
+      if (rocksDBSstFileWriter != null) {
+        rocksDBSstFileWriter.close();
+      }
+      deleteTempDatabaseDir();
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Checksum mismatch in SST files.*")
+  public void testSyncWithMissingFile() throws IOException, RocksDBException {
+    RocksDBSstFileWriter rocksDBSstFileWriter = null;
+    try {
+      rocksDBSstFileWriter = new RocksDBSstFileWriter(
+          STORE_NAME,
+          PARTITION_ID,
+          "",
+          new EnvOptions(),
+          new Options(),
+          DB_DIR,
+          IS_RMD,
+          ROCKS_DB_SERVER_CONFIG);
+      Map<String, String> checkpointedInfo = new HashMap<>();
+
+      // Checkpoint that 6 sst file should be found
+      checkpointedInfo.put(rocksDBSstFileWriter.getLastCheckPointedSSTFileNum(), "5");
+      // create 10 sst file
+      createSstFiles(10);
+
+      rocksDBSstFileWriter.open(checkpointedInfo, Optional.of(() -> "1".getBytes()));
+      // check that only 7 files exists (0-5 after cleanup by checkDatabaseIntegrity)
+      // and 6 after rocksDBSstFileWriter.open opens a new file
+      Assert.assertEquals(getNumberOfFilesInTempDirectory(), 7);
+      rocksDBSstFileWriter.put("key".getBytes(), ByteBuffer.wrap("value".getBytes()));
+      deleteAllSstFiles(getNumberOfFilesInTempDirectory());
+      // call sync after deleting all the files to mimic exception thrown during graceful shutdown of servers with
+      // missing sst files
+      rocksDBSstFileWriter.sync();
     } finally {
       if (rocksDBSstFileWriter != null) {
         rocksDBSstFileWriter.close();
@@ -284,6 +406,12 @@ public class RocksDBSstFileWriterTest {
 
   private void deleteSstFile(int fileNumber) throws IOException {
     FileUtils.delete(new File(DB_DIR + "/sst_file_" + fileNumber));
+  }
+
+  private void deleteAllSstFiles(int maxFileNumber) throws IOException {
+    for (int i = 0; i < maxFileNumber; i++) {
+      FileUtils.delete(new File(DB_DIR + "/sst_file_" + i));
+    }
   }
 
   private void createSstFiles(int numberOfFiles) throws IOException {

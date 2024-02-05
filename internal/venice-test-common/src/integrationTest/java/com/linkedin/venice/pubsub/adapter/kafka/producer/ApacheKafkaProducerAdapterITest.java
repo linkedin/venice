@@ -114,11 +114,11 @@ public class ApacheKafkaProducerAdapterITest {
     }
   }
 
-  private KafkaKey getDummyKey() {
+  public static KafkaKey getDummyKey() {
     return new KafkaKey(MessageType.PUT, Utils.getUniqueString("key-").getBytes());
   }
 
-  private KafkaMessageEnvelope getDummyVal() {
+  public static KafkaMessageEnvelope getDummyVal() {
     KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
     messageEnvelope.producerMetadata = new ProducerMetadata();
     messageEnvelope.producerMetadata.messageTimestamp = 0;

@@ -74,6 +74,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -94,6 +95,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -191,7 +193,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBatchStore(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 = createStoreWithMetaSystemStore(KEY_COUNT);
+    String storeName1 = createStoreWithMetaSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
     String storeName3 = createStoreWithMetaSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
@@ -735,7 +737,10 @@ public class DaVinciClientTest {
       }
     }
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    // Since the previous DaVinci client is closed, the static default Gauge metric measurement thread pool is also
+    // shutdown. In order to continue calculating Gauge metrics values in the new client, create a new thread pool
+    MetricsRepository metricsRepository =
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository("da-vinci_test_async_gauge_thread", 10000, 50);
     DaVinciTestContext<Integer, Object> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,
@@ -760,9 +765,11 @@ public class DaVinciClientTest {
       });
       // After restart, Da Vinci client will still get correct metrics for ingested stores.
       String metricName = "." + storeName + "_current--disk_usage_in_bytes.Gauge";
-      Metric storeDiskUsageMetric = metricsRepository.getMetric(metricName);
-      Assert.assertNotNull(storeDiskUsageMetric);
-      Assert.assertTrue(storeDiskUsageMetric.value() > 0);
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Metric storeDiskUsageMetric = metricsRepository.getMetric(metricName);
+        Assert.assertNotNull(storeDiskUsageMetric);
+        Assert.assertTrue(storeDiskUsageMetric.value() > 0);
+      });
     }
 
     daVinciConfig.setStorageClass(StorageClass.DISK);
@@ -1046,6 +1053,15 @@ public class DaVinciClientTest {
 
   private String createStoreWithMetaSystemStore(int keyCount) throws Exception {
     String storeName = cluster.createStore(keyCount);
+    cluster.createMetaSystemStore(storeName);
+    return storeName;
+  }
+
+  private String createStoreWithMetaSystemStore(
+      int keyCount,
+      CompressionStrategy compressionStrategy,
+      Function<String, ByteBuffer> compressionDictionaryGenerator) throws Exception {
+    String storeName = cluster.createStore(keyCount, compressionStrategy, compressionDictionaryGenerator);
     cluster.createMetaSystemStore(storeName);
     return storeName;
   }

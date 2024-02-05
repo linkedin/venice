@@ -19,6 +19,7 @@ import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsReporter;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.concurrent.ExecutorService;
@@ -53,7 +54,7 @@ public class AbstractVeniceStatsTest {
       for (int j = 0; j < 16; j++) {
         executorService.submit(() -> {
           try {
-            statsTest.registerSensor("testGauge", new Gauge(() -> 1));
+            statsTest.registerSensor(new AsyncGauge((ignored, ignored2) -> 1, "testGauge"));
           } catch (Exception e) {
             exceptionReceived.set(true);
           }
@@ -70,7 +71,7 @@ public class AbstractVeniceStatsTest {
   public void testRegisterSensor() {
     MetricsRepository metricsRepository = new MetricsRepository();
     AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
-    stats.registerSensor("foo", new Gauge(() -> 1.0));
+    stats.registerSensor(new AsyncGauge((ignored, ignored2) -> 1.0, "foo"));
     Assert.assertEquals(metricsRepository.metrics().size(), 1);
     Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.Gauge").value(), 1.0);
 
@@ -91,10 +92,10 @@ public class AbstractVeniceStatsTest {
   public void testRegisterSensorAttributeGauge() {
     MetricsRepository metricsRepository = new MetricsRepository();
     AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
-    stats.registerSensorAttributeGauge("foo", "bar", new Gauge(() -> 1.0));
-    stats.registerSensorAttributeGauge("foo", "bar2", new Gauge(() -> 2.0));
+    stats.registerSensorAttributeGauge("foo", "bar", new AsyncGauge((ignored, ignored2) -> 1.0, "foo"));
+    stats.registerSensorAttributeGauge("foo", "bar2", new AsyncGauge((ignored, ignored2) -> 2.0, "foo"));
     // Duplicate registration will not count.
-    stats.registerSensorAttributeGauge("foo", "bar2", new Gauge(() -> 3.0));
+    stats.registerSensorAttributeGauge("foo", "bar2", new AsyncGauge((ignored, ignored2) -> 3.0, "foo"));
     Assert.assertEquals(metricsRepository.metrics().size(), 2);
     Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.bar").value(), 1.0);
     Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.bar2").value(), 2.0);

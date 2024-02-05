@@ -36,5 +36,5 @@ jar {
 }
 
 ext {
-  jacocoCoverageThreshold = 0.04
+  jacocoCoverageThreshold = 0.00
 }

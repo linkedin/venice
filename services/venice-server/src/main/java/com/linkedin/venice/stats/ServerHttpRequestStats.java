@@ -80,8 +80,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         registerPerStoreAndTotal("success_request", totalStats, () -> totalStats.successRequestSensor, successRequest);
     errorRequestSensor =
         registerPerStoreAndTotal("error_request", totalStats, () -> totalStats.errorRequestSensor, errorRequest);
-    successRequestRatioSensor =
-        registerSensor("success_request_ratio", new TehutiUtils.RatioStat(successRequest, errorRequest));
+    successRequestRatioSensor = registerSensor(
+        "success_request_ratio",
+        new TehutiUtils.RatioStat(successRequest, errorRequest, "success_request_ratio"));
 
     errorRequestLatencySensor = registerPerStoreAndTotal(
         "error_request_latency",
@@ -190,8 +191,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         new Min(),
         new Max());
     successRequestKeyRatioSensor = registerSensor(
-        "success_request_key_ratio",
-        new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
+        new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount, "success_request_key_ratio"));
 
     requestFirstPartLatencySensor = registerPerStoreAndTotal(
         "request_first_part_latency",

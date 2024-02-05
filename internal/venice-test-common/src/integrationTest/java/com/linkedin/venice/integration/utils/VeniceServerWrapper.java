@@ -52,6 +52,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
@@ -312,7 +313,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
         VeniceServerContext.Builder serverContextBuilder =
             new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
-                .setMetricsRepository(new MetricsRepository())
+                .setMetricsRepository(
+                    MetricsRepositoryUtils.createSingleThreadedMetricsRepository("server_wrapper_async_gauge_thread"))
                 .setSslFactory(sslFactory)
                 .setClientConfigForConsumer(consumerClientConfig)
                 .setServiceDiscoveryAnnouncers(d2Servers);
@@ -459,7 +461,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
     this.veniceServer = new TestVeniceServer(
         new VeniceServerContext.Builder().setVeniceConfigLoader(config)
-            .setMetricsRepository(new MetricsRepository())
+            .setMetricsRepository(
+                MetricsRepositoryUtils.createSingleThreadedMetricsRepository("server_wrapper_async_gauge_thread"))
             .setSslFactory(sslFactory)
             .setClientConfigForConsumer(consumerClientConfig)
             .setServiceDiscoveryAnnouncers(d2Servers)
@@ -533,7 +536,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     }
 
     VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
-        .setMetricsRepository(new MetricsRepository())
+        .setMetricsRepository(
+            MetricsRepositoryUtils.createSingleThreadedMetricsRepository("server_wrapper_async_gauge_thread"))
         .setSslFactory(ssl ? SslUtils.getVeniceLocalSslFactory() : null)
         .setClientConfigForConsumer(consumerClientConfig)
         .build();

@@ -13,7 +13,6 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
-import java.util.Optional;
 
 
 /**
@@ -61,7 +60,10 @@ final class SafeByteBuf extends AbstractReferenceCountedByteBuf {
   }
 
   private SafeReference ref() {
-    return Optional.ofNullable(_ref).orElseThrow(IllegalReferenceCountException::new);
+    if (_ref == null) {
+      throw new IllegalReferenceCountException();
+    }
+    return _ref;
   }
 
   @Override

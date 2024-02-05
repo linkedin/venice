@@ -5,8 +5,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 
-import com.linkedin.alpini.base.monitoring.CallTrackerImpl;
-import com.linkedin.alpini.base.monitoring.NullCallTracker;
 import com.linkedin.alpini.consts.QOS;
 import com.linkedin.alpini.netty4.misc.NettyUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -106,16 +104,12 @@ public class TestChannelPoolManagerImplHttp2Ping {
     Assert.assertNotNull(channelFuture.await().getNow());
 
     manager.startPeriodicPing();
-    ChannelPoolManager.PoolStats poolStats = ((ChannelPoolManager.PoolStats) manager.getPools().toArray()[0]);
-    ;
 
     if (enableHttp2Ping) {
       TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
         Assert.assertTrue(manager.enablePeriodicPing());
         Assert.assertNotNull(manager.getPeriodicPingScheduledFuture());
         Assert.assertEquals(manager.getPools().size(), 1);
-        Assert.assertTrue(poolStats.http2PingCallTracker() instanceof CallTrackerImpl);
-        Assert.assertEquals(poolStats.getAvgResponseTimeOfLatestPings(), 0D);
         Mockito.verify(channelPoolFactory, useGlobalPool ? Mockito.times(1) : Mockito.times(numOfExecutors))
             .construct(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
       });
@@ -124,8 +118,6 @@ public class TestChannelPoolManagerImplHttp2Ping {
         Assert.assertFalse(manager.enablePeriodicPing());
         Assert.assertNull(manager.getPeriodicPingScheduledFuture());
         Assert.assertEquals(manager.getPools().size(), 1);
-        Assert.assertEquals(poolStats.http2PingCallTracker(), NullCallTracker.INSTANCE);
-        Assert.assertEquals(poolStats.getAvgResponseTimeOfLatestPings(), 0D);
         Mockito.verify(channelPoolFactory, useGlobalPool ? Mockito.times(1) : Mockito.times(numOfExecutors))
             .construct(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
       });

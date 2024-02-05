@@ -4,7 +4,6 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.WRIT
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST_OPS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.MAP_OPS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
-import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.PUT_NEW_FIELD;
 import static org.apache.avro.Schema.Field;
 import static org.apache.avro.Schema.Type;
 import static org.apache.avro.Schema.Type.RECORD;
@@ -14,7 +13,6 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.utils.AvroSchemaUtils;
-import io.tehuti.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -22,7 +20,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.IndexedRecord;
 import org.apache.commons.lang.Validate;
 
 
@@ -445,27 +442,5 @@ public class WriteComputeSchemaConverter {
     // will be thrown out during parsing the schema.
     noOpSchema.setFields(Collections.emptyList());
     return noOpSchema;
-  }
-
-  public static WriteComputeOperation getFieldOperationType(Object writeComputeFieldValue) {
-    Utils.notNull(writeComputeFieldValue);
-
-    if (writeComputeFieldValue instanceof IndexedRecord) {
-      IndexedRecord writeComputeFieldRecord = (IndexedRecord) writeComputeFieldValue;
-      String writeComputeFieldSchemaName = writeComputeFieldRecord.getSchema().getName();
-
-      if (writeComputeFieldSchemaName.equals(NO_OP_ON_FIELD.name)) {
-        return NO_OP_ON_FIELD;
-      }
-
-      if (writeComputeFieldSchemaName.endsWith(LIST_OPS.name)) {
-        return LIST_OPS;
-      }
-
-      if (writeComputeFieldSchemaName.endsWith(MAP_OPS.name)) {
-        return MAP_OPS;
-      }
-    }
-    return PUT_NEW_FIELD;
   }
 }

@@ -1,0 +1,50 @@
+{
+  "type": "record",
+  "name": "TestRecord",
+  "namespace": "com.linkedin.avro",
+  "fields": [
+    {
+      "name": "regularField",
+      "type": "string",
+      "default": "default_venice"
+    },
+    {
+      "name": "listField",
+      "type": {
+        "type": "array",
+        "items": "int"
+      },
+      "default": []
+    },
+    {
+      "name": "nullableListField",
+      "type": [
+        "null",
+        {
+          "type": "array",
+          "items": "int"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "mapField",
+      "type": {
+        "type": "map",
+        "values": "int"
+      },
+      "default": {}
+    },
+    {
+      "name": "nullableMapField",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "int"
+        }
+      ],
+      "default": null
+    }
+  ]
+}

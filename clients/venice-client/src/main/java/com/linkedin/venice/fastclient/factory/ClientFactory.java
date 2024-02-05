@@ -27,15 +27,12 @@ import org.apache.avro.specific.SpecificRecord;
  * thin-client that's being passed in as a config.
  */
 public class ClientFactory {
-
-  // Use Venice thin client based store metadata by default
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(ClientConfig clientConfig) {
     StoreMetadata storeMetadata = constructStoreMetadataReader(clientConfig);
 
     return getAndStartGenericStoreClient(storeMetadata, clientConfig);
   }
 
-  // Use Venice thin client based store metadata default
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(
       ClientConfig clientConfig) {
     /**

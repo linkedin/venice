@@ -30,6 +30,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor healthyRequestRateSensor;
   private final Sensor tardyRequestRatioSensor;
   private final Sensor throttleSensor;
+  private final Sensor errorRetryCountSensor;
+
   private final Sensor latencySensor;
   private final Sensor healthyRequestLatencySensor;
   private final Sensor unhealthyRequestLatencySensor;
@@ -87,10 +89,11 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
     tardySensor = registerSensor("tardy_request", new Count(), tardyRequestRate);
     healthyRequestRateSensor =
-        registerSensor("healthy_request_ratio", new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
+        registerSensor(new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate, "healthy_request_ratio"));
     tardyRequestRatioSensor =
-        registerSensor("tardy_request_ratio", new TehutiUtils.SimpleRatioStat(tardyRequestRate, requestRate));
+        registerSensor(new TehutiUtils.SimpleRatioStat(tardyRequestRate, requestRate, "tardy_request_ratio"));
     throttleSensor = registerSensor("throttled_request", new Count());
+    errorRetryCountSensor = registerSensor("error_retry", new Count());
     badRequestSensor = registerSensor("bad_request", new Count());
     badRequestKeyCountSensor = registerSensor("bad_request_key_count", new OccurrenceRate(), new Avg(), new Max());
     requestThrottledByRouterCapacitySensor = registerSensor("request_throttled_by_router_capacity", new Count());
@@ -123,15 +126,18 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     quotaSensor = registerSensor("read_quota_per_router", new Gauge());
     findUnhealthyHostRequestSensor = registerSensor("find_unhealthy_host_request", new OccurrenceRate());
 
-    registerSensor("retry_count", new LambdaStat(() -> scatterGatherStats.getTotalRetries()));
-    registerSensor("retry_key_count", new LambdaStat(() -> scatterGatherStats.getTotalRetriedKeys()));
+    registerSensor(new LambdaStat((ignored, ignored2) -> scatterGatherStats.getTotalRetries(), "retry_count"));
+    registerSensor(new LambdaStat((ignored, ignored2) -> scatterGatherStats.getTotalRetriedKeys(), "retry_key_count"));
     registerSensor(
-        "retry_slower_than_original_count",
-        new LambdaStat(() -> scatterGatherStats.getTotalRetriesDiscarded()));
-    registerSensor("retry_error_count", new LambdaStat(() -> scatterGatherStats.getTotalRetriesError()));
+        new LambdaStat(
+            (ignored, ignored2) -> scatterGatherStats.getTotalRetriesDiscarded(),
+            "retry_slower_than_original_count"));
     registerSensor(
-        "retry_faster_than_original_count",
-        new LambdaStat(() -> scatterGatherStats.getTotalRetriesWinner()));
+        new LambdaStat((ignored, ignored2) -> scatterGatherStats.getTotalRetriesError(), "retry_error_count"));
+    registerSensor(
+        new LambdaStat(
+            (ignored, ignored2) -> scatterGatherStats.getTotalRetriesWinner(),
+            "retry_faster_than_original_count"));
 
     keyNumSensor = registerSensor("key_num", new Avg(), new Max(0));
     /**
@@ -240,6 +246,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
    */
   public void recordThrottledRequest() {
     throttleSensor.record();
+  }
+
+  public void recordErrorRetryCount() {
+    errorRetryCountSensor.record();
   }
 
   public void recordBadRequest() {

@@ -9,7 +9,6 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.SortedSet;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.function.Consumer;
@@ -238,10 +237,12 @@ public abstract class AbstractQuantileEstimation<SAMPLE extends AbstractQuantile
   }
 
   protected @Nonnull List<SAMPLE> queryAndReset(@Nonnull Quantiles quantiles, Consumer<Data> consumer) {
-    return Optional.ofNullable(_accumulator.getThenReset()).map(data -> {
+    Data data = _accumulator.getThenReset();
+    if (data != null) {
       consumer.accept(data);
-      return data;
-    }).map(data -> data.query(Objects.requireNonNull(quantiles))).orElseGet(Collections::emptyList);
+      return data.query(Objects.requireNonNull(quantiles));
+    }
+    return Collections.emptyList();
   }
 
   protected @Nonnull List<SAMPLE> queryAndReset(@Nonnull Quantiles quantiles) {
@@ -254,7 +255,11 @@ public abstract class AbstractQuantileEstimation<SAMPLE extends AbstractQuantile
    * @return quantile
    */
   protected final Quantile computeQuantile(@Nonnull SAMPLE v) {
-    return Optional.ofNullable(_accumulator.get()).map(data -> data.computeQuantile(v)).orElse(null);
+    Data data = _accumulator.get();
+    if (data != null) {
+      return data.computeQuantile(v);
+    }
+    return null;
   }
 
   public int getNumberOfSamples() {

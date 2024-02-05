@@ -503,7 +503,10 @@ public class IngestionStats {
   }
 
   public void registerTransformerLatencySensor() {
-    transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
+    // Check to make sure there isn't already a registered transformerLatencySensor
+    if (transformerLatencySensor == null) {
+      transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
+    }
   }
 
   public void recordIdleTime(long value) {

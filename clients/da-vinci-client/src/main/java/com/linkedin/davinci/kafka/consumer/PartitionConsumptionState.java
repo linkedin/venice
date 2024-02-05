@@ -41,7 +41,10 @@ public class PartitionConsumptionState {
 
   private String leaderHostId;
 
-  /** whether the ingestion of current partition is deferred-write. */
+  /**
+   * whether the ingestion of current partition is deferred-write.
+   * Refer {@link com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition#deferredWrite}
+   */
   private boolean deferredWrite;
   private boolean errorReported;
   private boolean lagCaughtUp;

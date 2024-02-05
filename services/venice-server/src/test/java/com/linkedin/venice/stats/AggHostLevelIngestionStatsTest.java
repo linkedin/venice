@@ -74,11 +74,12 @@ public class AggHostLevelIngestionStatsTest {
 
   @Test
   public void testMetrics() {
-    Assert.assertEquals(reporter.query("." + STORE_FOO + "--storage_quota_used.Avg").value(), 0.8);
+    // The quota usage metric should show the latest value
+    Assert.assertEquals(reporter.query("." + STORE_FOO + "--storage_quota_used.Gauge").value(), 1.0);
     Assert.assertEquals(
         reporter.query(".total--bytes_read_from_kafka_as_uncompressed_size.Rate").value(),
         300d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
-    Assert.assertEquals(reporter.query("." + STORE_FOO + "--global_store_disk_quota_allowed.Max").value(), 200d);
+    Assert.assertEquals(reporter.query("." + STORE_FOO + "--global_store_disk_quota_allowed.Gauge").value(), 200d);
 
     Assert.assertEquals(
         reporter.query(".total--records_consumed.Rate").value(),

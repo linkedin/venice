@@ -39,8 +39,10 @@ public class AggRouterHttpRequestStatsTest {
 
     stats.recordThrottledRequest("store1", 1.0);
     stats.recordThrottledRequest("store2", 1.0);
+    stats.recordErrorRetryCount("store1");
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 2d);
     Assert.assertEquals(reporter.query(".store1--request.Count").value(), 1d);
+    Assert.assertEquals(reporter.query(".store1--error_retry.Count").value(), 1d);
 
     for (int i = 1; i <= 100; i += 1) {
       stats.recordLatency("store2", i);

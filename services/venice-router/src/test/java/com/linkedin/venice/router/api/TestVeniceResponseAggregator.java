@@ -13,10 +13,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.alpini.base.misc.HeaderNames;
+import com.linkedin.alpini.base.misc.MetricNames;
 import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.base.misc.TimeValue;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.alpini.router.api.MetricNames;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -217,7 +217,7 @@ public class TestVeniceResponseAggregator {
     // test aggregator is able to identify quota exceeded response and
     // record it properly
     FullHttpResponse response5 = buildFullHttpResponse(TOO_MANY_REQUESTS, new byte[0], headers);
-    metrics.setMetric(MetricNames.ROUTER_SERVER_TIME.name(), new TimeValue(1, TimeUnit.MILLISECONDS));
+    metrics.setMetric(MetricNames.ROUTER_SERVER_TIME, new TimeValue(1, TimeUnit.MILLISECONDS));
     responseAggregator.buildResponse(request, metrics, Collections.singletonList(response5));
     verify(mockStatsForMultiGet).recordThrottledRequest(storeName, 1.0);
   }

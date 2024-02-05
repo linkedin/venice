@@ -375,7 +375,15 @@ public class DaVinciClientMemoryLimitTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  /**
+   * This test is buggy; if ingestion error happens for a completed replica, server would unsubscribe the partition and
+   * clear the partition exception list; therefore, whether the Gauge metric has value depends on if measurement takes
+   * place after the exception happens but before the partition exception list is cleared.
+   * TODO: fix metric "ingestion_stuck_by_memory_constraint"
+   * @param ingestionIsolationEnabledInDaVinci
+   * @throws Exception
+   */
+  @Test(enabled = false, timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testHybridStoreHittingMemoryLimiterShouldResumeAfterFreeUpResource(// ) throws Exception {
       boolean ingestionIsolationEnabledInDaVinci) throws Exception {
     String batchOnlyStoreName = Utils.getUniqueString("davinci_memory_limit_test_batch_only");

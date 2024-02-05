@@ -58,7 +58,8 @@ public class PushStatusCollectorTest {
         1,
         4,
         1,
-        20);
+        20,
+        1);
     pushStatusCollector.start();
 
     pushStatusCollector.subscribeTopic(regularStoreTopicV1, 10);
@@ -190,7 +191,8 @@ public class PushStatusCollectorTest {
         1,
         4,
         1,
-        20);
+        20,
+        1);
     pushStatusCollector.start();
 
     pushCompletedCount.set(0);
@@ -272,7 +274,8 @@ public class PushStatusCollectorTest {
         1,
         4,
         0,
-        20);
+        20,
+        1);
     pushStatusCollector.start();
 
     pushCompletedCount.set(0);
