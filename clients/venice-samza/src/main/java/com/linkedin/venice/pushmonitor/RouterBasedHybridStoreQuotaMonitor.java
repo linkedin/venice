@@ -15,10 +15,13 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
+import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -68,6 +71,10 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
     hybridQuotaMonitorTask.close();
   }
 
+  protected HybridQuotaMonitorTask getHybridQuotaMonitorTask() {
+    return hybridQuotaMonitorTask;
+  }
+
   public void setCurrentStatus(HybridStoreQuotaStatus currentStatus) {
     this.currentStatus = currentStatus;
   }
@@ -84,8 +91,8 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
     return TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA + "/" + versionTopic;
   }
 
-  private static class HybridQuotaMonitorTask implements Runnable, Closeable {
-    private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  protected static class HybridQuotaMonitorTask implements Runnable, Closeable {
+    private ObjectMapper mapper = ObjectMapperFactory.getInstance();
 
     private final AtomicBoolean isRunning;
     private final String storeName;
@@ -109,37 +116,43 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
       this.reinitProvider = reinitProvider;
     }
 
+    protected void setMapper(ObjectMapper mapper) {
+      this.mapper = mapper;
+    }
+
+    protected void checkStatus() throws ExecutionException, InterruptedException, TimeoutException, IOException {
+      // Get hybrid store quota status
+      CompletableFuture<TransportClientResponse> responseFuture = transportClient.get(requestPath);
+      TransportClientResponse response = responseFuture.get(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+      HybridStoreQuotaStatusResponse quotaStatusResponse =
+          mapper.readValue(response.getBody(), HybridStoreQuotaStatusResponse.class);
+      if (quotaStatusResponse.isError()) {
+        if (quotaStatusResponse.getErrorType().equals(ErrorType.STORE_NOT_FOUND)) {
+          LOGGER.warn("Store not found, reinitializing client! Error: {}", quotaStatusResponse.getError());
+          // TODO: It'd make sense to call shutdown on the transport client, but it's a shared object so that's
+          // a bit dangerous.
+          transportClient = reinitProvider.apply();
+          return;
+        }
+        LOGGER.error("Router was not able to get hybrid quota status: {}", quotaStatusResponse.getError());
+        return;
+      }
+      hybridStoreQuotaMonitorService.setCurrentStatus(quotaStatusResponse.getQuotaStatus());
+      switch (quotaStatusResponse.getQuotaStatus()) {
+        case QUOTA_VIOLATED:
+          LOGGER.info("Hybrid job failed with quota violation for store: {}", storeName);
+          break;
+        default:
+          LOGGER.info("Current hybrid job state: {} for store: {}", quotaStatusResponse.getQuotaStatus(), storeName);
+      }
+    }
+
     @Override
     public void run() {
       LOGGER.info("Running {}", this.getClass().getSimpleName());
       while (isRunning.get()) {
         try {
-          // Get hybrid store quota status
-          CompletableFuture<TransportClientResponse> responseFuture = transportClient.get(requestPath);
-          TransportClientResponse response = responseFuture.get(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-          HybridStoreQuotaStatusResponse quotaStatusResponse =
-              mapper.readValue(response.getBody(), HybridStoreQuotaStatusResponse.class);
-          if (quotaStatusResponse.isError()) {
-            if (quotaStatusResponse.getErrorType().equals(ErrorType.STORE_NOT_FOUND)) {
-              LOGGER.warn("Store not found, reinitializing client! Error: {}", quotaStatusResponse.getError());
-              // TODO: It'd make sense to call shutdown on the transport client, but it's a shared object so that's
-              // a bit dangerous.
-              transportClient = reinitProvider.apply();
-              continue;
-            }
-            LOGGER.error("Router was not able to get hybrid quota status: {}", quotaStatusResponse.getError());
-            continue;
-          }
-          hybridStoreQuotaMonitorService.setCurrentStatus(quotaStatusResponse.getQuotaStatus());
-          switch (quotaStatusResponse.getQuotaStatus()) {
-            case QUOTA_VIOLATED:
-              LOGGER.info("Hybrid job failed with quota violation for store: {}", storeName);
-              break;
-            default:
-              LOGGER
-                  .info("Current hybrid job state: {} for store: {}", quotaStatusResponse.getQuotaStatus(), storeName);
-          }
-
+          checkStatus();
           Utils.sleep(POLL_CYCLE_DELAY_MS);
         } catch (Exception e) {
           if (isRunning.get() && !ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
