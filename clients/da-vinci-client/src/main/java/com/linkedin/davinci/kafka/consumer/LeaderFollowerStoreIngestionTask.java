@@ -2070,6 +2070,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  @Override
   protected void recordHeartbeatReceived(
       PartitionConsumptionState partitionConsumptionState,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
@@ -2301,7 +2302,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             } else {
               if (controlMessageType == START_OF_SEGMENT
                   && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-                recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
                 propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
                     partitionConsumptionState,
                     consumerRecord,

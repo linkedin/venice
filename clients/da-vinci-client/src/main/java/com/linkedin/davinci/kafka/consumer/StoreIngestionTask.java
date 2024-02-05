@@ -6,6 +6,7 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSE
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -2200,6 +2201,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       recordProcessedRecordStats(partitionConsumptionState, recordSize);
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
+    } else {
+
     }
     reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
 
@@ -2234,6 +2237,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
       syncOffset(kafkaVersionTopic, partitionConsumptionState);
     }
+  }
+
+  protected void recordHeartbeatReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      String kafkaUrl) {
+    // No Op
   }
 
   /**
@@ -2278,8 +2288,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * TODO: if we know some other types of Control Messages are frequent as START_OF_SEGMENT and END_OF_SEGMENT in the future,
        * we need to consider to exclude them to avoid the issue described above.
        */
-      if (controlMessageType != ControlMessageType.START_OF_SEGMENT
-          && controlMessageType != ControlMessageType.END_OF_SEGMENT) {
+      if (controlMessageType != START_OF_SEGMENT && controlMessageType != ControlMessageType.END_OF_SEGMENT) {
         syncOffset = true;
       }
     } else {
@@ -2756,6 +2765,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getTopicPartition().getPartitionNumber(),
             consumerRecord.getOffset(),
             partitionConsumptionState);
+        if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
+            && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+          recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+        }
       } else {
         sizeOfPersistedData = processKafkaDataMessage(
             consumerRecord,
@@ -3747,7 +3760,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected boolean isSegmentControlMsg(ControlMessageType msgType) {
-    return ControlMessageType.START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType);
+    return START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType);
   }
 
   /**
