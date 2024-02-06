@@ -157,7 +157,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           LOGGER.warn(
               "Got status code {} from host {} while querying router current version for store {}",
               response.getStatusLine().getStatusCode(),
-              routerRequest,
+              routerInstance,
               store.getName());
           return false;
         }
