@@ -1,8 +1,8 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import com.linkedin.davinci.stats.AbstractVeniceStatsReporter;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Set;
 
 
@@ -15,14 +15,22 @@ public class HeartbeatStatReporter extends AbstractVeniceStatsReporter<Heartbeat
   public HeartbeatStatReporter(MetricsRepository metricsRepository, String storeName, Set<String> regions) {
     super(metricsRepository, storeName);
     for (String region: regions) {
-      registerSensor(LEADER_METRIC_PREFIX + region + MAX, new Gauge(() -> getStats().getLeaderLag(region).getMax()));
       registerSensor(
-          FOLLOWER_METRIC_PREFIX + region + MAX,
-          new Gauge(() -> getStats().getFollowerLag(region).getMax()));
-      registerSensor(LEADER_METRIC_PREFIX + region + AVG, new Gauge(() -> getStats().getLeaderLag(region).getAvg()));
+          new AsyncGauge(
+              (ignored, ignored2) -> getStats().getLeaderLag(region).getMax(),
+              LEADER_METRIC_PREFIX + region + MAX));
       registerSensor(
-          FOLLOWER_METRIC_PREFIX + region + AVG,
-          new Gauge(() -> getStats().getFollowerLag(region).getAvg()));
+          new AsyncGauge(
+              (ignored, ignored2) -> getStats().getFollowerLag(region).getMax(),
+              FOLLOWER_METRIC_PREFIX + region + MAX));
+      registerSensor(
+          new AsyncGauge(
+              (ignored, ignored2) -> getStats().getLeaderLag(region).getAvg(),
+              LEADER_METRIC_PREFIX + region + AVG));
+      registerSensor(
+          new AsyncGauge(
+              (ignored, ignored2) -> getStats().getFollowerLag(region).getAvg(),
+              FOLLOWER_METRIC_PREFIX + region + AVG));
     }
   }
 
