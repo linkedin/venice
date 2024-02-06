@@ -13,6 +13,25 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This service monitors heartbeats.  Heartbeats are only monitored if lagMonitors are added for leader or follower
+ * partitions.  Once a lagMonitor is added, the service will being emitting a metric which grows linearly with time,
+ * only resetting to the timestamp of the last reported heartbeat for a given partition.
+ *
+ * Heartbeats are only monitored for stores which have a hybrid config. All other registrations for lag monitoring
+ * are ignored.
+ *
+ * Max and Average are reported per version of resource across partitions.
+ *
+ * If a heartbeat is invoked for a partition that we're NOT monitoring lag for, it is ignored.
+ *
+ * This class will monitor lag for a partition as a leader or follower, but never both.  Whether we're reporting
+ * leader or follower depends on which monitor was set last.
+ *
+ * Lag will stop being reported for partitions which have the monitor removed.
+ *
+ * Each region gets a different lag monitor
+ */
 public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final Thread reportingThread;
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
@@ -87,16 +106,36 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     }
   }
 
+  /**
+   * Adds monitoring for a follower partition of a given version. This request is ignored if the version
+   * isn't hybrid.
+   *
+   * @param version the version to monitor lag for
+   * @param partition the partition to monitor lag for
+   */
   public void addFollowerLagMonitor(Version version, int partition) {
     initializeEntry(followerHeartbeatTimeStamps, version, partition);
     removeEntry(leaderHeartbeatTimeStamps, version, partition);
   }
 
+  /**
+   * Adds monitoring for a leader partition of a given version. This request is ignored if the version
+   * isn't hybrid.
+   *
+   * @param version the version to monitor lag for
+   * @param partition the partition to monitor lag for
+   */
   public void addLeaderLagMonitor(Version version, int partition) {
     initializeEntry(leaderHeartbeatTimeStamps, version, partition);
     removeEntry(followerHeartbeatTimeStamps, version, partition);
   }
 
+  /**
+   * Removes monitoring for a partition of a given version.
+   *
+   * @param version the version to remove monitoring for
+   * @param partition the partition to remove monitoring for
+   */
   public void removeLagMonitor(Version version, int partition) {
     removeEntry(leaderHeartbeatTimeStamps, version, partition);
     removeEntry(followerHeartbeatTimeStamps, version, partition);
@@ -113,11 +152,29 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     reportingThread.interrupt();
   }
 
+  /**
+   * Record a leader heartbeat timestamp for a given partition of a store version from a specific region.
+   *
+   * @param store the store this heartbeat is for
+   * @param version the version this heartbeat is for
+   * @param partition the partition this heartbeat is for
+   * @param region the region this heartbeat is from
+   * @param timestamp the time of this heartbeat
+   */
   public void recordLeaderHeartbeat(String store, int version, int partition, String region, Long timestamp) {
     recordHeartbeat(store, version, partition, region, timestamp, leaderHeartbeatTimeStamps);
 
   }
 
+  /**
+   * Record a follower heartbeat timestamp for a given partition of a store version from a specific region.
+   *
+   * @param store the store this heartbeat is for
+   * @param version the version this heartbeat is for
+   * @param partition the partition this heartbeat is for
+   * @param region the region this heartbeat is from
+   * @param timestamp the time of this heartbeat
+   */
   public void recordFollowerHeartbeat(String store, int version, int partition, String region, Long timestamp) {
     recordHeartbeat(store, version, partition, region, timestamp, followerHeartbeatTimeStamps);
   }
