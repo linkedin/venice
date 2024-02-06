@@ -1,7 +1,12 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
@@ -30,7 +35,6 @@ public class TestUnusedValueSchemaCleanupService {
     doReturn(null).when(v).getHybridStoreConfig();
     versionList.add(v);
     doReturn(versionList).when(store).getVersions();
-
     return store;
   }
 
@@ -79,9 +83,22 @@ public class TestUnusedValueSchemaCleanupService {
     Set<Integer> unusedSchemas = new HashSet<>();
     unusedSchemas.add(1);
     unusedSchemas.add(2);
+
+    // if a child colo is not available deletion will not delete any schema
+    doReturn(false).when(parentHelixAdmin).deleteValueSchemas(anyString(), anyString(), anySet());
+
     TestUtils.waitForNonDeterministicAssertion(
         1,
         TimeUnit.SECONDS,
-        () -> verify(admin, atLeast(1)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
+        () -> verify(admin, times(0)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
+
+    doReturn(true).when(parentHelixAdmin).deleteValueSchemas(anyString(), anyString(), anySet());
+    service.startInner();
+
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> verify(admin, times(1)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
+
   }
 }
