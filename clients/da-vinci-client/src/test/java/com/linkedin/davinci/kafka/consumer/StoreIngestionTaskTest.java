@@ -107,10 +107,12 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
@@ -152,6 +154,7 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -4358,6 +4361,98 @@ public abstract class StoreIngestionTaskTest {
             storeName,
             subPartitionCount),
         10l);
+  }
+
+  public void testCheckAndHandleUpstreamOffsetRewind() {
+    String storeName = "test_store";
+    int version = 1;
+    // No rewind, then nothing would happen
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mock(PartitionConsumptionState.class),
+        mock(PubSubMessage.class),
+        11,
+        10,
+        mock(LeaderFollowerStoreIngestionTask.class));
+
+    // Rewind with batch only store, nothing would happen
+    LeaderFollowerStoreIngestionTask mockTask1 = mock(LeaderFollowerStoreIngestionTask.class);
+    when(mockTask1.isHybridMode()).thenReturn(false);
+    AggVersionedDIVStats mockStats1 = mock(AggVersionedDIVStats.class);
+    when(mockTask1.getVersionedDIVStats()).thenReturn(mockStats1);
+    when(mockTask1.getStoreName()).thenReturn(storeName);
+    when(mockTask1.getVersionNumber()).thenReturn(version);
+
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mock(PartitionConsumptionState.class),
+        mock(PubSubMessage.class),
+        10,
+        11,
+        mockTask1);
+    verify(mockStats1).recordBenignLeaderOffsetRewind(storeName, version);
+
+    // Benign rewind
+    KafkaKey key = new KafkaKey(MessageType.PUT, "test_key".getBytes());
+    KafkaMessageEnvelope messsageEnvelope = new KafkaMessageEnvelope();
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamOffset = 10;
+    leaderMetadata.hostName = "new_leader";
+    messsageEnvelope.leaderMetadataFooter = leaderMetadata;
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = GuidUtils.getGuidFromCharSequence("new_leader_guid");
+    messsageEnvelope.producerMetadata = producerMetadata;
+    Put put = new Put();
+    put.putValue = ByteBuffer.wrap("test_value_suffix".getBytes(), 0, 10); // With trailing suffix.
+    put.schemaId = 1;
+    messsageEnvelope.payloadUnion = put;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumedRecord = new ImmutablePubSubMessage<>(
+        key,
+        messsageEnvelope,
+        new PubSubTopicPartitionImpl(
+            new TestPubSubTopic("test_store_v1", "test_store", PubSubTopicType.VERSION_TOPIC),
+            1),
+        10,
+        -1,
+        1000);
+    AbstractStorageEngine mockStorageEngine2 = mock(AbstractStorageEngine.class);
+    ByteBuffer actualValueBuffer = ByteBuffer.allocate(100);
+    actualValueBuffer.putInt(1); // schema id
+    actualValueBuffer.put("test_value".getBytes());
+    actualValueBuffer.flip();
+    when(mockStorageEngine2.get(eq(1), eq("test_key".getBytes())))
+        .thenReturn(ByteUtils.extractByteArray(actualValueBuffer));
+    PartitionConsumptionState mockState2 = mock(PartitionConsumptionState.class);
+    when(mockState2.getLeaderHostId()).thenReturn("old_leader");
+    when(mockState2.getLeaderGUID()).thenReturn(GuidUtils.getGuidFromCharSequence("old_leader_guid"));
+    when(mockState2.isCompletionReported()).thenReturn(false);
+
+    LeaderFollowerStoreIngestionTask mockTask2 = mock(LeaderFollowerStoreIngestionTask.class);
+    when(mockTask2.isHybridMode()).thenReturn(true);
+    when(mockTask2.getIngestionTaskName()).thenReturn("test_store_v1_task");
+    when(mockTask2.getStoreName()).thenReturn(storeName);
+    when(mockTask2.getVersionNumber()).thenReturn(version);
+    when(mockTask2.getStorageEngine()).thenReturn(mockStorageEngine2);
+    AggVersionedDIVStats mockStats2 = mock(AggVersionedDIVStats.class);
+    when(mockTask2.getVersionedDIVStats()).thenReturn(mockStats2);
+    StatusReportAdapter statusReportAdapter = mock(StatusReportAdapter.class);
+    when(mockTask2.getStatusReportAdapter()).thenReturn(statusReportAdapter);
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, 10, 11, mockTask2);
+    verify(mockStats2).recordBenignLeaderOffsetRewind("test_store", 1);
+    verify(mockStats2, never()).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
+
+    // If current storage engine returns a different value for rewound key, exception should be thrown
+    actualValueBuffer = ByteBuffer.allocate(100);
+    actualValueBuffer.putInt(1); // schema id
+    actualValueBuffer.put("test_value_old".getBytes());
+    actualValueBuffer.flip();
+    when(mockStorageEngine2.get(eq(1), eq("test_key".getBytes())))
+        .thenReturn(ByteUtils.extractByteArray(actualValueBuffer));
+    VeniceException exception = Assert.expectThrows(
+        VeniceException.class,
+        () -> LeaderFollowerStoreIngestionTask
+            .checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, 10, 11, mockTask2));
+    assertTrue(
+        exception.getMessage().contains("Failing the job because lossy rewind happens before reporting completed"));
+    verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

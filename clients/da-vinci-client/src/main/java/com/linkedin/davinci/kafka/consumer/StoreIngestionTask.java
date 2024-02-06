@@ -482,6 +482,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return storageEngine;
   }
 
+  public String getIngestionTaskName() {
+    return ingestionTaskName;
+  }
+
+  public int getVersionNumber() {
+    return versionNumber;
+  }
+
   public boolean isFutureVersion() {
     return versionedIngestionStats.isFutureVersion(storeName, versionNumber);
   }

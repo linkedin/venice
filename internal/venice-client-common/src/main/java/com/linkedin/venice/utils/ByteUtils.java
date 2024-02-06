@@ -176,21 +176,6 @@ public class ByteUtils {
     return left.length - right.length;
   }
 
-  /**
-   * Compare whether two byte array is the same from specific offsets.
-   */
-  public static boolean equals(byte[] left, int leftPosition, byte[] right, int rightPosition) {
-    if (left.length - leftPosition != right.length - rightPosition) {
-      return false;
-    }
-    for (int i = leftPosition, j = 0; i < left.length; i++, j++) {
-      if (left[i] != right[rightPosition + j]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   public static boolean canUseBackedArray(ByteBuffer byteBuffer) {
     return byteBuffer.hasArray() && byteBuffer.array().length == byteBuffer.remaining();
   }
