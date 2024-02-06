@@ -75,8 +75,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";
     String clientConnectionCountGaugeString = ".server_connection_stats--client_connection_count.Gauge";
     String routerConnectionCountGaugeString = ".server_connection_stats--router_connection_count.Gauge";
-    String clientConnectionCountRateString = ".server_connection_stats--client_connection_count.OccurrenceRate";
-    String routerConnectionCountRateString = ".server_connection_stats--router_connection_count.OccurrenceRate";
+    String clientConnectionCountRateString = ".server_connection_stats--client_connection_request.OccurrenceRate";
+    String routerConnectionCountRateString = ".server_connection_stats--router_connection_request.OccurrenceRate";
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       for (MetricsRepository serverMetric: serverMetrics) {
         assertNotNull(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining));

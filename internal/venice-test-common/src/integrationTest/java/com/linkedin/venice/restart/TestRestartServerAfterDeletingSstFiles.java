@@ -87,8 +87,7 @@ public class TestRestartServerAfterDeletingSstFiles {
     serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    // Has to disable checksum verification, otherwise it will fail when deleteSSTFiles is true.
-    serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "false");
+    serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     serverProperties.setProperty(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath());
     veniceCluster.addVeniceServer(new Properties(), serverProperties);
@@ -135,7 +134,7 @@ public class TestRestartServerAfterDeletingSstFiles {
     VeniceServerWrapper server = veniceCluster.getVeniceServers().get(0);
 
     // restart the venice servers: Mimic Process crash and restart
-    restartVeniceServer(server);
+    restartServerByDeletingSSTFiles(server, false, null);
 
     endIngestion();
 
@@ -174,22 +173,7 @@ public class TestRestartServerAfterDeletingSstFiles {
       Assert.assertEquals(totalIngestedKeys, numKeys);
     });
 
-    // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
-    LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
-    rocksDBStorageEngine.getPartitionIds().forEach(id -> {
-      ReadWriteLock rwLock = rocksDBStorageEngine.getRWLockForPartitionOrThrow(id);
-      try {
-        rwLock.writeLock().lock();
-        RocksDBStoragePartition partition = (RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(id);
-        partition.deleteFilesInDirectory(partition.getFullPathForTempSSTFileDir());
-      } finally {
-        rwLock.writeLock().unlock();
-      }
-    });
-
-    // restart the venice servers: Mimic Process crash and restart after ingestExternalFile()
-    // completes but before EOP was synced to OffsetRecord
-    restartVeniceServer(server);
+    restartServerByDeletingSSTFiles(server, true, rocksDBStorageEngine);
 
     endIngestion();
     verifyIngestion();
@@ -254,8 +238,36 @@ public class TestRestartServerAfterDeletingSstFiles {
     }
   }
 
-  private void restartVeniceServer(VeniceServerWrapper server) {
+  /**
+   * Mimic non-graceful shutdown of the servers in the midst of sst files being moved to RocksDB: Mimic process crash
+   * and restart after ingestExternalFile() completes but before EOP was synced to OffsetRecord
+   *
+   * 1. Stop the server
+   * 2. delete the SST files (Deleting before graceful shutdown will not help
+   *    mimic this scenario as there will be a sync during the graceful shutdown)
+   * 3. start the server
+   */
+  private void restartServerByDeletingSSTFiles(
+      VeniceServerWrapper server,
+      boolean deleteSSTFiles,
+      RocksDBStorageEngine rocksDBStorageEngine) {
     veniceCluster.stopVeniceServer(server.getPort());
+
+    if (deleteSSTFiles) {
+      // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
+      LOGGER.info("Delete the sst files");
+      rocksDBStorageEngine.getPartitionIds().forEach(id -> {
+        ReadWriteLock rwLock = rocksDBStorageEngine.getRWLockForPartitionOrThrow(id);
+        try {
+          rwLock.writeLock().lock();
+          RocksDBStoragePartition partition = (RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(id);
+          partition.deleteFilesInDirectory(partition.getFullPathForTempSSTFileDir());
+        } finally {
+          rwLock.writeLock().unlock();
+        }
+      });
+    }
+
     veniceCluster.restartVeniceServer(server.getPort());
   }
 }

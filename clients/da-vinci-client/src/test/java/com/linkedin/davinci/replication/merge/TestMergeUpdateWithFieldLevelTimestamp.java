@@ -45,28 +45,32 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     final int incomingWriteComputeSchemaId = 3;
     final int oldValueSchemaId = 3;
     // Set up
-    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
-    GenericRecord updateFieldWriteComputeRecord = AvroSchemaUtils.createGenericRecord(writeComputeSchema);
-    updateFieldWriteComputeRecord.put("age", 66);
-    updateFieldWriteComputeRecord.put("name", "Venice");
+    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV3);
+    GenericRecord updateFieldWriteComputeRecord =
+        new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("nullableListField", null)
+            .setNewFieldValue("age", 66)
+            .setNewFieldValue("name", "Venice")
+            .build();
     ByteBuffer writeComputeBytes = ByteBuffer.wrap(
         MapOrderPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldWriteComputeRecord));
     final long valueLevelTimestamp = 10L;
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
+    fieldNameToTimestampMap.put("nullableListField", 10L);
     fieldNameToTimestampMap.put("age", 10L);
     fieldNameToTimestampMap.put("favoritePet", 10L);
     fieldNameToTimestampMap.put("name", 10L);
     fieldNameToTimestampMap.put("intArray", 10L);
     fieldNameToTimestampMap.put("stringArray", 10L);
+    fieldNameToTimestampMap.put("stringMap", 10L);
 
-    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(personRmdSchemaV2, fieldNameToTimestampMap);
+    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(personRmdSchemaV3, fieldNameToTimestampMap);
     RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId(oldValueSchemaId, RMD_VERSION_ID, rmdRecord);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new DerivedSchemaEntry(incomingValueSchemaId, 1, writeComputeSchema)).when(readOnlySchemaRepository)
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
-    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
     StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
         new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);

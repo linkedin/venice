@@ -167,7 +167,9 @@ public enum Arg {
   SOURCE_FABRIC("source-fabric", "sf", true, "The fabric where metadata/data copy over starts from"),
   DEST_FABRIC("dest-fabric", "df", true, "The fabric where metadata/data gets copy over into"),
   ACL_PERMS("acl-perms", "ap", true, "Acl permissions for the store"),
-  LOG_METADATA("log-metadata", "lm", false, "Only log the metadata for each kafka message on console"),
+  LOG_METADATA("log-metadata", "lm", false, "Log the metadata for each kafka message on console"),
+  LOG_DATA_RECORD("log-data-record", "ldr", false, "Log the data record for each kafka message on console"),
+  LOG_RMD_RECORD("log-rmd-record", "lrr", false, "Log the RMD record for each kafka message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC(
       "native-replication-source-fabric", "nrsf", true,
       "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."

@@ -78,23 +78,24 @@ public class VeniceVersionFinder {
      * in {@link ReadOnlyStoreRepository}, such as 'isEnableReads' and others.
      */
     Store store = metadataRepository.getStore(storeName);
-    if (store == null) {
-      throw new VeniceNoStoreException(storeName);
+    if (store == null || store.isMigrating()) {
+      // The client might be idle for a long time while the store is migrated. Check for store migration.
+      if (request != null && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
+        Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
+        if (config.isPresent()) {
+          String newCluster = config.get().getCluster();
+          if (!clusterName.equals(newCluster)) {
+            String d2Service = clusterToD2Map.get(newCluster);
+            throw new VeniceStoreIsMigratedException(storeName, newCluster, d2Service);
+          }
+        }
+      }
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName);
+      }
     }
     if (!store.isEnableReads()) {
       throw new StoreDisabledException(storeName, "read");
-    }
-    Store storeToCheckMigration = store;
-    if (storeToCheckMigration.isMigrating() && request != null
-        && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
-      Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
-      if (config.isPresent()) {
-        String newCluster = config.get().getCluster();
-        if (!clusterName.equals(newCluster)) {
-          String d2Service = clusterToD2Map.get(newCluster);
-          throw new VeniceStoreIsMigratedException(storeName, newCluster, d2Service);
-        }
-      }
     }
 
     int metadataCurrentVersion = store.getCurrentVersion();

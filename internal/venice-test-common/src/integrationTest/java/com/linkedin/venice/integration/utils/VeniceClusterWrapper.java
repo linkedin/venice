@@ -917,7 +917,21 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public String createStore(int keyCount) {
     int nextVersionId = 1;
-    return createStore(IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
+    return createStore(
+        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)),
+        CompressionStrategy.NO_OP,
+        null);
+  }
+
+  public String createStore(
+      int keyCount,
+      CompressionStrategy compressionStrategy,
+      Function<String, ByteBuffer> compressionDictionaryGenerator) {
+    int nextVersionId = 1;
+    return createStore(
+        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)),
+        compressionStrategy,
+        compressionDictionaryGenerator);
   }
 
   // Pass the dictionary and the training samples as well
@@ -937,7 +951,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         });
   }
 
-  public String createStore(Stream<Map.Entry> batchData) {
+  public String createStore(
+      Stream<Map.Entry> batchData,
+      CompressionStrategy compressionStrategy,
+      Function<String, ByteBuffer> compressionDictionaryGenerator) {
     return createStore(DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData, CompressionStrategy.NO_OP, null);
   }
 

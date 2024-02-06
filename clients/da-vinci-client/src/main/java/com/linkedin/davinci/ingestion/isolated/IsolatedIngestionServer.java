@@ -57,6 +57,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -655,7 +656,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         new ClientConfig().setD2Client(d2Client).setD2ServiceName(clusterDiscoveryD2ServiceName);
 
     // Create MetricsRepository
-    metricsRepository = new MetricsRepository();
+    metricsRepository =
+        MetricsRepositoryUtils.createMultiThreadedMetricsRepository("Isolated_server_async_gauge_thread");
 
     // Initialize store/schema repositories.
     VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =

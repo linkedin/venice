@@ -2,9 +2,9 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Gauge;
 
 
 /**

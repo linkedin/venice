@@ -2,10 +2,10 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategy;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.OccurrenceRate;
 
@@ -24,12 +24,12 @@ public class HelixGroupStats extends AbstractVeniceStats {
     this.strategy = strategy;
 
     this.groupCountSensor = registerSensor("group_count", new Avg());
-    this.maxGroupPendingRequest =
-        registerSensor("max_group_pending_request", new Gauge(() -> strategy.getMaxGroupPendingRequest()));
-    this.minGroupPendingRequest =
-        registerSensor("min_group_pending_request", new Gauge(() -> strategy.getMinGroupPendingRequest()));
-    this.avgGroupPendingRequest =
-        registerSensor("avg_group_pending_request", new Gauge(() -> strategy.getAvgGroupPendingRequest()));
+    this.maxGroupPendingRequest = registerSensor(
+        new AsyncGauge((ignored, ignored2) -> strategy.getMaxGroupPendingRequest(), "max_group_pending_request"));
+    this.minGroupPendingRequest = registerSensor(
+        new AsyncGauge((ignored, ignored2) -> strategy.getMinGroupPendingRequest(), "min_group_pending_request"));
+    this.avgGroupPendingRequest = registerSensor(
+        new AsyncGauge((ignored, ignored2) -> strategy.getAvgGroupPendingRequest(), "avg_group_pending_request"));
   }
 
   public void recordGroupNum(int groupNum) {

@@ -1,8 +1,9 @@
 ---
 layout: default
 title: Responsible Disclosure of Security Vulnerabilities
-parent: Community Guides
-permalink: /docs/community_guide/security_vulnerability
+parent: How to Contribute to Venice
+grand_parent: Developer Guides
+permalink: /docs/dev_guide/how_to/security_vulnerability
 ---
 
 # Responsible Disclosure of Security Vulnerabilities

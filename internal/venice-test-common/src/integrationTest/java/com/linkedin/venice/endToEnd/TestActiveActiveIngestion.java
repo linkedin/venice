@@ -1109,94 +1109,95 @@ public class TestActiveActiveIngestion {
 
     TestMockTime testMockTime = new TestMockTime();
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
+    try (PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setZkWrapper(localZkServer)
             .setMockTime(testMockTime)
             .setRegionName("local-pubsub")
-            .build());
-    Properties consumerProperties = new Properties();
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
-    ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig().setViewName("changeCaptureView")
-        .setConsumerProperties(consumerProperties)
-        .setControllerD2ServiceName(D2_SERVICE_NAME)
-        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-        .setLocalD2ZkHosts(localZkServer.getAddress())
-        .setControllerRequestRetryCount(3)
-        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
-    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
-        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+            .build())) {
+      Properties consumerProperties = new Properties();
+      String localKafkaUrl = localKafka.getAddress();
+      consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+      consumerProperties.put(CLUSTER_NAME, clusterName);
+      consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+      ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig().setViewName("changeCaptureView")
+          .setConsumerProperties(consumerProperties)
+          .setControllerD2ServiceName(D2_SERVICE_NAME)
+          .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+          .setLocalD2ZkHosts(localZkServer.getAddress())
+          .setControllerRequestRetryCount(3)
+          .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
-    BootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer =
-        veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName);
-    bootstrappingVeniceChangelogConsumer.start().get();
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
-      // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
-      // Produce a DELETE record with large timestamp
-      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
-    }
+      BootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer =
+          veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName);
+      bootstrappingVeniceChangelogConsumer.start().get();
+      try (VeniceSystemProducer veniceProducer =
+          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+        veniceProducer.start();
+        // Run Samza job to send PUT and DELETE requests.
+        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+        // Produce a DELETE record with large timestamp
+        produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+      }
 
-    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(clusterWrapper.getRandomRouterURL())
-            .setMetricsRepository(metricsRepository))) {
+      try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(clusterWrapper.getRandomRouterURL())
+              .setMetricsRepository(metricsRepository))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        });
+      }
+
+      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
+
+      // 21 changes in nearline. 10 puts, 10 deletes, and 1 record with a producer timestamp
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
+        // 21 events for nearline events
+        Assert.assertEquals(polledChangeEvents.size(), 22);
+        for (int i = 100; i < 110; i++) {
+          String key = Integer.toString(i);
+          ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
+          Assert.assertNotNull(changeEvent);
+          if (i != 100) {
+            Assert.assertNull(changeEvent.getPreviousValue());
+          } else {
+            Assert.assertTrue(changeEvent.getPreviousValue().toString().contains(key));
+          }
+          Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+        }
+        for (int i = 110; i < 120; i++) {
+          String key = Integer.toString(i);
+          ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
+          Assert.assertNotNull(changeEvent);
+          Assert.assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
+          Assert.assertNull(changeEvent.getCurrentValue());
+        }
+      });
+
+      polledChangeEvents.clear();
+
+      // Since nothing is produced, so no changed events generated.
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+        pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
+        Assert.assertEquals(polledChangeEvents.size(), 0);
+      });
+
+      // Verify total updates match up
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 21));
+      parentControllerClient.disableAndDeleteStore(storeName);
+      // Verify that topics and store is cleaned up
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
+        Assert.assertFalse(storeTopicsResponse.isError());
+        Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
       });
     }
-
-    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
-
-    // 21 changes in nearline. 10 puts, 10 deletes, and 1 record with a producer timestamp
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
-      // 21 events for nearline events
-      Assert.assertEquals(polledChangeEvents.size(), 22);
-      for (int i = 100; i < 110; i++) {
-        String key = Integer.toString(i);
-        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
-        Assert.assertNotNull(changeEvent);
-        if (i != 100) {
-          Assert.assertNull(changeEvent.getPreviousValue());
-        } else {
-          Assert.assertTrue(changeEvent.getPreviousValue().toString().contains(key));
-        }
-        Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
-      }
-      for (int i = 110; i < 120; i++) {
-        String key = Integer.toString(i);
-        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
-        Assert.assertNotNull(changeEvent);
-        Assert.assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
-        Assert.assertNull(changeEvent.getCurrentValue());
-      }
-    });
-
-    polledChangeEvents.clear();
-
-    // Since nothing is produced, so no changed events generated.
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 0);
-    });
-
-    // Verify total updates match up
-    TestUtils.waitForNonDeterministicAssertion(
-        5,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 21));
-    parentControllerClient.disableAndDeleteStore(storeName);
-    // Verify that topics and store is cleaned up
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
-      Assert.assertFalse(storeTopicsResponse.isError());
-      Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
-    });
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
@@ -1243,88 +1244,89 @@ public class TestActiveActiveIngestion {
 
     TestMockTime testMockTime = new TestMockTime();
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
+    try (PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setZkWrapper(localZkServer)
             .setMockTime(testMockTime)
             .setRegionName("local-pubsub")
-            .build());
-    Properties consumerProperties = new Properties();
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
-    ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig().setViewName("changeCaptureView")
-        .setConsumerProperties(consumerProperties)
-        .setControllerD2ServiceName(D2_SERVICE_NAME)
-        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-        .setLocalD2ZkHosts(localZkServer.getAddress())
-        .setControllerRequestRetryCount(3)
-        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
-    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
-        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+            .build())) {
+      Properties consumerProperties = new Properties();
+      String localKafkaUrl = localKafka.getAddress();
+      consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+      consumerProperties.put(CLUSTER_NAME, clusterName);
+      consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+      ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig().setViewName("changeCaptureView")
+          .setConsumerProperties(consumerProperties)
+          .setControllerD2ServiceName(D2_SERVICE_NAME)
+          .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+          .setLocalD2ZkHosts(localZkServer.getAddress())
+          .setControllerRequestRetryCount(3)
+          .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
-    BootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer =
-        veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName);
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
-      // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
-      // Produce a DELETE record with large timestamp
-      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
-    }
-
-    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(clusterWrapper.getRandomRouterURL())
-            .setMetricsRepository(metricsRepository))) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
-      });
-    }
-
-    // Wait for 10 seconds so bootstrap can load results from kafka
-    Utils.sleep(10000);
-    bootstrappingVeniceChangelogConsumer.start().get();
-    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
-
-    // 21 changes in nearline. 10 puts, 10 deletes and 1 delete with timestamp will be ignored and 1 end of bootstrap
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 11);
-
-      for (int i = 100; i < 110; i++) {
-        String key = Integer.toString(i);
-        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
-        Assert.assertNotNull(changeEvent);
-        Assert.assertNull(changeEvent.getPreviousValue());
-        Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+      BootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer =
+          veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName);
+      try (VeniceSystemProducer veniceProducer =
+          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+        veniceProducer.start();
+        // Run Samza job to send PUT and DELETE requests.
+        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+        // Produce a DELETE record with large timestamp
+        produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
       }
 
-      Assert.assertTrue(polledChangeEvents.containsKey(null));
-      Assert.assertTrue(polledChangeEvents.get(null).isEndOfBootstrap());
-    });
+      try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(clusterWrapper.getRandomRouterURL())
+              .setMetricsRepository(metricsRepository))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        });
+      }
 
-    polledChangeEvents.clear();
+      // Wait for 10 seconds so bootstrap can load results from kafka
+      Utils.sleep(10000);
+      bootstrappingVeniceChangelogConsumer.start().get();
+      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
 
-    // Since nothing is produced, so no changed events generated.
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 0);
-    });
+      // 21 changes in nearline. 10 puts, 10 deletes and 1 delete with timestamp will be ignored and 1 end of bootstrap
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
+        Assert.assertEquals(polledChangeEvents.size(), 11);
 
-    // Verify total updates match up
-    TestUtils.waitForNonDeterministicAssertion(
-        5,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 21));
-    parentControllerClient.disableAndDeleteStore(storeName);
-    // Verify that topics and store is cleaned up
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
-      Assert.assertFalse(storeTopicsResponse.isError());
-      Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
-    });
+        for (int i = 100; i < 110; i++) {
+          String key = Integer.toString(i);
+          ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
+          Assert.assertNotNull(changeEvent);
+          Assert.assertNull(changeEvent.getPreviousValue());
+          Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+        }
+
+        Assert.assertTrue(polledChangeEvents.containsKey(null));
+        Assert.assertTrue(polledChangeEvents.get(null).isEndOfBootstrap());
+      });
+
+      polledChangeEvents.clear();
+
+      // Since nothing is produced, so no changed events generated.
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+        pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
+        Assert.assertEquals(polledChangeEvents.size(), 0);
+      });
+
+      // Verify total updates match up
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 21));
+      parentControllerClient.disableAndDeleteStore(storeName);
+      // Verify that topics and store is cleaned up
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
+        Assert.assertFalse(storeTopicsResponse.isError());
+        Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
+      });
+    }
   }
 
   private void runSamzaStreamJob(

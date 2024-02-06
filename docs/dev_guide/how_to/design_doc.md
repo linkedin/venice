@@ -1,8 +1,9 @@
 ---
 layout: default
 title: Design Documents
-parent: Developer Guides
-permalink: /docs/dev_guide/design_doc
+parent: How to Contribute to Venice
+grand_parent: Developer Guides
+permalink: /docs/dev_guide/how_to/design_doc
 ---
 # Design Documents
 
@@ -47,15 +48,15 @@ A VIP proposal can be in these states:
 
 The process works in the following way:
 
-1. The author(s) of the proposal will create a file named "VIP-xxx.md" in [proposal](../../docs/proposals) folder
-    cloning from the [template for VIP proposals](../../docs/proposals/VIP_TEMPLATE.md). The "xxx" number should 
+1. The author(s) of the proposal will create a file named "VIP-xxx.md" in [proposal](../../proposals) folder
+    cloning from the [template for VIP proposals](../../proposals/VIP_TEMPLATE.md). The "xxx" number should 
     be chosen to be the next number from the existing VIP issues, listed [here](../../docs/proposals/)
 2. The author(s) submit this file as a PR named "VIP-xxx: {short description}" in **DRAFT**/**DISCUSSION** stage.
 3. People discuss using PR comments, each is its own threaded comment. 
    General comments can be made as general comment in the PR. There are two other ways for an interactive
    discussion. 
    1. Venice Community [Slack Channel](http://slack.venicedb.org/), Create a slack channel with #VIP-xxx
-   2. Venice Contributor Sync Meeting, see details [here](../CONTRIBUTING.md) at Contributor Sync Meeting
+   2. Venice Contributor Sync Meeting, see details [here](CONTRIBUTING.md) at Contributor Sync Meeting
 4. Depending on the outcome of the discussion, the status could move to **ACCEPTED** or **REJECTED**, or it could stay 
    in **DISCUSSION** stage (e.g. if we agree tentatively on the broad strokes, but there are still action items to 
    refine certain aspects). At the end of this, the PR gets merged, and at that point the VIP will appear in the 

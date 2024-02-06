@@ -1,8 +1,9 @@
 ---
 layout: default
 title: Documentation Guideline
-parent: Developer Guides
-permalink: /docs/dev_guide/documentation_guideline
+parent: How to Contribute to Venice
+grand_parent: Developer Guides
+permalink: /docs/dev_guide/how_to/documentation_guideline
 ---
 
 # Documentation Guideline
@@ -86,7 +87,7 @@ Diagrams conforming to these guidelines can be placed under the `/docs/assets/im
 embedded in the docs with a relative link like this:
 
 ```markdown
-![](../assets/images/vip_3_read_path.drawio.svg)
+![](../../assets/images/vip_3_read_path.drawio.svg)
 ```
 
 The [draw.io](https://draw.io) service makes it easy to generate such assets. If using [PlantUML](https://plantuml.com/starting), 
@@ -107,7 +108,6 @@ images can be embedded with an absolute link like this:
 ## Emojis
 
 Here's a link to all the emojis available in README files: [Emoji Cheat Sheet](https://github.com/ikatyang/emoji-cheat-sheet/blob/master/README.md). 
-If you want to find a good emoji, you can use [this website](https://emojicombos.com/).
 
 ## Testing Doc Changes
 A GitHub fork can have its own documentation. This can be setup by:

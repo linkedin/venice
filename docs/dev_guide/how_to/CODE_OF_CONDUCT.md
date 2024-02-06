@@ -1,8 +1,9 @@
 ---
 layout: default
 title: Code Of Conduct
-parent: Community Guides
-permalink: /docs/community_guide/code_of_conduct
+parent: How to Contribute to Venice
+grand_parent: Developer Guides
+permalink: /docs/dev_guide/how_to/code_of_conduct
 ---
 
 # Contributor Covenant Code of Conduct

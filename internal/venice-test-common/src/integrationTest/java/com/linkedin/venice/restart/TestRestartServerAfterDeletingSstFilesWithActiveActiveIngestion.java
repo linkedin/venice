@@ -119,8 +119,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
-    // Has to disable checksum verification, otherwise it will fail when deleteSSTFiles is true.
-    serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
+    serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     serverProperties.put(
@@ -236,13 +235,13 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       int server;
       int numSelectedServers = 0;
       for (server = 0; server < numServers; server++) {
-        VeniceServerWrapper _serverWrapper = clusterWrappers.get(colo).getVeniceServers().get(server);
-        if (_serverWrapper.getVeniceServer()
+        VeniceServerWrapper serverWrapper = clusterWrappers.get(colo).getVeniceServers().get(server);
+        if (serverWrapper.getVeniceServer()
             .getStorageService()
             .getStorageEngineRepository()
             .getLocalStorageEngine(topic) != null) {
           LOGGER.info("selected server is: {} in colo {}", server, colo);
-          TestVeniceServer testVeniceServer = _serverWrapper.getVeniceServer();
+          TestVeniceServer testVeniceServer = serverWrapper.getVeniceServer();
           StorageService storageService = testVeniceServer.getStorageService();
           RocksDBStorageEngine rocksDBStorageEngine =
               (RocksDBStorageEngine) storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
@@ -250,7 +249,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
           assertEquals(rocksDBStorageEngine.getNumberOfPartitions(), NUMBER_OF_PARTITIONS);
           rocksDBStoragePartitions.get(colo)
               .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(PARTITION_ID));
-          serverWrappers.get(colo).add(_serverWrapper);
+          serverWrappers.get(colo).add(serverWrapper);
 
           if (++numSelectedServers == NUMBER_OF_REPLICAS) {
             break;
@@ -264,12 +263,11 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   /**
    * This test include below steps:
    * 1. Batch Push data without EOP (100 keys)
-   * 2. Delete SST files (based on params)
-   * 3. restart servers
-   * 4. Validate whether the data is ingested
-   * 5. Incremental push data (10 keys (90-100 of the batch push))
-   * 6. Validate whether the data is ingested
-   * 7. Validate whether all the data from RT is ingested to the new versions as well.
+   * 2. stop servers, delete SST files, start servers (based on params)
+   * 3. Validate whether the data is ingested
+   * 4. Incremental push data (10 keys (90-100 of the batch push))
+   * 5. Validate whether the data is ingested
+   * 6. Validate whether all the data from RT is ingested to the new versions as well.
    */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testActiveActiveStoreWithRMDAndRestartServer(boolean deleteSSTFiles, boolean deleteRMDSSTFiles)
@@ -352,12 +350,21 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         }
       });
 
-      // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
+      /**
+       * Mimic non-graceful shutdown of the servers in the midst of sst files being moved to RocksDB.
+       * 1. Stop the server
+       * 2. delete the SST files (Deleting before graceful shutdown will not help
+       *    mimic this scenario as there will be a sync during the graceful shutdown)
+       * 3. start the server
+       */
       // TBD: Deleting files and restarting servers from more than one colo and/or n-1 replicas
       // results in flaky tests/failures.
       LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
       for (int colo = 0; colo < 1; colo++) {
         for (int replica = 0; replica < 1; replica++) {
+          VeniceServerWrapper serverWrapper = serverWrappers.get(colo).get(replica);
+          clusterWrappers.get(colo).stopVeniceServer(serverWrapper.getPort());
+
           ReplicationMetadataRocksDBStoragePartition partition = rocksDBStoragePartitions.get(colo).get(replica);
           if (deleteSSTFiles) {
             partition.deleteFilesInDirectory(partition.getValueFullPathForTempSSTFileDir());
@@ -365,14 +372,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
           if (deleteRMDSSTFiles) {
             partition.deleteFilesInDirectory(partition.getFullPathForTempSSTFileDir());
           }
-        }
-      }
 
-      for (int colo = 0; colo < 1; colo++) {
-        // Restart server
-        for (int replica = 0; replica < 1; replica++) {
-          VeniceServerWrapper serverWrapper = serverWrappers.get(colo).get(replica);
-          clusterWrappers.get(colo).stopVeniceServer(serverWrapper.getPort());
           clusterWrappers.get(colo).restartVeniceServer(serverWrapper.getPort());
         }
       }

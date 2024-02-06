@@ -1,8 +1,9 @@
 ---
 layout: default
 title: Style Guide
-parent: Developer Guides
-permalink: /docs/dev_guide/style_guide
+parent: How to Contribute to Venice
+grand_parent: Developer Guides
+permalink: /docs/dev_guide/how_to/style_guide
 ---
 
 # Style Guide

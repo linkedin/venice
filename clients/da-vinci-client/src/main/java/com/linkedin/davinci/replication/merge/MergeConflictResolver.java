@@ -7,7 +7,7 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_POS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
-import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.getFieldOperationType;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.getFieldOperationType;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
