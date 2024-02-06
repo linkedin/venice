@@ -46,6 +46,9 @@ public class StoreAclHandlerTest {
   private boolean[] isSystemStore = { false };
   private boolean[] isFailOpen = { false };
   private boolean[] isMetadata = { false };
+
+  private boolean[] isCurrentVersion = { false };
+
   private boolean[] isHealthCheck = { false };
   private boolean[] isBadUri = { false };
 
@@ -60,6 +63,7 @@ public class StoreAclHandlerTest {
     isMetadata[0] = false;
     isHealthCheck[0] = false;
     isBadUri[0] = false;
+    isCurrentVersion[0] = false;
   }
 
   @BeforeMethod
@@ -179,6 +183,16 @@ public class StoreAclHandlerTest {
   }
 
   @Test
+  public void aclDisabledForCurrentVersionEndpoint() throws Exception {
+    isCurrentVersion[0] = true;
+    enumerate(hasAccess, hasAcl, isSystemStore, isFailOpen, isHealthCheck);
+
+    verify(ctx, never()).writeAndFlush(any());
+    // No access control (CURRENT_VERSION) => 32 times
+    verify(ctx, times(32)).fireChannelRead(req);
+  }
+
+  @Test
   public void aclDisabledForHealthCheckEndpoint() throws Exception {
     isHealthCheck[0] = true;
     enumerate(hasAccess, hasAcl, isSystemStore, isFailOpen, isMetadata);
@@ -255,6 +269,8 @@ public class StoreAclHandlerTest {
       when(req.uri()).thenReturn("/badUri");
     } else if (isMetadata[0]) {
       when(req.uri()).thenReturn(String.format("/metadata/%s/random", storeNameInRequest));
+    } else if (isCurrentVersion[0]) {
+      when(req.uri()).thenReturn("/current_version/storename/random");
     } else if (isHealthCheck[0]) {
       when(req.uri()).thenReturn("/health");
     } else {
