@@ -132,7 +132,6 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
           // TODO: It'd make sense to call shutdown on the transport client, but it's a shared object so that's
           // a bit dangerous.
           transportClient = reinitProvider.apply();
-          return;
         }
         LOGGER.error("Router was not able to get hybrid quota status: {}", quotaStatusResponse.getError());
         return;
