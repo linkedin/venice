@@ -23,5 +23,8 @@ public enum QueryAction {
 
   // CURRENT_VERSION is a GET request to /current_version/storename on the storage node to fetch current version for
   // that store
-  CURRENT_VERSION
+  CURRENT_VERSION,
+
+  // TOPIC_PARTITION_INGESTION_CONTEXT request from server admin tool
+  TOPIC_PARTITION_INGESTION_CONTEXT
 }

@@ -134,7 +134,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
               null),
           aggStats,
           this::recordPartitionsPerConsumerSensor,
-          this::handleUnsubscription);
+          this::handleUnsubscription,
+          i);
 
       Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction =
           liveConfigBasedKafkaThrottlingEnabled

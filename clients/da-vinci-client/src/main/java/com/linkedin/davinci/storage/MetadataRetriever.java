@@ -3,6 +3,7 @@ package com.linkedin.davinci.storage;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.venice.utils.ComplementSet;
 import java.nio.ByteBuffer;
 
@@ -15,4 +16,10 @@ public interface MetadataRetriever {
   MetadataResponse getMetadata(String storeName);
 
   ServerCurrentVersionResponse getCurrentVersionResponse(String storeName);
+
+  TopicPartitionIngestionContextResponse getTopicPartitionIngestionContext(
+      String versionTopic,
+      String topicName,
+      Integer partitionNum);
+
 }

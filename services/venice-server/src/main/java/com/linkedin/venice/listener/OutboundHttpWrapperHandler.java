@@ -12,6 +12,7 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.response.BinaryResponse;
@@ -133,6 +134,20 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       } else if (msg instanceof DefaultFullHttpResponse) {
         ctx.writeAndFlush(msg);
         return;
+      } else if (msg instanceof TopicPartitionIngestionContextResponse) {
+        TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
+            (TopicPartitionIngestionContextResponse) msg;
+        if (!topicPartitionIngestionContextResponse.isError()) {
+          body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(topicPartitionIngestionContextResponse));
+        } else {
+          String errorMessage = topicPartitionIngestionContextResponse.getMessage();
+          if (errorMessage == null) {
+            errorMessage = "Unknown error";
+          }
+          body = Unpooled.wrappedBuffer(errorMessage.getBytes(StandardCharsets.UTF_8));
+          contentType = HttpConstants.TEXT_PLAIN;
+          responseStatus = INTERNAL_SERVER_ERROR;
+        }
       } else {
         responseStatus = INTERNAL_SERVER_ERROR;
         body = Unpooled.wrappedBuffer(
