@@ -422,6 +422,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.isStarted = true;
 
     final TransportClient transportClient;
+    RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
     if (discoveryUrl.isPresent()) {
       this.controllerClient =
           ControllerClientFactory.discoverAndConstructControllerClient(storeName, discoveryUrl.get(), sslFactory, 1);
@@ -448,10 +449,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
 
       if (sslFactory.isPresent()) {
-        transportClient = new HttpsTransportClient(discoveryUrl.get(), 0, 0, false, sslFactory.get());
+        reinitProvider = () -> new HttpsTransportClient(discoveryUrl.get(), 0, 0, false, sslFactory.get());
       } else {
-        transportClient = new HttpTransportClient(discoveryUrl.get(), 0, 0);
+        reinitProvider = () -> new HttpTransportClient(discoveryUrl.get(), 0, 0);
       }
+      transportClient = reinitProvider.apply();
     } else {
       this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);
       this.childColoD2Client = getStartedD2Client(veniceChildD2ZkHost);
@@ -461,6 +463,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           () -> D2ControllerClient
               .discoverCluster(primaryControllerColoD2Client, primaryControllerD2ServiceName, this.storeName),
           10);
+
       String clusterName = discoveryResponse.getCluster();
       LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
 
@@ -496,6 +499,15 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           primaryControllerColoD2Client,
           sslFactory);
       transportClient = new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client);
+
+      reinitProvider = () -> {
+        D2ServiceDiscoveryResponse d2DiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
+            () -> D2ControllerClient
+                .discoverCluster(primaryControllerColoD2Client, primaryControllerD2ServiceName, this.storeName),
+            10);
+        LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
+        return new D2TransportClient(d2DiscoveryResponse.getD2Service(), childColoD2Client);
+      };
     }
 
     // Request all the necessary info from Venice Controller
@@ -568,8 +580,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     if ((pushType.equals(Version.PushType.STREAM) || pushType.equals(Version.PushType.STREAM_REPROCESSING))
         && hybridStoreDiskQuotaEnabled) {
-      hybridStoreQuotaMonitor =
-          Optional.of(new RouterBasedHybridStoreQuotaMonitor(transportClient, storeName, pushType, topicName));
+      hybridStoreQuotaMonitor = Optional
+          .of(new RouterBasedHybridStoreQuotaMonitor(transportClient, storeName, pushType, topicName, reinitProvider));
       hybridStoreQuotaMonitor.get().start();
     }
   }
