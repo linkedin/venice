@@ -11,6 +11,8 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricConfig;
+import io.tehuti.metrics.stats.Rate;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -50,6 +52,14 @@ class ConsumptionTask implements Runnable {
   private final AggKafkaConsumerServiceStats aggStats;
   private final ConsumerSubscriptionCleaner cleaner;
 
+  /**
+   * Maintain rate counter with default window size to calcualte the message and bytes rate at topic partition level.
+   */
+  private final Map<PubSubTopicPartition, Rate> messageRatePerTopicPartition = new HashMap<>();
+  private final Map<PubSubTopicPartition, Rate> bytesRatePerTopicPartition = new HashMap<>();
+
+  private final MetricConfig metricConfig = new MetricConfig();
+
   private volatile boolean running = true;
 
   /**
@@ -57,6 +67,9 @@ class ConsumptionTask implements Runnable {
    * the get-go.
    */
   private volatile long lastSuccessfulPollTimestamp = System.currentTimeMillis();
+
+  private volatile long lastCalculationTimestamp;
+  private int polledTimes = 0; // To count num of poll in each window of pollNumsToCalculateAvg
 
   public ConsumptionTask(
       final String kafkaUrl,
@@ -91,6 +104,8 @@ class ConsumptionTask implements Runnable {
     int payloadBytesConsumedInOnePoll;
     int polledPubSubMessagesCount = 0;
     Map<String, StorePollCounter> storePollCounterMap = new HashMap<>();
+    lastCalculationTimestamp = System.currentTimeMillis();
+
     try {
       while (running) {
         try {
@@ -145,12 +160,20 @@ class ConsumptionTask implements Runnable {
               }
               polledPubSubMessagesCount += topicPartitionMessages.size();
               counter.msgCount += topicPartitionMessages.size();
-              int payloadSizePerMsg = 0;
+              int payloadSizePerTopicPartition = 0;
               for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: topicPartitionMessages) {
-                payloadSizePerMsg += pubSubMessage.getPayloadSize();
+                payloadSizePerTopicPartition += pubSubMessage.getPayloadSize();
               }
-              counter.byteSize += payloadSizePerMsg;
-              payloadBytesConsumedInOnePoll += payloadSizePerMsg;
+              counter.byteSize += payloadSizePerTopicPartition;
+              payloadBytesConsumedInOnePoll += payloadSizePerTopicPartition;
+
+              messageRatePerTopicPartition
+                  .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
+                  .record(topicPartitionMessages.size(), lastSuccessfulPollTimestamp);
+              bytesRatePerTopicPartition
+                  .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
+                  .record(payloadSizePerTopicPartition, lastSuccessfulPollTimestamp);
+
               consumedDataReceiver.write(topicPartitionMessages);
             }
             aggStats.recordTotalConsumerRecordsProducingToWriterBufferLatency(
@@ -222,6 +245,26 @@ class ConsumptionTask implements Runnable {
     synchronized (this) {
       notifyAll();
     }
+  }
+
+  private Rate createRate(long now) {
+    Rate rate = new Rate();
+    rate.init(metricConfig, now);
+    return rate;
+  }
+
+  Double getMessageRate(PubSubTopicPartition topicPartition) {
+    if (messageRatePerTopicPartition.containsKey(topicPartition)) {
+      return messageRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
+    }
+    return 0.0D;
+  }
+
+  Double getByteRate(PubSubTopicPartition topicPartition) {
+    if (bytesRatePerTopicPartition.containsKey(topicPartition)) {
+      return bytesRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
+    }
+    return 0.0D;
   }
 
   void removeDataReceiver(PubSubTopicPartition topicPartition) {

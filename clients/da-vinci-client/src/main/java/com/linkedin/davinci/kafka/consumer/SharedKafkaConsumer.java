@@ -82,15 +82,12 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    */
   private volatile long pollTimes = 0;
 
-  private final Integer index;
-
   public SharedKafkaConsumer(
       PubSubConsumerAdapter delegate,
       AggKafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
-      UnsubscriptionListener unsubscriptionListener,
-      int index) {
-    this(delegate, stats, assignmentChangeListener, unsubscriptionListener, new SystemTime(), index);
+      UnsubscriptionListener unsubscriptionListener) {
+    this(delegate, stats, assignmentChangeListener, unsubscriptionListener, new SystemTime());
   }
 
   SharedKafkaConsumer(
@@ -98,8 +95,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       AggKafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener,
-      Time time,
-      Integer index) {
+      Time time) {
     this.delegate = delegate;
     this.stats = stats;
     this.assignmentChangeListener = assignmentChangeListener;
@@ -107,7 +103,6 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     this.time = time;
     this.currentAssignment = Collections.emptySet();
     this.currentAssignmentSize = new AtomicInteger(0);
-    this.index = index;
   }
 
   /**
@@ -351,9 +346,5 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     throw new UnsupportedOperationException("partitionsFor is not supported in SharedKafkaConsumer");
-  }
-
-  public Integer getIndex() {
-    return this.index;
   }
 }

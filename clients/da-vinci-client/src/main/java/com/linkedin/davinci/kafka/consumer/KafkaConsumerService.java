@@ -134,8 +134,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
               null),
           aggStats,
           this::recordPartitionsPerConsumerSensor,
-          this::handleUnsubscription,
-          i);
+          this::handleUnsubscription);
 
       Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction =
           liveConfigBasedKafkaThrottlingEnabled
@@ -473,6 +472,37 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       }
       return result;
     }
+  }
+
+  public String getTopicPartitionIngestionInfo(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+    SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+    ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
+    StringBuilder consumerIngestionInfo = new StringBuilder();
+    if (consumer != null) {
+      Long ElapsedTimeSinceLastPollInMs =
+          LatencyUtils.getElapsedTimeInMs(consumptionTask.getLastSuccessfulPollTimestamp());
+      consumerIngestionInfo.append(
+          String.format(
+              "\t\tKafka URL: %s, for consumer index: %s (elapsed time since last poll in ms: %s)\n",
+              kafkaUrl,
+              consumptionTask.getTaskId(),
+              ElapsedTimeSinceLastPollInMs));
+      for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
+        Long offsetLag = consumer.getOffsetLag(topicPartition);
+        Long latestOffset = consumer.getLatestOffset(topicPartition);
+        consumerIngestionInfo.append(
+            String.format(
+                "\t\t\t\t%s: latestOffset: %s, offsetLag: %s, message rate per second: %f, byte rate per second:%f\n",
+                topicPartition,
+                latestOffset,
+                offsetLag,
+                consumptionTask.getMessageRate(topicPartition),
+                consumptionTask.getByteRate(topicPartition)));
+      }
+    } else {
+      consumerIngestionInfo.append(String.format("\t\tKafka URL: %s, no consumer found.\n", kafkaUrl));
+    }
+    return consumerIngestionInfo.toString();
   }
 
   private interface OffsetGetter {

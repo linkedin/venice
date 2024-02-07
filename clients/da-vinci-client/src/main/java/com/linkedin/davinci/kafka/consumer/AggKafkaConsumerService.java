@@ -473,21 +473,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
       if (hasConsumerAssignedFor(kafkaUrl, versionTopic, pubSubTopicPartition)) {
         AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
-        SharedKafkaConsumer consumer =
-            consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
-        if (consumer != null) {
-          consumerIngestionInfo
-              .append(String.format("\t\tKafka URL: %s, for consumer index: %s\n", kafkaUrl, consumer.getIndex()));
-          // TODO: Add more ingestion related information accross all topic partitions on this consumer.
-          for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
-            Long offsetLag = consumer.getOffsetLag(pubSubTopicPartition);
-            Long latestOffset = consumer.getLatestOffset(pubSubTopicPartition);
-            consumerIngestionInfo.append(
-                String.format("\t\t\t\t%s: latestOffset:%s, offsetLag:%s\n", topicPartition, latestOffset, offsetLag));
-          }
-        } else {
-          consumerIngestionInfo.append(String.format("\t\tKafka URL: %s, no consumer found.\n", kafkaUrl));
-        }
+        consumerIngestionInfo
+            .append(consumerService.getTopicPartitionIngestionInfo(versionTopic, pubSubTopicPartition));
       }
     }
     return consumerIngestionInfo.toString();
