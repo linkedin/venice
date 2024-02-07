@@ -29,7 +29,6 @@ import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
-import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
@@ -123,7 +122,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
@@ -161,8 +159,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final AggHostLevelIngestionStats hostLevelIngestionStats;
 
   private final AggVersionedIngestionStats versionedIngestionStats;
-
-  private final AggLagStats aggLagStats;
 
   /**
    * Store buffer service to persist data into local bdb for all the stores.
@@ -387,8 +383,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     new StoreBufferServiceStats(metricsRepository, this.storeBufferService);
 
-    this.aggLagStats = new AggLagStats(this, metricsRepository);
-
     if (clientConfig.isPresent()) {
       String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
       participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(
@@ -467,7 +461,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             return false;
           }
           return version.get().isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
-        });
+        },
+        metadataRepo);
     /**
      * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
      * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.
@@ -511,7 +506,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
         .setAggKafkaConsumerService(aggKafkaConsumerService)
-        .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)
         .setIsDaVinciClient(isDaVinciClient)
         .setRemoteIngestionRepairService(remoteIngestionRepairService)
@@ -1310,15 +1304,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       hostLevelIngestionStats.getStoreStats(storeName).recordRequestBasedMetadataFailureCount();
     }
     return response;
-  }
-
-  @Override
-  public void traverseAllIngestionTasksAndApply(Consumer<StoreIngestionTask> consumer) {
-    topicNameToIngestionTaskMap.values().forEach(consumer);
-  }
-
-  public AggLagStats getAggLagStats() {
-    return aggLagStats;
   }
 
   public LeaderFollowerStateType getLeaderStateFromPartitionConsumptionState(String topicName, int partitionId) {

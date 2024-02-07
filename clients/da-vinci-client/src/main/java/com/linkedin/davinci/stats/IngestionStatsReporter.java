@@ -10,6 +10,7 @@ import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.HYBRID_FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.HYBRID_LEADER_OFFSET_LAG;
+import static com.linkedin.davinci.stats.IngestionStats.IDLE_TIME;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_ERROR_GAUGE;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_PUSH_TIMEOUT_GAUGE;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_CONSUMED_METRIC_NAME;
@@ -23,7 +24,6 @@ import static com.linkedin.davinci.stats.IngestionStats.NEARLINE_PRODUCER_TO_LOC
 import static com.linkedin.davinci.stats.IngestionStats.OFFSET_REGRESSION_DCR_ERROR;
 import static com.linkedin.davinci.stats.IngestionStats.READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.RECORDS_CONSUMED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.SUBSCRIBE_ACTION_PREP_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.TIMESTAMP_REGRESSION_DCR_ERROR;
 import static com.linkedin.davinci.stats.IngestionStats.TOMBSTONE_CREATION_DCR;
@@ -159,12 +159,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
       registerSensor(
           new IngestionStatsGauge(
               this,
-              () -> getStats().getStalePartitionsWithoutIngestionTaskCount(),
-              0,
-              STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME));
-      registerSensor(
-          new IngestionStatsGauge(
-              this,
               () -> getStats().getSubscribePrepLatencyAvg(),
               0,
               SUBSCRIBE_ACTION_PREP_LATENCY + "_avg"));
@@ -186,6 +180,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getConsumedRecordEndToEndProcessingLatencyMax(),
               0,
               CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY + "_max"));
+      registerSensor(new IngestionStatsGauge(this, () -> getStats().getIdleTime(), 0, IDLE_TIME + "_max"));
     }
   }
 

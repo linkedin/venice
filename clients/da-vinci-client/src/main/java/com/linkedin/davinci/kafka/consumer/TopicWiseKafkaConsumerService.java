@@ -1,7 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -49,8 +49,10 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
-      final KafkaConsumerServiceStats stats,
-      final boolean isKafkaConsumerOffsetCollectionEnabled) {
+      final AggKafkaConsumerServiceStats stats,
+      final boolean isKafkaConsumerOffsetCollectionEnabled,
+      final ReadOnlyStoreRepository metadataRepository,
+      final boolean isUnregisterMetricForDeletedStoreEnabled) {
     super(
         consumerFactory,
         consumerProperties,
@@ -67,7 +69,9 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
         pubSubDeserializer,
         time,
         stats,
-        isKafkaConsumerOffsetCollectionEnabled);
+        isKafkaConsumerOffsetCollectionEnabled,
+        metadataRepository,
+        isUnregisterMetricForDeletedStoreEnabled);
     LOGGER = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrlForLogger + "]");
   }
 
@@ -122,8 +126,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
         }
       }
       if (chosenConsumer == null) {
-        stats.recordConsumerSelectionForTopicError();
-        throw new VeniceException(
+        throw new IllegalStateException(
             "Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
                 + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
       }

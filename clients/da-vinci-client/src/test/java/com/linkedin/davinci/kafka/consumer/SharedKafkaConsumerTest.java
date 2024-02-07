@@ -7,7 +7,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 
 public class SharedKafkaConsumerTest {
   protected PubSubConsumerAdapter consumer;
-  protected KafkaConsumerServiceStats consumerServiceStats;
+  protected AggKafkaConsumerServiceStats stats;
 
   protected PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private SharedKafkaConsumer sharedKafkaConsumer;
@@ -41,15 +41,14 @@ public class SharedKafkaConsumerTest {
   @BeforeMethod
   public void setUp() {
     consumer = mock(PubSubConsumerAdapter.class);
-    consumerServiceStats = mock(KafkaConsumerServiceStats.class);
+    stats = mock(AggKafkaConsumerServiceStats.class);
   }
 
   @Test
   public void testSubscriptionEmptyPoll() {
     PubSubTopic nonExistingTopic1 = pubSubTopicRepository.getTopic("nonExistingTopic1_v3");
 
-    SharedKafkaConsumer sharedConsumer =
-        new SharedKafkaConsumer(consumer, consumerServiceStats, () -> {}, (c, tp) -> {});
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, stats, () -> {}, (c, tp) -> {});
 
     Set<PubSubTopicPartition> assignmentReturnedConsumer = new HashSet<>();
     PubSubTopicPartition nonExistentPubSubTopicPartition = new PubSubTopicPartitionImpl(nonExistingTopic1, 1);
@@ -73,7 +72,7 @@ public class SharedKafkaConsumerTest {
 
   private void setUpSharedConsumer() {
     consumerAdapter = mock(PubSubConsumerAdapter.class);
-    KafkaConsumerServiceStats stats = mock(KafkaConsumerServiceStats.class);
+    AggKafkaConsumerServiceStats stats = mock(AggKafkaConsumerServiceStats.class);
     Runnable assignmentChangeListener = mock(Runnable.class);
     SharedKafkaConsumer.UnsubscriptionListener unsubscriptionListener =
         mock(SharedKafkaConsumer.UnsubscriptionListener.class);

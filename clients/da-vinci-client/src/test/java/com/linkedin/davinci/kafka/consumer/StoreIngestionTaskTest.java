@@ -57,6 +57,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -85,6 +86,7 @@ import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
+import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
@@ -410,7 +412,7 @@ public abstract class StoreIngestionTaskTest {
       createReplicationMetadataWithValueSchemaId(DELETE_KEY_FOO_TIMESTAMP, DELETE_KEY_FOO_OFFSET, EXISTING_SCHEMA_ID);
 
   private boolean databaseChecksumVerificationEnabled = false;
-  private KafkaConsumerServiceStats kafkaConsumerServiceStats = mock(KafkaConsumerServiceStats.class);
+  private AggKafkaConsumerServiceStats kafkaConsumerServiceStats = mock(AggKafkaConsumerServiceStats.class);
   private PubSubConsumerAdapterFactory mockFactory = mock(PubSubConsumerAdapterFactory.class);
 
   private Supplier<StoreVersionState> storeVersionStateSupplier = () -> new StoreVersionState();
@@ -546,6 +548,11 @@ public abstract class StoreIngestionTaskTest {
     setDefaultStoreVersionStateSupplier();
 
     runnableForKillNonCurrentVersion = mock(Runnable.class);
+
+    KafkaConsumerServiceStats regionStats = mock(KafkaConsumerServiceStats.class);
+    doNothing().when(regionStats).recordByteSizePerPoll(anyDouble());
+    doNothing().when(regionStats).recordPollResultNum(anyInt());
+    doReturn(regionStats).when(kafkaConsumerServiceStats).getStoreStats(anyString());
   }
 
   private VeniceWriter getVeniceWriter(String topic, PubSubProducerAdapter producerAdapter, int amplificationFactor) {
@@ -944,6 +951,8 @@ public abstract class StoreIngestionTaskTest {
         pubSubDeserializer,
         SystemTime.INSTANCE,
         kafkaConsumerServiceStats,
+        false,
+        mock(ReadOnlyStoreRepository.class),
         false);
     localKafkaConsumerService.start();
 
@@ -965,6 +974,8 @@ public abstract class StoreIngestionTaskTest {
         pubSubDeserializer,
         SystemTime.INSTANCE,
         kafkaConsumerServiceStats,
+        false,
+        mock(ReadOnlyStoreRepository.class),
         false);
     remoteKafkaConsumerService.start();
 
@@ -1738,7 +1749,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
-      verify(kafkaConsumerServiceStats, timeout(TEST_TIMEOUT_MS).atLeastOnce()).recordPollError();
+      verify(kafkaConsumerServiceStats, timeout(TEST_TIMEOUT_MS).atLeastOnce()).recordTotalPollError();
     }, aaConfig);
   }
 

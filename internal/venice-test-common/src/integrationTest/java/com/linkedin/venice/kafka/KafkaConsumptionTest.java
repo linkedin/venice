@@ -27,6 +27,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -194,7 +195,8 @@ public class KafkaConsumptionTest {
         topicExistenceChecker,
         pubSubDeserializer,
         (ignored) -> {},
-        (ignored) -> false);
+        (ignored) -> false,
+        mock(ReadOnlyStoreRepository.class));
 
     versionTopic = getTopic();
     int partition = 0;

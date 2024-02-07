@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -18,6 +19,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -46,6 +48,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class AggKafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(AggKafkaConsumerService.class);
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final PubSubConsumerAdapterFactory consumerFactory;
   private final VeniceServerConfig serverConfig;
@@ -70,6 +74,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
   private final Function<String, Boolean> isAAOrWCEnabledFunc;
+  private final ReadOnlyStoreRepository metadataRepository;
+
+  private final static String STUCK_CONSUMER_MSG =
+      "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
 
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
@@ -82,7 +90,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       TopicExistenceChecker topicExistenceChecker,
       final PubSubMessageDeserializer pubSubDeserializer,
       Consumer<String> killIngestionTaskRunnable,
-      Function<String, Boolean> isAAOrWCEnabledFunc) {
+      Function<String, Boolean> isAAOrWCEnabledFunc,
+      ReadOnlyStoreRepository metadataRepository) {
     this.serverConfig = serverConfig;
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
@@ -100,6 +109,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.pubSubDeserializer = pubSubDeserializer;
     this.sslPropertiesSupplier = sslPropertiesSupplier;
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
+    this.metadataRepository = metadataRepository;
 
     if (serverConfig.isStuckConsumerRepairEnabled()) {
       this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
@@ -237,8 +247,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         }
       });
       if (!hasRepairedSomeIngestionTask.get()) {
-        LOGGER.error(
-            "Didn't find any suspicious ingestion task, and please contact developers to investigate it further");
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(STUCK_CONSUMER_MSG)) {
+          LOGGER.warn(STUCK_CONSUMER_MSG);
+        }
         stuckConsumerRepairStats.recordRepairFailure();
       }
     };
@@ -297,7 +308,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 pubSubDeserializer,
                 SystemTime.INSTANCE,
                 null,
-                isKafkaConsumerOffsetCollectionEnabled),
+                isKafkaConsumerOffsetCollectionEnabled,
+                metadataRepository,
+                serverConfig.isUnregisterMetricForDeletedStoreEnabled()),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {

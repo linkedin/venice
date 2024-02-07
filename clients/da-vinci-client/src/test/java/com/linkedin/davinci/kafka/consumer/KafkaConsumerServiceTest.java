@@ -8,8 +8,8 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -86,6 +86,8 @@ public class KafkaConsumerServiceTest {
         pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
+        false,
+        mock(ReadOnlyStoreRepository.class),
         false);
     consumerService.start();
 
@@ -168,6 +170,8 @@ public class KafkaConsumerServiceTest {
         pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
+        false,
+        mock(ReadOnlyStoreRepository.class),
         false);
     consumerService.start();
 
@@ -204,14 +208,16 @@ public class KafkaConsumerServiceTest {
     StoreIngestionTask task3 = mock(StoreIngestionTask.class);
     when(task3.getVersionTopic()).thenReturn(pubSubTopicForStoreVersion3);
     when(task3.isHybridMode()).thenReturn(true);
-
+    boolean caughtException = false;
     try {
       consumerService
           .assignConsumerFor(pubSubTopicForStoreVersion3, new PubSubTopicPartitionImpl(pubSubTopicForStoreVersion3, 0));
       Assert.fail("An exception should be thrown since all 2 consumers should be occupied by other versions");
-    } catch (VeniceException e) {
+    } catch (IllegalStateException e) {
       // expected
+      caughtException = true;
     }
+    Assert.assertTrue(caughtException);
 
     consumerService.stop();
   }
@@ -264,6 +270,8 @@ public class KafkaConsumerServiceTest {
         pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
+        false,
+        mock(ReadOnlyStoreRepository.class),
         false);
     consumerService.start();
 

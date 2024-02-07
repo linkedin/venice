@@ -43,8 +43,6 @@ public class IngestionStats {
   protected static final String FOLLOWER_BYTES_CONSUMED_METRIC_NAME = "follower_bytes_consumed";
   protected static final String LEADER_RECORDS_PRODUCED_METRIC_NAME = "leader_records_produced";
   protected static final String LEADER_BYTES_PRODUCED_METRIC_NAME = "leader_bytes_produced";
-  protected static final String STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME =
-      "stale_partitions_without_ingestion_task";
   protected static final String SUBSCRIBE_ACTION_PREP_LATENCY = "subscribe_action_prep_latency";
   protected static final String CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY =
       "consumed_record_end_to_end_processing_latency";
@@ -59,6 +57,7 @@ public class IngestionStats {
   public static final String NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY =
       "nearline_local_broker_to_ready_to_serve_latency";
   public static final String TRANSFORMER_LATENCY = "transformer_latency";
+  public static final String IDLE_TIME = "idle_time";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
@@ -66,7 +65,6 @@ public class IngestionStats {
   private final Int2ObjectMap<Rate> regionIdToHybridBytesConsumedRateMap;
   private final Int2ObjectMap<Rate> regionIdToHybridRecordsConsumedRateMap;
   private final Int2ObjectMap<Avg> regionIdToHybridAvgConsumedOffsetMap;
-  private final Count stalePartitionsWithoutIngestionTaskCount;
   private final LongAdderRateGauge recordsConsumedSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge bytesConsumedSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge leaderRecordsConsumedSensor = new LongAdderRateGauge();
@@ -78,7 +76,6 @@ public class IngestionStats {
   private final Int2ObjectMap<Sensor> regionIdToHybridBytesConsumedSensorMap;
   private final Int2ObjectMap<Sensor> regionIdToHybridRecordsConsumedSensorMap;
   private final Int2ObjectMap<Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
-  private final Sensor stalePartitionsWithoutIngestionTaskSensor;
   private final WritePathLatencySensor subscribePrepLatencySensor;
   private final WritePathLatencySensor consumedRecordEndToEndProcessingLatencySensor;
   private final WritePathLatencySensor nearlineProducerToLocalBrokerLatencySensor;
@@ -96,6 +93,9 @@ public class IngestionStats {
   private final Count versionTopicEndOffsetRewindCount = new Count();
   private final Sensor versionTopicEndOffsetRewindSensor;
   private final MetricsRepository localMetricRepository;
+
+  // Measure the max idle time among partitions for a given the store on this host
+  private final LongAdderRateGauge idleTimeSensor = new LongAdderRateGauge();
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -150,14 +150,6 @@ public class IngestionStats {
     registerSensor(localMetricRepository, LEADER_RECORDS_PRODUCED_METRIC_NAME, leaderRecordsProducedSensor);
     registerSensor(localMetricRepository, LEADER_BYTES_PRODUCED_METRIC_NAME, leaderBytesProducedSensor);
 
-    stalePartitionsWithoutIngestionTaskCount = new Count();
-    stalePartitionsWithoutIngestionTaskSensor =
-        localMetricRepository.sensor(STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME);
-    stalePartitionsWithoutIngestionTaskSensor.add(
-        STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME
-            + stalePartitionsWithoutIngestionTaskCount.getClass().getSimpleName(),
-        stalePartitionsWithoutIngestionTaskCount);
-
     versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
     versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
 
@@ -177,6 +169,7 @@ public class IngestionStats {
     registerSensor(localMetricRepository, TIMESTAMP_REGRESSION_DCR_ERROR, timestampRegressionDCRErrorSensor);
     registerSensor(localMetricRepository, OFFSET_REGRESSION_DCR_ERROR, offsetRegressionDCRErrorSensor);
     registerSensor(localMetricRepository, TOMBSTONE_CREATION_DCR, tombstoneCreationDCRSensor);
+    registerSensor(localMetricRepository, IDLE_TIME, idleTimeSensor);
   }
 
   private void registerSensor(MetricsRepository localMetricRepository, String sensorName, LongAdderRateGauge gauge) {
@@ -301,10 +294,6 @@ public class IngestionStats {
     return 0;
   }
 
-  public double getStalePartitionsWithoutIngestionTaskCount() {
-    return stalePartitionsWithoutIngestionTaskCount.measure(METRIC_CONFIG, System.currentTimeMillis());
-  }
-
   public double getSubscribePrepLatencyAvg() {
     return subscribePrepLatencySensor.getAvg();
   }
@@ -315,10 +304,6 @@ public class IngestionStats {
 
   public void recordSubscribePrepLatency(double value, long currentTimeMs) {
     subscribePrepLatencySensor.record(value, currentTimeMs);
-  }
-
-  public void recordStalePartitionsWithoutIngestionTask() {
-    stalePartitionsWithoutIngestionTaskSensor.record();
   }
 
   public void recordVersionTopicEndOffsetRewind() {
@@ -522,6 +507,14 @@ public class IngestionStats {
     if (transformerLatencySensor == null) {
       transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
     }
+  }
+
+  public void recordIdleTime(long value) {
+    idleTimeSensor.record(value);
+  }
+
+  public double getIdleTime() {
+    return idleTimeSensor.getRate();
   }
 
   public static double unAvailableToZero(double value) {
