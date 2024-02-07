@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
@@ -239,8 +240,7 @@ public abstract class PushStatusDecider {
 
   boolean isPushjobKilled(List<StatusSnapshot> snapshotList) {
     for (StatusSnapshot snapshot: snapshotList) {
-      if (snapshot.getStatus() == ERROR
-          && snapshot.getIncrementalPushVersion().contains("signal to kill this consumer")) {
+      if (snapshot.getStatus() == ERROR && snapshot.getIncrementalPushVersion().contains(KILLED_JOB_MESSAGE)) {
         return true;
       }
     }

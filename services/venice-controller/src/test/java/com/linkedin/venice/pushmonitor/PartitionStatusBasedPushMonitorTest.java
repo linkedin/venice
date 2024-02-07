@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
@@ -249,14 +250,10 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     verify(helixAdminClient, times(1)).getDisabledPartitionsMap(eq(getClusterName()), eq(disabledHostName));
 
     StatusSnapshot snapshot = new StatusSnapshot(ERROR, "1.2");
-    snapshot.setIncrementalPushVersion("Ingestion task for topic: Received the signal to kill this consumer");
+    snapshot.setIncrementalPushVersion(KILLED_JOB_MESSAGE + store.getName());
     replicaStatuses1.get(2).setStatusHistory(Arrays.asList(snapshot));
     PartitionStatus partitionStatus1 = new PartitionStatus(0);
-    partitionStatus1.updateReplicaStatus(
-        disabledHostName,
-        ERROR,
-        "Ingestion task for topic: Received the signal to kill this consumer",
-        1);
+    partitionStatus1.updateReplicaStatus(disabledHostName, ERROR, KILLED_JOB_MESSAGE + store.getName(), 1);
     offlinePushStatus.setPartitionStatus(partitionStatus1);
 
     offlinePushStatus.getStrategy()
