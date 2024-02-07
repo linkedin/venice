@@ -22,7 +22,7 @@ import org.testng.annotations.Test;
 
 
 public class VeniceLeaderFollowerStateModelTest extends
-    AbstractVenicePartitionStateModelTest<LeaderFollowerPartitionStateModel, StateModelIngestionProgressNotifier> {
+    AbstractVenicePartitionStateModelTest<LeaderFollowerPartitionStateModel, LeaderFollowerIngestionProgressNotifier> {
   @Override
   protected LeaderFollowerPartitionStateModel getParticipantStateModel() {
     return new LeaderFollowerPartitionStateModel(
@@ -38,8 +38,8 @@ public class VeniceLeaderFollowerStateModelTest extends
   }
 
   @Override
-  protected StateModelIngestionProgressNotifier getNotifier() {
-    return mock(StateModelIngestionProgressNotifier.class);
+  protected LeaderFollowerIngestionProgressNotifier getNotifier() {
+    return mock(LeaderFollowerIngestionProgressNotifier.class);
   }
 
   @Test

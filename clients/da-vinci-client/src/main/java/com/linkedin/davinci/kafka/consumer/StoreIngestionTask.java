@@ -6,7 +6,7 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSE
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -2216,8 +2216,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       recordProcessedRecordStats(partitionConsumptionState, recordSize);
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
-    } else {
-
     }
     reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
 

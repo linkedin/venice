@@ -114,8 +114,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addFollowerLagMonitor(Version version, int partition) {
-    // initializeEntry(followerHeartbeatTimeStamps, version, partition);
-    // removeEntry(leaderHeartbeatTimeStamps, version, partition);
+    initializeEntry(followerHeartbeatTimeStamps, version, partition);
+    removeEntry(leaderHeartbeatTimeStamps, version, partition);
   }
 
   /**
@@ -126,8 +126,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addLeaderLagMonitor(Version version, int partition) {
-    // initializeEntry(leaderHeartbeatTimeStamps, version, partition);
-    // removeEntry(followerHeartbeatTimeStamps, version, partition);
+    initializeEntry(leaderHeartbeatTimeStamps, version, partition);
+    removeEntry(followerHeartbeatTimeStamps, version, partition);
   }
 
   /**
@@ -137,8 +137,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to remove monitoring for
    */
   public void removeLagMonitor(Version version, int partition) {
-    // removeEntry(leaderHeartbeatTimeStamps, version, partition);
-    // removeEntry(followerHeartbeatTimeStamps, version, partition);
+    removeEntry(leaderHeartbeatTimeStamps, version, partition);
+    removeEntry(followerHeartbeatTimeStamps, version, partition);
   }
 
   @Override

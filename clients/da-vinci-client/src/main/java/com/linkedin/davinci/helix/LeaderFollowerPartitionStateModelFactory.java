@@ -16,8 +16,8 @@ import java.util.concurrent.ExecutorService;
  */
 
 public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModelFactory {
-  private final StateModelIngestionProgressNotifier leaderFollowerStateModelNotifier =
-      new StateModelIngestionProgressNotifier();
+  private final LeaderFollowerIngestionProgressNotifier leaderFollowerStateModelNotifier =
+      new LeaderFollowerIngestionProgressNotifier();
   private final HeartbeatMonitoringService heartbeatMonitoringService;
 
   public LeaderFollowerPartitionStateModelFactory(

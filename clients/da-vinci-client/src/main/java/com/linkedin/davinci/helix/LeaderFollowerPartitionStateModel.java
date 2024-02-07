@@ -56,7 +56,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
    */
   private final AtomicLong leaderSessionId = new AtomicLong(0L);
 
-  private final StateModelIngestionProgressNotifier notifier;
+  private final LeaderFollowerIngestionProgressNotifier notifier;
   private final ParticipantStateTransitionStats threadPoolStats;
 
   private final HeartbeatMonitoringService heartbeatMonitoringService;
@@ -65,7 +65,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       VeniceIngestionBackend ingestionBackend,
       VeniceStoreVersionConfig storeAndServerConfigs,
       int partition,
-      StateModelIngestionProgressNotifier notifier,
+      LeaderFollowerIngestionProgressNotifier notifier,
       ReadOnlyStoreRepository metadataRepo,
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
       String instanceName,
