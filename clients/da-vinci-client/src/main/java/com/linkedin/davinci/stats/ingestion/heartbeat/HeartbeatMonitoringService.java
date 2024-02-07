@@ -114,8 +114,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addFollowerLagMonitor(Version version, int partition) {
-    initializeEntry(followerHeartbeatTimeStamps, version, partition);
-    removeEntry(leaderHeartbeatTimeStamps, version, partition);
+    // initializeEntry(followerHeartbeatTimeStamps, version, partition);
+    // removeEntry(leaderHeartbeatTimeStamps, version, partition);
   }
 
   /**
@@ -126,8 +126,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addLeaderLagMonitor(Version version, int partition) {
-    initializeEntry(leaderHeartbeatTimeStamps, version, partition);
-    removeEntry(followerHeartbeatTimeStamps, version, partition);
+    // initializeEntry(leaderHeartbeatTimeStamps, version, partition);
+    // removeEntry(followerHeartbeatTimeStamps, version, partition);
   }
 
   /**
@@ -137,8 +137,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to remove monitoring for
    */
   public void removeLagMonitor(Version version, int partition) {
-    removeEntry(leaderHeartbeatTimeStamps, version, partition);
-    removeEntry(followerHeartbeatTimeStamps, version, partition);
+    // removeEntry(leaderHeartbeatTimeStamps, version, partition);
+    // removeEntry(followerHeartbeatTimeStamps, version, partition);
   }
 
   @Override
@@ -186,15 +186,15 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       String region,
       Long timestamp,
       Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> heartbeatTimestamps) {
-    if (heartbeatTimestamps.get(store) != null) {
-      if (heartbeatTimestamps.get(store).get(version) != null) {
-        if (heartbeatTimestamps.get(store).get(version).get(partition) != null) {
-          if (region != null) {
-            heartbeatTimestamps.get(store).get(version).get(partition).put(region, timestamp);
-          }
-        }
-      }
-    }
+    // if (heartbeatTimestamps.get(store) != null) {
+    // if (heartbeatTimestamps.get(store).get(version) != null) {
+    // if (heartbeatTimestamps.get(store).get(version).get(partition) != null) {
+    // if (region != null) {
+    // heartbeatTimestamps.get(store).get(version).get(partition).put(region, timestamp);
+    // }
+    // }
+    // }
+    // }
   }
 
   protected Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> getLeaderHeartbeatTimeStamps() {
@@ -220,12 +220,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   protected void record() {
-    recordLags(
-        leaderHeartbeatTimeStamps,
-        ((storeName, version, region, lag) -> versionStatsReporter.recordLeaderLag(storeName, version, region, lag)));
-    recordLags(
-        followerHeartbeatTimeStamps,
-        ((storeName, version, region, lag) -> versionStatsReporter.recordFollowerLag(storeName, version, region, lag)));
+    // recordLags(
+    // leaderHeartbeatTimeStamps,
+    // ((storeName, version, region, lag) -> versionStatsReporter.recordLeaderLag(storeName, version, region, lag)));
+    // recordLags(
+    // followerHeartbeatTimeStamps,
+    // ((storeName, version, region, lag) -> versionStatsReporter.recordFollowerLag(storeName, version, region, lag)));
   }
 
   @FunctionalInterface
