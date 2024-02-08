@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -75,8 +76,6 @@ public class TestUnusedValueSchemaCleanupService {
     schemaIds.add(3);
     schemaIds.add(4);
 
-    doReturn(schemaIds).when(parentHelixAdmin).getInUseValueSchemaIds(anyString(), anyString());
-
     UnusedValueSchemaCleanupService service = new UnusedValueSchemaCleanupService(config, admin, parentHelixAdmin);
 
     service.startInner();
@@ -84,14 +83,24 @@ public class TestUnusedValueSchemaCleanupService {
     unusedSchemas.add(1);
     unusedSchemas.add(2);
 
-    // if a child colo is not available deletion will not delete any schema
-    doReturn(false).when(parentHelixAdmin).deleteValueSchemas(anyString(), anyString(), anySet());
+    // parent colo fails to fetch inuse schema set, nothing will be deleted
+    doReturn(Collections.emptySet()).when(parentHelixAdmin).getInUseValueSchemaIds(anyString(), anyString());
 
     TestUtils.waitForNonDeterministicAssertion(
         1,
         TimeUnit.SECONDS,
         () -> verify(admin, times(0)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
 
+    // even if child colo returns in-use schema set but if a child colo fails to delete them,
+    // parent colo will not delete any schema and the steps will be retried
+    doReturn(schemaIds).when(parentHelixAdmin).getInUseValueSchemaIds(anyString(), anyString());
+    doReturn(false).when(parentHelixAdmin).deleteValueSchemas(anyString(), anyString(), anySet());
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> verify(admin, times(0)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
+
+    // happy path, delete schemas in both parent and child
     doReturn(true).when(parentHelixAdmin).deleteValueSchemas(anyString(), anyString(), anySet());
     service.startInner();
 
@@ -99,6 +108,10 @@ public class TestUnusedValueSchemaCleanupService {
         10,
         TimeUnit.SECONDS,
         () -> verify(admin, times(1)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> verify(parentHelixAdmin, times(1)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
 
   }
 }
