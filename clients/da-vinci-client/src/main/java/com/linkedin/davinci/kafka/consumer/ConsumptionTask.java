@@ -139,6 +139,7 @@ class ConsumptionTask implements Runnable {
           lastSuccessfulPollTimestamp = System.currentTimeMillis();
           aggStats.recordTotalPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
           if (!polledPubSubMessages.isEmpty()) {
+            LOGGER.info("Get some messages");
             payloadBytesConsumedInOnePoll = 0;
             polledPubSubMessagesCount = 0;
             beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();

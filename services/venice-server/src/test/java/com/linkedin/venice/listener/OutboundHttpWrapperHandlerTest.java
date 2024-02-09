@@ -14,6 +14,7 @@ import com.google.protobuf.ByteString;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
@@ -189,6 +190,25 @@ public class OutboundHttpWrapperHandlerTest {
     Assert.assertEquals(ByteString.empty(), responseBuilder.getData());
 
     verify(grpcHandler).processRequest(context);
+  }
+
+  @Test
+  public void testWriteTopicPartitionIngestionContextResponse() throws JsonProcessingException {
+    TopicPartitionIngestionContextResponse msg = new TopicPartitionIngestionContextResponse();
+
+    msg.setTopicPartitionIngestionContext("Ingestion context for expected topic partition.");
+    StatsHandler statsHandler = mock(StatsHandler.class);
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+    ByteBuf body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(msg));
+    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.OK, body);
+    OutboundHttpWrapperHandler outboundHttpWrapperHandler = new OutboundHttpWrapperHandler(statsHandler);
+
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      FullHttpResponse actualResponse = (DefaultFullHttpResponse) i.getArguments()[0];
+      Assert.assertEquals(actualResponse.content(), response.content());
+      return null;
+    });
+    outboundHttpWrapperHandler.write(mockCtx, msg, null);
   }
 
   private StreamObserver<VeniceServerResponse> getStreamObserver() {

@@ -1214,8 +1214,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     PubSubTopic pubSubVersionTopic = pubSubTopicRepository.getTopic(versionTopic);
     PubSubTopic requestTopic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(requestTopic, partitionNum);
-    String topicPartitionInfo =
-        aggKafkaConsumerService.getTopicPartitionIngestionInfo(pubSubVersionTopic, pubSubTopicPartition);
+    String topicPartitionInfo = aggKafkaConsumerService.getIngestionInfoFor(pubSubVersionTopic, pubSubTopicPartition);
     topicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(topicPartitionInfo);
     return topicPartitionIngestionContextResponse;
   }

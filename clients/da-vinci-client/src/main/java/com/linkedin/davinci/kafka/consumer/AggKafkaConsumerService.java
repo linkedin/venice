@@ -467,14 +467,31 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     return kafkaUrls;
   }
 
-  String getTopicPartitionIngestionInfo(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  String getIngestionInfoFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     StringBuilder consumerIngestionInfo = new StringBuilder(
         String.format("Consumer information for ingestion task of %s with %s\n", versionTopic, pubSubTopicPartition));
     for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
       if (hasConsumerAssignedFor(kafkaUrl, versionTopic, pubSubTopicPartition)) {
         AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
-        consumerIngestionInfo
-            .append(consumerService.getTopicPartitionIngestionInfo(versionTopic, pubSubTopicPartition));
+        Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+            consumerService.getIngestionInfoFromConsumer(versionTopic, pubSubTopicPartition);
+        consumerIngestionInfo.append(String.format("\t\tKafka URL: %s: \n", kafkaUrl));
+        for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
+            .entrySet()) {
+          PubSubTopicPartition topicPartition = entry.getKey();
+          TopicPartitionIngestionInfo topicPartitionIngestionInfo = entry.getValue();
+          consumerIngestionInfo.append(
+              String.format(
+                  "\t\t\t\t%s, latestOffset: %s, offsetLag: %s, message rate per second: %f, byte rate per second: %f, "
+                      + "for consumer index: %s (elapsed time since last poll in ms: %s)\n",
+                  topicPartition,
+                  topicPartitionIngestionInfo.latestOffset,
+                  topicPartitionIngestionInfo.offsetLag,
+                  topicPartitionIngestionInfo.msgRate,
+                  topicPartitionIngestionInfo.byteRate,
+                  topicPartitionIngestionInfo.consumerIdx,
+                  topicPartitionIngestionInfo.elapsedTimeSinceLastPollInMs));
+        }
       }
     }
     return consumerIngestionInfo.toString();

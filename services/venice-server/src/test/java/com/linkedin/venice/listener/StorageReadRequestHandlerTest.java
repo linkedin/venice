@@ -25,6 +25,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -54,6 +55,7 @@ import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
@@ -389,6 +391,38 @@ public class StorageReadRequestHandlerTest {
     assertEquals(
         adminResponse.getResponseSchemaIdHeader(),
         AvroProtocolDefinition.SERVER_ADMIN_RESPONSE.getCurrentProtocolVersion());
+  }
+
+  @Test
+  public void testTopicPartitionIngestionContextRequestsPassInStorageExecutionHandler() throws Exception {
+    String topic = "test_store_v1";
+    int expectedPartitionId = 12345;
+    // [0]""/[1]"action"/[2]"version topic"/[3]"topic name"/[4]"partition number"
+    String uri = "/" + QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT.toString().toLowerCase() + "/" + topic + "/"
+        + topic + "/" + expectedPartitionId;
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
+    TopicPartitionIngestionContextRequest request =
+        TopicPartitionIngestionContextRequest.parseGetHttpRequest(httpRequest);
+
+    // Mock the TopicPartitionIngestionContextResponse from ingestion task
+    TopicPartitionIngestionContextResponse expectedTopicPartitionIngestionContextResponse =
+        new TopicPartitionIngestionContextResponse();
+
+    String expectedTopicPartitionContext =
+        "Ingestion context for topic: " + topic + ", partition: " + expectedPartitionId;
+    expectedTopicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(expectedTopicPartitionContext);
+    doReturn(expectedTopicPartitionIngestionContextResponse).when(metadataRetriever)
+        .getTopicPartitionIngestionContext(eq(topic), eq(topic), eq(expectedPartitionId));
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
+        (TopicPartitionIngestionContextResponse) argumentCaptor.getValue();
+    assertTrue(topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext().contains(topic));
+    assertEquals(
+        topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext(),
+        expectedTopicPartitionContext);
   }
 
   @Test

@@ -474,35 +474,32 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
   }
 
-  public String getTopicPartitionIngestionInfo(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition) {
     SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
-    ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
-    StringBuilder consumerIngestionInfo = new StringBuilder();
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
     if (consumer != null) {
-      Long ElapsedTimeSinceLastPollInMs =
+      ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
+      long elapsedTimeSinceLastPollInMs =
           LatencyUtils.getElapsedTimeInMs(consumptionTask.getLastSuccessfulPollTimestamp());
-      consumerIngestionInfo.append(
-          String.format(
-              "\t\tKafka URL: %s, for consumer index: %s (elapsed time since last poll in ms: %s)\n",
-              kafkaUrl,
-              consumptionTask.getTaskId(),
-              ElapsedTimeSinceLastPollInMs));
+      int consumerIdx = consumptionTask.getTaskId();
       for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
-        Long offsetLag = consumer.getOffsetLag(topicPartition);
-        Long latestOffset = consumer.getLatestOffset(topicPartition);
-        consumerIngestionInfo.append(
-            String.format(
-                "\t\t\t\t%s: latestOffset: %s, offsetLag: %s, message rate per second: %f, byte rate per second:%f\n",
-                topicPartition,
-                latestOffset,
-                offsetLag,
-                consumptionTask.getMessageRate(topicPartition),
-                consumptionTask.getByteRate(topicPartition)));
+        long offsetLag = consumer.getOffsetLag(topicPartition);
+        long latestOffset = consumer.getLatestOffset(topicPartition);
+        double msgRate = consumptionTask.getMessageRate(topicPartition);
+        double byteRate = consumptionTask.getMessageRate(topicPartition);
+        TopicPartitionIngestionInfo topicPartitionIngestionInfo = new TopicPartitionIngestionInfo(
+            latestOffset,
+            offsetLag,
+            msgRate,
+            byteRate,
+            consumerIdx,
+            elapsedTimeSinceLastPollInMs);
+        topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
       }
-    } else {
-      consumerIngestionInfo.append(String.format("\t\tKafka URL: %s, no consumer found.\n", kafkaUrl));
     }
-    return consumerIngestionInfo.toString();
+    return topicPartitionIngestionInfoMap;
   }
 
   private interface OffsetGetter {
@@ -524,4 +521,5 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       this.constructor = constructor;
     }
   }
+
 }

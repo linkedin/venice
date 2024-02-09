@@ -25,6 +25,6 @@ public enum QueryAction {
   // that store
   CURRENT_VERSION,
 
-  // TOPIC_PARTITION_INGESTION_CONTEXT request from server admin tool
+  // TOPIC_PARTITION_INGESTION_CONTEXT is a GET request to /version topic/topic/partition from server admin tool
   TOPIC_PARTITION_INGESTION_CONTEXT
 }

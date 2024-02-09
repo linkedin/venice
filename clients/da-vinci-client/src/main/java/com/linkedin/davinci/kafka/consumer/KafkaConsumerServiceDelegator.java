@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -140,9 +141,11 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   @Override
-  public String getTopicPartitionIngestionInfo(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition) {
     return getKafkaConsumerService(versionTopic, pubSubTopicPartition)
-        .getTopicPartitionIngestionInfo(versionTopic, pubSubTopicPartition);
+        .getIngestionInfoFromConsumer(versionTopic, pubSubTopicPartition);
   }
 
   @Override
