@@ -4,12 +4,13 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -76,7 +77,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   protected final String kafkaUrlForLogger;
   private final Logger LOGGER;
 
-  protected KafkaConsumerServiceStats stats;
+  protected AggKafkaConsumerServiceStats aggStats;
   protected final IndexedMap<SharedKafkaConsumer, ConsumptionTask> consumerToConsumptionTask;
   protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
@@ -99,8 +100,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
-      final KafkaConsumerServiceStats statsOverride,
-      final boolean isKafkaConsumerOffsetCollectionEnabled) {
+      final AggKafkaConsumerServiceStats statsOverride,
+      final boolean isKafkaConsumerOffsetCollectionEnabled,
+      final ReadOnlyStoreRepository metadataRepository,
+      final boolean isUnregisterMetricForDeletedStoreEnabled) {
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
     this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "]");
@@ -110,12 +113,14 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         numOfConsumersPerKafkaCluster,
         new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
-    this.stats = statsOverride != null
+    this.aggStats = statsOverride != null
         ? statsOverride
-        : createKafkaConsumerServiceStats(
+        : createAggKafkaConsumerServiceStats(
             metricsRepository,
             kafkaClusterAlias,
-            this::getMaxElapsedTimeMSSinceLastPollInConsumerPool);
+            this::getMaxElapsedTimeMSSinceLastPollInConsumerPool,
+            metadataRepository,
+            isUnregisterMetricForDeletedStoreEnabled);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
@@ -127,7 +132,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
               isKafkaConsumerOffsetCollectionEnabled,
               pubSubDeserializer,
               null),
-          stats,
+          aggStats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
 
@@ -142,7 +147,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           1000,
           topicExistenceChecker,
           pubSubConsumer::getAssignment,
-          stats::recordDetectedDeletedTopicNum,
+          aggStats::recordTotalDetectedDeletedTopicNum,
           pubSubConsumer::batchUnsubscribe,
           time);
 
@@ -153,7 +158,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           pollFunction,
           bandwidthThrottlerFunction,
           recordsThrottlerFunction,
-          this.stats,
+          this.aggStats,
           cleaner);
       consumerToConsumptionTask.putByIndex(pubSubConsumer, consumptionTask, i);
     }
@@ -318,15 +323,19 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     return !subscriptions.isEmpty();
   }
 
-  private KafkaConsumerServiceStats createKafkaConsumerServiceStats(
+  private AggKafkaConsumerServiceStats createAggKafkaConsumerServiceStats(
       MetricsRepository metricsRepository,
       String kafkaClusterAlias,
-      LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool) {
+      LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool,
+      ReadOnlyStoreRepository metadataRepository,
+      boolean isUnregisterMetricForDeletedStoreEnabled) {
     String nameWithKafkaClusterAlias = "kafka_consumer_service_for_" + kafkaClusterAlias;
-    return new KafkaConsumerServiceStats(
-        metricsRepository,
+    return new AggKafkaConsumerServiceStats(
         nameWithKafkaClusterAlias,
-        getMaxElapsedTimeSinceLastPollInConsumerPool);
+        metricsRepository,
+        metadataRepository,
+        getMaxElapsedTimeSinceLastPollInConsumerPool,
+        isUnregisterMetricForDeletedStoreEnabled);
   }
 
   @Override
@@ -341,6 +350,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         slowestTaskId = task.getTaskId();
       }
     }
+    aggStats.recordTotalConsumerIdleTime(maxElapsedTimeSinceLastPollInConsumerPool);
     if (maxElapsedTimeSinceLastPollInConsumerPool > Time.MS_PER_MINUTE) {
       String slowestTaskIdString = kafkaUrl + slowestTaskId;
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(slowestTaskIdString)) {
@@ -400,8 +410,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         boolean liveConfigBasedKafkaThrottlingEnabled,
         PubSubMessageDeserializer pubSubDeserializer,
         Time time,
-        KafkaConsumerServiceStats stats,
-        boolean isKafkaConsumerOffsetCollectionEnabled);
+        AggKafkaConsumerServiceStats stats,
+        boolean isKafkaConsumerOffsetCollectionEnabled,
+        ReadOnlyStoreRepository metadataRepository,
+        boolean unregisterMetricForDeletedStoreEnabled);
   }
 
   final void recordPartitionsPerConsumerSensor() {
@@ -418,9 +430,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
     int avgPartitionsPerConsumer = totalPartitions / consumerToConsumptionTask.size();
 
-    stats.recordAvgPartitionsPerConsumer(avgPartitionsPerConsumer);
-    stats.recordMaxPartitionsPerConsumer(maxPartitionsPerConsumer);
-    stats.recordMinPartitionsPerConsumer(minPartitionsPerConsumer);
+    aggStats.recordTotalAvgPartitionsPerConsumer(avgPartitionsPerConsumer);
+    aggStats.recordTotalMaxPartitionsPerConsumer(maxPartitionsPerConsumer);
+    aggStats.recordTotalMinPartitionsPerConsumer(minPartitionsPerConsumer);
   }
 
   public long getOffsetLagFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
@@ -428,8 +440,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         versionTopic,
         pubSubTopicPartition,
         PubSubConsumerAdapter::getOffsetLag,
-        stats::recordOffsetLagIsAbsent,
-        stats::recordOffsetLagIsPresent);
+        aggStats::recordTotalOffsetLagIsAbsent,
+        aggStats::recordTotalOffsetLagIsPresent);
   }
 
   public long getLatestOffsetFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
@@ -437,8 +449,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         versionTopic,
         pubSubTopicPartition,
         PubSubConsumerAdapter::getLatestOffset,
-        stats::recordLatestOffsetIsAbsent,
-        stats::recordLatestOffsetIsPresent);
+        aggStats::recordTotalLatestOffsetIsAbsent,
+        aggStats::recordTotalLatestOffsetIsPresent);
   }
 
   private long getSomeOffsetFor(

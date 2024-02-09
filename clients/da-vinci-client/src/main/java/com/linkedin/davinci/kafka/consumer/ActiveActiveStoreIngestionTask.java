@@ -414,7 +414,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         break;
       default:
         throw new VeniceMessageException(
-            consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
+            ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
     Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
@@ -489,7 +489,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         break;
       default:
         throw new VeniceMessageException(
-            consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
+            ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
     if (mergeConflictResult.isUpdateIgnored()) {
@@ -838,7 +838,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      */
     if (shouldNewLeaderSwitchToRemoteConsumption(partitionConsumptionState)) {
       partitionConsumptionState.setConsumeRemotely(true);
-      LOGGER.info("{} enabled remote consumption from topic {} partition {}", consumerTaskId, leaderTopic, partition);
+      LOGGER
+          .info("{} enabled remote consumption from topic {} partition {}", ingestionTaskName, leaderTopic, partition);
     }
 
     partitionConsumptionState.setLeaderFollowerState(LEADER);
@@ -850,7 +851,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     LOGGER.info(
         "{} is promoted to leader for partition {} and it is going to start consuming from "
             + "topic {} with offset by Kafka URL mapping {}",
-        consumerTaskId,
+        ingestionTaskName,
         partition,
         leaderTopic,
         leaderOffsetByKafkaURL);
@@ -864,7 +865,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     LOGGER.info(
         "{}, as a leader, started consuming from topic {} partition {} with offset by Kafka URL mapping {}",
-        consumerTaskId,
+        ingestionTaskName,
         leaderTopic,
         partition,
         leaderOffsetByKafkaURL);
@@ -919,7 +920,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
           LOGGER.info(
               "{} leader calculated rewindStartTimestamp {} for {}",
-              consumerTaskId,
+              ingestionTaskName,
               rewindStartTimestamp,
               sourceTopicPartition);
         } else {
@@ -998,7 +999,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       partitionConsumptionState.setConsumeRemotely(true);
       LOGGER.info(
           "{} enabled remote consumption and switch to topic {} partition {} with offset by Kafka URL mapping {}",
-          consumerTaskId,
+          ingestionTaskName,
           newSourceTopic,
           sourceTopicPartition,
           upstreamOffsetsByKafkaURLs);
@@ -1031,7 +1032,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, upstreamOffsetsByKafkaURLs);
     LOGGER.info(
         "{} leader successfully switch feed topic from {} to {} on partition {} with offset by Kafka URL mapping {}",
-        consumerTaskId,
+        ingestionTaskName,
         currentLeaderTopic,
         newSourceTopic,
         partition,
@@ -1094,7 +1095,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
           LOGGER.info(
               "{} leader calculated rewindStartTimestamp {} for topic {} partition {}",
-              consumerTaskId,
+              ingestionTaskName,
               rewindStartTimestamp,
               newSourceTopicName,
               newSourceTopicPartition);

@@ -55,7 +55,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DEBUG_LOGGING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DELAY_REPORT_READY_TO_SERVE_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED;
@@ -365,7 +364,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
   private final int consumerPoolSizePerKafkaCluster;
   private final boolean leakedResourceCleanupEnabled;
-  private final long delayReadyToServeMS;
 
   private final IngestionMode ingestionMode;
   private final int ingestionServicePort;
@@ -616,7 +614,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
               + minimumConsumerNumInConsumerPoolPerKafkaCluster + ", but it is " + consumerPoolSizePerKafkaCluster);
     }
     leakedResourceCleanupEnabled = serverProperties.getBoolean(SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED, true);
-    delayReadyToServeMS = serverProperties.getLong(SERVER_DELAY_REPORT_READY_TO_SERVE_MS, 0);
 
     ingestionMode =
         IngestionMode.valueOf(serverProperties.getString(SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString()));
@@ -1096,10 +1093,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isLeakedResourceCleanupEnabled() {
     return leakedResourceCleanupEnabled;
-  }
-
-  public long getDelayReadyToServeMS() {
-    return delayReadyToServeMS;
   }
 
   public IngestionMode getIngestionMode() {

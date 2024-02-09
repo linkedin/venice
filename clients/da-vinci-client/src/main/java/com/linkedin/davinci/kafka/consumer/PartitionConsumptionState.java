@@ -91,7 +91,21 @@ public class PartitionConsumptionState {
 
   private CheckSum expectedSSTFileChecksum;
 
-  private long latestMessageConsumptionTimestampInMs;
+  /**
+   * The timestamp when consumption thread is about to process the "latest" message in topic/partition;
+   * Note that when retrieve the timestamp, the new message can be appended to the partition already, because it's
+   * only update when this "latest" message is already produced to kafka or queued to drainer.
+   * so it's not guaranteed that this timestamp is from the last message.
+   */
+  private long latestMessageConsumedTimestampInMs;
+
+  /**
+   * The timestamp when consumption thread is about to process the "latest" message in topic/partition;
+   * The difference between this field and {@link #latestMessageConsumedTimestampInMs} is that this field is updated
+   * whenever there's a new record for this topic/partition, while the other field is updated only when the record is
+   * fully processed.
+   */
+  private long latestPolledMessageTimestampInMs;
 
   /**
    * An in-memory state to record the ingestion start time of this partition; in O/O state model, the push timeout clock
@@ -217,11 +231,13 @@ public class PartitionConsumptionState {
     this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
     this.expectedSSTFileChecksum = null;
     /**
-     * Initialize the latest consumption time with current time; otherwise, it's 0 by default
+     * Initialize the latest consumed time with current time; otherwise, it's 0 by default
      * and leader will be promoted immediately.
      */
-    this.latestMessageConsumptionTimestampInMs = System.currentTimeMillis();
-    this.consumptionStartTimeInMs = System.currentTimeMillis();
+    long currentTimeInMs = System.currentTimeMillis();
+    this.latestMessageConsumedTimestampInMs = currentTimeInMs;
+    this.latestPolledMessageTimestampInMs = currentTimeInMs;
+    this.consumptionStartTimeInMs = currentTimeInMs;
 
     // Restore previous status from offset record.
     for (CharSequence status: offsetRecord.getSubPartitionStatus().keySet()) {
@@ -484,12 +500,20 @@ public class PartitionConsumptionState {
     return this.expectedSSTFileChecksum == null ? null : this.expectedSSTFileChecksum.getCheckSum();
   }
 
-  public long getLatestMessageConsumptionTimestampInMs() {
-    return latestMessageConsumptionTimestampInMs;
+  public long getLatestMessageConsumedTimestampInMs() {
+    return latestMessageConsumedTimestampInMs;
   }
 
-  public void setLatestMessageConsumptionTimestampInMs(long consumptionTimestampInMs) {
-    this.latestMessageConsumptionTimestampInMs = consumptionTimestampInMs;
+  public void setLatestMessageConsumedTimestampInMs(long consumedTimestampInMs) {
+    this.latestMessageConsumedTimestampInMs = consumedTimestampInMs;
+  }
+
+  public long getLatestPolledMessageTimestampInMs() {
+    return latestPolledMessageTimestampInMs;
+  }
+
+  public void setLatestPolledMessageTimestampInMs(long timestampInMs) {
+    this.latestPolledMessageTimestampInMs = timestampInMs;
   }
 
   public long getConsumptionStartTimeInMs() {

@@ -109,10 +109,10 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
     }
 
     /**
-     *  Skip ACL for requests to /metadata, /admin and /health as there's no sensitive information in the response.
+     *  Skip ACL for requests to /metadata, /admin /current_version and /health as there's no sensitive information in the response.
      */
-    Set<QueryAction> queriesToSkipAcl =
-        new HashSet<>(Arrays.asList(QueryAction.METADATA, QueryAction.ADMIN, QueryAction.HEALTH));
+    Set<QueryAction> queriesToSkipAcl = new HashSet<>(
+        Arrays.asList(QueryAction.METADATA, QueryAction.ADMIN, QueryAction.HEALTH, QueryAction.CURRENT_VERSION));
     try {
       QueryAction queryAction = QueryAction.valueOf(requestParts[1].toUpperCase());
       if (queriesToSkipAcl.contains(queryAction)) {

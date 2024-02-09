@@ -8,7 +8,6 @@ import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
-import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -23,7 +22,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
 
 
 /**
@@ -34,7 +32,6 @@ import java.util.function.Supplier;
  * (3) Per store and total: The stat is registered for each store on this host and the total number for this host.
  */
 public class HostLevelIngestionStats extends AbstractVeniceStats {
-  private final Time time;
   // The aggregated bytes ingested rate for the entire host
   private final LongAdderRateGauge totalBytesConsumedRate;
   // The aggregated records ingested rate for the entire host
@@ -144,28 +141,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    */
   private final Sensor requestBasedMetadataFailureCount;
 
-  private Sensor registerPerStoreAndTotalSensor(
-      String sensorName,
-      HostLevelIngestionStats totalStats,
-      Supplier<Sensor> totalSensor,
-      MeasurableStat... stats) {
-    Sensor[] parent = totalStats == null ? null : new Sensor[] { totalSensor.get() };
-    return registerSensor(sensorName, parent, stats);
-  }
-
-  private LongAdderRateGauge registerOnlyTotalRate(
-      String sensorName,
-      HostLevelIngestionStats totalStats,
-      Supplier<LongAdderRateGauge> totalSensor) {
-    if (totalStats == null) {
-      LongAdderRateGauge longAdderRateGauge = new LongAdderRateGauge(time);
-      registerSensor(sensorName, longAdderRateGauge);
-      return longAdderRateGauge;
-    } else {
-      return totalSensor.get();
-    }
-  }
-
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
    */
@@ -177,56 +152,71 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
       Map<String, StoreIngestionTask> ingestionTaskMap,
       Time time) {
     super(metricsRepository, storeName);
-    this.time = time;
 
     // Stats which are total only:
 
     this.totalBytesConsumedRate =
-        registerOnlyTotalRate("bytes_consumed", totalStats, () -> totalStats.totalBytesConsumedRate);
+        registerOnlyTotalRate("bytes_consumed", totalStats, () -> totalStats.totalBytesConsumedRate, time);
 
     this.totalRecordsConsumedRate =
-        registerOnlyTotalRate("records_consumed", totalStats, () -> totalStats.totalRecordsConsumedRate);
+        registerOnlyTotalRate("records_consumed", totalStats, () -> totalStats.totalRecordsConsumedRate, time);
 
     this.totalBytesReadFromKafkaAsUncompressedSizeRate = registerOnlyTotalRate(
         "bytes_read_from_kafka_as_uncompressed_size",
         totalStats,
-        () -> totalStats.totalBytesReadFromKafkaAsUncompressedSizeRate);
+        () -> totalStats.totalBytesReadFromKafkaAsUncompressedSizeRate,
+        time);
 
     this.totalLeaderBytesConsumedRate =
-        registerOnlyTotalRate("leader_bytes_consumed", totalStats, () -> totalStats.totalLeaderBytesConsumedRate);
+        registerOnlyTotalRate("leader_bytes_consumed", totalStats, () -> totalStats.totalLeaderBytesConsumedRate, time);
 
-    this.totalLeaderRecordsConsumedRate =
-        registerOnlyTotalRate("leader_records_consumed", totalStats, () -> totalStats.totalLeaderRecordsConsumedRate);
+    this.totalLeaderRecordsConsumedRate = registerOnlyTotalRate(
+        "leader_records_consumed",
+        totalStats,
+        () -> totalStats.totalLeaderRecordsConsumedRate,
+        time);
 
-    this.totalFollowerBytesConsumedRate =
-        registerOnlyTotalRate("follower_bytes_consumed", totalStats, () -> totalStats.totalFollowerBytesConsumedRate);
+    this.totalFollowerBytesConsumedRate = registerOnlyTotalRate(
+        "follower_bytes_consumed",
+        totalStats,
+        () -> totalStats.totalFollowerBytesConsumedRate,
+        time);
 
     this.totalFollowerRecordsConsumedRate = registerOnlyTotalRate(
         "follower_records_consumed",
         totalStats,
-        () -> totalStats.totalFollowerRecordsConsumedRate);
+        () -> totalStats.totalFollowerRecordsConsumedRate,
+        time);
 
     this.totalLeaderBytesProducedRate =
-        registerOnlyTotalRate("leader_bytes_produced", totalStats, () -> totalStats.totalLeaderBytesProducedRate);
+        registerOnlyTotalRate("leader_bytes_produced", totalStats, () -> totalStats.totalLeaderBytesProducedRate, time);
 
-    this.totalLeaderRecordsProducedRate =
-        registerOnlyTotalRate("leader_records_produced", totalStats, () -> totalStats.totalLeaderRecordsProducedRate);
+    this.totalLeaderRecordsProducedRate = registerOnlyTotalRate(
+        "leader_records_produced",
+        totalStats,
+        () -> totalStats.totalLeaderRecordsProducedRate,
+        time);
 
     this.totalUpdateIgnoredDCRRate =
-        registerOnlyTotalRate("update_ignored_dcr", totalStats, () -> totalStats.totalUpdateIgnoredDCRRate);
+        registerOnlyTotalRate("update_ignored_dcr", totalStats, () -> totalStats.totalUpdateIgnoredDCRRate, time);
 
-    this.totalTombstoneCreationDCRRate =
-        registerOnlyTotalRate("tombstone_creation_dcr", totalStats, () -> totalStats.totalTombstoneCreationDCRRate);
+    this.totalTombstoneCreationDCRRate = registerOnlyTotalRate(
+        "tombstone_creation_dcr",
+        totalStats,
+        () -> totalStats.totalTombstoneCreationDCRRate,
+        time);
 
     this.totalTimestampRegressionDCRErrorRate = registerOnlyTotalRate(
         "timestamp_regression_dcr_error",
         totalStats,
-        () -> totalStats.totalTimestampRegressionDCRErrorRate);
+        () -> totalStats.totalTimestampRegressionDCRErrorRate,
+        time);
 
     this.totalOffsetRegressionDCRErrorRate = registerOnlyTotalRate(
         "offset_regression_dcr_error",
         totalStats,
-        () -> totalStats.totalOffsetRegressionDCRErrorRate);
+        () -> totalStats.totalOffsetRegressionDCRErrorRate,
+        time);
 
     Int2ObjectMap<String> kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
     int listSize = kafkaClusterIdToAliasMap.isEmpty() ? 0 : Collections.max(kafkaClusterIdToAliasMap.keySet()) + 1;

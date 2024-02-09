@@ -6,6 +6,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.utils.SystemTime;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.logging.log4j.LogManager;
@@ -46,7 +47,7 @@ public class KafkaConsumerServiceStatsTest {
 
     // Create objects under test
     KafkaConsumerServiceStats stats =
-        new KafkaConsumerServiceStats(metricsRepository, nameWithKafkaClusterAlias, () -> 1);
+        new KafkaConsumerServiceStats(metricsRepository, nameWithKafkaClusterAlias, () -> 1, null, SystemTime.INSTANCE);
     LOGGER.info(metricsRepository.metrics().keySet().toString().replace(", ", ",\n"));
     getLatestOffsetIsPresent = metricsRepository.getMetric(getLatestOffsetIsPresentName);
     getLatestOffsetIsAbsent = metricsRepository.getMetric(getLatestOffsetIsAbsentName);
@@ -89,4 +90,5 @@ public class KafkaConsumerServiceStatsTest {
     assertTrue(getOffsetLag.value() > getLatestOffsetIsPresent.value());
     assertTrue(getOffsetLag.value() > getLatestOffsetIsAbsent.value());
   }
+
 }

@@ -108,7 +108,6 @@ public class StoreIngestionTaskFactory {
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
     private AggKafkaConsumerService aggKafkaConsumerService;
-    private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
     private boolean isDaVinciClient;
     private RemoteIngestionRepairService remoteIngestionRepairService;
@@ -276,14 +275,6 @@ public class StoreIngestionTaskFactory {
 
     public Builder setAggKafkaConsumerService(AggKafkaConsumerService aggKafkaConsumerService) {
       return set(() -> this.aggKafkaConsumerService = aggKafkaConsumerService);
-    }
-
-    public long getStartReportingReadyToServeTimestamp() {
-      return startReportingReadyToServeTimestamp;
-    }
-
-    public Builder setStartReportingReadyToServeTimestamp(long timestamp) {
-      return set(() -> this.startReportingReadyToServeTimestamp = timestamp);
     }
 
     public InternalAvroSpecificSerializer<PartitionState> getPartitionStateSerializer() {

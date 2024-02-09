@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
@@ -44,7 +44,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
 
   protected final PubSubConsumerAdapter delegate;
 
-  private final KafkaConsumerServiceStats stats;
+  private final AggKafkaConsumerServiceStats stats;
 
   private final Runnable assignmentChangeListener;
 
@@ -84,7 +84,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
 
   public SharedKafkaConsumer(
       PubSubConsumerAdapter delegate,
-      KafkaConsumerServiceStats stats,
+      AggKafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener) {
     this(delegate, stats, assignmentChangeListener, unsubscriptionListener, new SystemTime());
@@ -92,7 +92,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
 
   SharedKafkaConsumer(
       PubSubConsumerAdapter delegate,
-      KafkaConsumerServiceStats stats,
+      AggKafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener,
       Time time) {
@@ -117,7 +117,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     currentAssignmentSize.set(newAssignment.size());
     currentAssignment = Collections.unmodifiableSet(newAssignment);
     assignmentChangeListener.run();
-    stats.recordUpdateCurrentAssignmentLatency(LatencyUtils.getElapsedTimeInMs(updateCurrentAssignmentStartTime));
+    stats.recordTotalUpdateCurrentAssignmentLatency(LatencyUtils.getElapsedTimeInMs(updateCurrentAssignmentStartTime));
   }
 
   @Override
@@ -140,7 +140,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
               + " versionTopic: " + versionTopic + ", previousVersionTopic: " + previousVersionTopic
               + ", topicPartitionToSubscribe: " + topicPartitionToSubscribe);
     }
-    stats.recordDelegateSubscribeLatency(LatencyUtils.getElapsedTimeInMs(delegateSubscribeStartTime));
+    stats.recordTotalDelegateSubscribeLatency(LatencyUtils.getElapsedTimeInMs(delegateSubscribeStartTime));
     updateCurrentAssignment(delegate.getAssignment());
   }
 
