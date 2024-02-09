@@ -1,14 +1,18 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
-import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_SECONDS;
-import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_POLICY;
-import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_START_TIMESTAMP;
-import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
-import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_DIR;
-import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_ID_PROP;
-import static com.linkedin.venice.hadoop.VeniceReducer.MAP_REDUCE_JOB_ID_PROP;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_POLICY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_SCHEMA_DIR;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
+import static com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer.MAP_REDUCE_JOB_ID_PROP;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -19,13 +23,15 @@ import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.FilterChain;
-import com.linkedin.venice.hadoop.VeniceReducer;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
+import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -33,8 +39,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
-import org.apache.hadoop.io.BytesWritable;
-import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reporter;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -67,8 +71,6 @@ public class TestVeniceKafkaInputReducer {
     RecordSerializer<KafkaInputMapperKey> keySerializer =
         FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperKey.SCHEMA$);
     byte[] serializedMapperKey = keySerializer.serialize(mapperKey);
-    BytesWritable keyWritable = new BytesWritable();
-    keyWritable.set(serializedMapperKey, 0, serializedMapperKey.length);
     VeniceKafkaInputReducer reducer = new VeniceKafkaInputReducer();
     reducer.setChunkingEnabled(isChunkingEnabled);
     reducer.setSourceVersionCompressor(new NoopCompressor());
@@ -76,12 +78,14 @@ public class TestVeniceKafkaInputReducer {
     /**
      * Construct a list of values, which contain only 'PUT'.
      */
-    List<BytesWritable> values = getValues(
+    List<byte[]> values = getValues(
         Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT),
         valueContainsRmdPayload);
 
-    VeniceReducer.VeniceWriterMessage message =
-        reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
+    AbstractPartitionWriter.VeniceWriterMessage message = reducer.extract(
+        serializedMapperKey,
+        values.iterator(),
+        new ReporterBackedMapReduceDataWriterTaskTracker(Mockito.mock(Reporter.class)));
     Assert.assertNotNull(message);
     Assert.assertEquals(message.getKeyBytes(), keyBytes);
     Assert.assertEquals(message.getValueBytes(), (VALUE_PREFIX + 2).getBytes());
@@ -95,7 +99,10 @@ public class TestVeniceKafkaInputReducer {
         Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.DELETE),
         valueContainsRmdPayload);
 
-    message = reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
+    message = reducer.extract(
+        serializedMapperKey,
+        values.iterator(),
+        new ReporterBackedMapReduceDataWriterTaskTracker(Mockito.mock(Reporter.class)));
     // If DELETE contains RMD, it should be kept.
     if (valueContainsRmdPayload) {
       Assert.assertNotNull(message);
@@ -110,7 +117,10 @@ public class TestVeniceKafkaInputReducer {
         Arrays.asList(MapperValueType.PUT, MapperValueType.DELETE, MapperValueType.PUT),
         valueContainsRmdPayload);
 
-    message = reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
+    message = reducer.extract(
+        serializedMapperKey,
+        values.iterator(),
+        new ReporterBackedMapReduceDataWriterTaskTracker(Mockito.mock(Reporter.class)));
     Assert.assertNotNull(message);
     Assert.assertEquals(message.getKeyBytes(), keyBytes);
     Assert.assertEquals(message.getValueBytes(), (VALUE_PREFIX + 2).getBytes());
@@ -132,21 +142,20 @@ public class TestVeniceKafkaInputReducer {
     RecordSerializer<KafkaInputMapperKey> keySerializer =
         FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperKey.SCHEMA$);
     byte[] serializedMapperKey = keySerializer.serialize(mapperKey);
-    BytesWritable keyWritable = new BytesWritable();
-    keyWritable.set(serializedMapperKey, 0, serializedMapperKey.length);
     VeniceKafkaInputReducer reducer = spy(new VeniceKafkaInputReducer());
     doReturn(filterChain).when(reducer).initFilterChain(any());
-    reducer.configureTask(getTestProps(), getTestJobConf());
+    reducer.configureTask(getTestProps());
     reducer.setChunkingEnabled(isChunkingEnabled);
 
     /**
      * Construct a list of values, which contain only 'PUT'.
      */
-    List<BytesWritable> values =
-        getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT), true);
+    List<byte[]> values = getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT), true);
 
-    VeniceReducer.VeniceWriterMessage message =
-        reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
+    AbstractPartitionWriter.VeniceWriterMessage message = reducer.extract(
+        serializedMapperKey,
+        values.iterator(),
+        new ReporterBackedMapReduceDataWriterTaskTracker(Mockito.mock(Reporter.class)));
 
     if (isChunkingEnabled) {
       // all records are filtered
@@ -157,8 +166,8 @@ public class TestVeniceKafkaInputReducer {
     }
   }
 
-  public List<BytesWritable> getValues(List<MapperValueType> valueTypes, boolean hasRmdPayload) {
-    List<BytesWritable> values = new ArrayList<>();
+  public List<byte[]> getValues(List<MapperValueType> valueTypes, boolean hasRmdPayload) {
+    List<byte[]> values = new ArrayList<>();
     long offset = 0;
     for (MapperValueType valueType: valueTypes) {
       KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -173,10 +182,8 @@ public class TestVeniceKafkaInputReducer {
       } else {
         value.value = ByteBuffer.wrap((VALUE_PREFIX + value.offset).getBytes());
       }
-      BytesWritable valueWritable = new BytesWritable();
       byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(value);
-      valueWritable.set(serializedValue, 0, serializedValue.length);
-      values.add(valueWritable);
+      values.add(serializedValue);
     }
     Collections.reverse(values);
     return values;
@@ -184,21 +191,20 @@ public class TestVeniceKafkaInputReducer {
 
   private VeniceProperties getTestProps() {
     Properties props = new Properties();
+    props.put(MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
+    props.put(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.name());
+    props.put(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.name());
     props.put(VALUE_SCHEMA_ID_PROP, 1);
-    props.put(REPUSH_TTL_IN_SECONDS, 10L);
+    props.put(REPUSH_TTL_ENABLE, true);
     props.put(REPUSH_TTL_POLICY, 0);
-    props.put(REPUSH_TTL_START_TIMESTAMP, 10000000L);
+    props.put(REPUSH_TTL_START_TIMESTAMP, 10000000L - 10L * Time.MS_PER_SECOND);
     props.put(RMD_SCHEMA_DIR, "tmp");
     props.put(VALUE_SCHEMA_DIR, "tmp2");
+    props.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:8090"); // Destination Kafka cluster
+    props.put(TOPIC_PROP, "test_store_v2"); // Destination topic
+    props.put(KAFKA_INPUT_BROKER_URL, "localhost:9092"); // Source Kafka cluster
+    props.put(KAFKA_INPUT_TOPIC, "test_store_v1"); // Source topic
     return new VeniceProperties(props);
-  }
-
-  private JobConf getTestJobConf() {
-    JobConf conf = new JobConf();
-    conf.set(MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
-    conf.set(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.name());
-    conf.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.name());
-    return conf;
   }
 
   @Test

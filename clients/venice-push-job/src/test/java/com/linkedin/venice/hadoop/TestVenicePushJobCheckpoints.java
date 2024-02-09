@@ -1,11 +1,22 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJob.MULTI_REGION;
-import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -24,13 +35,16 @@ import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -44,6 +58,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.RunningJob;
@@ -56,14 +71,14 @@ public class TestVenicePushJobCheckpoints {
   private static final int NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT = 1; // DUMMY Number of files for
                                                                              // ValidateSchemaAndBuildDictMapper
   private static final String TEST_CLUSTER_NAME = "some-cluster";
-  private static final String SCHEMA_STR = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
-      + "  \"name\": \"User\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"id\", \"type\": \"string\" },  "
-      + "       { \"name\": \"name\", \"type\": \"string\" },  " + "       { \"name\": \"age\", \"type\": \"int\" },  "
-      + "       { \"name\": \"company\", \"type\": \"string\" }  " + "  ] " + " } ";
-  private static final String SIMPLE_FILE_SCHEMA_STR = "{\n" + "    \"type\": \"record\",\n"
-      + "    \"name\": \"Type1\",\n" + "    \"fields\": [\n" + "        {\n" + "            \"name\": \"something\",\n"
-      + "            \"type\": \"string\"\n" + "        }\n" + "    ]\n" + "}";
+  private static final String KEY_SCHEMA_STR = "\"string\"";
+  private static final String VALUE_SCHEMA_STR = "\"string\"";
+
+  private static final String SIMPLE_FILE_SCHEMA_STR = "{\n" + "    \"namespace\": \"example.avro\",\n"
+      + "    \"type\": \"record\",\n" + "    \"name\": \"User\",\n" + "    \"fields\": [\n"
+      + "      { \"name\": \"id\", \"type\": \"string\" },\n" + "      { \"name\": \"name\", \"type\": \"string\" },\n"
+      + "      { \"name\": \"age\", \"type\": \"int\" },\n" + "      { \"name\": \"company\", \"type\": \"string\" }\n"
+      + "    ]\n" + "  }";
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Storage quota exceeded.*")
   public void testHandleQuotaExceeded() throws Exception {
@@ -470,7 +485,7 @@ public class TestVenicePushJobCheckpoints {
         });
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*reducer job closed count \\(0\\).*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*partition writer closed count \\(0\\).*")
   public void testHandleZeroClosedReducersFailure() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
@@ -495,7 +510,7 @@ public class TestVenicePushJobCheckpoints {
         });
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "MR job counter is not reliable.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Task tracker is not reliable.*")
   public void testUnreliableMapReduceCounter() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
@@ -551,19 +566,17 @@ public class TestVenicePushJobCheckpoints {
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The input data file size is expected to be positive. Got: 0")
   public void testInitInputDataInfoWithIllegalSize() {
-    PushJobSchemaInfo pushJobSchemaInfo = new PushJobSchemaInfo();
     // Input file size cannot be zero.
-    new InputDataInfoProvider.InputDataInfo(pushJobSchemaInfo, 0, 1, false, System.currentTimeMillis());
+    new InputDataInfoProvider.InputDataInfo(0, 1, false, System.currentTimeMillis());
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The Number of Input files is expected to be positive. Got: 0")
   public void testInitInputDataInfoWithIllegalNumInputFiles() {
-    PushJobSchemaInfo pushJobSchemaInfo = new PushJobSchemaInfo();
     // Input file size cannot be zero.
-    new InputDataInfoProvider.InputDataInfo(pushJobSchemaInfo, 10L, 0, false, System.currentTimeMillis());
+    new InputDataInfoProvider.InputDataInfo(10L, 0, false, System.currentTimeMillis());
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*reducer job closed count \\(9\\).*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*partition writer closed count \\(9\\).*")
   public void testHandleInsufficientClosedReducersFailure() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
@@ -589,7 +602,7 @@ public class TestVenicePushJobCheckpoints {
 
   @Test
   public void testCounterValidationWhenSprayAllPartitionsNotTriggeredButWithMismatchedReducerCount() throws Exception { // Successful
-                                                                                                                        // workflow
+    // workflow
     testHandleErrorsInCounter(
         Arrays.asList(
             // Spray all partitions isn't triggered
@@ -644,37 +657,25 @@ public class TestVenicePushJobCheckpoints {
     JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
     when(jobClientWrapper.runJobWithConfig(any())).thenThrow(new IOException("Job failed!"));
 
-    InputDataInfoProvider inputDataInfoProvider = getInputDataInfoProviderMock(10L, 1, true);
-    when(inputDataInfoProvider.getInputLastModificationTime(anyString())).thenReturn(System.currentTimeMillis() + 10L);
+    final List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints;
+    if (compressionMetricCollectionEnabled || useMapperToBuildDict) {
+      /** Uses {@link ValidateSchemaAndBuildDictMapper} to validate schema and build dictionary which will checkpoint DATASET_CHANGED before NEW_VERSION_CREATED */
+      expectedReportedCheckpoints = Arrays.asList(
+          VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+          VenicePushJob.PushJobCheckpoints.DATASET_CHANGED);
+    } else {
+      /** {@link InputDataInfoProvider#validateInputAndGetInfo} in VPJ driver validates schema and build dictionary which will checkpoint NEW_VERSION_CREATED before DATASET_CHANGED.
+       * DATASET_CHANGED will only be checked in the MR job to process data after creating the new version */
+      expectedReportedCheckpoints = Arrays.asList(
+          VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+          VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+          VenicePushJob.PushJobCheckpoints.DATASET_CHANGED);
+    }
 
-    // Pair<useMapperToBuildDict, compressionMetricCollectionEnabled>
-    Map<Pair<Boolean, Boolean>, List<VenicePushJob.PushJobCheckpoints>> expectedReportedCheckpoints = new HashMap<>();
-    /** Uses {@link ValidateSchemaAndBuildDictMapper} to validate schema and build dictionary which will checkpoint DATASET_CHANGED before NEW_VERSION_CREATED */
-    expectedReportedCheckpoints.put(
-        new Pair(true, true),
-        Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.DATASET_CHANGED));
-
-    /** Below case will be changed to (true,true) internally */
-    expectedReportedCheckpoints.put(new Pair(false, true), expectedReportedCheckpoints.get(new Pair(true, true)));
-
-    /** Uses {@link ValidateSchemaAndBuildDictMapper} to validate schema and build dictionary which will checkpoint DATASET_CHANGED before NEW_VERSION_CREATED */
-    expectedReportedCheckpoints.put(new Pair(true, false), expectedReportedCheckpoints.get(new Pair(true, true)));
-
-    /** {@link InputDataInfoProvider#validateInputAndGetInfo} in VPJ driver validates schema and build dictionary which will checkpoint NEW_VERSION_CREATED before DATASET_CHANGED.
-     * DATASET_CHANGED will only be checked in the MR job to process data after creating the new version */
-    expectedReportedCheckpoints.put(
-        new Pair(false, false),
-        Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATASET_CHANGED));
-
-    runJobAndAssertCheckpoints(jobClientWrapper, inputDataInfoProvider, properties -> {
+    runJobAndAssertCheckpoints(jobClientWrapper, 10, 1, true, true, properties -> {
       properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
       properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
-    }, expectedReportedCheckpoints.get(new Pair(useMapperToBuildDict, compressionMetricCollectionEnabled)));
+    }, expectedReportedCheckpoints);
   }
 
   private void testHandleErrorsInCounter(
@@ -707,17 +708,22 @@ public class TestVenicePushJobCheckpoints {
       Consumer<Properties> extraProps) throws Exception {
     runJobAndAssertCheckpoints(
         createJobClientWrapperMock(mockCounterInfos),
-        getInputDataInfoProviderMock(inputFileDataSizeInBytes, numInputFiles, inputFileHasRecords),
+        inputFileDataSizeInBytes,
+        numInputFiles,
+        inputFileHasRecords,
+        false,
         extraProps,
         expectedReportedCheckpoints);
   }
 
   private void runJobAndAssertCheckpoints(
       JobClientWrapper jobClientWrapper,
-      InputDataInfoProvider inputDataInfoProvider,
+      long inputFileDataSizeInBytes,
+      int numInputFiles,
+      boolean inputFileHasRecords,
+      boolean datasetChanged,
       Consumer<Properties> extraProps,
-      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints) {
-
+      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints) throws Exception {
     Properties props = getVPJProps();
     if (extraProps != null) {
       extraProps.accept(props);
@@ -729,16 +735,19 @@ public class TestVenicePushJobCheckpoints {
       venicePushJob.setControllerClient(controllerClient);
       venicePushJob.setKmeSchemaSystemStoreControllerClient(controllerClient);
       venicePushJob.setJobClientWrapper(jobClientWrapper);
+      InputDataInfoProvider inputDataInfoProvider = getInputDataInfoProviderMock(
+          props,
+          venicePushJob.getPushJobSetting(),
+          inputFileDataSizeInBytes,
+          numInputFiles,
+          inputFileHasRecords,
+          datasetChanged);
       venicePushJob.setInputDataInfoProvider(inputDataInfoProvider);
       venicePushJob.setVeniceWriter(createVeniceWriterMock());
       SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
       venicePushJob.setSentPushJobDetailsTracker(pushJobDetailsTracker);
-      try {
-        venicePushJob
-            .setValidateSchemaAndBuildDictMapperOutputReader(getValidateSchemaAndBuildDictMapperOutputReaderMock());
-      } catch (Exception e) {
-        e.printStackTrace();
-      }
+      venicePushJob
+          .setValidateSchemaAndBuildDictMapperOutputReader(getValidateSchemaAndBuildDictMapperOutputReaderMock());
 
       try {
         venicePushJob.run();
@@ -766,19 +775,19 @@ public class TestVenicePushJobCheckpoints {
     props.setProperty(SOURCE_GRID_FABRIC, childRegion);
     props.setProperty(D2_ZK_HOSTS_PREFIX + childRegion, "child.zk.com:1234");
 
-    props.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, "venice-urls");
-    props.put(VenicePushJob.VENICE_STORE_NAME_PROP, "store-name");
-    props.put(VenicePushJob.INPUT_PATH_PROP, "input-path");
-    props.put(VenicePushJob.KEY_FIELD_PROP, "id");
-    props.put(VenicePushJob.VALUE_FIELD_PROP, "name");
+    props.put(VENICE_DISCOVER_URL_PROP, "venice-urls");
+    props.put(VENICE_STORE_NAME_PROP, "store-name");
+    props.put(INPUT_PATH_PROP, "input-path");
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
-    props.put(VenicePushJob.POLL_JOB_STATUS_INTERVAL_MS, 1000);
-    props.setProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
-    props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME, "test");
-    props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "test");
-    props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME, "test");
-    props.setProperty(VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
+    props.put(POLL_JOB_STATUS_INTERVAL_MS, 1000);
+    props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test");
+    props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test");
+    props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "test");
+    props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test");
+    props.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     return props;
   }
 
@@ -792,23 +801,40 @@ public class TestVenicePushJobCheckpoints {
   }
 
   private InputDataInfoProvider getInputDataInfoProviderMock(
+      Properties properties,
+      PushJobSetting pushJobSetting,
       long inputFileDataSizeInBytes,
       int numInputFiles,
-      boolean inputFileHasRecords) throws Exception {
+      boolean inputFileHasRecords,
+      boolean datasetChanged) throws Exception {
     InputDataInfoProvider inputDataInfoProvider = mock(InputDataInfoProvider.class);
-    PushJobSchemaInfo pushJobSchemaInfo = new PushJobSchemaInfo();
-    pushJobSchemaInfo.setKeySchemaString(SCHEMA_STR);
-    pushJobSchemaInfo.setValueSchemaString(SCHEMA_STR);
-    pushJobSchemaInfo.setKeyField("key-field");
-    pushJobSchemaInfo.setValueField("value-field");
-    pushJobSchemaInfo.setFileSchemaString(SIMPLE_FILE_SCHEMA_STR);
     InputDataInfoProvider.InputDataInfo inputDataInfo = new InputDataInfoProvider.InputDataInfo(
-        pushJobSchemaInfo,
         inputFileDataSizeInBytes,
         numInputFiles,
         inputFileHasRecords,
         System.currentTimeMillis());
-    when(inputDataInfoProvider.validateInputAndGetInfo(anyString())).thenReturn(inputDataInfo);
+    when(inputDataInfoProvider.validateInputAndGetInfo(anyString())).thenAnswer(invocation -> {
+      Schema schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(SIMPLE_FILE_SCHEMA_STR);
+      pushJobSetting.keyField = properties.getProperty(KEY_FIELD_PROP);
+      pushJobSetting.valueField = properties.getProperty(VALUE_FIELD_PROP);
+
+      pushJobSetting.inputDataSchema = schema;
+      pushJobSetting.valueSchema = schema.getField(pushJobSetting.valueField).schema();
+
+      pushJobSetting.inputDataSchemaString = SIMPLE_FILE_SCHEMA_STR;
+      pushJobSetting.keySchema = pushJobSetting.inputDataSchema.getField(pushJobSetting.keyField).schema();
+
+      pushJobSetting.keySchemaString = pushJobSetting.keySchema.toString();
+      pushJobSetting.valueSchemaString = pushJobSetting.valueSchema.toString();
+
+      return inputDataInfo;
+    });
+
+    if (datasetChanged) {
+      when(inputDataInfoProvider.getInputLastModificationTime(anyString()))
+          .thenReturn(System.currentTimeMillis() + 10 * Time.MS_PER_MINUTE);
+    }
+
     return inputDataInfoProvider;
   }
 
@@ -842,11 +868,13 @@ public class TestVenicePushJobCheckpoints {
 
     SchemaResponse keySchemaResponse = mock(SchemaResponse.class);
     when(keySchemaResponse.isError()).thenReturn(false);
-    when(keySchemaResponse.getSchemaStr()).thenReturn(SCHEMA_STR);
+    when(keySchemaResponse.getSchemaStr()).thenReturn(KEY_SCHEMA_STR);
 
     SchemaResponse valueSchemaResponse = mock(SchemaResponse.class);
     when(valueSchemaResponse.isError()).thenReturn(false);
-    when(valueSchemaResponse.getId()).thenReturn(12345);
+    when(valueSchemaResponse.getId()).thenReturn(1);
+    when(valueSchemaResponse.getSchemaStr()).thenReturn(VALUE_SCHEMA_STR);
+
     VersionCreationResponse versionCreationResponse = createVersionCreationResponse();
 
     when(controllerClient.getStore(anyString())).thenReturn(storeResponse);
@@ -894,7 +922,7 @@ public class TestVenicePushJobCheckpoints {
     when(versionCreationResponse.isEnableSSL()).thenReturn(false);
     when(versionCreationResponse.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     when(versionCreationResponse.isDaVinciPushStatusStoreEnabled()).thenReturn(false);
-    when(versionCreationResponse.getPartitionerClass()).thenReturn("PartitionerClass");
+    when(versionCreationResponse.getPartitionerClass()).thenReturn(DefaultVenicePartitioner.class.getCanonicalName());
     when(versionCreationResponse.getPartitionerParams()).thenReturn(Collections.emptyMap());
     return versionCreationResponse;
   }

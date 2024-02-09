@@ -10,6 +10,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTI
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -50,7 +51,6 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
@@ -1046,7 +1046,7 @@ public class DaVinciClientTest {
     long vpjStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
     TestWriteUtils.runPushJob(jobName, vpjProperties);
-    String storeName = (String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
+    String storeName = (String) vpjProperties.get(VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }

@@ -1,5 +1,9 @@
 package com.linkedin.venice.hadoop.input.kafka.ttl;
 
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_POLICY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
@@ -7,7 +11,6 @@ import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.schema.merge.UpdateResultStatus;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
@@ -20,7 +23,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -48,13 +50,11 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
 
   public VeniceRmdTTLFilter(final VeniceProperties props) throws IOException {
     super();
-    ttlPolicy = TTLResolutionPolicy.valueOf(props.getInt(VenicePushJob.REPUSH_TTL_POLICY));
-    long ttlInMs = TimeUnit.SECONDS.toMillis(props.getLong(VenicePushJob.REPUSH_TTL_IN_SECONDS));
-    long ttlStartTimestamp = props.getLong(VenicePushJob.REPUSH_TTL_START_TIMESTAMP);
-    this.filterTimestamp = ttlStartTimestamp - ttlInMs - 1;
-    this.schemaSource = new HDFSSchemaSource(
-        props.getString(VenicePushJob.VALUE_SCHEMA_DIR),
-        props.getString(VenicePushJob.RMD_SCHEMA_DIR));
+    ttlPolicy = TTLResolutionPolicy.valueOf(props.getInt(REPUSH_TTL_POLICY));
+    long ttlStartTimestamp = props.getLong(REPUSH_TTL_START_TIMESTAMP);
+    // Filter anything that is before the start timestamp.
+    this.filterTimestamp = ttlStartTimestamp - 1;
+    this.schemaSource = new HDFSSchemaSource(props.getString(VALUE_SCHEMA_DIR), props.getString(RMD_SCHEMA_DIR));
     this.rmdSchemaMap = schemaSource.fetchRmdSchemas();
     this.valueSchemaMap = schemaSource.fetchValueSchemas();
     this.rmdDeserializerCache = new VeniceConcurrentHashMap<>();

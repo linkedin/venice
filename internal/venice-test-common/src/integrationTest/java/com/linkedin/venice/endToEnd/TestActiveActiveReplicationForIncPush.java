@@ -10,9 +10,11 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_FOR_
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -148,8 +150,8 @@ public class TestActiveActiveReplicationForIncPush {
       propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
       Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDirBatch);
-      String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
-      String valueSchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema().toString();
+      String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+      String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
       propsInc1.setProperty(INCREMENTAL_PUSH, "true");
       propsInc1.put(SOURCE_GRID_FABRIC, dcNames[2]);

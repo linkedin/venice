@@ -1,11 +1,13 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
+import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -104,7 +106,8 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
       InputSplit split,
       JobConf job,
       Reporter reporter) {
-    return new KafkaInputRecordReader(split, job, reporter);
+    DataWriterTaskTracker taskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(reporter);
+    return new KafkaInputRecordReader(split, job, taskTracker);
   }
 
   public RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> getRecordReader(
@@ -112,6 +115,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
       JobConf job,
       Reporter reporter,
       PubSubConsumerAdapter consumer) {
-    return new KafkaInputRecordReader(split, job, reporter, consumer);
+    DataWriterTaskTracker taskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(reporter);
+    return new KafkaInputRecordReader(split, job, taskTracker, consumer);
   }
 }

@@ -12,7 +12,6 @@ import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
-import org.apache.hadoop.io.BytesWritable;
 
 
 /**
@@ -44,7 +43,7 @@ public class ChunkAssembler {
    *    (a). If there is no manifest captured yet, ignore.
    *    (b). If there is a manifest captured previously, check whether the current chunk belongs to it or not.
    */
-  public ValueBytesAndSchemaId assembleAndGetValue(final byte[] keyBytes, final Iterator<BytesWritable> valueIterator) {
+  public ValueBytesAndSchemaId assembleAndGetValue(final byte[] keyBytes, final Iterator<byte[]> valueIterator) {
     if (!valueIterator.hasNext()) {
       throw new IllegalArgumentException("Expect values to be not empty.");
     }
@@ -69,11 +68,10 @@ public class ChunkAssembler {
     int totalRmdByteCount = 0;
 
     while (valueIterator.hasNext()) { // Start from the value with the highest offset
-      BytesWritable currentValue = valueIterator.next();
+      byte[] currentValue = valueIterator.next();
       reusedMapperValue = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(
           reusedMapperValue,
-          OPTIMIZED_BINARY_DECODER_FACTORY
-              .createOptimizedBinaryDecoder(currentValue.getBytes(), 0, currentValue.getLength()));
+          OPTIMIZED_BINARY_DECODER_FACTORY.createOptimizedBinaryDecoder(currentValue, 0, currentValue.length));
       if (reusedMapperValue.offset > lastOffset) {
         throw new VeniceException(
             "Unexpected, the input is supposed to be in descending order by offset, previous offset: " + lastOffset

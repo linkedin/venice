@@ -1,6 +1,8 @@
 package com.linkedin.venice.multicluster;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -150,8 +152,8 @@ public class TestMetadataOperationInMultiCluster {
         Properties vpjProperties =
             IntegrationTestPushUtils.defaultVPJProps(multiClusterWrapper, inputDirPath, storeName);
         propertiesMap.put(clusterName, vpjProperties);
-        Schema keySchema = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema();
-        Schema valueSchema = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema();
+        Schema keySchema = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema();
+        Schema valueSchema = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema();
 
         try (ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(
             clusterName,
@@ -187,7 +189,7 @@ public class TestMetadataOperationInMultiCluster {
       TestUtils.waitForNonDeterministicCompletion(
           5,
           TimeUnit.SECONDS,
-          () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
+          () -> controllerClient.getStore((String) vpjProperties.get(VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
       LOGGER.info("**TIME** VPJ {} takes {} ms.", expectedVersionNumber, (System.currentTimeMillis() - vpjStart));

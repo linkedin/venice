@@ -7,7 +7,8 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -204,13 +205,13 @@ public class PushStatusStoreTest {
         cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
         LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
         validateThinClientGet(storeClient, 1, "name 1");
-        Optional<String> incPushVersion = job.getIncrementalPushVersion();
+        String incPushVersion = job.getIncrementalPushVersion();
         for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
           Map<CharSequence, Integer> statuses = reader.getPartitionStatus(
               storeName,
               1,
               partitionId,
-              incPushVersion,
+              Optional.ofNullable(incPushVersion),
               Optional.of(SERVER_INCREMENTAL_PUSH_PREFIX));
           assertNotNull(statuses);
           assertEquals(statuses.size(), REPLICATION_FACTOR);
@@ -240,10 +241,10 @@ public class PushStatusStoreTest {
         cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
         LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
         validateThinClientGet(storeClient, 1, "name 1");
-        Optional<String> incPushVersion = job.getIncrementalPushVersion();
+        String incPushVersion = job.getIncrementalPushVersion();
         // verify partition replicas have reported their status to the push status store
         Map<Integer, Map<CharSequence, Integer>> pushStatusMap =
-            reader.getPartitionStatuses(storeName, 1, incPushVersion.get(), 2);
+            reader.getPartitionStatuses(storeName, 1, incPushVersion, 2);
         assertNotNull(pushStatusMap, "Server incremental push status cannot be null");
         assertEquals(pushStatusMap.size(), PARTITION_COUNT, "Incremental push status of some partitions is missing");
         for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
@@ -260,7 +261,8 @@ public class PushStatusStoreTest {
         assertEquals(response.getStatus(), ExecutionStatus.NOT_CREATED.name());
 
         // verify that controller responds with EOIP when all partitions have sufficient replicas with EOIP
-        response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
+        response = controllerClient
+            .queryJobStatus(job.getTopicToMonitor(), Optional.ofNullable(job.getIncrementalPushVersion()));
         assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
 
         int valueSchemaId = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
@@ -276,20 +278,20 @@ public class PushStatusStoreTest {
 
         // After deleting the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status
-        statusStoreWriter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1).get();
+        statusStoreWriter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion, 1).get();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           // N.B.: Even though we block on the deleter's future, that only means the delete message is persisted into
           // Kafka, but querying the system store may still yield a stale result, hence the need for retrying.
-          JobStatusQueryResponse jobStatusQueryResponse =
-              controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
+          JobStatusQueryResponse jobStatusQueryResponse = controllerClient
+              .queryJobStatus(job.getTopicToMonitor(), Optional.ofNullable(job.getIncrementalPushVersion()));
           assertEquals(jobStatusQueryResponse.getStatus(), ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.name());
         });
 
         // expect NOT_CREATED when statuses of all partitions are not available in the push status store
-        statusStoreWriter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 0).get();
+        statusStoreWriter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion, 0).get();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-          JobStatusQueryResponse jobStatusQueryResponse =
-              controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
+          JobStatusQueryResponse jobStatusQueryResponse = controllerClient
+              .queryJobStatus(job.getTopicToMonitor(), Optional.ofNullable(job.getIncrementalPushVersion()));
           assertEquals(jobStatusQueryResponse.getStatus(), ExecutionStatus.NOT_CREATED.name());
         });
       }
@@ -382,7 +384,7 @@ public class PushStatusStoreTest {
     String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
       job.run();
-      String storeName = (String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
+      String storeName = (String) vpjProperties.get(VENICE_STORE_NAME_PROP);
       cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
       LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
     }

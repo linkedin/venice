@@ -6,11 +6,14 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DEL
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.ParticipantStoreConsumptionTask;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -63,7 +66,7 @@ public class TestTopicWiseSharedConsumerPoolResilience {
 
   /**
    * This test is used to validate whether {@link StoreIngestionTask} will automatically deallocate the shared consumer
-   * when it is closed while {@link com.linkedin.davinci.kafka.consumer.ParticipantStoreConsumptionTask} is stuck/not working.
+   * when it is closed while {@link ParticipantStoreConsumptionTask} is stuck/not working.
    * @throws IOException
    */
   @Test
@@ -89,7 +92,7 @@ public class TestTopicWiseSharedConsumerPoolResilience {
           TestUtils.waitForNonDeterministicCompletion(
               5,
               TimeUnit.SECONDS,
-              () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
+              () -> controllerClient.getStore((String) vpjProperties.get(VENICE_STORE_NAME_PROP))
                   .getStore()
                   .getCurrentVersion() == expectedVersionNumber);
           LOGGER.info("**TIME** VPJ{} took {} ms", expectedVersionNumber, (System.currentTimeMillis() - vpjStart));

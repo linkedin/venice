@@ -3,10 +3,10 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints;
+import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.START_MAP_REDUCE_JOB;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ARCHIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DATA_RECOVERY_COMPLETED;
@@ -164,7 +164,7 @@ public class PushJobDetailsTest {
       List<Integer> expectedStatuses = Arrays.asList(
           PushJobDetailsStatus.STARTED.getValue(),
           PushJobDetailsStatus.TOPIC_CREATED.getValue(),
-          PushJobDetailsStatus.WRITE_COMPLETED.getValue(),
+          PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
           PushJobDetailsStatus.COMPLETED.getValue());
 
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
@@ -256,7 +256,7 @@ public class PushJobDetailsTest {
       PushJobDetails value = client.get(key).get();
       assertEquals(
           value.pushJobLatestCheckpoint.intValue(),
-          PushJobCheckpoints.START_MAP_REDUCE_JOB.getValue(),
+          START_MAP_REDUCE_JOB.getValue(),
           "Unexpected latest push job checkpoint reported");
       assertFalse(value.failureDetails.toString().isEmpty());
     }

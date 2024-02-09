@@ -1,5 +1,8 @@
 package com.linkedin.venice.restart;
 
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.utils.TestUtils.generateInput;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -9,7 +12,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -95,9 +97,9 @@ public abstract class TestRestartServerDuringIngestion {
     String storeName = Utils.getUniqueString("test_store");
     String veniceUrl = cluster.getLeaderVeniceController().getControllerUrl();
     Properties properties = new Properties();
-    properties.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, veniceUrl);
-    properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
-    properties.put(VenicePushJob.MULTI_REGION, false);
+    properties.put(VENICE_DISCOVER_URL_PROP, veniceUrl);
+    properties.put(VENICE_STORE_NAME_PROP, storeName);
+    properties.put(MULTI_REGION, false);
     IntegrationTestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
     IntegrationTestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
 
@@ -242,9 +244,9 @@ public abstract class TestRestartServerDuringIngestion {
     String storeName = Utils.getUniqueString("test_store");
     String veniceUrl = cluster.getLeaderVeniceController().getControllerUrl();
     Properties properties = new Properties();
-    properties.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, veniceUrl);
-    properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
-    properties.put(VenicePushJob.MULTI_REGION, false);
+    properties.put(VENICE_DISCOVER_URL_PROP, veniceUrl);
+    properties.put(VENICE_STORE_NAME_PROP, storeName);
+    properties.put(MULTI_REGION, false);
     IntegrationTestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
 
     IntegrationTestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);

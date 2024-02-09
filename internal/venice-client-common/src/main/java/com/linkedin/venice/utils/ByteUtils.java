@@ -181,6 +181,10 @@ public class ByteUtils {
   }
 
   public static byte[] extractByteArray(ByteBuffer byteBuffer) {
+    if (byteBuffer == null) {
+      return null;
+    }
+
     if (ByteUtils.canUseBackedArray(byteBuffer)) {
       // We could safely use the backed array.
       return byteBuffer.array();

@@ -1,11 +1,13 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.ETL_VALUE_SCHEMA_TRANSFORMATION;
-import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_LAST_MODIFIED_TIME;
-import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_REQUIRED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_LAST_MODIFIED_TIME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_REQUIRED;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -16,6 +18,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
+import com.linkedin.venice.hadoop.mapreduce.AbstractTestVeniceMR;
+import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
+import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProvider;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -48,24 +53,24 @@ public class TestValidateSchemaAndBuildDictMapper extends AbstractTestVeniceMR {
 
   protected ValidateSchemaAndBuildDictMapper getMapper(Consumer<JobConf> jobConfigurator) {
     ValidateSchemaAndBuildDictMapper mapper = newMapper();
-    JobConf jobConf = setupJobConf();
+    JobConf jobConf = setupJobConf(100);
     jobConfigurator.accept(jobConf);
     mapper.configure(jobConf);
     return mapper;
   }
 
   @Override
-  protected JobConf setupJobConf() {
-    JobConf jobConf = super.setupJobConf();
-    jobConf.setNumReduceTasks(0);
+  protected JobConf setupJobConf(int partitionCount) {
+    JobConf jobConf = super.setupJobConf(partitionCount);
+    jobConf.setNumReduceTasks(partitionCount);
     TaskAttemptID taskAttemptID = new TaskAttemptID("200707121733", 3, TaskType.MAP, 0, 0);
-    jobConf.set(AbstractVeniceMapper.MAPRED_TASK_ID_PROP_NAME, taskAttemptID.toString());
+    jobConf.set(MapReduceEngineTaskConfigProvider.MAPRED_TASK_ID_PROP_NAME, taskAttemptID.toString());
     return jobConf;
   }
 
   @Override
-  protected Configuration getDefaultJobConfiguration() {
-    Configuration config = super.getDefaultJobConfiguration();
+  protected Configuration getDefaultJobConfiguration(int partitionCount) {
+    Configuration config = super.getDefaultJobConfiguration(partitionCount);
 
     // Add extra configuration for this mapper
     File inputDir = Utils.getTempDataDirectory();
@@ -75,7 +80,7 @@ public class TestValidateSchemaAndBuildDictMapper extends AbstractTestVeniceMR {
       throw new RuntimeException(e);
     }
 
-    config.set(VenicePushJob.INPUT_PATH_PROP, inputDir.getAbsolutePath());
+    config.set(INPUT_PATH_PROP, inputDir.getAbsolutePath());
     config.set(VENICE_STORE_NAME_PROP, "test_store");
     config.setBoolean(INCREMENTAL_PUSH, false);
     config.set(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name());
@@ -95,7 +100,7 @@ public class TestValidateSchemaAndBuildDictMapper extends AbstractTestVeniceMR {
    */
   @Test()
   public void testConfigure() {
-    JobConf job = setupJobConf();
+    JobConf job = setupJobConf(100);
     try (ValidateSchemaAndBuildDictMapper mapper = newMapper()) {
       try {
         mapper.configure(job);
@@ -205,10 +210,10 @@ public class TestValidateSchemaAndBuildDictMapper extends AbstractTestVeniceMR {
     try (ValidateSchemaAndBuildDictMapper mapper = getMapper(mapperJobConfig -> {
       mapperJobConfig.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, true);
       mapperJobConfig.setBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED, true);
-      /** {@link PushJobZstdConfig#MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY} is 20
+      /** {@link VenicePushJobConstants#MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY} is 20
        *  for not skipping dictionary, so setting COMPRESSION_DICTIONARY_SAMPLE_SIZE >= 251 Bytes for
        *  this input file to not skip dictionary creation */
-      mapperJobConfig.setInt(DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SAMPLE_SIZE, 251);
+      mapperJobConfig.setInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, 251);
     })) {
       OutputCollector<AvroWrapper<SpecificRecord>, NullWritable> output = mock(OutputCollector.class);
       // passing in 0 as valid idx: Reading the only file
@@ -255,10 +260,10 @@ public class TestValidateSchemaAndBuildDictMapper extends AbstractTestVeniceMR {
     try (ValidateSchemaAndBuildDictMapper mapper = getMapper(mapperJobConfig -> {
       mapperJobConfig.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, true);
       mapperJobConfig.setBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED, true);
-      /** {@link PushJobZstdConfig#MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY} is 20
+      /** {@link VenicePushJobConstants#MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY} is 20
        *  for not skipping dictionary, so setting COMPRESSION_DICTIONARY_SAMPLE_SIZE <= 250 Bytes for
        *  this input file to skip dictionary creation */
-      mapperJobConfig.setInt(DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SAMPLE_SIZE, 250);
+      mapperJobConfig.setInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, 250);
     })) {
       OutputCollector<AvroWrapper<SpecificRecord>, NullWritable> output = mock(OutputCollector.class);
       // passing in 0 as valid idx: Reading the only file

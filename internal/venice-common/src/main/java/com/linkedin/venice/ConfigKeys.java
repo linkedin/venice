@@ -1347,12 +1347,12 @@ public class ConfigKeys {
   /**
    * The job tracker identifier as part of a map reduce job id.
    */
-  public static final String PUSH_JOB_MAP_REDUCE_JT_ID = "push.job.map.reduce.jt.id";
+  public static final String PUSH_JOB_COMPUTE_JOB_ID = "push.job.compute.job.id";
 
   /**
    * The job identifier as part of a map reduce job id.
    */
-  public static final String PUSH_JOB_MAP_REDUCE_JOB_ID = "push.job.map.reduce.job.id";
+  public static final String PUSH_JOB_COMPUTE_TASK_ID = "push.job.compute.task.id";
 
   /**
    * Flag to indicate whether to perform add version and start of ingestion via the admin protocol.

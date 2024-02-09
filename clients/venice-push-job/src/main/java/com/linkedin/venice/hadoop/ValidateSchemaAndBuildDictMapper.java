@@ -1,23 +1,25 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.PushJobZstdConfig.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.hadoop.VenicePushJob.ETL_VALUE_SCHEMA_TRANSFORMATION;
-import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_LAST_MODIFIED_TIME;
-import static com.linkedin.venice.hadoop.VenicePushJob.KEY_INPUT_FILE_DATA_SIZE;
-import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJob.PATH_FILTER;
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobSetting;
-import static com.linkedin.venice.hadoop.VenicePushJob.StoreSetting;
-import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_REQUIRED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_LAST_MODIFIED_TIME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_INPUT_FILE_DATA_SIZE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_ZSTD_COMPRESSION_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_REQUIRED;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
+import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
+import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
+import com.linkedin.venice.hadoop.task.datawriter.AbstractDataWriterTask;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -32,6 +34,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.JobConfigurable;
 import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
@@ -46,14 +49,17 @@ import org.apache.logging.log4j.Logger;
  * Note: processing all the files in this split are done sequentially and if it
  * results in significant increase in the mapper time or resulting in timeouts,
  * this needs to be revisited to be done via a thread pool.
+ *
+ * TODO: Ideally, this class should not extend {@link AbstractDataWriterTask}. Soon, this MR job is going to be removed
+ * and the handling will be moved to the VPJ driver.
  */
-public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
-    implements Mapper<IntWritable, NullWritable, AvroWrapper<SpecificRecord>, NullWritable> {
+public class ValidateSchemaAndBuildDictMapper extends AbstractDataWriterTask
+    implements Mapper<IntWritable, NullWritable, AvroWrapper<SpecificRecord>, NullWritable>, JobConfigurable {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictMapper.class);
+  private JobConf jobConf;
   protected DefaultInputDataInfoProvider inputDataInfoProvider = null;
   protected InputDataInfoProvider.InputDataInfo inputDataInfo;
   protected PushJobSetting pushJobSetting = new PushJobSetting();
-  protected StoreSetting storeSetting = new StoreSetting();
   protected boolean isZstdDictCreationRequired;
   protected boolean hasReportedFailure = false;
   private FileStatus[] fileStatuses = null;
@@ -133,32 +139,37 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       return false;
     }
 
-    if (inputDataInfo.getSchemaInfo().isAvro()) {
+    if (pushJobSetting.isAvro) {
       LOGGER.info("Detected Avro input format.");
       Pair<Schema, Schema> newSchema =
           inputDataInfoProvider.getAvroFileHeader(fileSystem, fileStatus.getPath(), isZstdDictCreationRequired);
-      if (!newSchema.equals(inputDataInfo.getSchemaInfo().getAvroSchema())) {
+      if (!newSchema.getFirst().equals(pushJobSetting.inputDataSchema)
+          || !newSchema.getSecond().equals(pushJobSetting.valueSchema)) {
         MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
         LOGGER.error(
             "Error while trying to validate schema: Inconsistent file Avro schema found. File: {}. \n"
                 + "Expected file schema: {}.\n Real File schema: {}.",
             fileStatus.getPath().getName(),
-            inputDataInfo.getSchemaInfo().getAvroSchema(),
-            newSchema);
+            pushJobSetting.inputDataSchema,
+            newSchema.getFirst());
         return false;
       }
     } else {
       LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
       Pair<VsonSchema, VsonSchema> newSchema =
           inputDataInfoProvider.getVsonFileHeader(fileSystem, fileStatus.getPath(), isZstdDictCreationRequired);
-      if (!newSchema.equals(inputDataInfo.getSchemaInfo().getVsonSchema())) {
+      if (!newSchema.getFirst().equals(pushJobSetting.vsonInputKeySchema)
+          || !newSchema.getSecond().equals(pushJobSetting.vsonInputValueSchema)) {
         MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
         LOGGER.error(
-            "Error while trying to validate schema: Inconsistent file vson schema found. File: {}. "
-                + "Expected file schema: {}. Real File schema: {}.",
+            "Error while trying to validate schema: Inconsistent file vson schema found. File: {}. \n"
+                + "Expected key schema: {}. Real key schema: {}.\n"
+                + "Expected value schema: {}. Real value schema: {}.\n",
             fileStatus.getPath().getName(),
-            inputDataInfo.getSchemaInfo().getVsonSchema(),
-            newSchema);
+            pushJobSetting.vsonInputKeySchemaString,
+            newSchema.getFirst().toString(),
+            pushJobSetting.vsonInputValueSchemaString,
+            newSchema.getSecond().toString());
         return false;
       }
     }
@@ -216,10 +227,10 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
             }
           }
         } else {
-          if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+          if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
             LOGGER.info(
                 "compression strategy is {} with no input records: dictionary will be generated from synthetic data or current version data for hybrid stores",
-                storeSetting.compressionStrategy);
+                pushJobSetting.storeCompressionStrategy);
           } else {
             LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
           }
@@ -258,8 +269,8 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     }
   }
 
-  protected void initInputData(JobConf job, VeniceProperties props) throws Exception {
-    inputDataInfoProvider = new DefaultInputDataInfoProvider(storeSetting, pushJobSetting, props);
+  protected void initInputData(VeniceProperties props) throws Exception {
+    inputDataInfoProvider = new DefaultInputDataInfoProvider(pushJobSetting, props);
     try {
       inputDataInfo = inputDataInfoProvider.validateInputAndGetInfo(inputDirectory);
     } catch (Exception e) {
@@ -277,7 +288,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
 
     try {
       Path srcPath = new Path(inputDirectory);
-      fileSystem = srcPath.getFileSystem(job);
+      fileSystem = srcPath.getFileSystem(jobConf);
       fileStatuses = fileSystem.listStatus(srcPath, PATH_FILTER);
     } catch (IOException e) {
       /** Should not happen as this is already done in driver, unless there has
@@ -289,14 +300,14 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
   }
 
   @Override
-  protected void configureTask(VeniceProperties props, JobConf job) {
-    inputDirectory = props.getString(VenicePushJob.INPUT_PATH_PROP);
+  protected void configureTask(VeniceProperties props) {
+    inputDirectory = props.getString(INPUT_PATH_PROP);
 
     pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSetting.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH);
     pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation
         .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name()));
-    storeSetting.compressionStrategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
+    pushJobSetting.storeCompressionStrategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
     // Getting the original modified time from driver
     inputModificationTime = props.getLong(INPUT_PATH_LAST_MODIFIED_TIME);
     pushJobSetting.useMapperToBuildDict = props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY);
@@ -304,11 +315,17 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     isZstdDictCreationRequired = props.getBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED);
 
     try {
-      initInputData(job, props);
+      initInputData(props);
     } catch (Exception e) {
       // Errors are printed and counters are incremented already
       hasReportedFailure = true;
     }
+  }
+
+  @Override
+  public void configure(JobConf job) {
+    this.jobConf = job;
+    super.configure(new MapReduceEngineTaskConfigProvider(job));
   }
 
   @Override

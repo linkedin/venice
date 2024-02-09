@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobSetting;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
 
 import java.io.IOException;
 import org.apache.hadoop.io.IntWritable;
@@ -34,7 +34,7 @@ public class VeniceFileInputFormat implements InputFormat<IntWritable, NullWrita
   @Override
   public InputSplit[] getSplits(JobConf job, int numSplits) throws IOException {
     InputSplit[] splits = new InputSplit[1];
-    String inputDirectory = job.get(VenicePushJob.INPUT_PATH_PROP);
+    String inputDirectory = job.get(INPUT_PATH_PROP);
     splits[0] = new VeniceFileInputSplit(inputDirectory);
     return splits;
   }

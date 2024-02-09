@@ -1,8 +1,11 @@
 package com.linkedin.venice.hadoop.input.kafka.ttl;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
-import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_DIR;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_POLICY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_SCHEMA_DIR;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -12,7 +15,6 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.hadoop.FilterChain;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -51,9 +53,9 @@ public class TestVeniceKafkaInputTTLFilter {
   @BeforeClass
   public void setUp() throws IOException {
     Properties validProps = new Properties();
-    validProps.put(VenicePushJob.REPUSH_TTL_IN_SECONDS, TTL_IN_SECONDS_DEFAULT);
-    validProps.put(VenicePushJob.REPUSH_TTL_POLICY, 0);
-    validProps.put(VenicePushJob.REPUSH_TTL_START_TIMESTAMP, DUMMY_CURRENT_TIMESTAMP);
+    validProps.put(REPUSH_TTL_ENABLE, true);
+    validProps.put(REPUSH_TTL_POLICY, 0);
+    validProps.put(REPUSH_TTL_START_TIMESTAMP, DUMMY_CURRENT_TIMESTAMP - TTL_IN_SECONDS_DEFAULT * Time.MS_PER_SECOND);
     validProps.put(RMD_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     validProps.put(VALUE_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     validProps.put(VENICE_STORE_NAME_PROP, TEST_STORE);
@@ -73,10 +75,8 @@ public class TestVeniceKafkaInputTTLFilter {
     MultiSchemaResponse valueResponse = new MultiSchemaResponse();
     valueResponse.setSchemas(generateValueSchema(1));
     doReturn(valueResponse).when(client).getAllValueSchema(TEST_STORE);
-    HDFSSchemaSource source = new HDFSSchemaSource(
-        props.getString(VenicePushJob.VALUE_SCHEMA_DIR),
-        props.getString(VenicePushJob.RMD_SCHEMA_DIR),
-        TEST_STORE);
+    HDFSSchemaSource source =
+        new HDFSSchemaSource(props.getString(VALUE_SCHEMA_DIR), props.getString(RMD_SCHEMA_DIR), TEST_STORE);
     source.saveSchemasOnDisk(client);
   }
 

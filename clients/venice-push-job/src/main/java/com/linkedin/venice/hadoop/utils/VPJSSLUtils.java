@@ -1,13 +1,13 @@
 package com.linkedin.venice.hadoop.utils;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_SECURITY_PROTOCOL;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_CONFIGURATOR_CLASS_CONFIG;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_SECURITY_PROTOCOL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_PREFIX;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
@@ -53,11 +53,11 @@ public class VPJSSLUtils {
     return newSslProperties;
   }
 
-  public static void validateSslProperties(Properties vanillaProps) {
+  public static void validateSslProperties(VeniceProperties props) {
     String[] requiredSSLPropertiesNames = new String[] { SSL_KEY_PASSWORD_PROPERTY_NAME,
         SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME };
     for (String sslPropertyName: requiredSSLPropertiesNames) {
-      if (!vanillaProps.containsKey(sslPropertyName)) {
+      if (!props.containsKey(sslPropertyName)) {
         throw new VeniceException("Miss the require ssl property name: " + sslPropertyName);
       }
     }

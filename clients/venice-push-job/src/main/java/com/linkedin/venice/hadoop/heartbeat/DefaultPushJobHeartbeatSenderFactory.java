@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.heartbeat;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INITIAL_DELAY_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INTERVAL_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG;
@@ -10,7 +11,6 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -46,7 +46,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       Optional<Properties> sslProperties) {
     Validate.notNull(controllerClient);
     final String heartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
-    int retryAttempts = properties.getInt(VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS, 3);
+    int retryAttempts = properties.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 3);
     StoreResponse heartBeatStoreResponse =
         ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getStore(heartbeatStoreName));
     if (heartBeatStoreResponse.isError()) {
