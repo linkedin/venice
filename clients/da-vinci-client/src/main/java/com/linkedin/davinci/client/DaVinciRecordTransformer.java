@@ -35,6 +35,19 @@ public interface DaVinciRecordTransformer<K, V, O extends TransformedRecord> {
   O put(Lazy<K> key, Lazy<V> value);
 
   /**
+   * By default, calls the put function to be implemented.
+   * @param key to be put
+   * @param value to be put
+   * @param newVersionNumber version number being created
+   * @param oldVersionNumber version number being deleted
+   * @param readyToServe boolean of whether or not PartitionConsumptionState is ready to serve
+   * @return the object to keep in storage, or null if the put should be skipped
+   */
+  default O put(Lazy<K> key, Lazy<V> value, int newVersionNumber, int oldVersionNumber, boolean readyToServe) {
+    return put(key, value);
+  }
+
+  /**
    * By default, deletes will proceed. This can be overridden if some deleted records should be kept.
    *
    * @param key to be deleted
@@ -42,5 +55,18 @@ public interface DaVinciRecordTransformer<K, V, O extends TransformedRecord> {
    */
   default O delete(Lazy<K> key) {
     return null;
+  }
+
+  /**
+   * By default, calls the default implementation of delete.
+   *
+   * @param key to be deleted
+   * @param newVersionNumber version number being created
+   * @param oldVersionNumber version number being deleted
+   * @param readyToServe boolean of whether or not PartitionConsumptionState is ready to serve
+   * @return the object to keep in storage, or null to proceed with the deletion
+   */
+  default O delete(Lazy<K> key, int newVersionNumber, int oldVersionNumber, boolean readyToServe) {
+    return delete(key);
   }
 }
