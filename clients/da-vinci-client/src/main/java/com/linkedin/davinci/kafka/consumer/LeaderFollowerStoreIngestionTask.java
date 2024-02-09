@@ -1319,10 +1319,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           final long previousUpstreamOffset = lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
           checkAndHandleUpstreamOffsetRewind(
               partitionConsumptionState,
-              partitionConsumptionState.getOffsetRecord(),
               consumerRecord,
               newUpstreamOffset,
-              previousUpstreamOffset);
+              previousUpstreamOffset,
+              this);
           /**
            * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
            * to the true leader when the old leader doesn't stop producing.
@@ -1421,16 +1421,31 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
   }
 
-  protected void checkAndHandleUpstreamOffsetRewind(
+  protected static void checkAndHandleUpstreamOffsetRewind(
       PartitionConsumptionState partitionConsumptionState,
-      OffsetRecord offsetRecord,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       final long newUpstreamOffset,
-      final long previousUpstreamOffset) {
+      final long previousUpstreamOffset,
+      LeaderFollowerStoreIngestionTask ingestionTask) {
     if (newUpstreamOffset >= previousUpstreamOffset) {
       return; // Rewind did not happen
     }
-
+    if (!ingestionTask.isHybridMode()) {
+      /**
+       * The lossy rewind issue will only affect hybrid store since only hybrid store version topics
+       * would enable log compaction, which might produce wrong compacted result because of
+       * lossy rewind.
+       *
+       * For ordered input (batch push from Venice Push Job), the storage engine is not usable to
+       * validate the data since the storage node is using {@link org.rocksdb.SstFileWriter} to ingest
+       * the data and the storage engine will only ingest these generated SST files at the end of
+       * the data push.
+       * If there are some true data integrity issue for batch-only stores, DIV will handle this before invoking this function.
+       */
+      ingestionTask.getVersionedDIVStats()
+          .recordBenignLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
+      return;
+    }
     /**
      * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
      * issue (multiple leaders producing to the same partition at the same time)
@@ -1450,7 +1465,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
        */
       String logMsg = String.format(
-          ingestionTaskName + " partition %d received message with upstreamOffset: %d;"
+          ingestionTask.getIngestionTaskName() + " partition %d received message with upstreamOffset: %d;"
               + " but recorded upstreamOffset is: %d. Received message producer GUID: %s; Recorded producer GUID: %s;"
               + " Received message producer host: %s; Recorded producer host: %s."
               + " Multiple leaders are producing. ",
@@ -1470,7 +1485,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       try {
         KafkaKey key = consumerRecord.getKey();
         KafkaMessageEnvelope envelope = consumerRecord.getValue();
-        AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+        AbstractStorageEngine storageEngine = ingestionTask.getStorageEngine();
         switch (MessageType.valueOf(envelope)) {
           case PUT:
             // Issue an read to get the current value of the key
@@ -1480,12 +1495,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               int actualSchemaId = ByteUtils.readInt(actualValue, 0);
               Put put = (Put) envelope.payloadUnion;
               if (actualSchemaId == put.schemaId) {
-                // continue if schema Id is the same
-                if (ByteUtils.equals(
-                    put.putValue.array(),
-                    put.putValue.position(),
-                    actualValue,
-                    ValueRecord.SCHEMA_HEADER_LENGTH)) {
+
+                if (put.putValue.equals(
+                    ByteBuffer.wrap(
+                        actualValue,
+                        ValueRecord.SCHEMA_HEADER_LENGTH,
+                        actualValue.length - ValueRecord.SCHEMA_HEADER_LENGTH))) {
                   lossy = false;
                   logMsg += Utils.NEW_LINE_CHAR;
                   logMsg +=
@@ -1511,27 +1526,34 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             break;
         }
       } catch (Exception e) {
-        LOGGER.warn("{} failed comparing the rewind message with the actual value in Venice", ingestionTaskName, e);
+        LOGGER.warn(
+            "{} failed comparing the rewind message with the actual value in Venice",
+            ingestionTask.getIngestionTaskName(),
+            e);
       }
 
       if (lossy) {
-        if (!partitionConsumptionState.isEndOfPushReceived()) {
+        if (!partitionConsumptionState.isCompletionReported()) {
           logMsg += Utils.NEW_LINE_CHAR;
-          logMsg += "Failing the job because lossy rewind happens before receiving EndOfPush";
+          logMsg += "Failing the job because lossy rewind happens before reporting completed";
           LOGGER.error(logMsg);
-          versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
+          ingestionTask.getVersionedDIVStats()
+              .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
           VeniceException e = new VeniceException(logMsg);
-          statusReportAdapter.reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
+          ingestionTask.getStatusReportAdapter()
+              .reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
           throw e;
         } else {
           logMsg += Utils.NEW_LINE_CHAR;
-          logMsg += "Don't fail the job during streaming ingestion";
+          logMsg += "Don't fail the job after reporting completed";
           LOGGER.error(logMsg);
-          versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
+          ingestionTask.getVersionedDIVStats()
+              .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
         }
       } else {
         LOGGER.info(logMsg);
-        versionedDIVStats.recordBenignLeaderOffsetRewind(storeName, versionNumber);
+        ingestionTask.getVersionedDIVStats()
+            .recordBenignLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
       }
     }
   }
