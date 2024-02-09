@@ -22,7 +22,7 @@ import org.apache.avro.Schema;
 
 
 public class StringRecordTransformer
-    implements DaVinciRecordTransformer<Integer, Object, TransformedRecord<Integer, String>> {
+    implements DaVinciRecordTransformer<Integer, String, TransformedRecord<Integer, String>> {
   public Schema getKeyOutputSchema() {
     return Schema.create(Schema.Type.INT);
   }
