@@ -126,11 +126,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    // String resourceName = message.getResourceName();
-    // String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-    // int version = Version.parseVersionFromKafkaTopicName(resourceName);
-    // Store store = getStoreRepo().getStoreOrThrow(storeName);
-    // heartbeatMonitoringService.addLeaderLagMonitor(store.getVersion(version).get(), getPartition());
+    String resourceName = message.getResourceName();
+    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+    int version = Version.parseVersionFromKafkaTopicName(resourceName);
+    Store store = getStoreRepo().getStoreOrThrow(storeName);
+    heartbeatMonitoringService.addLeaderLagMonitor(store.getVersion(version).get(), getPartition());
     executeStateTransition(
         message,
         context,
@@ -140,11 +140,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    // String resourceName = message.getResourceName();
-    // String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-    // int version = Version.parseVersionFromKafkaTopicName(resourceName);
-    // Store store = getStoreRepo().getStoreOrThrow(storeName);
-    // heartbeatMonitoringService.addFollowerLagMonitor(store.getVersion(version).get(), getPartition());
+    String resourceName = message.getResourceName();
+    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+    int version = Version.parseVersionFromKafkaTopicName(resourceName);
+    Store store = getStoreRepo().getStoreOrThrow(storeName);
+    heartbeatMonitoringService.addFollowerLagMonitor(store.getVersion(version).get(), getPartition());
     executeStateTransition(
         message,
         context,
@@ -153,11 +153,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    // String resourceName = message.getResourceName();
-    // String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-    // int version = Version.parseVersionFromKafkaTopicName(resourceName);
-    // Store store = getStoreRepo().getStoreOrThrow(storeName);
-    // heartbeatMonitoringService.removeLagMonitor(store.getVersion(version).get(), getPartition());
+    String resourceName = message.getResourceName();
+    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+    int version = Version.parseVersionFromKafkaTopicName(resourceName);
+    Store store = getStoreRepo().getStoreOrThrow(storeName);
+    heartbeatMonitoringService.removeLagMonitor(store.getVersion(version).get(), getPartition());
     executeStateTransition(message, context, () -> stopConsumption(true));
   }
 
