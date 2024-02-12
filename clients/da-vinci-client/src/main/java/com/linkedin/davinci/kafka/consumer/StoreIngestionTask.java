@@ -6,6 +6,7 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSE
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -657,7 +658,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // If task is still running, force close it.
         statusReportAdapter.reportError(
             partitionConsumptionStateMap.values(),
-            "Received the signal to kill this consumer. Topic " + kafkaVersionTopic,
+            KILLED_JOB_MESSAGE + kafkaVersionTopic,
             new VeniceException("Kill the consumer"));
         /*
          * close can not stop the consumption synchronously, but the status of helix would be set to ERROR after
@@ -1884,7 +1885,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case KILL:
         LOGGER.info("Kill this consumer task for Topic: {}", topic);
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
-        throw new VeniceIngestionTaskKilledException("Received the signal to kill this consumer. Topic " + topic);
+        throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }

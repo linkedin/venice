@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
@@ -192,14 +193,16 @@ public abstract class PushStatusDecider {
     boolean isLeaderCompleted = true;
     int previouslyDisabledErrorReplica = 0;
     for (Map.Entry<Instance, HelixState> entry: instanceToStateMap.entrySet()) {
-      ExecutionStatus currentStatus =
-          getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId()));
+      List<StatusSnapshot> snapshotList = partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId());
+      ExecutionStatus currentStatus = getReplicaCurrentStatus(snapshotList);
       if (entry.getValue() == HelixState.LEADER) {
         if (!currentStatus.equals(COMPLETED)) {
           isLeaderCompleted = false;
         }
+        // Disable replica only if error is not from killjob and its not already disabled
         if (currentStatus.equals(ERROR) && callback != null
-            && !callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())) {
+            && !callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())
+            && !isPushjobKilled(snapshotList)) {
           callback.disableReplica(entry.getKey().getNodeId(), partitionStatus.getPartitionId());
         }
       } else if (entry.getValue() == HelixState.OFFLINE) {
@@ -233,6 +236,15 @@ public abstract class PushStatusDecider {
     }
 
     return STARTED;
+  }
+
+  boolean isPushjobKilled(List<StatusSnapshot> snapshotList) {
+    for (StatusSnapshot snapshot: snapshotList) {
+      if (snapshot.getStatus() == ERROR && snapshot.getIncrementalPushVersion().contains(KILLED_JOB_MESSAGE)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
