@@ -714,7 +714,7 @@ public class TopicManager implements Closeable {
       logger.warn("{} is already closed", this);
     }
     try {
-      closeAsync().get(600, TimeUnit.SECONDS);
+      closeAsync().get(2, TimeUnit.MINUTES);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       logger.error("Interrupted while closing: {}", this, e);

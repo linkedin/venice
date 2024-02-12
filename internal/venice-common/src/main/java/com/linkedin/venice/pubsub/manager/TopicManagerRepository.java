@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.manager;
 
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -47,8 +48,18 @@ public class TopicManagerRepository implements Closeable {
     return topicManagers.computeIfAbsent(pubSubAddress, this::createTopicManager);
   }
 
-  public Collection<TopicManager> getAllTopicManagers() {
+  Collection<TopicManager> getAllTopicManagers() {
     return topicManagers.values();
+  }
+
+  /**
+   * Invalidates the cache for the given PubSub topic across all TopicManagers in the repository.
+   * @param pubSubTopic the PubSub topic to invalidate
+   */
+  public void invalidateTopicManagerCaches(PubSubTopic pubSubTopic) {
+    for (TopicManager topicManager: getAllTopicManagers()) {
+      topicManager.invalidateCache(pubSubTopic);
+    }
   }
 
   @Override

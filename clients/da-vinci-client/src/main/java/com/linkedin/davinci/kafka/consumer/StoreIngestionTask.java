@@ -1523,10 +1523,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (topicManagerRepository != null) {
-      Collection<TopicManager> topicManagers = topicManagerRepository.getAllTopicManagers();
-      for (TopicManager topicManager: topicManagers) {
-        topicManager.invalidateCache(versionTopic);
-      }
+      topicManagerRepository.invalidateTopicManagerCaches(versionTopic);
     }
 
     close();

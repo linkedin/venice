@@ -665,6 +665,12 @@ class TopicMetadataFetcher implements Closeable {
       return;
     }
 
+    // check if the value has been already updated by another thread; if so, release the lock and return
+    if (cachedValue != null && cachedValue.getExpiryTimeNs() > System.nanoTime()) {
+      cachedValue.releaseUpdateLock();
+      return;
+    }
+
     completableFutureSupplier.get().whenComplete((value, throwable) -> {
       if (throwable != null) {
         cache.remove(key);
@@ -711,6 +717,11 @@ class TopicMetadataFetcher implements Closeable {
 
     boolean tryAcquireUpdateLock() {
       return isUpdateInProgress.compareAndSet(false, true);
+    }
+
+    // release the lock
+    boolean releaseUpdateLock() {
+      return isUpdateInProgress.compareAndSet(true, false);
     }
 
     void updateValue(T value) {
