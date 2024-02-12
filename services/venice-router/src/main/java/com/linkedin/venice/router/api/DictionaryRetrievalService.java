@@ -28,8 +28,8 @@ import io.tehuti.utils.Time;
 import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -209,7 +209,15 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
           continue;
         }
 
-        downloadDictionaries(Arrays.asList(kafkaTopic));
+        try {
+          downloadDictionaries(Collections.singletonList(kafkaTopic));
+        } catch (Throwable throwable) {
+          // Catch throwable so the thread don't die when encountering issues with one store/dictionary.
+          LOGGER.error(
+              "Caught a throwable while trying to fetch dictionary for store version: {}. Will not retry",
+              kafkaTopic,
+              throwable);
+        }
       }
     };
 

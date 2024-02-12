@@ -415,6 +415,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Object LIVENESS_HEARTBEAT_CLIENT_LOCK = new Object();
   private AvroSpecificStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> livenessHeartbeatStoreClient = null;
 
+  private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
+
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
@@ -683,6 +685,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       });
     }
+    emptyPushZSTDDictionary =
+        Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
@@ -2613,7 +2617,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // so we generate a dictionary based on synthetic data. This is done in vpj driver
                 // as well, but this code will be triggered in cases like Samza batch push job
                 // which is independent of the vpj flow.
-                compressionDictionaryBuffer = ZstdWithDictCompressor.EMPTY_PUSH_ZSTD_DICTIONARY;
+                compressionDictionaryBuffer = emptyPushZSTDDictionary.get();
               }
 
               final Version finalVersion = version;
