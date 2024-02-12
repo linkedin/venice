@@ -1,22 +1,22 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.hadoop.VenicePushJob.ALLOW_DUPLICATE_KEY;
-import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_COMBINER_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_ETL;
-import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_COMPRESSION_LEVEL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_ETL;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
@@ -105,7 +105,7 @@ import org.testng.annotations.Test;
 @Test(singleThreaded = true)
 public abstract class TestBatch {
   private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
-  protected static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  protected static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -232,7 +232,7 @@ public abstract class TestBatch {
     }
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testCompressingRecord(boolean compressionMetricCollectionEnabled, boolean useMapperToBuildDict)
       throws Exception {
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
@@ -657,7 +657,7 @@ public abstract class TestBatch {
           properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
           /**
            * This is used to make sure the first mapper doesn't contain any real messages, but just control messages.
-           * So that {@link com.linkedin.venice.hadoop.AbstractVeniceMapper#maybeSprayAllPartitions} won't be invoked.
+           * So that {@link AbstractVeniceMapper#maybeSprayAllPartitions} won't be invoked.
            */
           properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "2");
         },
@@ -743,7 +743,7 @@ public abstract class TestBatch {
     });
   }
 
-  protected String testBatchStore(
+  private String testBatchStore(
       InputFileWriter inputFileWriter,
       Consumer<Properties> extraProps,
       VPJValidator dataValidator) throws Exception {

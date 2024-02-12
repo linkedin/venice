@@ -484,13 +484,10 @@ public class TestAvroSupersetSchemaUtils {
   @Test
   public void testValidateSubsetSchema() {
     Assert.assertTrue(
-        AvroSupersetSchemaUtils
-            .validateSubsetValueSchema(NAME_RECORD_V1_SCHEMA.toString(), NAME_RECORD_V2_SCHEMA.toString()));
+        AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V1_SCHEMA, NAME_RECORD_V2_SCHEMA.toString()));
     Assert.assertFalse(
-        AvroSupersetSchemaUtils
-            .validateSubsetValueSchema(NAME_RECORD_V2_SCHEMA.toString(), NAME_RECORD_V3_SCHEMA.toString()));
+        AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V2_SCHEMA, NAME_RECORD_V3_SCHEMA.toString()));
     Assert.assertFalse(
-        AvroSupersetSchemaUtils
-            .validateSubsetValueSchema(NAME_RECORD_V3_SCHEMA.toString(), NAME_RECORD_V4_SCHEMA.toString()));
+        AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V3_SCHEMA, NAME_RECORD_V4_SCHEMA.toString()));
   }
 }

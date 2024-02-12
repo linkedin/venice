@@ -54,4 +54,22 @@ public class ByteUtilsTest {
     directBuffer.flip();
     Assert.assertTrue(Arrays.equals(ByteUtils.copyByteArray(directBuffer), data));
   }
+
+  @Test
+  public void testExtractByteArray() {
+    ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
+
+    Assert.assertEquals(ByteUtils.extractByteArray(EMPTY_BYTE_BUFFER).length, 0);
+
+    byte[] data = "111222333".getBytes();
+    ByteBuffer nonEmptyByteBuffer = ByteBuffer.wrap(data, 3, 3);
+    Assert.assertTrue(Arrays.equals(ByteUtils.extractByteArray(nonEmptyByteBuffer), "222".getBytes()));
+
+    ByteBuffer directBuffer = ByteBuffer.allocateDirect(data.length);
+    directBuffer.put(data);
+    directBuffer.flip();
+    Assert.assertTrue(Arrays.equals(ByteUtils.extractByteArray(directBuffer), data));
+
+    Assert.assertNull(ByteUtils.extractByteArray(null));
+  }
 }

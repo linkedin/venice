@@ -1,14 +1,16 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
+
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.chunking.RawKeyBytesAndChunkedKeySuffix;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.MRJobCounterHelper;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
+import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -35,7 +37,6 @@ import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
-import org.apache.hadoop.mapred.Reporter;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -83,18 +84,18 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
    */
   private Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordIterator;
 
-  private final Reporter reporter;
+  private final DataWriterTaskTracker taskTracker;
   /**
    * Whether the consumer being used in this class is owned or not, and this is used to decide
    * whether the consumer should be closed when closing {@link KafkaInputRecordReader}.
    */
   private boolean ownedConsumer = true;
 
-  public KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter) {
+  public KafkaInputRecordReader(InputSplit split, JobConf job, DataWriterTaskTracker taskTracker) {
     this(
         split,
         job,
-        reporter,
+        taskTracker,
         new ApacheKafkaConsumerAdapterFactory().create(
             KafkaInputUtils.getConsumerProperties(job),
             false,
@@ -106,8 +107,12 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         PUBSUB_TOPIC_REPOSITORY);
   }
 
-  public KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter, PubSubConsumerAdapter consumer) {
-    this(split, job, reporter, consumer, PUBSUB_TOPIC_REPOSITORY);
+  public KafkaInputRecordReader(
+      InputSplit split,
+      JobConf job,
+      DataWriterTaskTracker taskTracker,
+      PubSubConsumerAdapter consumer) {
+    this(split, job, taskTracker, consumer, PUBSUB_TOPIC_REPOSITORY);
     this.ownedConsumer = false;
   }
 
@@ -115,7 +120,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   KafkaInputRecordReader(
       InputSplit split,
       JobConf job,
-      Reporter reporter,
+      DataWriterTaskTracker taskTracker,
       PubSubConsumerAdapter consumer,
       PubSubTopicRepository pubSubTopicRepository) {
     if (!(split instanceof KafkaInputSplit)) {
@@ -129,12 +134,10 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     this.startingOffset = inputSplit.getStartingOffset();
     this.currentOffset = inputSplit.getStartingOffset() - 1;
     this.endingOffset = inputSplit.getEndingOffset();
-    this.isSourceVersionChunkingEnabled =
-        job.getBoolean(VenicePushJob.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, false);
-    String keySchemaString = job.get(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
+    this.isSourceVersionChunkingEnabled = job.getBoolean(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, false);
+    String keySchemaString = job.get(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
     if (keySchemaString == null) {
-      throw new VeniceException(
-          "Expect a value for the config property: " + VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
+      throw new VeniceException("Expect a value for the config property: " + KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
     }
     this.keySchema = Schema.parse(keySchemaString);
     /**
@@ -146,7 +149,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
       this.consumer.batchUnsubscribe(this.consumer.getAssignment());
     }
     this.consumer.subscribe(pubSubTopicPartition, currentOffset);
-    this.reporter = reporter;
+    this.taskTracker = taskTracker;
     LOGGER.info(
         "KafkaInputRecordReader started for TopicPartition: {} starting offset: {} ending offset: {}",
         this.topicPartition,
@@ -215,10 +218,10 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
                 "Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition
                     + " with offset: " + pubSubMessage.getOffset());
         }
-        if (reporter != null && !reporter.equals(Reporter.NULL)) {
-          MRJobCounterHelper.incrTotalPutOrDeleteRecordCount(reporter, 1);
-          long recordCount = MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(reporter);
-          if (recordCount % LOG_RECORD_INTERVAL == 0) {
+        if (taskTracker != null) {
+          taskTracker.trackPutOrDeleteRecord();
+          long recordCount = taskTracker.getTotalPutOrDeleteRecordsCount();
+          if (recordCount > 0 && recordCount % LOG_RECORD_INTERVAL == 0) {
             LOGGER.info(
                 "KafkaInputRecordReader for TopicPartition: {} has processed {} records",
                 this.topicPartition,
@@ -227,7 +230,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         }
         return true;
       } else {
-        // We have pending data but we are unable to fetch any records so throw an exception and stop the job
+        // We have pending data, but we are unable to fetch any records so throw an exception and stop the job
         throw new IOException(
             "Unable to read additional data from Kafka. See logs for details. Partition " + topicPartition
                 + " Current Offset: " + currentOffset + " End Offset: " + endingOffset);

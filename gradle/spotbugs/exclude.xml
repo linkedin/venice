@@ -258,7 +258,7 @@
     <!--No plan to throw NoSuchElementException for these iterators-->
     <Bug pattern="IT_NO_SUCH_ELEMENT"/>
     <Or>
-      <Class name="com.linkedin.venice.hadoop.VeniceVsonRecordReader$VsonIterator"/>
+      <Class name="com.linkedin.venice.hadoop.recordreader.vson.VeniceVsonRecordReader$VsonIterator"/>
       <Class name="com.linkedin.venice.utils.DataProviderUtils$PermutationIterator"/>
     </Or>
   </Match>

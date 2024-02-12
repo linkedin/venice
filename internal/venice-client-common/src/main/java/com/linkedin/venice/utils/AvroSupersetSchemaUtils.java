@@ -192,8 +192,7 @@ public class AvroSupersetSchemaUtils {
     return updateSchema;
   }
 
-  public static boolean validateSubsetValueSchema(String subsetValueSchemaStr, String supersetSchemaStr) {
-    Schema subsetValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(subsetValueSchemaStr);
+  public static boolean validateSubsetValueSchema(Schema subsetValueSchema, String supersetSchemaStr) {
     Schema supersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(supersetSchemaStr);
     for (Schema.Field field: subsetValueSchema.getFields()) {
       Schema.Field fieldInSupersetSchema = supersetSchema.getField(field.name());

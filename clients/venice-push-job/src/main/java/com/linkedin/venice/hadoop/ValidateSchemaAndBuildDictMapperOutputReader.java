@@ -74,7 +74,7 @@ public class ValidateSchemaAndBuildDictMapperOutputReader implements Closeable {
 
     /**
      * zstdDictionary can be null when
-     * 1. both zstd compression and {@link VenicePushJob.PushJobSetting#compressionMetricCollectionEnabled}
+     * 1. both zstd compression and {@link PushJobSetting#compressionMetricCollectionEnabled}
      *    is not enabled
      * 2. When one or the both of above are enabled, but zstd trainer failed: but this would have been be
      *    already handled based on map reduce counters

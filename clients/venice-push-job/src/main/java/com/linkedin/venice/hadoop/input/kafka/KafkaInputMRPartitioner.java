@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import com.linkedin.venice.hadoop.VeniceMRPartitioner;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartitioner;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;

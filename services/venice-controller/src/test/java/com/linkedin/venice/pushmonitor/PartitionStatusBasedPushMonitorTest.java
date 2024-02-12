@@ -1,8 +1,11 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -245,6 +248,30 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     Assert.assertEquals(executionStatusWithDetails.getStatus(), STARTED);
 
     verify(helixAdminClient, times(1)).getDisabledPartitionsMap(eq(getClusterName()), eq(disabledHostName));
+
+    StatusSnapshot snapshot = new StatusSnapshot(ERROR, "1.2");
+    snapshot.setIncrementalPushVersion(KILLED_JOB_MESSAGE + store.getName());
+    replicaStatuses1.get(2).setStatusHistory(Arrays.asList(snapshot));
+    PartitionStatus partitionStatus1 = new PartitionStatus(0);
+    partitionStatus1.updateReplicaStatus(disabledHostName, ERROR, KILLED_JOB_MESSAGE + store.getName(), 1);
+    offlinePushStatus.setPartitionStatus(partitionStatus1);
+
+    offlinePushStatus.getStrategy()
+        .getPushStatusDecider()
+        .checkPushStatusAndDetailsByPartitionsStatus(
+            offlinePushStatus,
+            partitionAssignment1,
+            new DisableReplicaCallback() {
+              @Override
+              public void disableReplica(String instance, int partitionId) {
+              }
+
+              @Override
+              public boolean isReplicaDisabled(String instance, int partitionId) {
+                return false;
+              }
+            });
+    verify(helixAdminClient, times(0)).enablePartition(anyBoolean(), anyString(), anyString(), anyString(), anyList());
   }
 
   private Store getStoreWithCurrentVersion() {
