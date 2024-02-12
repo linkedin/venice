@@ -23,9 +23,12 @@ import java.util.List;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ZstdWithDictCompressor extends VeniceCompressor {
+  private static final Logger LOGGER = LogManager.getLogger(ZstdWithDictCompressor.class);
   private final CloseableThreadLocal<ZstdCompressCtx> compressor;
   private final CloseableThreadLocal<ZstdDecompressCtx> decompressor;
   private final ZstdDictCompress dictCompress;
@@ -170,25 +173,30 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
    * @return a zstd compression dictionary trained on small amount of avro data
    */
   public static byte[] buildDictionaryOnSyntheticAvroData() {
-    AvroSerializer<Object> serializer = new AvroSerializer<>(FakeCompressingSchema.getClassSchema());
-    // Insert fake records. We need to generate at least some data for the
-    // dictionary as failing to do so will result in the library throwing
-    // an exception (it's only able to generate a dictionary with a minimum threshold of test data).
-    // So we train on a small amount of basic avro data to
-    // at least gain some partial effectiveness.
-    List<byte[]> values = new ArrayList<>(50);
-    for (int i = 0; i < 50; ++i) {
-      GenericRecord value = new GenericData.Record(FakeCompressingSchema.getClassSchema());
-      value.put("id", i);
-      String name = i + "_name";
-      value.put("name", name);
-      values.add(i, serializer.serialize(value));
+    try {
+      AvroSerializer<Object> serializer = new AvroSerializer<>(FakeCompressingSchema.getClassSchema());
+      // Insert fake records. We need to generate at least some data for the
+      // dictionary as failing to do so will result in the library throwing
+      // an exception (it's only able to generate a dictionary with a minimum threshold of test data).
+      // So we train on a small amount of basic avro data to
+      // at least gain some partial effectiveness.
+      List<byte[]> values = new ArrayList<>(50);
+      for (int i = 0; i < 50; ++i) {
+        GenericRecord value = new GenericData.Record(FakeCompressingSchema.getClassSchema());
+        value.put("id", i);
+        String name = i + "_name";
+        value.put("name", name);
+        values.add(i, serializer.serialize(value));
+      }
+      ZstdDictTrainer trainer = new ZstdDictTrainer(200 * BYTES_PER_MB, 100 * BYTES_PER_KB);
+      for (byte[] value: values) {
+        trainer.addSample(value);
+      }
+      return trainer.trainSamples();
+    } catch (Throwable throwable) {
+      LOGGER.error("Caught throwable while trying to build dictionary on synthetic data", throwable);
+      throw throwable;
     }
-    ZstdDictTrainer trainer = new ZstdDictTrainer(200 * BYTES_PER_MB, 100 * BYTES_PER_KB);
-    for (byte[] value: values) {
-      trainer.addSample(value);
-    }
-    return trainer.trainSamples();
   }
 
   @Override
