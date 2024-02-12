@@ -4,7 +4,6 @@ import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAsserti
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -15,13 +14,11 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
-import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -34,14 +31,11 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -58,27 +52,7 @@ import org.testng.annotations.Test;
 
 
 public class TopicManagerE2ETest {
-  // timeout for pub-sub operations
-  private static final Duration PUBSUB_OP_TIMEOUT = Duration.ofSeconds(15);
-  // add a variance of 5 seconds to the timeout to account for fluctuations in the test environment
-  private static final long PUBSUB_OP_TIMEOUT_WITH_VARIANCE = PUBSUB_OP_TIMEOUT.toMillis() + 5000;
-  // timeout for pub-sub consumer APIs which do not have a timeout parameter
   private static final int PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS = 10_000;
-  // add a variance of 5 seconds to the timeout to account for fluctuations in the test environment
-  private static final long PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE =
-      PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS + 5000;
-  private static final int REPLICATION_FACTOR = 1;
-  private static final boolean IS_LOG_COMPACTED = false;
-  private static final int MIN_IN_SYNC_REPLICAS = 1;
-  private static final long RETENTION_IN_MS = Duration.ofDays(3).toMillis();
-  private static final long MIN_LOG_COMPACTION_LAG_MS = Duration.ofDays(1).toMillis();
-  private static final long MAX_LOG_COMPACTION_LAG_MS = Duration.ofDays(2).toMillis();
-  private static final PubSubTopicConfiguration TOPIC_CONFIGURATION = new PubSubTopicConfiguration(
-      Optional.of(RETENTION_IN_MS),
-      IS_LOG_COMPACTED,
-      Optional.of(MIN_IN_SYNC_REPLICAS),
-      MIN_LOG_COMPACTION_LAG_MS,
-      Optional.of(MAX_LOG_COMPACTION_LAG_MS));
 
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   private Lazy<PubSubAdminAdapter> pubSubAdminAdapterLazy;
@@ -171,88 +145,97 @@ public class TopicManagerE2ETest {
 
     int numMessages = 250;
     PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
-    CompletableFuture<PubSubProduceResult> lastMessageFuture = null;
-    // list of messages
-    Map<Integer, MutablePubSubMessage> messages = new HashMap<>(numMessages);
-    for (int i = 0; i < numMessages; i++) {
-      MutablePubSubMessage message = PubSubHelper.getDummyPubSubMessage(false);
-      message.getValue().getProducerMetadata().setMessageTimestamp(i);
-      messages.put(i, message);
-      lastMessageFuture =
-          pubSubProducerAdapter.sendMessage(testTopic.getName(), 0, message.getKey(), message.getValue(), null, null);
-      lastMessageFuture.whenComplete((result, throwable) -> {
-        if (throwable == null) {
-          message.setOffset(result.getOffset());
-        }
-      });
-    }
-    assertNotNull(lastMessageFuture, "Last message future should not be null");
-    lastMessageFuture.get(1, TimeUnit.MINUTES);
-    assertEquals(messages.size(), numMessages);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(testTopic, 0);
+    List<MutablePubSubMessage> messages =
+        PubSubHelper.produceMessages(pubSubProducerAdapter, topicPartition, numMessages, 2, false);
+    long timeBeforeProduce = messages.get(0).getTimestampBeforeProduce() - 10;
+    long tsOfLastDataMessage = messages.get(messages.size() - 1).getValue().getProducerMetadata().getMessageTimestamp();
 
+    PubSubTopicPartition nonExistentTopicPartition = new PubSubTopicPartitionImpl(nonExistentTopic, 0);
     final AtomicInteger successfulRequests = new AtomicInteger(0);
-    List<Runnable> tasks = new ArrayList<>();
 
-    Runnable getPartitionCountTask = () -> {
-      try {
-        int actualNumPartitions = topicManager.getPartitionCount(testTopic);
-        assertEquals(actualNumPartitions, numPartitions);
-        successfulRequests.incrementAndGet();
-      } catch (Exception e) {
-        throw new RuntimeException(e);
-      }
-    };
-    tasks.add(getPartitionCountTask);
-
-    // get partition count for non-existent topic
-    Runnable getPartitionCountForNonExistentTopicTask = () -> {
-      try {
-        assertNull(topicManager.getPartitionCount(nonExistentTopic));
-        successfulRequests.incrementAndGet();
-      } catch (Exception e) {
-        throw new RuntimeException(e);
-      }
-    };
-    tasks.add(getPartitionCountForNonExistentTopicTask);
-
+    // get partition count for an existing topic
+    Runnable t1 = getAssertionTask(
+        () -> assertEquals(topicManager.getPartitionCount(testTopic), numPartitions),
+        successfulRequests);
+    // get partition count for a non-existent topic
+    Runnable t2 = getAssertionTask(
+        () -> assertThrows(
+            PubSubTopicDoesNotExistException.class,
+            () -> topicManager.getPartitionCount(nonExistentTopic)),
+        successfulRequests);
     // contains topic
-    Runnable containsTopicTask = () -> {
-      try {
-        assertTrue(topicManager.containsTopic(testTopic));
-        successfulRequests.incrementAndGet();
-      } catch (Exception e) {
-        throw new RuntimeException(e);
-      }
-    };
-    tasks.add(containsTopicTask);
-
+    Runnable t3 = getAssertionTask(() -> assertTrue(topicManager.containsTopic(testTopic)), successfulRequests);
     // contains topic for non-existent topic
-    Runnable containsNonExistentTopicTask = () -> {
-      try {
-        assertFalse(topicManager.containsTopic(nonExistentTopic));
-        successfulRequests.incrementAndGet();
-      } catch (Exception e) {
-        throw new RuntimeException(e);
-      }
-    };
-    tasks.add(containsNonExistentTopicTask);
+    Runnable t4 = getAssertionTask(() -> assertFalse(topicManager.containsTopic(nonExistentTopic)), successfulRequests);
+    // contains topic cached
+    Runnable t5 = getAssertionTask(() -> assertTrue(topicManager.containsTopicCached(testTopic)), successfulRequests);
+    // contains topic cached for non-existent topic
+    Runnable t6 =
+        getAssertionTask(() -> assertFalse(topicManager.containsTopicCached(nonExistentTopic)), successfulRequests);
+    // get latest offset with retries for an existing topic
+    Runnable t7 = getAssertionTask(
+        () -> assertEquals(topicManager.getLatestOffsetWithRetries(topicPartition, 1), numMessages),
+        successfulRequests);
+    // get latest offset with retries for a non-existent topic
+    Runnable t8 = getAssertionTask(
+        () -> assertThrows(
+            PubSubTopicDoesNotExistException.class,
+            () -> topicManager.getLatestOffsetWithRetries(nonExistentTopicPartition, 1)),
+        successfulRequests);
+    // get latest offset cached for an existing topic
+    Runnable t9 = getAssertionTask(
+        () -> assertEquals(topicManager.getLatestOffsetCached(testTopic, 0), numMessages),
+        successfulRequests);
+    // get latest offset cached for a non-existent topic
+    Runnable t10 = getAssertionTask(
+        () -> assertEquals(
+            topicManager.getLatestOffsetCached(nonExistentTopic, 0),
+            StatsErrorCode.LAG_MEASUREMENT_FAILURE.code),
+        successfulRequests);
+    // get producer timestamp of last data message with retries for an existing topic
+    Runnable t11 = getAssertionTask(
+        () -> assertEquals(
+            topicManager.getProducerTimestampOfLastDataMessageWithRetries(topicPartition, 1),
+            tsOfLastDataMessage),
+        successfulRequests);
+    // get producer timestamp of last data message with retries for a non-existent topic
+    Runnable t12 = getAssertionTask(
+        () -> assertThrows(
+            PubSubTopicDoesNotExistException.class,
+            () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(nonExistentTopicPartition, 1)),
+        successfulRequests);
+    // get producer timestamp of last data message cached for an existing topic
+    Runnable t13 = getAssertionTask(
+        () -> assertEquals(
+            topicManager.getProducerTimestampOfLastDataMessageCached(topicPartition),
+            tsOfLastDataMessage),
+        successfulRequests);
+    // get producer timestamp of last data message cached for a non-existent topic
+    Runnable t14 = getAssertionTask(
+        () -> assertEquals(
+            topicManager.getProducerTimestampOfLastDataMessageCached(nonExistentTopicPartition),
+            StatsErrorCode.LAG_MEASUREMENT_FAILURE.code),
+        successfulRequests);
+    // get offset by time for an existing topic
+    Runnable t15 = getAssertionTask(
+        () -> assertEquals(topicManager.getOffsetByTime(topicPartition, System.currentTimeMillis()), numMessages),
+        successfulRequests);
+    // get offset by time for a non-existent topic
+    Runnable t16 = getAssertionTask(
+        () -> assertThrows(
+            PubSubTopicDoesNotExistException.class,
+            () -> topicManager.getOffsetByTime(nonExistentTopicPartition, tsOfLastDataMessage)),
+        successfulRequests);
+    // get offset by time for an existing topic: first message
+    Runnable t17 = getAssertionTask(
+        () -> assertEquals(topicManager.getOffsetByTime(topicPartition, timeBeforeProduce), 0),
+        successfulRequests);
 
-    Runnable getLatestOffsetWithRetriesTask = () -> {
-      try {
-        long latestOffset = topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(testTopic, 0), 1);
-        assertEquals(latestOffset, numMessages);
-        successfulRequests.incrementAndGet();
-      } catch (Exception e) {
-        throw new RuntimeException(e);
-      }
-    };
-    tasks.add(getLatestOffsetWithRetriesTask);
-
+    List<Runnable> tasks = Arrays.asList(t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17);
     ExecutorService executorService = Executors.newFixedThreadPool(8);
-
     List<Future> vwFutures = new ArrayList<>();
-
-    int totalTasks = 1024;
+    int totalTasks = 100;
     for (int i = 0; i < totalTasks; i++) {
       Future future = executorService.submit(tasks.get(i % tasks.size()));
       vwFutures.add(future);
@@ -261,14 +244,28 @@ public class TopicManagerE2ETest {
     int failedRequests = 0;
     for (Future future: vwFutures) {
       try {
-        future.get(1, TimeUnit.MINUTES);
+        future.get(3, TimeUnit.MINUTES);
       } catch (Exception e) {
         failedRequests++;
       }
     }
-    System.out.println("successfulRequests: " + successfulRequests.get());
-    // total should be equal to the number of tasks
-    assertEquals(successfulRequests.get() + failedRequests, totalTasks);
+    assertEquals(failedRequests, 0);
+    assertEquals(successfulRequests.get(), totalTasks);
+  }
+
+  private static Runnable getAssertionTask(Runnable runnable, AtomicInteger successfulRequests) {
+    return () -> {
+      try {
+        runnable.run();
+        successfulRequests.incrementAndGet();
+      } catch (AssertionError e) {
+        e.printStackTrace();
+        throw new AssertionError("Assertion failed: " + e.getMessage(), e);
+      } catch (Exception e) {
+        e.printStackTrace();
+        throw new RuntimeException(e);
+      }
+    };
   }
 
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
