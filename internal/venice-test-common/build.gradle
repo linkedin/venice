@@ -179,7 +179,9 @@ def integrationTestBuckets = [
       "com.linkedin.venice.controller.AdminTool*",
       "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
   "Q": [
-      "com.linkedin.venice.controller.Test*"]
+      "com.linkedin.venice.controller.Test*"],
+  "ZAC": [
+      "com.linkedin.venice.endToEnd.ActiveActiveReplicationForHybridTest"]
 ]
 
 integrationTestBuckets.each { name, patterns ->

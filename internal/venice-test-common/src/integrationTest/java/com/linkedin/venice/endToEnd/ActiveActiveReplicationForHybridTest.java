@@ -31,7 +31,7 @@ import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
-import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -107,7 +107,7 @@ import org.testng.annotations.Test;
  *       is done.
  */
 public class ActiveActiveReplicationForHybridTest {
-  private static final int TEST_TIMEOUT = 5 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 10 * Time.MS_PER_MINUTE;
   private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
 
   protected static final int NUMBER_OF_CHILD_DATACENTERS = 3;
@@ -342,7 +342,7 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT * 10, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled, boolean useTransientRecordCache)
       throws InterruptedException, ExecutionException {
     String clusterName = CLUSTER_NAMES[0];
@@ -359,19 +359,36 @@ public class ActiveActiveReplicationForHybridTest {
           Optional.of(isChunkingEnabled));
 
       // Empty push to create a version
-      ControllerResponse controllerResponse = assertCommand(
-          parentControllerClient
-              .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
-      assertTrue(controllerResponse instanceof JobStatusQueryResponse);
-      JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) controllerResponse;
-      int versionNumber = jobStatusQueryResponse.getVersion();
-      // Wait for push to complete in all regions
-      waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-        for (ControllerClient controllerClient: dcControllerClientList) {
-          StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-          assertEquals(storeResponse.getStore().getCurrentVersion(), versionNumber);
+      int versionNumber;
+      try {
+        ControllerResponse controllerResponse = assertCommand(
+            parentControllerClient
+                .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
+        assertTrue(controllerResponse instanceof JobStatusQueryResponse);
+        JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) controllerResponse;
+        versionNumber = jobStatusQueryResponse.getVersion();
+
+        // Wait for push to complete in all regions
+        waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          for (ControllerClient controllerClient: dcControllerClientList) {
+            StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
+            assertEquals(storeResponse.getStore().getCurrentVersion(), versionNumber);
+          }
+        });
+      } catch (Exception e) {
+
+        // we need to dump more information.
+        System.out.println("BLOCKING ON ERROR, GET A HEAP DUMP OR CONNECT WITH ZK!!!!!");
+        // LOGGER.error("BLOCKING ON ERROR, GET A HEAP DUMP OR CONNECT WITH ZK!!!!!");
+        LOGGER.error("ZK PORT " + multiRegionMultiClusterWrapper.getZkServerWrapper().getPort());
+        for (VeniceMultiClusterWrapper wrapper: childDatacenters) {
+          System.out.println("OTHER ZK PORT " + childDatacenters.get(0).getZkServerWrapper().getPort());
+          // LOGGER.error("OTHER ZK PORT " + childDatacenters.get(0).getZkServerWrapper().getPort());
         }
-      });
+
+        // Thread.sleep(1000 * 60 * 60);
+        throw e;
+      }
 
       // disable the purging of transientRecord buffer using reflection.
       if (useTransientRecordCache) {

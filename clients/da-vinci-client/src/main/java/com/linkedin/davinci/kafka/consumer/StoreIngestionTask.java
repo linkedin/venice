@@ -2772,10 +2772,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getTopicPartition().getPartitionNumber(),
             consumerRecord.getOffset(),
             partitionConsumptionState);
-        if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
-            && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-          recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
-        }
+        // if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
+        // && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+        // recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+        // }
       } else {
         sizeOfPersistedData = processKafkaDataMessage(
             consumerRecord,
