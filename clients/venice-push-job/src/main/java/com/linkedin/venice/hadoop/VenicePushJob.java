@@ -203,6 +203,7 @@ public class VenicePushJob implements AutoCloseable {
 
   // Lazy state
   private final Lazy<Properties> sslProperties;
+  private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter;
   /** TODO: refactor to use {@link Lazy} */
 
@@ -289,6 +290,8 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.info("Push job heartbeat is NOT enabled.");
       this.pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
     }
+    emptyPushZSTDDictionary =
+        Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
   }
 
   // This is a part of the public API. There is value in exposing this to users of VenicePushJob for reporting purposes
@@ -1530,7 +1533,7 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info(
               "compression strategy is {} with no input records: Generating dictionary from synthetic data",
               pushJobSetting.storeCompressionStrategy);
-          compressionDictionary = ZstdWithDictCompressor.EMPTY_PUSH_ZSTD_DICTIONARY;
+          compressionDictionary = emptyPushZSTDDictionary.get();
           return Optional.of(compressionDictionary);
         }
 
