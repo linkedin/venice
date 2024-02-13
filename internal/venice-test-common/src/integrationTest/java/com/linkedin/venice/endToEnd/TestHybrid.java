@@ -334,9 +334,6 @@ public class TestHybrid {
           versionResponse.isError(),
           "Version creation shouldn't return error, but received: " + versionResponse.getError());
       String versionTopicName = Version.composeKafkaTopic(storeName, 1);
-      Utils.sleep(10000);
-      // Enable log compaction
-      topicManager.updateTopicCompactionPolicy(venice.getPubSubTopicRepository().getTopic(versionTopicName), true);
 
       String writer1 = "writer_1_hostname";
       String writer2 = "writer_2_hostname";
