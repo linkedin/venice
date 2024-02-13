@@ -2692,12 +2692,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Maintain the latest processed offsets by drainers in memory; in most of the time, these offsets are ahead of the
    * checkpoint offsets inside {@link OffsetRecord}. Prior to update the offset in memory, the underlying storage engine
    * should have persisted the given record.
+   *
+   * Dry-run mode will only do offset rewind check and it won't update the processed offset.
    */
   protected abstract void updateLatestInMemoryProcessedOffset(
       PartitionConsumptionState partitionConsumptionState,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      String kafkaUrl);
+      String kafkaUrl,
+      boolean dryRun);
 
   /**
    * Process the message consumed from Kafka by de-serializing it and persisting it with the storage engine.
@@ -2775,6 +2778,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getOffset(),
             partitionConsumptionState);
       } else {
+        updateLatestInMemoryProcessedOffset(
+            partitionConsumptionState,
+            consumerRecord,
+            leaderProducedRecordContext,
+            kafkaUrl,
+            true);
         sizeOfPersistedData = processKafkaDataMessage(
             consumerRecord,
             partitionConsumptionState,
@@ -2835,7 +2844,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState,
           consumerRecord,
           leaderProducedRecordContext,
-          kafkaUrl);
+          kafkaUrl,
+          false);
       if (checkReadyToServeAfterProcess) {
         defaultReadyToServeChecker.apply(partitionConsumptionState);
       }

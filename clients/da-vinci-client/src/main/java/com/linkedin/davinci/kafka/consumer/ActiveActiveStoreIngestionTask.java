@@ -1151,7 +1151,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState partitionConsumptionState,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      String kafkaUrl) {
+      String kafkaUrl,
+      boolean dryRun) {
     updateOffsetsFromConsumerRecord(
         partitionConsumptionState,
         consumerRecord,
@@ -1167,7 +1168,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         (sourceKafkaUrl, upstreamTopic) -> upstreamTopic.isRealTime()
             ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
             : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
-        () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl));
+        () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl),
+        dryRun);
   }
 
   /**
