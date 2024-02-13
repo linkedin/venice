@@ -107,7 +107,7 @@ import org.testng.annotations.Test;
  *       is done.
  */
 public class ActiveActiveReplicationForHybridTest {
-  private static final int TEST_TIMEOUT = 10 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
   private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
 
   protected static final int NUMBER_OF_CHILD_DATACENTERS = 3;
@@ -360,35 +360,20 @@ public class ActiveActiveReplicationForHybridTest {
 
       // Empty push to create a version
       int versionNumber;
-      try {
-        ControllerResponse controllerResponse = assertCommand(
-            parentControllerClient
-                .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
-        assertTrue(controllerResponse instanceof JobStatusQueryResponse);
-        JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) controllerResponse;
-        versionNumber = jobStatusQueryResponse.getVersion();
+      ControllerResponse controllerResponse = assertCommand(
+          parentControllerClient
+              .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
+      assertTrue(controllerResponse instanceof JobStatusQueryResponse);
+      JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) controllerResponse;
+      versionNumber = jobStatusQueryResponse.getVersion();
 
-        // Wait for push to complete in all regions
-        waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-          for (ControllerClient controllerClient: dcControllerClientList) {
-            StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-            assertEquals(storeResponse.getStore().getCurrentVersion(), versionNumber);
-          }
-        });
-      } catch (Exception e) {
-
-        // we need to dump more information.
-        System.out.println("BLOCKING ON ERROR, GET A HEAP DUMP OR CONNECT WITH ZK!!!!!");
-        // LOGGER.error("BLOCKING ON ERROR, GET A HEAP DUMP OR CONNECT WITH ZK!!!!!");
-        LOGGER.error("ZK PORT " + multiRegionMultiClusterWrapper.getZkServerWrapper().getPort());
-        for (VeniceMultiClusterWrapper wrapper: childDatacenters) {
-          System.out.println("OTHER ZK PORT " + childDatacenters.get(0).getZkServerWrapper().getPort());
-          // LOGGER.error("OTHER ZK PORT " + childDatacenters.get(0).getZkServerWrapper().getPort());
+      // Wait for push to complete in all regions
+      waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        for (ControllerClient controllerClient: dcControllerClientList) {
+          StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
+          assertEquals(storeResponse.getStore().getCurrentVersion(), versionNumber);
         }
-
-        // Thread.sleep(1000 * 60 * 60);
-        throw e;
-      }
+      });
 
       // disable the purging of transientRecord buffer using reflection.
       if (useTransientRecordCache) {
