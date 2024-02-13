@@ -13,7 +13,6 @@ import org.apache.hc.core5.http.nio.ssl.TlsStrategy;
 import org.apache.hc.core5.http.ssl.TLS;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.hc.core5.reactor.IOReactorConfig;
-import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 
 
@@ -44,9 +43,6 @@ public class HttpClient5Utils {
     private final Timeout CONNECT_TIMEOUT_IN_MINUTES = Timeout.ofMinutes(1);
     private final Timeout CONNECTION_KEEP_ALIVE_TIMEOUT_IN_HOURS = Timeout.ofHours(1);
     private final Timeout SOCKET_INDEFINITE_TIMEOUT = Timeout.ZERO_MILLISECONDS;
-
-    // negative value is considered as indefinite timeout
-    private final TimeValue CONNECTION_INDEFINITE_TIMEOUT = TimeValue.NEG_ONE_MILLISECOND;
 
     private int ioThreadCount = 48;
     private boolean skipCipherCheck = false;
