@@ -13,7 +13,6 @@ import org.apache.hc.core5.http.nio.ssl.TlsStrategy;
 import org.apache.hc.core5.http.ssl.TLS;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.hc.core5.reactor.IOReactorConfig;
-import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 
 
@@ -42,8 +41,8 @@ public class HttpClient5Utils {
      * For now, we remove the functions updating to connect timeout to avoid mistakes.
      */
     private final Timeout CONNECT_TIMEOUT_IN_MINUTES = Timeout.ofMinutes(1);
-    // negative value is considered as indefinite timeout
-    private final TimeValue CONNECTION_INDEFINITE_TIMEOUT = TimeValue.NEG_ONE_MILLISECOND;
+    private final Timeout CONNECTION_KEEP_ALIVE_TIMEOUT_IN_HOURS = Timeout.ofHours(1);
+    private final Timeout SOCKET_INDEFINITE_TIMEOUT = Timeout.ZERO_MILLISECONDS;
 
     private int ioThreadCount = 48;
     private boolean skipCipherCheck = false;
@@ -90,15 +89,11 @@ public class HttpClient5Utils {
     private ConnectionConfig getDefaultConnectionConfig() {
       return ConnectionConfig.custom()
           .setConnectTimeout(CONNECT_TIMEOUT_IN_MINUTES)
-          .setSocketTimeout(CONNECT_TIMEOUT_IN_MINUTES)
-          // http5 javadoc mentions the default for setValidateAfterInactivity is null,
-          // but as per usage, null is defaulted to 2 seconds. Setting it to negative
-          // value to not check for stale connections after the default 2 seconds.
-          .setValidateAfterInactivity(CONNECTION_INDEFINITE_TIMEOUT)
-          // http5 javadoc mentions the default for setValidateAfterInactivity is null,
-          // and both null or negative value don't expire the connection. Setting it to
-          // be negative value to be similar to setValidateAfterInactivity
-          .setTimeToLive(CONNECTION_INDEFINITE_TIMEOUT)
+          /**
+           * To not close the connection because of inactivity, we set the socket timeout to 0.
+           * check {@link org.apache.hc.core5.reactor.IOSession#setSocketTimeout} for more details
+           */
+          .setSocketTimeout(SOCKET_INDEFINITE_TIMEOUT)
           .build();
     }
 
@@ -106,8 +101,8 @@ public class HttpClient5Utils {
       return RequestConfig.custom()
           .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
           .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MINUTES)
-          // Override default keep alive time of 3 minutes to CONNECTION_INDEFINITE_TIMEOUT
-          .setConnectionKeepAlive(CONNECTION_INDEFINITE_TIMEOUT)
+          // Override default keep alive time of 3 minutes to CONNECTION_KEEP_ALIVE_TIMEOUT_IN_HOURS
+          .setConnectionKeepAlive(CONNECTION_KEEP_ALIVE_TIMEOUT_IN_HOURS)
           .build();
     }
 
