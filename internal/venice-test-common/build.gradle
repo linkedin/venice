@@ -127,8 +127,6 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.DaVinciCluster*",
       "com.linkedin.venice.endToEnd.DaVinciCompute*",
       "com.linkedin.venice.endToEnd.DaVinciLive*"],
-  "C": [
-       'com.linkedin.venice.endToEnd.ActiveActive.*(?<!ActiveActiveReplicationForHybridTest)$'],
   "D": [
       "com.linkedin.venice.endToEnd.TestActiveActive*"],
   "E": [
