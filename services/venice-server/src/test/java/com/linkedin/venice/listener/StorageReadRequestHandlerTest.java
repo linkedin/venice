@@ -407,9 +407,11 @@ public class StorageReadRequestHandlerTest {
     // Mock the TopicPartitionIngestionContextResponse from ingestion task
     TopicPartitionIngestionContextResponse expectedTopicPartitionIngestionContextResponse =
         new TopicPartitionIngestionContextResponse();
-
-    String expectedTopicPartitionContext =
-        "Ingestion context for topic: " + topic + ", partition: " + expectedPartitionId;
+    String jsonStr = "{\n" + "\"kafkaUrl\" : {\n" + "  TP(topic: \"" + topic + "\", partition: " + expectedPartitionId
+        + ") : {\n" + "      \"latestOffset\" : 0,\n" + "      \"offsetLag\" : 1,\n" + "      \"msgRate\" : 2.0,\n"
+        + "      \"byteRate\" : 4.0,\n" + "      \"consumerIdx\" : 6,\n"
+        + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
+    byte[] expectedTopicPartitionContext = jsonStr.getBytes();
     expectedTopicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(expectedTopicPartitionContext);
     doReturn(expectedTopicPartitionIngestionContextResponse).when(metadataRetriever)
         .getTopicPartitionIngestionContext(eq(topic), eq(topic), eq(expectedPartitionId));
@@ -419,7 +421,9 @@ public class StorageReadRequestHandlerTest {
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
         (TopicPartitionIngestionContextResponse) argumentCaptor.getValue();
-    assertTrue(topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext().contains(topic));
+    String topicPartitionIngestionContextStr =
+        new String(topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext());
+    assertTrue(topicPartitionIngestionContextStr.contains(topic));
     assertEquals(
         topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext(),
         expectedTopicPartitionContext);

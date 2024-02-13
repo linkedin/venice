@@ -36,6 +36,8 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
 
   public abstract long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition);
 
+  public abstract long getLatestOffsetBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition);
+
   public abstract Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition);

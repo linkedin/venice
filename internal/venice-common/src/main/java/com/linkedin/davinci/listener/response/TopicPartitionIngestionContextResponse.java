@@ -2,13 +2,13 @@ package com.linkedin.davinci.listener.response;
 
 public class TopicPartitionIngestionContextResponse {
   private boolean isError;
-  private String topicPartitionIngestionContext;
+  private byte[] topicPartitionIngestionContext;
   private String message;
 
   public TopicPartitionIngestionContextResponse() {
   }
 
-  public void setTopicPartitionIngestionContext(String topicPartitionIngestionContext) {
+  public void setTopicPartitionIngestionContext(byte[] topicPartitionIngestionContext) {
     this.topicPartitionIngestionContext = topicPartitionIngestionContext;
   }
 
@@ -28,7 +28,7 @@ public class TopicPartitionIngestionContextResponse {
     return this.message;
   }
 
-  public String getTopicPartitionIngestionContext() {
+  public byte[] getTopicPartitionIngestionContext() {
     return topicPartitionIngestionContext;
   }
 }

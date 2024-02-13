@@ -53,10 +53,11 @@ class ConsumptionTask implements Runnable {
   private final ConsumerSubscriptionCleaner cleaner;
 
   /**
-   * Maintain rate counter with default window size to calcualte the message and bytes rate at topic partition level.
+   * Maintain rate counter with default window size to calculate the message and bytes rate at topic partition level.
    */
   private final Map<PubSubTopicPartition, Rate> messageRatePerTopicPartition = new HashMap<>();
   private final Map<PubSubTopicPartition, Rate> bytesRatePerTopicPartition = new HashMap<>();
+  private final Map<PubSubTopicPartition, Long> lastSuccessfulPollTimestampPerTopicPartition = new HashMap<>();
 
   private final MetricConfig metricConfig = new MetricConfig();
 
@@ -68,8 +69,7 @@ class ConsumptionTask implements Runnable {
    */
   private volatile long lastSuccessfulPollTimestamp = System.currentTimeMillis();
 
-  private volatile long lastCalculationTimestamp;
-  private int polledTimes = 0; // To count num of poll in each window of pollNumsToCalculateAvg
+  public final static long DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP = -1L;
 
   public ConsumptionTask(
       final String kafkaUrl,
@@ -104,8 +104,6 @@ class ConsumptionTask implements Runnable {
     int payloadBytesConsumedInOnePoll;
     int polledPubSubMessagesCount = 0;
     Map<String, StorePollCounter> storePollCounterMap = new HashMap<>();
-    lastCalculationTimestamp = System.currentTimeMillis();
-
     try {
       while (running) {
         try {
@@ -139,7 +137,6 @@ class ConsumptionTask implements Runnable {
           lastSuccessfulPollTimestamp = System.currentTimeMillis();
           aggStats.recordTotalPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
           if (!polledPubSubMessages.isEmpty()) {
-            LOGGER.info("Get some messages");
             payloadBytesConsumedInOnePoll = 0;
             polledPubSubMessagesCount = 0;
             beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
@@ -167,7 +164,7 @@ class ConsumptionTask implements Runnable {
               }
               counter.byteSize += payloadSizePerTopicPartition;
               payloadBytesConsumedInOnePoll += payloadSizePerTopicPartition;
-
+              lastSuccessfulPollTimestampPerTopicPartition.put(pubSubTopicPartition, lastSuccessfulPollTimestamp);
               messageRatePerTopicPartition
                   .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
                   .record(topicPartitionMessages.size(), lastSuccessfulPollTimestamp);
@@ -266,6 +263,13 @@ class ConsumptionTask implements Runnable {
       return bytesRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
     }
     return 0.0D;
+  }
+
+  Long getLastSuccessfulPollTimestamp(PubSubTopicPartition topicPartition) {
+    if (lastSuccessfulPollTimestampPerTopicPartition.containsKey(topicPartition)) {
+      return lastSuccessfulPollTimestampPerTopicPartition.get(topicPartition);
+    }
+    return DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
   }
 
   void removeDataReceiver(PubSubTopicPartition topicPartition) {

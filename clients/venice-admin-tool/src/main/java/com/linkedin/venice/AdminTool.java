@@ -3117,7 +3117,7 @@ public class AdminTool {
     responseBody = transportClientResponse.getBody();
     TopicPartitionIngestionContextResponse currentVersionResponse =
         OBJECT_MAPPER.readValue(responseBody, TopicPartitionIngestionContextResponse.class);
-    System.out.println(currentVersionResponse.getTopicPartitionIngestionContext());
+    System.out.println(new String(currentVersionResponse.getTopicPartitionIngestionContext()));
   }
 
   static void getAndPrintRequestBasedMetadata(

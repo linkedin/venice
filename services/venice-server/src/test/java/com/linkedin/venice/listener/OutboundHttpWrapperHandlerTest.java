@@ -195,8 +195,13 @@ public class OutboundHttpWrapperHandlerTest {
   @Test
   public void testWriteTopicPartitionIngestionContextResponse() throws JsonProcessingException {
     TopicPartitionIngestionContextResponse msg = new TopicPartitionIngestionContextResponse();
-
-    msg.setTopicPartitionIngestionContext("Ingestion context for expected topic partition.");
+    String topic = "test_store_v1";
+    int expectedPartitionId = 12345;
+    String jsonStr = "{\n" + "\"kafkaUrl\" : {\n" + "  TP(topic: \"" + topic + "\", partition: " + expectedPartitionId
+        + ") : {\n" + "      \"latestOffset\" : 0,\n" + "      \"offsetLag\" : 1,\n" + "      \"msgRate\" : 2.0,\n"
+        + "      \"byteRate\" : 4.0,\n" + "      \"consumerIdx\" : 6,\n"
+        + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
+    msg.setTopicPartitionIngestionContext(jsonStr.getBytes());
     StatsHandler statsHandler = mock(StatsHandler.class);
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     ByteBuf body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(msg));
