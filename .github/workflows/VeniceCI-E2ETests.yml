@@ -727,7 +727,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  IntegrationTestsZAC:
+  IntegrationTestsR:
     strategy:
       fail-fast: false
       matrix:
@@ -752,7 +752,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZAC"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestR"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -817,7 +817,7 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
-    needs: [IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZAC, IntegrationTestsZ]
+    needs: [IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsR, IntegrationTestsZ]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3

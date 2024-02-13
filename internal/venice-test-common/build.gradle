@@ -128,7 +128,7 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.DaVinciCompute*",
       "com.linkedin.venice.endToEnd.DaVinciLive*"],
   "C": [
-      "com.linkedin.venice.endToEnd.ActiveActive*"],
+       'com.linkedin.venice.endToEnd.ActiveActive(^(?!ActiveActiveReplicationForHybridTest).*$)'],
   "D": [
       "com.linkedin.venice.endToEnd.TestActiveActive*"],
   "E": [
@@ -180,7 +180,7 @@ def integrationTestBuckets = [
       "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
   "Q": [
       "com.linkedin.venice.controller.Test*"],
-  "ZAC": [
+  "R": [
       "com.linkedin.venice.endToEnd.ActiveActiveReplicationForHybridTest"]
 ]
 
