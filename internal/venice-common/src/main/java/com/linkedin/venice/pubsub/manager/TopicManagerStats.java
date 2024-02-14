@@ -49,10 +49,11 @@ class TopicManagerStats extends AbstractVeniceStats {
     return sensorsByTypes;
   }
 
-  void recordLatency(SENSOR_TYPE sensorType, long startTimeInMs) {
+  void recordLatency(SENSOR_TYPE sensorType, long startTimeInNs) {
     if (sensorsByTypes == null || sensorType == null) {
       return;
     }
-    sensorsByTypes.get(sensorType).record(System.currentTimeMillis() - startTimeInMs);
+    // convert ns to us and record
+    sensorsByTypes.get(sensorType).record((System.nanoTime() - startTimeInNs) >> 10);
   }
 }

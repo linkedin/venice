@@ -240,7 +240,7 @@ class TopicMetadataFetcher implements Closeable {
    * @return true if the topic exists, false otherwise
    */
   boolean containsTopic(PubSubTopic topic) {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     boolean containsTopic = pubSubAdminAdapter.containsTopic(topic);
     stats.recordLatency(CONTAINS_TOPIC, startTime);
     return containsTopic;
@@ -265,7 +265,7 @@ class TopicMetadataFetcher implements Closeable {
   Int2LongMap getTopicLatestOffsets(PubSubTopic topic) {
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
-      long startTime = System.currentTimeMillis();
+      long startTime = System.nanoTime();
       List<PubSubTopicPartitionInfo> partitionInfoList = pubSubConsumerAdapter.partitionsFor(topic);
       stats.recordLatency(PARTITIONS_FOR, startTime);
 
@@ -279,7 +279,7 @@ class TopicMetadataFetcher implements Closeable {
         topicPartitions.add(partitionInfo.getTopicPartition());
       }
 
-      startTime = System.currentTimeMillis();
+      startTime = System.nanoTime();
       Map<PubSubTopicPartition, Long> offsetsMap =
           pubSubConsumerAdapter.endOffsets(topicPartitions, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
       stats.recordLatency(GET_TOPIC_LATEST_OFFSETS, startTime);
@@ -301,7 +301,7 @@ class TopicMetadataFetcher implements Closeable {
   List<PubSubTopicPartitionInfo> getTopicPartitionInfo(PubSubTopic topic) {
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
-      long startTime = System.currentTimeMillis();
+      long startTime = System.nanoTime();
       List<PubSubTopicPartitionInfo> res = pubSubConsumerAdapter.partitionsFor(topic);
       stats.recordLatency(PARTITIONS_FOR, startTime);
       return res;
@@ -325,7 +325,7 @@ class TopicMetadataFetcher implements Closeable {
   long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
-      long startTime = System.currentTimeMillis();
+      long startTime = System.nanoTime();
       Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumerAdapter
           .endOffsets(Collections.singleton(pubSubTopicPartition), PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
       stats.recordLatency(GET_PARTITION_LATEST_OFFSETS, startTime);
@@ -398,7 +398,7 @@ class TopicMetadataFetcher implements Closeable {
 
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
-      long startTime = System.currentTimeMillis();
+      long startTime = System.nanoTime();
       Long result = pubSubConsumerAdapter
           .offsetForTime(pubSubTopicPartition, timestamp, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
       stats.recordLatency(GET_OFFSET_FOR_TIME, startTime);
@@ -447,7 +447,7 @@ class TopicMetadataFetcher implements Closeable {
     int fetchSize = 10;
     int totalAttempts = 3;
     int fetchedRecordsCount;
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     do {
       List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> lastConsumedRecords =
           consumeLatestRecords(pubSubTopicPartition, fetchSize);
@@ -618,7 +618,7 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   void invalidateKey(PubSubTopic pubSubTopic) {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     LOGGER.info("Invalidating cache for topic: {}", pubSubTopic);
     topicExistenceCache.remove(pubSubTopic);
     Set<PubSubTopicPartition> topicPartitions = new HashSet<>();
@@ -638,7 +638,7 @@ class TopicMetadataFetcher implements Closeable {
       invalidateKey(pubSubTopicPartition);
     }
 
-    LOGGER.info("Invalidated cache for topic: {} in {} ms", pubSubTopic, System.currentTimeMillis() - startTime);
+    LOGGER.info("Invalidated cache for topic: {} in {} ns", pubSubTopic, System.nanoTime() - startTime);
   }
 
   /**

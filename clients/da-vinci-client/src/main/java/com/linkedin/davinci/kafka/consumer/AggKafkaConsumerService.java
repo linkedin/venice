@@ -393,8 +393,13 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     versionTopicStoreIngestionTaskMapping.put(storeIngestionTask.getVersionTopic().getName(), storeIngestionTask);
     consumerService.startConsumptionIntoDataReceiver(pubSubTopicPartition, lastOffset, dataReceiver);
     TopicManager topicManager = storeIngestionTask.getTopicManager(kafkaURL);
+
+    /*
+     * Prefetches and caches the latest offset for the specified partition. This optimization aims to prevent
+     * the consumption/metric thread from blocking on the first cache miss while waiting for the latest offset
+     * to be fetched from PubSub.
+     */
     if (topicManager != null) {
-      // prefetch and cache the latest offset for the topic partition
       topicManager.prefetchAndCacheLatestOffset(pubSubTopicPartition);
     }
     return dataReceiver;

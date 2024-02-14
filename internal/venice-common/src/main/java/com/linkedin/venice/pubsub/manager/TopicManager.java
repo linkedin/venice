@@ -174,9 +174,8 @@ public class TopicManager implements Closeable {
       boolean logCompaction,
       Optional<Integer> minIsr,
       boolean useFastPubSubOperationTimeout) {
-
-    long startTime = System.currentTimeMillis();
-    long deadlineMs = startTime + (useFastPubSubOperationTimeout
+    long startTimeMs = System.currentTimeMillis();
+    long deadlineMs = startTimeMs + (useFastPubSubOperationTimeout
         ? PUBSUB_FAST_OPERATION_TIMEOUT_MS
         : topicManagerContext.getPubSubOperationTimeoutMs());
     PubSubTopicConfiguration pubSubTopicConfiguration = new PubSubTopicConfiguration(
@@ -213,7 +212,7 @@ public class TopicManager implements Closeable {
       } else {
         throw new PubSubOpTimeoutException(
             "Timeout while creating topic: " + topicName + ". Topic still does not exist after "
-                + (deadlineMs - startTime) + "ms.",
+                + (deadlineMs - startTimeMs) + "ms.",
             e);
       }
     }
@@ -223,12 +222,12 @@ public class TopicManager implements Closeable {
   }
 
   protected void waitUntilTopicCreated(PubSubTopic topicName, int partitionCount, long deadlineMs) {
-    long startTime = System.currentTimeMillis();
+    long startTimeMs = System.nanoTime();
     while (!containsTopicAndAllPartitionsAreOnline(topicName, partitionCount)) {
       if (System.currentTimeMillis() > deadlineMs) {
         throw new PubSubOpTimeoutException(
             "Timeout while creating topic: " + topicName + ".  Topic still did not pass all the checks after "
-                + (deadlineMs - startTime) + "ms.");
+                + (deadlineMs - startTimeMs) + "ms.");
       }
       Utils.sleep(200);
     }
@@ -369,7 +368,7 @@ public class TopicManager implements Closeable {
    * @return a map of topic name to retention time in MS.
    */
   public Map<PubSubTopic, Long> getAllTopicRetentions() {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     Map<PubSubTopic, Long> topicRetentions = pubSubAdminAdapter.getAllTopicRetentions();
     stats.recordLatency(GET_ALL_TOPIC_RETENTIONS, startTime);
     return topicRetentions;
@@ -414,13 +413,13 @@ public class TopicManager implements Closeable {
       int numPartitions,
       int replicationFactor,
       PubSubTopicConfiguration topicConfiguration) {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     pubSubAdminAdapter.createTopic(pubSubTopic, numPartitions, replicationFactor, topicConfiguration);
     stats.recordLatency(CREATE_TOPIC, startTime);
   }
 
   private void setTopicConfig(PubSubTopic pubSubTopic, PubSubTopicConfiguration pubSubTopicConfiguration) {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     pubSubAdminAdapter.setTopicConfig(pubSubTopic, pubSubTopicConfiguration);
     stats.recordLatency(SET_TOPIC_CONFIG, startTime);
   }
@@ -429,7 +428,7 @@ public class TopicManager implements Closeable {
    * This operation is a little heavy, since it will pull the configs for all the topics.
    */
   public PubSubTopicConfiguration getTopicConfig(PubSubTopic pubSubTopic) {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     PubSubTopicConfiguration pubSubTopicConfiguration = pubSubAdminAdapter.getTopicConfig(pubSubTopic);
     topicConfigCache.put(pubSubTopic, pubSubTopicConfiguration);
     stats.recordLatency(GET_TOPIC_CONFIG, startTime);
@@ -437,7 +436,7 @@ public class TopicManager implements Closeable {
   }
 
   public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName) {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     PubSubTopicConfiguration pubSubTopicConfiguration = pubSubAdminAdapter.getTopicConfigWithRetry(topicName);
     topicConfigCache.put(topicName, pubSubTopicConfiguration);
     stats.recordLatency(GET_TOPIC_CONFIG_WITH_RETRY, startTime);
@@ -457,7 +456,7 @@ public class TopicManager implements Closeable {
   }
 
   public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     Map<PubSubTopic, PubSubTopicConfiguration> topicConfigs = pubSubAdminAdapter.getSomeTopicConfigs(topicNames);
     for (Map.Entry<PubSubTopic, PubSubTopicConfiguration> topicConfig: topicConfigs.entrySet()) {
       topicConfigCache.put(topicConfig.getKey(), topicConfig.getValue());
@@ -478,7 +477,7 @@ public class TopicManager implements Closeable {
 
     logger.info("Deleting topic: {}", pubSubTopic);
     try {
-      long startTime = System.currentTimeMillis();
+      long startTime = System.nanoTime();
       pubSubAdminAdapter.deleteTopic(pubSubTopic, Duration.ofMillis(topicManagerContext.getPubSubOperationTimeoutMs()));
       stats.recordLatency(DELETE_TOPIC, startTime);
       logger.info("Topic: {} has been deleted", pubSubTopic);
@@ -531,7 +530,7 @@ public class TopicManager implements Closeable {
 
   // TODO: Evaluate if we need synchronized here
   public synchronized Set<PubSubTopic> listTopics() {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     Set<PubSubTopic> topics = pubSubAdminAdapter.listAllTopics();
     stats.recordLatency(LIST_ALL_TOPICS, startTime);
     return topics;
@@ -545,7 +544,7 @@ public class TopicManager implements Closeable {
       PubSubTopic topic,
       int maxAttempts,
       final boolean expectedResult) {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     boolean containsTopic = pubSubAdminAdapter.containsTopicWithExpectationAndRetry(topic, maxAttempts, expectedResult);
     stats.recordLatency(CONTAINS_TOPIC_WITH_RETRY, startTime);
     return containsTopic;
@@ -558,7 +557,7 @@ public class TopicManager implements Closeable {
       Duration initialBackoff,
       Duration maxBackoff,
       Duration maxDuration) {
-    long startTime = System.currentTimeMillis();
+    long startTime = System.nanoTime();
     boolean containsTopic = pubSubAdminAdapter.containsTopicWithExpectationAndRetry(
         topic,
         maxAttempts,
