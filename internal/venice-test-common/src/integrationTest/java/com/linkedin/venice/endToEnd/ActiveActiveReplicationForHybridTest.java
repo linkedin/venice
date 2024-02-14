@@ -136,7 +136,7 @@ public class ActiveActiveReplicationForHybridTest {
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
      */
     serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 100L);
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     serverProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
