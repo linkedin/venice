@@ -392,7 +392,7 @@ public class RouterBackedSchemaReaderTest {
   public void testGetSchemaWithAnExtraFieldInResponse() throws Exception {
     String storeName = "test_store";
     String keySchemaStr = "\"string\"";
-    // Create a repsonse with an extra field.
+    // Create a response with an extra field.
     SchemaResponseWithExtraField schemaResponse = new SchemaResponseWithExtraField();
     schemaResponse.setId(1);
     schemaResponse.setSchemaStr(keySchemaStr);

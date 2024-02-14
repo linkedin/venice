@@ -183,7 +183,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Schema getValueSchema(int id) {
-    SchemaEntry valueSchemaEntry = maybeUpdateValueSchemaEntryMapById(id, false);
+    SchemaEntry valueSchemaEntry = maybeUpdateAndFetchValueSchemaEntryById(id, false);
     if (!isValidSchemaEntry(valueSchemaEntry)) {
       LOGGER.warn("Got null value schema from Venice for store: {} and id: {}", storeName, id);
       return null;
@@ -223,7 +223,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Schema getUpdateSchema(int valueSchemaId) {
-    DerivedSchemaEntry updateSchemaEntry = maybeUpdateUpdateSchemaEntryMapById(valueSchemaId, false);
+    DerivedSchemaEntry updateSchemaEntry = maybeUpdateAndFetchUpdateSchemaEntryById(valueSchemaId, false);
     if (isValidSchemaEntry(updateSchemaEntry)) {
       return updateSchemaEntry.getSchema();
     }
@@ -238,7 +238,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
       LOGGER.warn("Got null latest value schema from Venice for store: {}.", storeName);
       return null;
     }
-    DerivedSchemaEntry updateSchemaEntry = maybeUpdateUpdateSchemaEntryMapById(latestValueSchema.getId(), false);
+    DerivedSchemaEntry updateSchemaEntry = maybeUpdateAndFetchUpdateSchemaEntryById(latestValueSchema.getId(), false);
     if (isValidSchemaEntry(updateSchemaEntry)) {
       return updateSchemaEntry;
     }
@@ -298,10 +298,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
    */
   private void updateAllValueSchemas(boolean forceRefresh) {
     try {
+      Set<Integer> valueSchemaIdSchema;
       try {
-        for (int id: fetchAllValueSchemaIdsFromRouter()) {
-          maybeUpdateValueSchemaEntryMapById(id, forceRefresh);
-        }
+        valueSchemaIdSchema = fetchAllValueSchemaIdsFromRouter();
       } catch (Exception e) {
         LOGGER.warn(
             "Caught exception when trying to fetch all value schema IDs from router, will fetch all value schema entries instead.");
@@ -310,11 +309,14 @@ public class RouterBackedSchemaReader implements SchemaReader {
           valueSchemaEntryMap.put(valueSchemaEntry.getId(), valueSchemaEntry);
           valueSchemaMapR.put(valueSchemaEntry.getSchema(), valueSchemaEntry.getId());
         }
+        return;
       }
+
+      for (int id: valueSchemaIdSchema) {
+        maybeUpdateAndFetchValueSchemaEntryById(id, forceRefresh);
+      }
+
     } catch (Exception ex) {
-      if (ex instanceof InterruptedException) {
-        throw ex;
-      }
       throw new VeniceClientException(
           "Got exception while trying to fetch all value schemas for store: " + storeName,
           ex);
@@ -331,12 +333,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
         if (!isValidSchemaEntry(entry.getValue())) {
           continue;
         }
-        maybeUpdateUpdateSchemaEntryMapById(entry.getKey(), true);
+        maybeUpdateAndFetchUpdateSchemaEntryById(entry.getKey(), true);
       }
     } catch (Exception ex) {
-      if (ex instanceof InterruptedException) {
-        throw ex;
-      }
       throw new VeniceClientException(
           "Got exception while trying to fetch all update schemas for store: " + storeName,
           ex);
@@ -434,7 +433,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
    * -- (a) Return not found, if forceRefresh flag == false.
    * -- (b) Perform one time router query, update and return the result if forceRefresh flag == true.
    */
-  private SchemaEntry maybeUpdateValueSchemaEntryMapById(int valueSchemaId, boolean forceRefresh) {
+  private SchemaEntry maybeUpdateAndFetchValueSchemaEntryById(int valueSchemaId, boolean forceRefresh) {
     if (forceRefresh) {
       SchemaEntry entry = fetchValueSchemaEntryFromRouter(valueSchemaId);
       if (entry == null) {
@@ -467,7 +466,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
    * -- (a) Return not found, if forceRefresh flag == false.
    * -- (b) Perform one time router query, update and return the result if forceRefresh flag == true.
    */
-  private DerivedSchemaEntry maybeUpdateUpdateSchemaEntryMapById(int valueSchemaId, boolean forceRefresh) {
+  private DerivedSchemaEntry maybeUpdateAndFetchUpdateSchemaEntryById(int valueSchemaId, boolean forceRefresh) {
     if (forceRefresh) {
       DerivedSchemaEntry derivedSchemaEntry = fetchUpdateSchemaEntryFromRouter(valueSchemaId);
       if (derivedSchemaEntry == null) {
@@ -630,7 +629,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
           Duration.ofNanos(1),
           Collections.singletonList(ExecutionException.class));
     } catch (Exception e) {
-      throw new VeniceClientException("Failed to execute request from path " + requestPath, e);
+      throw new VeniceClientException(
+          "Failed to execute request from path " + requestPath + ", storeClient: " + storeClient,
+          e);
     }
 
     if (response == null) {
@@ -639,10 +640,6 @@ public class RouterBackedSchemaReader implements SchemaReader {
     }
 
     return response;
-  }
-
-  private String getExceptionDetails(String requestPath) {
-    return "Store: " + storeName + ", path: " + requestPath + ", storeClient: " + storeClient;
   }
 
   private SchemaEntry fetchKeySchema() throws VeniceClientException {
