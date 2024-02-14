@@ -47,7 +47,7 @@ import org.apache.logging.log4j.Logger;
 public class RouterBackedSchemaReader implements SchemaReader {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
-  public static final String TYPE_VALUE_SCHEMA_ID = "value_schema_id";
+  public static final String TYPE_VALUE_SCHEMA_ID = "value_schema_ids";
   public static final String TYPE_UPDATE_SCHEMA = "update_schema";
   private static final Logger LOGGER = LogManager.getLogger(RouterBackedSchemaReader.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
@@ -268,7 +268,12 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   private SchemaEntry fetchSingleSchema(String requestPath, boolean isValueSchema) throws VeniceClientException {
-    SchemaResponse schemaResponse = fetchSingleSchemaResponse(requestPath);
+    SchemaResponse schemaResponse;
+    try {
+      schemaResponse = fetchSingleSchemaResponse(requestPath);
+    } catch (Exception e) {
+      return null;
+    }
 
     if (schemaResponse == null) {
       return null;
@@ -291,6 +296,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
           maybeUpdateValueSchemaEntryMapById(id, forceRefresh);
         }
       } catch (Exception e) {
+        LOGGER.warn(
+            "Caught exception when trying to fetch all value schema IDs from router, will fetch all value schema entries instead.",
+            e);
         // TODO: Figure out what exception is the Router endpoint issue.
         // Fall back to fetch all value schema.
         for (SchemaEntry valueSchemaEntry: fetchAllValueSchemaEntriesFromRouter()) {
@@ -472,7 +480,19 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   private DerivedSchemaEntry fetchUpdateSchemaEntryFromRouter(int valueSchemaId) {
     String requestPath = TYPE_UPDATE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
-    return (DerivedSchemaEntry) fetchSingleSchema(requestPath, false);
+    SchemaResponse schemaResponse;
+    try {
+      schemaResponse = fetchSingleSchemaResponse(requestPath);
+    } catch (Exception e) {
+      return null;
+    }
+    if (schemaResponse == null) {
+      return null;
+    }
+    return new DerivedSchemaEntry(
+        schemaResponse.getId(),
+        schemaResponse.getDerivedSchemaId(),
+        schemaResponse.getSchemaStr());
   }
 
   private boolean isValidSchemaEntry(SchemaEntry schemaEntry) {
