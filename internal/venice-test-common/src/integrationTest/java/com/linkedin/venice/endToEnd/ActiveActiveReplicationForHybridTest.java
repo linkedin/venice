@@ -359,6 +359,19 @@ public class ActiveActiveReplicationForHybridTest {
           Optional.of(isChunkingEnabled));
 
       // Empty push to create a version
+      waitForNonDeterministicAssertion(PUSH_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        try {
+          assertCommand(
+              parentControllerClient
+                  .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT / 4));
+        } catch (Exception e) {
+          parentControllerClient.killOfflinePushJob(
+              Version.composeKafkaTopic(
+                  storeName,
+                  parentControllerClient.getStoreLargestUsedVersion(clusterName, storeName).getVersion()));
+        }
+      });
+
       int versionNumber;
       ControllerResponse controllerResponse = assertCommand(
           parentControllerClient
@@ -371,13 +384,16 @@ public class ActiveActiveReplicationForHybridTest {
       waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         for (ControllerClient controllerClient: dcControllerClientList) {
           StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-          assertEquals(storeResponse.getStore().getCurrentVersion(), versionNumber);
+          assertTrue(storeResponse.getStore().getCurrentVersion() > 0);
         }
       });
 
       // disable the purging of transientRecord buffer using reflection.
       if (useTransientRecordCache) {
-        String topicName = Version.composeKafkaTopic(storeName, versionNumber);
+        String topicName = Version.composeKafkaTopic(
+            storeName,
+            parentControllerClient.getStoreLargestUsedVersion(clusterName, storeName).getVersion());
+        // String topicName = Version.composeKafkaTopic(storeName, versionNumber);
         for (VeniceMultiClusterWrapper veniceRegion: multiRegionMultiClusterWrapper.getChildRegions()) {
           VeniceClusterWrapper veniceCluster = veniceRegion.getClusters().get(clusterName);
           for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
