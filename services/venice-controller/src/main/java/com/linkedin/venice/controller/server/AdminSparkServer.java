@@ -24,7 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_OLD_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_VALUE_SCHEMAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_UNUSED_VALUE_SCHEMAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.EMPTY_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_QUOTA_REBALANCED;
@@ -451,7 +451,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         storagePersonaRoutes.getPersonaAssociatedWithStore(admin));
     httpService.get(GET_CLUSTER_STORAGE_PERSONAS.getPath(), storagePersonaRoutes.getClusterStoragePersonas(admin));
 
-    httpService.post(DELETE_VALUE_SCHEMAS.getPath(), storesRoutes.deleteValueSchemas(admin));
+    httpService.post(DELETE_UNUSED_VALUE_SCHEMAS.getPath(), storesRoutes.deleteValueSchemas(admin));
     httpService.get(GET_INUSE_SCHEMA_IDS.getPath(), storesRoutes.getInUseSchemaIds(admin));
 
     httpService

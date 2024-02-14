@@ -295,8 +295,9 @@ public enum ControllerRoute {
   CLEANUP_INSTANCE_CUSTOMIZED_STATES(
       "/cleanup_instance_customized_states", HttpMethod.POST, Collections.singletonList(CLUSTER)
   ), REMOVE_STORE_FROM_GRAVEYARD("/remove_store_from_graveyard", HttpMethod.POST, Collections.singletonList(NAME)),
-  DELETE_VALUE_SCHEMAS(
-      "/delete_value_schemas", HttpMethod.POST, Arrays.asList(CLUSTER, NAME), ControllerApiConstants.VALUE_SCHEMA_IDS
+  DELETE_UNUSED_VALUE_SCHEMAS(
+      "/delete_unused_value_schemas", HttpMethod.POST, Arrays.asList(CLUSTER, NAME),
+      ControllerApiConstants.VALUE_SCHEMA_IDS
   ), GET_INUSE_SCHEMA_IDS("/get_inuse_schema_ids", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
 
   private final String path;

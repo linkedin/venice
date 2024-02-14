@@ -3969,9 +3969,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
-  /**
-   * @return the value to which the specified key is mapped from the Venice internal <code>BATCH_JOB_HEARTBEAT_STORE</code> topic store.
-   */
   @Override
   public StoreMetaValue getMetaStoreValue(StoreMetaKey metaKey, String storeName) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
@@ -4012,17 +4009,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return schemaIds;
   }
 
-  public boolean deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedSchemaIds) {
-    // delete the unused schemas.
-    try {
-      unusedSchemaIds.forEach(id -> {
-        getHelixVeniceClusterResources(clusterName).getSchemaRepository().removeValueSchema(storeName, id);
-        LOGGER.info("Removed value schema with ID " + id + " for store " + storeName);
-      });
-    } catch (Exception e) {
-      return false;
+  public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedValueSchemaIds) {
+    Set<Integer> inuseValueSchemaIds = getInUseValueSchemaIds(clusterName, storeName);
+    boolean isCommon = unusedValueSchemaIds.stream().anyMatch(inuseValueSchemaIds::contains);
+    if (isCommon) {
+      LOGGER
+          .error("For store {} cannot delete value schema ids {} as they being used.", storeName, unusedValueSchemaIds);
+      return;
     }
-    return true;
+    // delete the unused schemas.
+    unusedValueSchemaIds.forEach(id -> {
+      getHelixVeniceClusterResources(clusterName).getSchemaRepository().removeValueSchema(storeName, id);
+      LOGGER.info("Removed value schema with ID " + id + " for store " + storeName);
+    });
   }
 
   private void setStoreCompressionStrategy(

@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -21,6 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -70,40 +70,24 @@ public class TestUnusedValueSchemaCleanupService {
     schemaEntries.add(new SchemaEntry(2, SCHEMA));
     schemaEntries.add(new SchemaEntry(3, SCHEMA));
     schemaEntries.add(new SchemaEntry(4, SCHEMA));
-
-    doReturn(schemaEntries).when(parentHelixAdmin).getValueSchemas(anyString(), anyString());
     Set<Integer> schemaIds = new HashSet<>();
     schemaIds.add(3);
     schemaIds.add(4);
-
     UnusedValueSchemaCleanupService service = new UnusedValueSchemaCleanupService(config, admin, parentHelixAdmin);
-
     service.startInner();
     Set<Integer> unusedSchemas = new HashSet<>();
     unusedSchemas.add(1);
     unusedSchemas.add(2);
-
-    // parent colo fails to fetch inuse schema set, nothing will be deleted
-    doReturn(Collections.emptySet()).when(parentHelixAdmin).getInUseValueSchemaIds(anyString(), anyString());
+    doReturn(Collections.emptySet()).when(parentHelixAdmin).getValueSchemas(anyString(), anyString());
 
     TestUtils.waitForNonDeterministicAssertion(
         1,
         TimeUnit.SECONDS,
         () -> verify(admin, times(0)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
 
-    // even if child colo returns in-use schema set but if a child colo fails to delete them,
-    // parent colo will not delete any schema and the steps will be retried
+    doReturn(schemaEntries).when(parentHelixAdmin).getValueSchemas(anyString(), anyString());
     doReturn(schemaIds).when(parentHelixAdmin).getInUseValueSchemaIds(anyString(), anyString());
-    doReturn(false).when(parentHelixAdmin).deleteValueSchemas(anyString(), anyString(), anySet());
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(admin, times(0)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
-
-    // happy path, delete schemas in both parent and child
-    doReturn(true).when(parentHelixAdmin).deleteValueSchemas(anyString(), anyString(), anySet());
     service.startInner();
-
     TestUtils.waitForNonDeterministicAssertion(
         10,
         TimeUnit.SECONDS,
@@ -112,6 +96,37 @@ public class TestUnusedValueSchemaCleanupService {
         10,
         TimeUnit.SECONDS,
         () -> verify(parentHelixAdmin, times(1)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
+  }
 
+  @Test
+  void testGetUnusedSchema() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(true).when(controllerConfig).isUnusedValueSchemaCleanupServiceEnabled();
+    doReturn(true).when(admin).isLeaderControllerFor(any());
+    Store store = mockStore();
+    ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
+    Collection<SchemaEntry> schemaEntries = new ArrayList<>();
+    schemaEntries.add(new SchemaEntry(1, SCHEMA));
+    schemaEntries.add(new SchemaEntry(2, SCHEMA));
+    schemaEntries.add(new SchemaEntry(3, SCHEMA));
+    schemaEntries.add(new SchemaEntry(4, SCHEMA));
+    schemaEntries.add(new SchemaEntry(5, SCHEMA));
+    schemaEntries.add(new SchemaEntry(6, SCHEMA));
+
+    Set<Integer> inuseSchemaIds = new HashSet<>();
+    inuseSchemaIds.add(3);
+    inuseSchemaIds.add(4);
+    doReturn(new SchemaEntry(6, SCHEMA)).when(schemaRepository).getSupersetOrLatestValueSchema(anyString());
+    UnusedValueSchemaCleanupService service = new UnusedValueSchemaCleanupService(config, admin, parentHelixAdmin);
+    Set<Integer> unusedSchemas = service.findSchemaIdsToDelete(schemaEntries, store, schemaRepository, inuseSchemaIds);
+    Assert.assertTrue(unusedSchemas.contains(1));
+    Assert.assertTrue(unusedSchemas.contains(2));
+    doReturn(5).when(store).getLatestSuperSetValueSchemaId();
+    unusedSchemas = service.findSchemaIdsToDelete(schemaEntries, store, schemaRepository, inuseSchemaIds);
+    Assert.assertFalse(unusedSchemas.contains(5));
+    Assert.assertFalse(unusedSchemas.contains(6));
   }
 }

@@ -559,7 +559,7 @@ public class AdminTool {
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
           break;
-        case DELETE_VALUE_SCHEMA:
+        case DELETE_UNUSED_VALUE_SCHEMA:
           deleteValueSchema(cmd);
         default:
           StringJoiner availableCommands = new StringJoiner(", ");

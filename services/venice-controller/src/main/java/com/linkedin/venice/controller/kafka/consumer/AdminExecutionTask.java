@@ -17,6 +17,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
@@ -257,6 +258,8 @@ public class AdminExecutionTask implements Callable<Void> {
         case UPDATE_STORAGE_PERSONA:
           handleUpdateStoragePersona((UpdateStoragePersona) adminOperation.payloadUnion);
           break;
+        case DELETE_UNUSED_VALUE_SCHEMA:
+          handleDeleteUnusedValueSchema((DeleteUnusedValueSchemas) adminOperation.payloadUnion);
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
       }
@@ -763,6 +766,13 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.getClusterName().toString();
     String personaName = message.getName().toString();
     admin.deleteStoragePersona(clusterName, personaName);
+  }
+
+  private void handleDeleteUnusedValueSchema(DeleteUnusedValueSchemas message) {
+    String clusterName = message.getClusterName().toString();
+    String storeName = message.getStoreName().toString();
+    Set<Integer> schemaIds = new HashSet<>(message.getSchemaIds());
+    admin.deleteValueSchemas(clusterName, storeName, schemaIds);
   }
 
   private void handleUpdateStoragePersona(UpdateStoragePersona message) {

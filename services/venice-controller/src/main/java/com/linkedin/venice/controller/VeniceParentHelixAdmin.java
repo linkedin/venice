@@ -94,6 +94,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
@@ -632,20 +633,26 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean deleteValueSchemas(String clusterName, String storeName, Set<Integer> inuseValueSchemaIds) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    List<String> schemaIds = inuseValueSchemaIds.stream().map(String::valueOf).collect(Collectors.toList());
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      ControllerClient controllerClient = entry.getValue();
-      ControllerResponse response = controllerClient.deleteValueSchemas(storeName, schemaIds);
-      if (response.isError()) {
-        LOGGER.error(
-            "Could not delete value schema from region: " + entry.getKey() + " for store " + storeName + ". "
-                + response.getError());
-        return false;
-      }
+  public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedValueSchemaIds) {
+    Set<Integer> inuseValueSchemaIds = getInUseValueSchemaIds(clusterName, storeName);
+    boolean isCommon = unusedValueSchemaIds.stream().anyMatch(inuseValueSchemaIds::contains);
+    if (isCommon) {
+      LOGGER
+          .error("For store {} cannot delete value schema ids {} as they being used.", storeName, unusedValueSchemaIds);
+      return;
     }
-    return true;
+    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    DeleteUnusedValueSchemas deleteValueSchemas =
+        (DeleteUnusedValueSchemas) AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getNewInstance();
+    deleteValueSchemas.setClusterName(clusterName);
+    deleteValueSchemas.setStoreName(storeName);
+    deleteValueSchemas.setSchemaIds(new ArrayList<>(unusedValueSchemaIds));
+
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getValue();
+    message.payloadUnion = deleteValueSchemas;
+
+    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
 
   @Override

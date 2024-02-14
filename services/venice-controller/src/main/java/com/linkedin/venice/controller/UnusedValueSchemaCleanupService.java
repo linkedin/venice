@@ -1,22 +1,30 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This service runs in the parent controller to delete historical unused value schemas.
+ * Currently it supports deletion of unused value schemas only for batch stores.
+ */
 public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
+  private static final Logger LOGGER = LogManager.getLogger(UnusedValueSchemaCleanupService.class);
+
   private final ScheduledExecutorService executor =
       Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("UnusedValueSchemaCleanupService"));
   private final VeniceControllerMultiClusterConfig multiClusterConfig;
@@ -62,38 +70,24 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
             continue;
           }
 
-          Set<Integer> usedSchemaSet = veniceParentHelixAdmin.getInUseValueSchemaIds(clusterName, storeName);
+          Set<Integer> inUseValueSchemaIds = veniceParentHelixAdmin.getInUseValueSchemaIds(clusterName, storeName);
 
           // if any of the child colo is unreachable, skip deletion.
-          if (usedSchemaSet.isEmpty()) {
+          if (inUseValueSchemaIds.isEmpty()) {
+            LOGGER.warn("Could not find in-use value schemas for store {}", storeName);
             continue;
           }
-          int minSchemaIdInUse = Collections.min(usedSchemaSet);
-          Set<Integer> schemasToDelete = new HashSet<>();
 
-          // assumes `getValueSchemas` returns ascending schema ids so that the older schemas are deleted first
-          for (SchemaEntry schemaEntry: allSchemas) {
-            int schemaId = schemaEntry.getId();
-            // skip latest value schema or super-set schema id
-            if (schemaId == store.getLatestSuperSetValueSchemaId() || admin.getHelixVeniceClusterResources(clusterName)
-                .getSchemaRepository()
-                .getSupersetOrLatestValueSchema(storeName)
-                .getId() == schemaId) {
-              continue;
-            }
+          Set<Integer> schemasToDelete = findSchemaIdsToDelete(
+              allSchemas,
+              store,
+              admin.getHelixVeniceClusterResources(clusterName).getSchemaRepository(),
+              inUseValueSchemaIds);
 
-            // delete only if its not used and less than minimum of used schema id
-            if (!usedSchemaSet.contains(schemaId) && schemaId < minSchemaIdInUse) {
-              schemasToDelete.add(schemaId);
-              // maintain minimum of SCHEMA_COUNT_THRESHOLD schemas in repo
-              if (schemasToDelete.size() > allSchemas.size() - minSchemaCountToKeep) {
-                break;
-              }
-            }
-          }
-          // delete from child colos before parent
-          if (veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete)) {
-            // delete from parent only if child colo deletion succeeds
+          if (!schemasToDelete.isEmpty()) {
+            // delete from child colos
+            veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
+            // delete from the parent colo
             admin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
           }
         }
@@ -112,6 +106,34 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
       }
     }
     return false;
+  }
+
+  Set<Integer> findSchemaIdsToDelete(
+      Collection<SchemaEntry> allSchemas,
+      Store store,
+      ReadWriteSchemaRepository schemaRepository,
+      Set<Integer> inUseValueSchemaIds) {
+    Set<Integer> schemasToDelete = new HashSet<>();
+
+    // assumes `getValueSchemas` returns ascending schema ids so that the older schemas are deleted first
+    for (SchemaEntry schemaEntry: allSchemas) {
+      int schemaId = schemaEntry.getId();
+      // skip latest value schema or super-set schema id
+      if (schemaId == store.getLatestSuperSetValueSchemaId()
+          || schemaRepository.getSupersetOrLatestValueSchema(store.getName()).getId() == schemaId) {
+        continue;
+      }
+
+      // delete only if its not used
+      if (!inUseValueSchemaIds.contains(schemaId)) {
+        schemasToDelete.add(schemaId);
+        // maintain minimum of SCHEMA_COUNT_THRESHOLD schemas in repo
+        if (schemasToDelete.size() > allSchemas.size() - minSchemaCountToKeep) {
+          break;
+        }
+      }
+    }
+    return schemasToDelete;
   }
 
   @Override

@@ -505,7 +505,7 @@ public enum Command {
       "backup-store-metadata-from-graveyard", "Backup store metadata from graveyard in EI",
       new Arg[] { VENICE_ZOOKEEPER_URL, ZK_SSL_CONFIG_FILE, BACKUP_FOLDER }
   ),
-  DELETE_VALUE_SCHEMA(
+  DELETE_UNUSED_VALUE_SCHEMA(
       "delete-value-schema", "Delete unused value schema of a store.",
       new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID }
   );

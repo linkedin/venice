@@ -35,7 +35,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_NATIVE
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ALL_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_VALUE_SCHEMAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_UNUSED_VALUE_SCHEMAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
@@ -290,7 +290,7 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse response) {
-        AdminSparkServer.validateParams(request, DELETE_VALUE_SCHEMAS.getParams(), admin);
+        AdminSparkServer.validateParams(request, DELETE_UNUSED_VALUE_SCHEMAS.getParams(), admin);
 
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);

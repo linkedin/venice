@@ -1031,7 +1031,7 @@
           ]
         },
         {
-          "name": "DeleteValueSchemas",
+          "name": "DeleteUnusedValueSchemas",
           "type": "record",
           "fields": [
             {

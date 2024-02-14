@@ -270,7 +270,7 @@ public class ControllerClient implements Closeable {
   public ControllerResponse deleteValueSchemas(String storeName, List<String> schemaIds) {
     QueryParams params =
         newParams().add(NAME, storeName).add(ControllerApiConstants.VALUE_SCHEMA_IDS, String.join(",", schemaIds));
-    return request(ControllerRoute.DELETE_VALUE_SCHEMAS, params, SchemaUsageResponse.class);
+    return request(ControllerRoute.DELETE_UNUSED_VALUE_SCHEMAS, params, SchemaUsageResponse.class);
   }
 
   public VersionCreationResponse requestTopicForWrites(

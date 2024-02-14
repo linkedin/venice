@@ -563,7 +563,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
     this.unusedValueSchemaCleanupServiceEnabled =
         props.getBoolean(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, false);
-    this.unusedSchemaCleanupIntervalMinutes = props.getInt(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS, 300);
+    this.unusedSchemaCleanupIntervalMinutes = props.getInt(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS, 600);
     this.minSchemaCountToKeep = props.getInt(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 20);
 
     try {

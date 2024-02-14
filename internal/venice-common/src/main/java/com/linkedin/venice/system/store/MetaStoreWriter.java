@@ -252,36 +252,6 @@ public class MetaStoreWriter implements Closeable {
     });
   }
 
-  /**
-   * This function should be invoked during ingestion when execution status changes.
-   */
-  public void writeStoreReplicaStatus(
-      String clusterName,
-      String storeName,
-      int version,
-      int partitionId,
-      Instance instance,
-      ExecutionStatus executionStatus) {
-    update(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {
-      {
-        put(KEY_STRING_STORE_NAME, storeName);
-        put(KEY_STRING_CLUSTER_NAME, clusterName);
-        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-      }
-    }, () -> {
-      // Construct an update
-      UpdateBuilder updateBuilder = new UpdateBuilderImpl(getDerivedComputeSchema());
-      updateBuilder.setNewFieldValue("timestamp", System.currentTimeMillis());
-      Map<String, StoreReplicaStatus> instanceStatusMap = new HashMap<>();
-      StoreReplicaStatus replicaStatus = new StoreReplicaStatus();
-      replicaStatus.status = executionStatus.getValue();
-      instanceStatusMap.put(instance.getUrl(true), replicaStatus);
-      updateBuilder.setEntriesToAddToMapField("storeReplicaStatuses", instanceStatusMap);
-      return updateBuilder.build();
-    });
-  }
-
   Schema getDerivedComputeSchema() {
     return this.derivedComputeSchema;
   }

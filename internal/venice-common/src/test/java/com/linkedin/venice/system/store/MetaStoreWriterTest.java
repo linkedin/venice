@@ -2,10 +2,8 @@ package com.linkedin.venice.system.store;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
-import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -29,10 +27,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -42,6 +38,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.AssertJUnit.assertTrue;
+
 
 
 public class MetaStoreWriterTest {
@@ -68,11 +65,6 @@ public class MetaStoreWriterTest {
     metaStoreWriter.writeMessageWithRetry(metaStoreName, vw -> vw.delete("a", null));
     verify(badWriter, times(1)).delete(any(), any());
     verify(goodWriter, times(1)).delete(any(), any());
-
-    doReturn(derivedSchema).when(metaStoreWriter).getDerivedComputeSchema();
-    when(metaStoreWriter.getOrCreateMetaStoreWriter(metaStoreName)).thenReturn(goodWriter);
-    doCallRealMethod().when(metaStoreWriter)
-        .writeStoreReplicaStatus(anyString(), anyString(), anyInt(), anyInt(), any(), eq(ExecutionStatus.COMPLETED));
   }
 
   @Test
@@ -106,21 +98,6 @@ public class MetaStoreWriterTest {
   @DataProvider
   public Object[][] testCloseDataProvider() {
     return new Object[][] { { 5000, 30 }, { 4000, 2 }, { 3000, 11 }, { 2000, 0 } };
-  }
-
-  @Test
-  public void testUpdateReplicaStatus() {
-    TopicManager topicManager = mock(TopicManager.class);
-    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
-    HelixReadOnlyZKSharedSchemaRepository schemaRepo = mock(HelixReadOnlyZKSharedSchemaRepository.class);
-    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
-    GeneratedSchemaID generatedSchemaID = mock(GeneratedSchemaID.class);
-    doReturn(true).when(generatedSchemaID).isValid();
-    doReturn(generatedSchemaID).when(schemaRepo).getDerivedSchemaId(any(), any());
-    MetaStoreWriter metaStoreWriter =
-        new MetaStoreWriter(topicManager, writerFactory, schemaRepo, pubSubTopicRepository, 10, 100);
-    Instance instance = new Instance("host1", "host1", 1234);
-    metaStoreWriter.writeStoreReplicaStatus("cluster", "storeName", 1, 0, instance, ExecutionStatus.COMPLETED);
   }
 
   @Test(dataProvider = "testCloseDataProvider")
