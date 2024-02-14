@@ -3,15 +3,9 @@ package com.linkedin.venice.pubsub.manager;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -64,22 +58,9 @@ public class TopicManagerRepository implements Closeable {
 
   @Override
   public void close() {
-    long startTime = System.currentTimeMillis();
-    List<CompletableFuture<Void>> closeFutures = new ArrayList<>(topicManagers.size());
     for (TopicManager topicManager: topicManagers.values()) {
-      closeFutures.add(topicManager.closeAsync());
+      topicManager.close();
     }
-    try {
-      CompletableFuture.allOf(closeFutures.toArray(new CompletableFuture[0])).get(2, TimeUnit.MINUTES);
-      LOGGER.info(
-          "All TopicManagers in the TopicManagerRepository have been closed in {} ms",
-          System.currentTimeMillis() - startTime);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      LOGGER.error("Interrupted while waiting for TopicManagers to close", e);
-    } catch (ExecutionException | TimeoutException e) {
-      // log and ignore exception
-      LOGGER.error("Error when closing TopicManagerRepository", e);
-    }
+    LOGGER.info("TopicManagerRepository has started closing all TopicManagers in the repository.");
   }
 }

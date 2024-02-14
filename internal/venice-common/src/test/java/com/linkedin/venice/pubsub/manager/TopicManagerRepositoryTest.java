@@ -1,15 +1,14 @@
 package com.linkedin.venice.pubsub.manager;
 
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
-import java.util.concurrent.CompletableFuture;
 import org.testng.annotations.Test;
 
 
@@ -54,10 +53,10 @@ public class TopicManagerRepositoryTest {
     assertTrue(topicManagerRepositorySpy.getAllTopicManagers().contains(remoteTopicManager));
 
     // test close
-    when(localTopicManager.closeAsync()).thenReturn(CompletableFuture.completedFuture(null));
-    when(remoteTopicManager.closeAsync()).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(localTopicManager).close();
+    doNothing().when(remoteTopicManager).close();
     topicManagerRepositorySpy.close();
-    verify(localTopicManager).closeAsync();
-    verify(remoteTopicManager).closeAsync();
+    verify(localTopicManager).close();
+    verify(remoteTopicManager).close();
   }
 }

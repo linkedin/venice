@@ -47,9 +47,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -713,18 +711,7 @@ public class TopicManager implements Closeable {
     if (isClosed.get()) {
       logger.warn("{} is already closed", this);
     }
-    try {
-      closeAsync().get(2, TimeUnit.MINUTES);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      logger.error("Interrupted while closing: {}", this, e);
-    } catch (ExecutionException | TimeoutException e) {
-      logger.error("Failed to close: {}", this, e);
-    }
-  }
-
-  CompletableFuture<Void> closeAsync() {
-    return CompletableFuture.runAsync(() -> {
+    CompletableFuture.runAsync(() -> {
       if (isClosed.compareAndSet(false, true)) {
         logger.info("Closing {}", this);
         Utils.closeQuietlyWithErrorLogged(topicMetadataFetcher);
