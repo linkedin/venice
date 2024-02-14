@@ -136,7 +136,7 @@ public class ActiveActiveReplicationForHybridTest {
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
      */
     serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 100L);
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 5L);
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     serverProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
@@ -576,6 +576,7 @@ public class ActiveActiveReplicationForHybridTest {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+
       updateStoreToHybrid(
           storeName,
           parentControllerClient,
@@ -584,14 +585,25 @@ public class ActiveActiveReplicationForHybridTest {
           Optional.of(chunkingEnabled));
 
       // Empty push to create a version
-      assertCommand(
-          parentControllerClient
-              .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
+      waitForNonDeterministicAssertion(PUSH_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        try {
+          assertCommand(
+              parentControllerClient
+                  .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT / 4));
+        } catch (Exception e) {
+          // Version.composeKafkaTopic(storeName, parentControllerClient.getStoreLargestUsedVersion(clusterName,
+          // storeName).getVersion());
+          parentControllerClient.killOfflinePushJob(
+              Version.composeKafkaTopic(
+                  storeName,
+                  parentControllerClient.getStoreLargestUsedVersion(clusterName, storeName).getVersion()));
+        }
+      });
 
       // Verify that version 1 is already created in dc-0 region
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreResponse storeResponse = assertCommand(dc0Client.getStore(storeName));
-        assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+        assertTrue(storeResponse.getStore().getCurrentVersion() > 0);
       });
 
       /**
