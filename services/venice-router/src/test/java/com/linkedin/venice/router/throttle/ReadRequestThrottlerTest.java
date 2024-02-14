@@ -1,16 +1,26 @@
 package com.linkedin.venice.router.throttle;
 
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertFalse;
+
 import com.linkedin.venice.exceptions.QuotaExceededException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -18,6 +28,7 @@ import org.testng.annotations.Test;
 
 
 public class ReadRequestThrottlerTest {
+  private static final Logger LOGGER = LogManager.getLogger(ReadRequestThrottlerTest.class);
   private static final double PER_STORE_ROUTER_QUOTA_BUFFER = 1.5;
 
   private ReadOnlyStoreRepository storeRepository;
@@ -54,7 +65,6 @@ public class ReadRequestThrottlerTest {
     throttler = new ReadRequestThrottler(
         zkRoutersClusterManager,
         storeRepository,
-        routingDataRepository,
         maxCapacity,
         stats,
         PER_STORE_ROUTER_QUOTA_BUFFER,
@@ -181,7 +191,7 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(maxCapcity).when(routerConfig).getMaxReadCapacityCu();
 
     ReadRequestThrottler multiStoreThrottler =
-        new ReadRequestThrottler(zkRoutersClusterManager, storeRepository, routingDataRepository, stats, routerConfig);
+        new ReadRequestThrottler(zkRoutersClusterManager, storeRepository, stats, routerConfig);
 
     for (int i = 0; i < storeCount; i++) {
       Assert.assertEquals(
@@ -367,5 +377,88 @@ public class ReadRequestThrottlerTest {
     } catch (QuotaExceededException e) {
       // expected
     }
+  }
+
+  /**
+   * We used to get NPEs due to subscribing listeners prior to the end of the constructor. This is a regression test
+   * for that issue.
+   */
+  @Test
+  public void testRaceConditionBetweenConstructorAndListeners() {
+    AtomicBoolean listenerThrewException = new AtomicBoolean(false);
+
+    /** This {@link ReadOnlyStoreRepository} simply calls one of the listeners right away. */
+    ReadOnlyStoreRepository storeRepository = new ReadOnlyStoreRepository() {
+      @Override
+      public Store getStore(String storeName) {
+        return null;
+      }
+
+      @Override
+      public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
+        return null;
+      }
+
+      @Override
+      public boolean hasStore(String storeName) {
+        return false;
+      }
+
+      @Override
+      public Store refreshOneStore(String storeName) {
+        return null;
+      }
+
+      @Override
+      public List<Store> getAllStores() {
+        return Collections.emptyList();
+      }
+
+      @Override
+      public long getTotalStoreReadQuota() {
+        return 0;
+      }
+
+      @Override
+      public void registerStoreDataChangedListener(StoreDataChangedListener listener) {
+        try {
+          listener.handleStoreDeleted("testStore");
+        } catch (Throwable t) {
+          LOGGER.error("Caught a throwable when calling the listener immediately after subscription", t);
+        }
+      }
+
+      @Override
+      public void unregisterStoreDataChangedListener(StoreDataChangedListener listener) {
+      }
+
+      @Override
+      public int getBatchGetLimit(String storeName) {
+        return 0;
+      }
+
+      @Override
+      public boolean isReadComputationEnabled(String storeName) {
+        return false;
+      }
+
+      @Override
+      public void refresh() {
+      }
+
+      @Override
+      public void clear() {
+      }
+    };
+
+    ReadRequestThrottler readRequestThrottler = new ReadRequestThrottler(
+        mock(ZkRoutersClusterManager.class),
+        storeRepository,
+        mock(AggRouterHttpRequestStats.class),
+        mock(VeniceRouterConfig.class));
+
+    assertFalse(listenerThrewException.get(), "The listener should not receive an exception!");
+
+    readRequestThrottler.handleStoreDeleted("testStore"); // Should still work post-construction too.
   }
 }
