@@ -1358,6 +1358,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
 
+    // Get original store properties
+    StoreInfo srcStore = StoreInfo.fromStore(this.getStore(srcClusterName, storeName));
+    if (srcStore == null) {
+      // Store not found in the source cluster... let's figure out if it's anywhere else...
+
+      StoreConfig storeConfig = storeConfigRepo.getStoreConfigOrThrow(storeName);
+      if (storeConfig == null || StringUtils.isEmpty(storeConfig.getCluster())) {
+        // The store does not exist in any cluster, so we throw.
+        throw new VeniceNoStoreException(storeName);
+      }
+
+      if (storeConfig.getCluster().equals(destClusterName)) {
+        LOGGER.info(
+            "Received command to migrate store '{}' from {} to {}, but that store is already at the destination. Will short-circuit the operation.",
+            storeName,
+            srcClusterName,
+            destClusterName);
+        return;
+      } else {
+        throw new VeniceNoStoreException(
+            storeName,
+            srcClusterName,
+            "Migrate store failed because the store is not in the specified source cluster, but instead in '"
+                + storeConfig.getCluster() + "'.");
+      }
+    }
+
     if (!isParent()) {
       // Update store and storeConfig to support single datacenter store migration
       this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(true));
@@ -1368,8 +1395,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ControllerClient destControllerClient =
         ControllerClient.constructClusterControllerClient(destClusterName, destControllerUrl, sslFactory);
 
-    // Get original store properties
-    StoreInfo srcStore = StoreInfo.fromStore(this.getStore(srcClusterName, storeName));
     // Same as StoresRoutes#getStore, set up backup version retention time. Otherwise, parent and child src store
     // info will always be different for stores with negative BackupVersionRetentionMs.
     if (srcStore.getBackupVersionRetentionMs() < 0) {
@@ -7094,6 +7119,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public ArrayList<StoreInfo> getClusterStores(String clusterName) {
     // Return all stores at this step in the process
     return (ArrayList<StoreInfo>) getAllStores(clusterName).stream()
+        /**
+         * This filtering should not be needed because {@link #getAllStores(String)} should not return any null items,
+         * but just in case, we have it here as defensive code...
+         */
+        .filter(Objects::nonNull)
         .map(StoreInfo::fromStore)
         .collect(Collectors.toList());
   }
@@ -7116,8 +7146,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailAdded) {
+    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+
     RegionPushDetails ret = new RegionPushDetails();
-    OfflinePushStatus zkData = retrievePushStatus(clusterName, storeName);
+    OfflinePushStatus zkData = retrievePushStatus(clusterName, store);
 
     for (StatusSnapshot status: zkData.getStatusHistory()) {
       if (shouldUpdateEndTime(ret, status)) {
@@ -7130,7 +7165,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
     for (Version v: store.getVersions()) {
       ret.addVersion(v.getNumber());
     }
@@ -7141,9 +7175,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return ret;
   }
 
-  public OfflinePushStatus retrievePushStatus(String clusterName, String storeName) {
-    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
-
+  public OfflinePushStatus retrievePushStatus(String clusterName, StoreInfo store) {
     VeniceOfflinePushMonitorAccessor accessor =
         new VeniceOfflinePushMonitorAccessor(clusterName, getZkClient(), getAdapterSerializer());
 

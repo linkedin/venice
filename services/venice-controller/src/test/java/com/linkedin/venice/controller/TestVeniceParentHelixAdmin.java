@@ -18,6 +18,7 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -2665,7 +2666,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     status.getStatusHistory().add(new StatusSnapshot(ExecutionStatus.STARTED, now.toString()));
     status.getStatusHistory().add(new StatusSnapshot(ExecutionStatus.COMPLETED, now.plusHours(1).toString()));
-    doReturn(status).when(internalAdmin).retrievePushStatus(anyString(), anyString());
+    doReturn(status).when(internalAdmin).retrievePushStatus(anyString(), any());
 
     Store s = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
     s.addVersion(new VersionImpl(s.getName(), 1, "pushJobId"));
@@ -2681,6 +2682,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 0; i < numOfPartition; i++) {
       Assert.assertEquals(details.getPartitionDetails().get(i).getReplicaDetails().size(), replicationFactor);
     }
+
+    doReturn(null).when(internalAdmin).getStore(anyString(), anyString());
+    assertThrows(VeniceNoStoreException.class, () -> internalAdmin.getRegionPushDetails(clusterName, storeName, true));
   }
 
   @Test
