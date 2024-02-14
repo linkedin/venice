@@ -289,6 +289,13 @@ public class RouterBackedSchemaReader implements SchemaReader {
     return new SchemaEntry(schemaResponse.getId(), writerSchema);
   }
 
+  /**
+   * This method will try to update all value schemas.
+   * Based on Router endpoint availability, it should first try the new method: (1) Fetch all value schema IDs first,
+   * (2) then fetch each individual schema one by one. If the forceRefresh is true, it will query all known value schema
+   * IDs, otherwise, it will only query value schemas that are not populated in cached schema map.
+   * If the new router endpoint /value_schema_ids/ is not available, it should fall back to query all value schemas at once.
+   */
   private void updateAllValueSchemas(boolean forceRefresh) {
     try {
       try {
@@ -297,9 +304,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
         }
       } catch (Exception e) {
         LOGGER.warn(
-            "Caught exception when trying to fetch all value schema IDs from router, will fetch all value schema entries instead.",
-            e);
-        // TODO: Figure out what exception is the Router endpoint issue.
+            "Caught exception when trying to fetch all value schema IDs from router, will fetch all value schema entries instead.");
         // Fall back to fetch all value schema.
         for (SchemaEntry valueSchemaEntry: fetchAllValueSchemaEntriesFromRouter()) {
           valueSchemaEntryMap.put(valueSchemaEntry.getId(), valueSchemaEntry);
@@ -316,10 +321,17 @@ public class RouterBackedSchemaReader implements SchemaReader {
     }
   }
 
+  /**
+   * Update all the update schemas based on all the known value schema IDs. This method is only used in refresh thread,
+   * so we will force update all the update schemas.
+   */
   private void updateAllUpdateSchemas() {
     try {
-      for (int id: valueSchemaEntryMap.keySet()) {
-        maybeUpdateUpdateSchemaEntryMapById(id, true);
+      for (Map.Entry<Integer, SchemaEntry> entry: valueSchemaEntryMap.entrySet()) {
+        if (!isValidSchemaEntry(entry.getValue())) {
+          continue;
+        }
+        maybeUpdateUpdateSchemaEntryMapById(entry.getKey(), true);
       }
     } catch (Exception ex) {
       if (ex instanceof InterruptedException) {
@@ -331,6 +343,18 @@ public class RouterBackedSchemaReader implements SchemaReader {
     }
   }
 
+  /**
+   * This method updates all value schema entries and latest value schema entry.
+   * It will first try to update all value schemas. Based on forceRefresh flag, it will either refresh the unknown schema
+   * ID or all value schema IDs.
+   * After it refresh all the value schemas, it will derive the latest value schema based on the below story:
+   * (1) Scan all the value schema, determine the preferred schema with preferredSchemaFilter.
+   * -- (a) If superset schema is preferred schema, it will pick it, otherwise it will pick the one with the highest schema ID.
+   * (2) latest value schema can then be determined by the below rule:
+   * -- (a) If there is preferred schema, we will use preferred schema as the latest value schema.
+   * -- (b) If it has superset schema, we will use superset schema.
+   * -- (c) Otherwise, we will use the largest schema id.
+   */
   private void updateAllValueSchemaEntriesAndLatestValueSchemaEntry(boolean forceRefresh) {
     // This means all value schemas are refreshed, and we can derive latest value schema ID from local data.
     updateAllValueSchemas(forceRefresh);
@@ -385,35 +409,6 @@ public class RouterBackedSchemaReader implements SchemaReader {
     }
   }
 
-  private Set<Integer> fetchAllValueSchemaIdsFromRouter() {
-    String requestPath = TYPE_VALUE_SCHEMA_ID + "/" + storeName;
-    MultiSchemaIdResponse multiSchemaIdResponse = fetchMultiSchemaIdResponse(requestPath);
-
-    if (multiSchemaIdResponse == null) {
-      return Collections.emptySet();
-    }
-    supersetSchemaIdAtomic.set(multiSchemaIdResponse.getSuperSetSchemaId());
-    return multiSchemaIdResponse.getSchemaIdSet();
-  }
-
-  private List<SchemaEntry> fetchAllValueSchemaEntriesFromRouter() {
-    String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName;
-    MultiSchemaResponse multiSchemaResponse = fetchMultiSchemaResponse(requestPath);
-    if (multiSchemaResponse == null) {
-      return Collections.emptyList();
-    }
-    List<SchemaEntry> valueSchemaEntryList = new ArrayList<>();
-    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
-      Schema writerSchema = preemptiveSchemaVerification(
-          AvroCompatibilityHelper.parse(schema.getSchemaStr()),
-          schema.getSchemaStr(),
-          schema.getId());
-      valueSchemaEntryList.add(new SchemaEntry(schema.getId(), writerSchema));
-    }
-    supersetSchemaIdAtomic.set(multiSchemaResponse.getSuperSetSchemaId());
-    return valueSchemaEntryList;
-  }
-
   private SchemaEntry maybeUpdateLatestValueSchemaEntry() {
     SchemaEntry latest = latestValueSchemaEntry.get();
     if (latest == null) {
@@ -429,6 +424,16 @@ public class RouterBackedSchemaReader implements SchemaReader {
     return latest;
   }
 
+  /**
+   * This method will fetch the value schema by ID, and potentially will update the cached schema map.
+   * If the schema:
+   * (1) Exists in the cached schema map, we will directly return it.
+   * (2) Does not exist in the cached schema map, we will perform one time single schema fetch to request it from router,
+   * and update the result in the cached schema map.
+   * (3) If the schema was queried previously and not found, we will:
+   * -- (a) Return not found, if forceRefresh flag == false.
+   * -- (b) Perform one time router query, update and return the result if forceRefresh flag == true.
+   */
   private SchemaEntry maybeUpdateValueSchemaEntryMapById(int valueSchemaId, boolean forceRefresh) {
     if (forceRefresh) {
       SchemaEntry entry = fetchValueSchemaEntryFromRouter(valueSchemaId);
@@ -452,6 +457,16 @@ public class RouterBackedSchemaReader implements SchemaReader {
     }
   }
 
+  /**
+   * This method will fetch the latest update schema by ID, and potentially will update the cached schema map.
+   * If the schema:
+   * (1) Exists in the cached schema map, we will directly return it.
+   * (2) Does not exist in the cached schema map, we will perform one time single schema fetch to request it from router,
+   * and update the result in the cached schema map.
+   * (3) If the schema was queried previously and not found, we will:
+   * -- (a) Return not found, if forceRefresh flag == false.
+   * -- (b) Perform one time router query, update and return the result if forceRefresh flag == true.
+   */
   private DerivedSchemaEntry maybeUpdateUpdateSchemaEntryMapById(int valueSchemaId, boolean forceRefresh) {
     if (forceRefresh) {
       DerivedSchemaEntry derivedSchemaEntry = fetchUpdateSchemaEntryFromRouter(valueSchemaId);
@@ -493,6 +508,35 @@ public class RouterBackedSchemaReader implements SchemaReader {
         schemaResponse.getId(),
         schemaResponse.getDerivedSchemaId(),
         schemaResponse.getSchemaStr());
+  }
+
+  private Set<Integer> fetchAllValueSchemaIdsFromRouter() {
+    String requestPath = TYPE_VALUE_SCHEMA_ID + "/" + storeName;
+    MultiSchemaIdResponse multiSchemaIdResponse = fetchMultiSchemaIdResponse(requestPath);
+
+    if (multiSchemaIdResponse == null) {
+      return Collections.emptySet();
+    }
+    supersetSchemaIdAtomic.set(multiSchemaIdResponse.getSuperSetSchemaId());
+    return multiSchemaIdResponse.getSchemaIdSet();
+  }
+
+  private List<SchemaEntry> fetchAllValueSchemaEntriesFromRouter() {
+    String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName;
+    MultiSchemaResponse multiSchemaResponse = fetchMultiSchemaResponse(requestPath);
+    if (multiSchemaResponse == null) {
+      return Collections.emptyList();
+    }
+    List<SchemaEntry> valueSchemaEntryList = new ArrayList<>();
+    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
+      Schema writerSchema = preemptiveSchemaVerification(
+          AvroCompatibilityHelper.parse(schema.getSchemaStr()),
+          schema.getSchemaStr(),
+          schema.getId());
+      valueSchemaEntryList.add(new SchemaEntry(schema.getId(), writerSchema));
+    }
+    supersetSchemaIdAtomic.set(multiSchemaResponse.getSuperSetSchemaId());
+    return valueSchemaEntryList;
   }
 
   private boolean isValidSchemaEntry(SchemaEntry schemaEntry) {
