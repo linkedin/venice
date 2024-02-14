@@ -2568,10 +2568,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           String sourceKafkaURL = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
           // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
-          long offsetLagOptional =
+          long lagBasedOnMetrics =
               getPartitionOffsetLagBasedOnMetrics(sourceKafkaURL, currentLeaderTopic, pcs.getUserPartition());
-          if (offsetLagOptional >= 0) {
-            return offsetLagOptional;
+          if (lagBasedOnMetrics >= 0) {
+            return lagBasedOnMetrics;
           }
           // Fall back to use the old way (latest VT offset in remote kafka - latest VT offset in local kafka)
           long localOffset =
@@ -2625,10 +2625,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
           // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
-          long offsetLagOptional =
+          long lagBasedOnMetrics =
               getPartitionOffsetLagBasedOnMetrics(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition());
-          if (offsetLagOptional >= 0) {
-            return offsetLagOptional;
+          if (lagBasedOnMetrics >= 0) {
+            return lagBasedOnMetrics;
           }
 
           // Fall back to calculate offset lag in the original approach
@@ -2700,12 +2700,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .filter(partitionConsumptionStateFilter)
         // the lag is (latest VT offset - consumed VT offset)
         .mapToLong((pcs) -> {
-          // Consumer might not existed after the consumption state is created, but before attaching the corresponding
+          // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
-          long offsetLagOptional =
+          long lagBasedOnMetrics =
               getPartitionOffsetLagBasedOnMetrics(localKafkaServer, versionTopic, pcs.getPartition());
-          if (offsetLagOptional >= 0) {
-            return offsetLagOptional;
+          if (lagBasedOnMetrics >= 0) {
+            return lagBasedOnMetrics;
           }
           // Fall back to calculate offset lag in the old way
           return measureLagWithCallToPubSub(

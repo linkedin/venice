@@ -710,6 +710,7 @@ public class TopicManager implements Closeable {
   public void close() {
     if (isClosed.get()) {
       logger.warn("{} is already closed", this);
+      return;
     }
     CompletableFuture.runAsync(() -> {
       if (isClosed.compareAndSet(false, true)) {
