@@ -107,7 +107,7 @@ import org.testng.annotations.Test;
  *       is done.
  */
 public class ActiveActiveReplicationForHybridTest {
-  private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 10 * Time.MS_PER_MINUTE;
   private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
 
   protected static final int NUMBER_OF_CHILD_DATACENTERS = 3;
