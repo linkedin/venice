@@ -7123,7 +7123,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * This filtering should not be needed because {@link #getAllStores(String)} should not return any null items,
          * but just in case, we have it here as defensive code...
          */
-        .filter(storeInfo -> storeInfo != null)
+        .filter(Objects::nonNull)
         .map(StoreInfo::fromStore)
         .collect(Collectors.toList());
   }
