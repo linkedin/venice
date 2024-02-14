@@ -2915,7 +2915,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (store == null) {
           throwStoreDoesNotExist(clusterName, storeName);
         }
-        if (!store.isHybrid() && !store.isWriteComputationEnabled()) {
+        if (!store.isHybrid() && !store.isWriteComputationEnabled() && !store.isSystemStore()) {
           logAndThrow("Store " + storeName + " is not hybrid, refusing to return a realtime topic");
         }
         Optional<Version> version = store.getVersion(store.getLargestUsedVersionNumber());
