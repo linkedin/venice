@@ -125,7 +125,6 @@ public class ActiveActiveReplicationForHybridTest {
   private ControllerClient parentControllerClient;
   private ControllerClient dc0Client;
   private ControllerClient dc1Client;
-  // private ControllerClient dc2Client;
   private List<ControllerClient> dcControllerClientList;
 
   @BeforeClass(alwaysRun = true)
@@ -174,7 +173,6 @@ public class ActiveActiveReplicationForHybridTest {
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
     dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
-    // dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
     dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
   }
 
@@ -186,7 +184,6 @@ public class ActiveActiveReplicationForHybridTest {
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(dc0Client);
     Utils.closeQuietlyWithErrorLogged(dc1Client);
-    // Utils.closeQuietlyWithErrorLogged(dc2Client);
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
@@ -226,7 +223,6 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName1, false, false, true);
       verifyDCConfigAARepl(dc0Client, storeName1, false, false, true);
       verifyDCConfigAARepl(dc1Client, storeName1, false, false, true);
-      // verifyDCConfigAARepl(dc2Client, storeName1, false, false, true);
       assertCommand(
           assertCommand(
               parentControllerClient.configureActiveActiveReplicationForCluster(
@@ -236,7 +232,6 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName1, false, true, false);
       verifyDCConfigAARepl(dc0Client, storeName1, false, true, false);
       verifyDCConfigAARepl(dc1Client, storeName1, false, true, true);
-      // verifyDCConfigAARepl(dc2Client, storeName1, false, true, true);
 
       // Test hybrid - agg vs non-agg
       assertCommand(
@@ -247,11 +242,9 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName2, true, false, false);
       verifyDCConfigAARepl(dc0Client, storeName2, true, false, false);
       verifyDCConfigAARepl(dc1Client, storeName2, true, false, false);
-      // verifyDCConfigAARepl(dc2Client, storeName2, true, false, false);
       verifyDCConfigAARepl(parentControllerClient, storeName3, true, false, true);
       verifyDCConfigAARepl(dc0Client, storeName3, true, false, true);
       verifyDCConfigAARepl(dc1Client, storeName3, true, false, true);
-      // verifyDCConfigAARepl(dc2Client, storeName3, true, false, true);
       assertCommand(
           parentControllerClient.configureActiveActiveReplicationForCluster(
               false,
@@ -260,7 +253,6 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName3, true, true, false);
       verifyDCConfigAARepl(dc0Client, storeName3, true, true, false);
       verifyDCConfigAARepl(dc1Client, storeName3, true, true, false);
-      // verifyDCConfigAARepl(dc2Client, storeName3, true, true, false);
 
       // Test incremental
       assertCommand(
@@ -271,7 +263,6 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName4, false, false, true);
       verifyDCConfigAARepl(dc0Client, storeName4, false, false, true);
       verifyDCConfigAARepl(dc1Client, storeName4, false, false, true);
-      // verifyDCConfigAARepl(dc2Client, storeName4, false, false, true);
     } finally {
       deleteStores(storeName1, storeName2, storeName3, storeName4);
     }

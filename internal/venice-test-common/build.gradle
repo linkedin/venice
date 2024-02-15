@@ -127,6 +127,8 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.DaVinciCluster*",
       "com.linkedin.venice.endToEnd.DaVinciCompute*",
       "com.linkedin.venice.endToEnd.DaVinciLive*"],
+  "C": [
+      "com.linkedin.venice.endToEnd.ActiveActive*"],
   "D": [
       "com.linkedin.venice.endToEnd.TestActiveActive*"],
   "E": [
@@ -177,9 +179,7 @@ def integrationTestBuckets = [
       "com.linkedin.venice.controller.AdminTool*",
       "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
   "Q": [
-      "com.linkedin.venice.controller.Test*"],
-  "R": [
-      "com.linkedin.venice.endToEnd.ActiveActiveReplicationForHybridTest"]
+      "com.linkedin.venice.controller.Test*"]
 ]
 
 integrationTestBuckets.each { name, patterns ->
