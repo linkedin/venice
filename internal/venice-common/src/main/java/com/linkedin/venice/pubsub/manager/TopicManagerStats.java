@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub.manager;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -54,6 +55,6 @@ class TopicManagerStats extends AbstractVeniceStats {
       return;
     }
     // convert ns to us and record
-    sensorsByTypes.get(sensorType).record((System.nanoTime() - startTimeInNs) >> 10);
+    sensorsByTypes.get(sensorType).record(LatencyUtils.getLatencyInMS(startTimeInNs));
   }
 }
