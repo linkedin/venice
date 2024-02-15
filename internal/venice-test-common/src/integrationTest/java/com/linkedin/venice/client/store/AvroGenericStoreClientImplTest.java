@@ -173,10 +173,6 @@ public class AvroGenericStoreClientImplTest {
     String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
 
-    FullHttpResponse multiValueSchemaResponse =
-        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
-    String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
-
     FullHttpResponse multiValueSchemaIdResponse =
         StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
     String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA_ID + "/" + storeName;
