@@ -25,8 +25,6 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -47,6 +45,8 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
@@ -561,7 +561,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     doThrow(new PubSubOpTimeoutException("mock timeout")).when(mockedTopicManager)
         .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), eq(true));
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getLocalTopicManager();
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(anyString());
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
@@ -1590,7 +1590,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getLocalTopicManager();
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(anyString());
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
@@ -1744,7 +1744,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getLocalTopicManager();
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(anyString());
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);

@@ -447,7 +447,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
    * Retrieves the retention settings for all Kafka topics.
    *
    * @return A map of Kafka topics and their corresponding retention settings in milliseconds.
-   * If a topic does not have a retention setting, it will be mapped to {@link PubSubConstants#UNKNOWN_TOPIC_RETENTION}.
+   * If a topic does not have a retention setting, it will be mapped to {@link PubSubConstants#PUBSUB_TOPIC_UNKNOWN_RETENTION}.
    * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve retention settings.
    * @throws PubSubClientException If an error occurs while attempting to retrieve retention settings or if the current thread is interrupted while attempting to retrieve retention settings.
    */
@@ -458,7 +458,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
             // Option A: perform a string-to-long conversion if it's present...
             .map(configEntry -> Long.parseLong(configEntry.value()))
             // Option B: ... or default to a sentinel value if it's missing
-            .orElse(PubSubConstants.UNKNOWN_TOPIC_RETENTION),
+            .orElse(PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION),
         "retention");
   }
 

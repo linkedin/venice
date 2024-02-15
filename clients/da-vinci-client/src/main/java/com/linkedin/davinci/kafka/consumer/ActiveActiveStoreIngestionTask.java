@@ -28,7 +28,6 @@ import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -43,6 +42,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -876,7 +876,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     long rewindTimeInMs = hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
     if (isDataRecovery) {
       // Override the user rewind if the version is under data recovery to avoid data loss when user have short rewind.
-      rewindTimeInMs = Math.max(TopicManager.BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN, rewindTimeInMs);
+      rewindTimeInMs = Math.max(PubSubConstants.BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN, rewindTimeInMs);
     }
     switch (hybridStoreConfig.get().getBufferReplayPolicy()) {
       case REWIND_FROM_SOP:
@@ -1107,7 +1107,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           try {
             PubSubTopicPartition newSourceTP = new PubSubTopicPartitionImpl(newSourceTopic, newSourceTopicPartition);
             upstreamStartOffset =
-                getTopicManager(sourceKafkaURL.toString()).getPartitionOffsetByTime(newSourceTP, rewindStartTimestamp);
+                getTopicManager(sourceKafkaURL.toString()).getOffsetByTime(newSourceTP, rewindStartTimestamp);
             numberOfContactedBrokers.getAndIncrement();
           } catch (Exception e) {
             // TODO: Catch more specific Exception?
@@ -1395,12 +1395,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             return 0;
           }
 
-          // Consumer might not existed after the consumption state is created, but before attaching the corresponding
+          // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
-          long offsetLagOptional =
-              getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition());
-          if (offsetLagOptional >= 0) {
-            return offsetLagOptional;
+          long lagBasedOnMetrics =
+              getPartitionOffsetLagBasedOnMetrics(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition());
+          if (lagBasedOnMetrics >= 0) {
+            return lagBasedOnMetrics;
           }
 
           // Fall back to calculate offset lag in the old way

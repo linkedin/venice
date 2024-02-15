@@ -16,10 +16,10 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -229,7 +229,7 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getLocalTopicManager();
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(anyString());
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);

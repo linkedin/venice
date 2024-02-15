@@ -1,7 +1,7 @@
 package com.linkedin.venice.kafka;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -35,6 +35,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -105,12 +106,12 @@ public class KafkaConsumptionTest {
     topicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
-                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
                 100L,
                 MIN_COMPACTION_LAG,
                 localPubSubBroker,
                 pubSubTopicRepository)
-            .getTopicManager();
+            .getTopicManager(localPubSubBroker.getAddress());
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     topicManager.setTopicConfigCache(cacheNothingCache);
@@ -121,12 +122,12 @@ public class KafkaConsumptionTest {
     remoteTopicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
-                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
                 100L,
                 MIN_COMPACTION_LAG,
                 remotePubSubBroker,
                 pubSubTopicRepository)
-            .getTopicManager();
+            .getTopicManager(remotePubSubBroker.getAddress());
     Cache remoteCacheNothingCache = mock(Cache.class);
     Mockito.when(remoteCacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     remoteTopicManager.setTopicConfigCache(remoteCacheNothingCache);

@@ -4,9 +4,9 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -51,7 +51,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
         if (getAdmin().isTopicTruncatedBasedOnRetention(retention)) {
           // Topic may be deleted after delay
           int remainingFactor = storeToCountdownForDeletion.merge(
-              topic.getName() + "_" + topicManager.getPubSubBootstrapServers(),
+              topic.getName() + "_" + topicManager.getPubSubClusterAddress(),
               delayFactor,
               (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
@@ -65,7 +65,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
                 "Retention policy for topic: {} is: {} ms, and it is deprecated, will delete it now.",
                 topic,
                 retention);
-            storeToCountdownForDeletion.remove(topic + "_" + topicManager.getPubSubBootstrapServers());
+            storeToCountdownForDeletion.remove(topic + "_" + topicManager.getPubSubClusterAddress());
             try {
               topicManager.ensureTopicIsDeletedAndBlockWithRetry(topic);
             } catch (VeniceException e) {

@@ -1,7 +1,6 @@
 package com.linkedin.venice.partitioner;
 
 import java.nio.ByteBuffer;
-import org.apache.kafka.common.PartitionInfo;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -21,24 +20,23 @@ public class TestVenicePartitioner {
 
     byte[] keyBytes = "key1".getBytes();
 
-    PartitionInfo[] partitionArray = { new PartitionInfo("", 0, null, null, null),
-        new PartitionInfo("", 1, null, null, null), new PartitionInfo("", 2, null, null, null) };
+    int numPartitions = 3;
 
     // Test 1
-    int partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
-    int partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
+    int partition1 = vp.getPartitionId(keyBytes, numPartitions);
+    int partition2 = vp.getPartitionId(keyBytes, numPartitions);
     Assert.assertEquals(partition1, partition2);
 
     // Test 2
     keyBytes = "    ".getBytes();
-    partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
-    partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
+    partition1 = vp.getPartitionId(keyBytes, numPartitions);
+    partition2 = vp.getPartitionId(keyBytes, numPartitions);
     Assert.assertEquals(partition1, partition2);
 
     // Test 3
     keyBytes = "00000".getBytes();
-    partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
-    partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
+    partition1 = vp.getPartitionId(keyBytes, numPartitions);
+    partition2 = vp.getPartitionId(keyBytes, numPartitions);
     Assert.assertEquals(partition1, partition2);
 
     // Test 4

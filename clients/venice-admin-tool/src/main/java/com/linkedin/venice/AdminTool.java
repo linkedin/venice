@@ -76,8 +76,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixSchemaAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -96,6 +94,9 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerContext;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
@@ -1504,17 +1505,20 @@ public class AdminTool {
       kafkaTimeOut = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_OPERATION_TIMEOUT)) * Time.MS_PER_SECOND;
     }
 
-    try (TopicManagerRepository topicManagerRepository = TopicManagerRepository.builder()
-        .setPubSubProperties(k -> veniceProperties)
-        .setKafkaOperationTimeoutMs(kafkaTimeOut)
-        .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollingInterval)
-        .setTopicMinLogCompactionLagMs(0L)
-        .setLocalKafkaBootstrapServers(kafkaBootstrapServer)
-        .setPubSubConsumerAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory())
-        .setPubSubAdminAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getAdminAdapterFactory())
-        .setPubSubTopicRepository(pubSubTopicRepository)
-        .build()) {
-      TopicManager topicManager = topicManagerRepository.getTopicManager();
+    TopicManagerContext topicManagerContext =
+        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> veniceProperties)
+            .setPubSubOperationTimeoutMs(kafkaTimeOut)
+            .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollingInterval)
+            .setTopicMinLogCompactionLagMs(0L)
+            .setPubSubConsumerAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory())
+            .setPubSubAdminAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getAdminAdapterFactory())
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setTopicMetadataFetcherConsumerPoolSize(1)
+            .setTopicMetadataFetcherThreadPoolSize(1)
+            .build();
+
+    try (TopicManager topicManager =
+        new TopicManagerRepository(topicManagerContext, kafkaBootstrapServer).getLocalTopicManager()) {
       String topicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       try {
         topicManager.ensureTopicIsDeletedAndBlock(PUB_SUB_TOPIC_REPOSITORY.getTopic(topicName));

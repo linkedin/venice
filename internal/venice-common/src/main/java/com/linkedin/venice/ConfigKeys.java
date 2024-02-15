@@ -86,6 +86,18 @@ public class ConfigKeys {
   // Kafka security protocol
   public static final String KAFKA_SECURITY_PROTOCOL = "security.protocol";
 
+  /**
+   * Number of PubSub consumer clients to be used per topic manager for fetching metadata.
+   */
+  public static final String PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE =
+      "pubsub.topic.manager.metadata.fetcher.consumer.pool.size";
+
+  /**
+   * The size of the per topic manager thread pool for fetching metadata asynchronously.
+   */
+  public static final String PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE =
+      "pubsub.topic.manager.metadata.fetcher.thread.pool.size";
+
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";
 

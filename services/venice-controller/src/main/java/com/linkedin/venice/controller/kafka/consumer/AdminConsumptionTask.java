@@ -14,7 +14,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -30,6 +29,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
@@ -960,7 +960,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       PubSubTopicPartition adminTopicPartition =
           new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
       long sourceAdminTopicEndOffset =
-          sourceKafkaClusterTopicManager.getPartitionLatestOffsetAndRetry(adminTopicPartition, 10) - 1;
+          sourceKafkaClusterTopicManager.getLatestOffsetWithRetries(adminTopicPartition, 10) - 1;
       /**
        * If the first consumer poll returns nothing, "lastConsumedOffset" will remain as {@link #UNASSIGNED_VALUE}, so a
        * huge lag will be reported, but actually that's not case since consumer is subscribed to the last checkpoint offset.

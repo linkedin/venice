@@ -10,9 +10,9 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.Optional;
@@ -50,7 +50,7 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getLocalTopicManager();
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(anyString());
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);

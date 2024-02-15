@@ -227,7 +227,7 @@ public interface PubSubAdminAdapter extends Closeable {
    * Retrieves the retention settings for all PubSub topics.
    *
    * @return A map of pub-sub topics and their corresponding retention settings in milliseconds.
-   * If a topic does not have a retention setting, it will be mapped to {@link PubSubConstants#UNKNOWN_TOPIC_RETENTION}.
+   * If a topic does not have a retention setting, it will be mapped to {@link PubSubConstants#PUBSUB_TOPIC_UNKNOWN_RETENTION}.
    * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve retention settings.
    * @throws PubSubClientException If an error occurs while attempting to retrieve retention settings or if the current thread is interrupted while attempting to retrieve retention settings.
    */

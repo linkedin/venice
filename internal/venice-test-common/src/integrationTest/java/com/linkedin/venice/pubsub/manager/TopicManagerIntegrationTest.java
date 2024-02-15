@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka;
+package com.linkedin.venice.pubsub.manager;
 
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
@@ -38,7 +38,7 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
         new PubSubBrokerConfigs.Builder().setMockTime(mockTime).setRegionName(STANDALONE_REGION_NAME).build());
     topicManager = IntegrationTestPushUtils
         .getTopicManagerRepo(500L, 100L, MIN_COMPACTION_LAG, pubSubBrokerWrapper, new PubSubTopicRepository())
-        .getTopicManager();
+        .getLocalTopicManager();
   }
 
   protected PubSubProducerAdapter createPubSubProducerAdapter() {
@@ -56,7 +56,7 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     produceRandomPubSubMessage(topic, true, timestamp); // This timestamp is expected to be retrieved
     produceRandomPubSubMessage(topic, false, timestamp + 1000L); // produce a control message
 
-    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, 1);
+    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1);
     Assert.assertEquals(retrievedTimestamp, timestamp);
 
     // Produce more data records to this topic partition
@@ -73,10 +73,10 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     ExecutorService executorService = Executors.newFixedThreadPool(numberOfThreads);
     Future[] vwFutures = new Future[numberOfThreads];
     // Put all topic manager calls related to partition offset fetcher with admin and consumer here.
-    Runnable[] tasks = { () -> topicManager.getPartitionOffsetByTime(pubSubTopicPartition, checkTimestamp),
-        () -> topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, 1),
-        () -> topicManager.partitionsFor(topic),
-        () -> topicManager.getPartitionLatestOffsetAndRetry(pubSubTopicPartition, 1),
+    Runnable[] tasks = { () -> topicManager.getOffsetByTime(pubSubTopicPartition, checkTimestamp),
+        () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1),
+        () -> topicManager.getPartitionCount(topic),
+        () -> topicManager.getLatestOffsetWithRetries(pubSubTopicPartition, 1),
         () -> topicManager.getTopicLatestOffsets(topic) };
 
     for (int i = 0; i < numberOfThreads; i++) {

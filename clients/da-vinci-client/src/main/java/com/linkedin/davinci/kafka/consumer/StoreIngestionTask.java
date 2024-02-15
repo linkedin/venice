@@ -49,8 +49,6 @@ import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
-import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
@@ -80,6 +78,8 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -190,7 +190,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Map<Integer, AtomicInteger> partitionToPendingConsumerActionCountMap;
   protected final StorageMetadataService storageMetadataService;
   protected final TopicManagerRepository topicManagerRepository;
-  protected final CachedPubSubMetadataGetter cachedPubSubMetadataGetter;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   protected final AbstractStoreBufferService storeBufferService;
@@ -365,8 +364,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         builder.getServerConfig().getDivProducerStateMaxAgeMs());
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
-    this.cachedPubSubMetadataGetter = new CachedPubSubMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
-
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
     this.versionedDIVStats = builder.getVersionedDIVStats();
     this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
@@ -891,8 +888,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           // DaVinci and STANDBY checks the local consumption and leaderCompleteState status
           final String lagMeasurementKafkaUrl =
               (isHybridFollower(partitionConsumptionState)) ? localKafkaServer : realTimeTopicKafkaURL;
-
-          if (!cachedPubSubMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), realTimeTopic)) {
+          TopicManager topicManager = getTopicManager(lagMeasurementKafkaUrl);
+          if (!topicManager.containsTopicCached(realTimeTopic)) {
             timestampLagIsAcceptable = true;
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
               LOGGER.info(
@@ -901,8 +898,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   lagMeasurementTopic);
             }
           } else {
-            long latestProducerTimestampInTopic = cachedPubSubMetadataGetter
-                .getProducerTimestampOfLastDataMessage(getTopicManager(lagMeasurementKafkaUrl), pubSubTopicPartition);
+            long latestProducerTimestampInTopic =
+                topicManager.getProducerTimestampOfLastDataMessageCached(pubSubTopicPartition);
             if (latestProducerTimestampInTopic < 0
                 || latestProducerTimestampInTopic <= latestConsumedProducerTimestamp) {
               timestampLagIsAcceptable = true;
@@ -1525,6 +1522,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.error("Error while closing venice view writer", e);
     }
 
+    if (topicManagerRepository != null) {
+      topicManagerRepository.invalidateTopicManagerCaches(versionTopic);
+    }
+
     close();
 
     synchronized (this) {
@@ -1953,7 +1954,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * N.B.: We do not want to use {@link #getTopicPartitionEndOffSet(String, PubSubTopic, int)} because it can return
      *       a cached value which will result in a false positive in the below check.
      */
-    long endOffset = aggKafkaConsumerService.getLatestOffsetFor(
+    long endOffset = aggKafkaConsumerService.getLatestOffsetBasedOnMetrics(
         localKafkaServer,
         versionTopic,
         new PubSubTopicPartitionImpl(versionTopic, pcs.getPartition()));
@@ -1978,17 +1979,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected long getTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
     long offsetFromConsumer = aggKafkaConsumerService
-        .getLatestOffsetFor(kafkaUrl, versionTopic, new PubSubTopicPartitionImpl(pubSubTopic, partition));
+        .getLatestOffsetBasedOnMetrics(kafkaUrl, versionTopic, new PubSubTopicPartitionImpl(pubSubTopic, partition));
     if (offsetFromConsumer >= 0) {
       return offsetFromConsumer;
     }
-
-    return cachedPubSubMetadataGetter.getOffset(getTopicManager(kafkaUrl), pubSubTopic, partition);
+    return getTopicManager(kafkaUrl).getLatestOffsetCached(pubSubTopic, partition);
   }
 
-  protected long getPartitionOffsetLag(String kafkaSourceAddress, PubSubTopic topic, int partition) {
+  protected long getPartitionOffsetLagBasedOnMetrics(String kafkaSourceAddress, PubSubTopic topic, int partition) {
     return aggKafkaConsumerService
-        .getOffsetLagFor(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
+        .getOffsetLagBasedOnMetrics(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
   }
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
@@ -2407,7 +2407,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return Long.MAX_VALUE;
     }
     TopicManager tm = getTopicManager(pubSubServerName);
-    long endOffset = cachedPubSubMetadataGetter.getOffset(tm, topic, partition) - 1;
+    long endOffset = tm.getLatestOffsetCached(topic, partition) - 1;
     if (endOffset < 0) {
       return Long.MAX_VALUE;
     }
@@ -2872,7 +2872,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
-      TopicManager topicManager = topicManagerRepository.getTopicManager();
+      TopicManager topicManager = topicManagerRepository.getLocalTopicManager();
       // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
       // topic
       // data may have been log compacted) or log compaction is enabled and record is old enough for log compaction.
@@ -3694,7 +3694,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected TopicManager getTopicManager(String sourceKafkaServer) {
     if (sourceKafkaServer.equals(localKafkaServer)) {
       // Use default kafka admin client (could be scala or java based) to get local topic manager
-      return topicManagerRepository.getTopicManager();
+      return topicManagerRepository.getLocalTopicManager();
     }
     // Use java-based kafka admin client to get remote topic manager
     return topicManagerRepository.getTopicManager(sourceKafkaServer);
@@ -3880,7 +3880,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       return true;
     }
-    if (!topicManagerRepository.getTopicManager().containsTopic(this.versionTopic)) {
+    if (!topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic)) {
       return false;
     }
     return true;

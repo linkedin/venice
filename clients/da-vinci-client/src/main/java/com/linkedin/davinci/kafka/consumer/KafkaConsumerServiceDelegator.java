@@ -128,15 +128,15 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   @Override
-  public long getOffsetLagFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     return getKafkaConsumerService(versionTopic, pubSubTopicPartition)
-        .getOffsetLagFor(versionTopic, pubSubTopicPartition);
+        .getOffsetLagBasedOnMetrics(versionTopic, pubSubTopicPartition);
   }
 
   @Override
-  public long getLatestOffsetFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public long getLatestOffsetBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     return getKafkaConsumerService(versionTopic, pubSubTopicPartition)
-        .getLatestOffsetFor(versionTopic, pubSubTopicPartition);
+        .getLatestOffsetBasedOnMetrics(versionTopic, pubSubTopicPartition);
   }
 
   @Override

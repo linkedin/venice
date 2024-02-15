@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.makeStoreHybrid;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -16,11 +16,11 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -53,7 +53,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     controllerClient =
         ControllerClient.constructClusterControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
     topicManagerRepository = IntegrationTestPushUtils.getTopicManagerRepo(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
         100,
         0l,
         venice.getPubSubBrokerWrapper(),
@@ -105,7 +105,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
 
     // verify realtime topic exists
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
-    assertTrue(topicManagerRepository.getTopicManager().containsTopicAndAllPartitionsAreOnline(rtTopic));
+    assertTrue(topicManagerRepository.getLocalTopicManager().containsTopicAndAllPartitionsAreOnline(rtTopic));
 
     // disable store
     TestUtils.assertCommand(
@@ -126,11 +126,11 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     // verify realtime topic does not exist
     PubSubTopic realTimeTopicName = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
     try {
-      boolean isTruncated = topicManagerRepository.getTopicManager().isTopicTruncated(realTimeTopicName, 60000);
+      boolean isTruncated = topicManagerRepository.getLocalTopicManager().isTopicTruncated(realTimeTopicName, 60000);
       assertTrue(
           isTruncated,
           "Real-time buffer topic should be truncated: " + realTimeTopicName + " but retention is set to: "
-              + topicManagerRepository.getTopicManager().getTopicRetention(realTimeTopicName) + ".");
+              + topicManagerRepository.getLocalTopicManager().getTopicRetention(realTimeTopicName) + ".");
       LOGGER.info("Confirmed truncation of real-time topic: {}", realTimeTopicName);
     } catch (PubSubTopicDoesNotExistException e) {
       LOGGER

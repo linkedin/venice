@@ -13,7 +13,6 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -26,6 +25,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
@@ -635,7 +635,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   VeniceWriterFactory getVeniceWriterFactory();
 
-  PubSubConsumerAdapterFactory getVeniceConsumerFactory();
+  PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory();
 
   VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress);
 
