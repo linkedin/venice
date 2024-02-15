@@ -5,8 +5,6 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.GeneratedSchemaID;
-import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
@@ -51,9 +49,6 @@ public class MetaStoreWriterTest {
     doReturn(true).when(generatedSchemaID).isValid();
     doReturn(generatedSchemaID).when(schemaRepo).getDerivedSchemaId(any(), any());
     doReturn(schemaRepo).when(metaStoreWriter).getSchemaRepository();
-    Schema derivedSchema = WriteComputeSchemaConverter.getInstance()
-        .convertFromValueRecordSchema(
-            AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
     ReentrantLock reentrantLock = new ReentrantLock();
     when(metaStoreWriter.getOrCreateMetaStoreWriterLock(metaStoreName)).thenReturn(reentrantLock);
     VeniceWriter badWriter = mock(VeniceWriter.class);
