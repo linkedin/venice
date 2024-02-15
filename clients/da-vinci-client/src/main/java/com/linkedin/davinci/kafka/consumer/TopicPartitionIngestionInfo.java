@@ -83,8 +83,8 @@ public class TopicPartitionIngestionInfo {
     TopicPartitionIngestionInfo topicPartitionIngestionInfo = (TopicPartitionIngestionInfo) o;
     return this.latestOffset == topicPartitionIngestionInfo.getLatestOffset()
         && this.offsetLag == topicPartitionIngestionInfo.getOffsetLag()
-        && this.msgRate == topicPartitionIngestionInfo.getMsgRate()
-        && this.byteRate == topicPartitionIngestionInfo.getByteRate()
+        && Double.doubleToLongBits(this.msgRate) == Double.doubleToLongBits(topicPartitionIngestionInfo.getMsgRate())
+        && Double.doubleToLongBits(this.byteRate) == Double.doubleToLongBits(topicPartitionIngestionInfo.getByteRate())
         && this.consumerIdx == topicPartitionIngestionInfo.getConsumerIdx()
         && this.elapsedTimeSinceLastPollInMs == topicPartitionIngestionInfo.getElapsedTimeSinceLastPollInMs();
   }

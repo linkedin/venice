@@ -54,10 +54,13 @@ class ConsumptionTask implements Runnable {
 
   /**
    * Maintain rate counter with default window size to calculate the message and bytes rate at topic partition level.
+   * Those topic partition level information will not be emitted out as a metric, to avoid emitting too many metrics per
+   * server host, they are for admin tool debugging purpose. 
    */
-  private final Map<PubSubTopicPartition, Rate> messageRatePerTopicPartition = new HashMap<>();
-  private final Map<PubSubTopicPartition, Rate> bytesRatePerTopicPartition = new HashMap<>();
-  private final Map<PubSubTopicPartition, Long> lastSuccessfulPollTimestampPerTopicPartition = new HashMap<>();
+  private final Map<PubSubTopicPartition, Rate> messageRatePerTopicPartition = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Rate> bytesRatePerTopicPartition = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Long> lastSuccessfulPollTimestampPerTopicPartition =
+      new VeniceConcurrentHashMap<>();
 
   private final MetricConfig metricConfig = new MetricConfig();
 
@@ -69,6 +72,9 @@ class ConsumptionTask implements Runnable {
    */
   private volatile long lastSuccessfulPollTimestamp = System.currentTimeMillis();
 
+  /**
+   * If a topic partition has not got any record polled back, we use -1 for the last poll timestamp.
+   */
   public final static long DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP = -1L;
 
   public ConsumptionTask(
@@ -164,6 +170,7 @@ class ConsumptionTask implements Runnable {
               }
               counter.byteSize += payloadSizePerTopicPartition;
               payloadBytesConsumedInOnePoll += payloadSizePerTopicPartition;
+
               lastSuccessfulPollTimestampPerTopicPartition.put(pubSubTopicPartition, lastSuccessfulPollTimestamp);
               messageRatePerTopicPartition
                   .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
