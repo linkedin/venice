@@ -164,7 +164,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
     VenicePathParserHelper helper = parseRequest(req);
-
     RouterResourceType resourceType = helper.getResourceType(); // may be null
 
     try {

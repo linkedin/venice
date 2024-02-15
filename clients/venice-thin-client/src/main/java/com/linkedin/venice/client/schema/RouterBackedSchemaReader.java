@@ -298,9 +298,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
    */
   private void updateAllValueSchemas(boolean forceRefresh) {
     try {
-      Set<Integer> valueSchemaIdSchema;
+      Set<Integer> valueSchemaIdSet;
       try {
-        valueSchemaIdSchema = fetchAllValueSchemaIdsFromRouter();
+        valueSchemaIdSet = fetchAllValueSchemaIdsFromRouter();
       } catch (Exception e) {
         LOGGER.warn(
             "Caught exception when trying to fetch all value schema IDs from router, will fetch all value schema entries instead.");
@@ -312,7 +312,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
         return;
       }
 
-      for (int id: valueSchemaIdSchema) {
+      for (int id: valueSchemaIdSet) {
         maybeUpdateAndFetchValueSchemaEntryById(id, forceRefresh);
       }
 
@@ -372,6 +372,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
         continue;
       }
       int schemaId = entry.getKey();
+      if (schemaId > maxSchemaId) {
+        maxSchemaId = schemaId;
+      }
       if (preferredSchemaFilter.test(entry.getValue().getSchema())) {
         if (schemaId == supersetSchemaId) {
           supersetSchemaIsPreferredSchema = true;
@@ -512,11 +515,12 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private Set<Integer> fetchAllValueSchemaIdsFromRouter() {
     String requestPath = TYPE_VALUE_SCHEMA_ID + "/" + storeName;
     MultiSchemaIdResponse multiSchemaIdResponse = fetchMultiSchemaIdResponse(requestPath);
-
     if (multiSchemaIdResponse == null) {
       return Collections.emptySet();
     }
-    supersetSchemaIdAtomic.set(multiSchemaIdResponse.getSuperSetSchemaId());
+    if (multiSchemaIdResponse.getSuperSetSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      supersetSchemaIdAtomic.set(multiSchemaIdResponse.getSuperSetSchemaId());
+    }
     return multiSchemaIdResponse.getSchemaIdSet();
   }
 
