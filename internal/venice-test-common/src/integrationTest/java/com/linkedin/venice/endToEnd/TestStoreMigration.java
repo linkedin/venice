@@ -472,7 +472,8 @@ public class TestStoreMigration {
     UpdateStoreQueryParams updateStoreQueryParams =
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setHybridRewindSeconds(TEST_TIMEOUT)
-            .setHybridOffsetLagThreshold(2L);
+            .setHybridOffsetLagThreshold(2L)
+            .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
     IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)
         .close();
 

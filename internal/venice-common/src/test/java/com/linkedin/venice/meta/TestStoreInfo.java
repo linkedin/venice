@@ -40,4 +40,9 @@ public class TestStoreInfo {
     StoreInfo storeInfo = StoreInfo.fromStore(store);
     assertTrue(storeInfo.isLeaderFollowerModelEnabled());
   }
+
+  @Test
+  public void nullStore() {
+    assertNull(StoreInfo.fromStore(null)); // should not throw a NPE!
+  }
 }

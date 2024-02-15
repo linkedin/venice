@@ -18,7 +18,7 @@ public class DisabledPartitionStats extends AbstractVeniceStats {
     disabledPartitionCount.record(1);
   }
 
-  public void recordClearDisabledPartition() {
-    disabledPartitionCount.record(-1);
+  public void recordClearDisabledPartition(int count) {
+    disabledPartitionCount.record(-count);
   }
 }

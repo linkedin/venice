@@ -17,6 +17,9 @@ import java.util.Optional;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class StoreInfo {
   public static StoreInfo fromStore(Store store) {
+    if (store == null) {
+      return null;
+    }
     StoreInfo storeInfo = new StoreInfo();
     // Sort the properties alphabetically
     storeInfo.setAccessControlled(store.isAccessControlled());

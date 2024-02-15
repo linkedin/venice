@@ -415,6 +415,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Object LIVENESS_HEARTBEAT_CLIENT_LOCK = new Object();
   private AvroSpecificStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> livenessHeartbeatStoreClient = null;
 
+  private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
+
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
@@ -668,7 +670,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
               helixAdminClient
                   .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
-              disabledPartitionStats.recordClearDisabledPartition();
+              disabledPartitionStats.recordClearDisabledPartition(entry.getValue().size());
               LOGGER.info("Enabled disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
             }
           }
@@ -683,6 +685,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       });
     }
+    emptyPushZSTDDictionary =
+        Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
@@ -1354,6 +1358,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
 
+    // Get original store properties
+    StoreInfo srcStore = StoreInfo.fromStore(this.getStore(srcClusterName, storeName));
+    if (srcStore == null) {
+      // Store not found in the source cluster... let's figure out if it's anywhere else...
+
+      StoreConfig storeConfig = storeConfigRepo.getStoreConfigOrThrow(storeName);
+      if (storeConfig == null || StringUtils.isEmpty(storeConfig.getCluster())) {
+        // The store does not exist in any cluster, so we throw.
+        throw new VeniceNoStoreException(storeName);
+      }
+
+      if (storeConfig.getCluster().equals(destClusterName)) {
+        LOGGER.info(
+            "Received command to migrate store '{}' from {} to {}, but that store is already at the destination. Will short-circuit the operation.",
+            storeName,
+            srcClusterName,
+            destClusterName);
+        return;
+      } else {
+        throw new VeniceNoStoreException(
+            storeName,
+            srcClusterName,
+            "Migrate store failed because the store is not in the specified source cluster, but instead in '"
+                + storeConfig.getCluster() + "'.");
+      }
+    }
+
     if (!isParent()) {
       // Update store and storeConfig to support single datacenter store migration
       this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(true));
@@ -1364,8 +1395,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ControllerClient destControllerClient =
         ControllerClient.constructClusterControllerClient(destClusterName, destControllerUrl, sslFactory);
 
-    // Get original store properties
-    StoreInfo srcStore = StoreInfo.fromStore(this.getStore(srcClusterName, storeName));
     // Same as StoresRoutes#getStore, set up backup version retention time. Otherwise, parent and child src store
     // info will always be different for stores with negative BackupVersionRetentionMs.
     if (srcStore.getBackupVersionRetentionMs() < 0) {
@@ -2613,7 +2642,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // so we generate a dictionary based on synthetic data. This is done in vpj driver
                 // as well, but this code will be triggered in cases like Samza batch push job
                 // which is independent of the vpj flow.
-                compressionDictionaryBuffer = ZstdWithDictCompressor.EMPTY_PUSH_ZSTD_DICTIONARY;
+                compressionDictionaryBuffer = emptyPushZSTDDictionary.get();
               }
 
               final Version finalVersion = version;
@@ -4882,11 +4911,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   public void enableDisabledPartition(String clusterName, String kafkaTopic, boolean enableAll) {
-    List<String> instances = getStorageNodes(clusterName);
+    Set<Instance> instances = getLiveInstanceMonitor(clusterName).getAllLiveInstances();
     Map<String, List<String>> disabledPartitions;
-    for (String instance: instances) {
+    for (Instance instance: instances) {
       try {
-        disabledPartitions = getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+        disabledPartitions = getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance.getNodeId());
       } catch (HelixException helixException) {
         String msg = "Failed to get disabled partition map in cluster " + clusterName + " for host " + instance;
         if (!EXCEPTION_FILTER.isRedundantException(msg)) {
@@ -4897,8 +4926,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
         if (enableAll || entry.getKey().equals(kafkaTopic)) {
           // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
-          getDisabledPartitionStats(clusterName).recordClearDisabledPartition();
-          getHelixAdminClient().enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
+          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(entry.getValue().size());
+          getHelixAdminClient()
+              .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
           LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
         }
       }
@@ -5395,7 +5425,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Map<String, List<String>> disabledPartitions = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
         for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
           helixAdminClient.enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
-          getDisabledPartitionStats(clusterName).recordClearDisabledPartition();
+          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(entry.getValue().size());
           LOGGER.info(
               "Enabled disabled replica of resource {}, partitions {} in cluster {}",
               entry.getKey(),
@@ -7089,6 +7119,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public ArrayList<StoreInfo> getClusterStores(String clusterName) {
     // Return all stores at this step in the process
     return (ArrayList<StoreInfo>) getAllStores(clusterName).stream()
+        /**
+         * This filtering should not be needed because {@link #getAllStores(String)} should not return any null items,
+         * but just in case, we have it here as defensive code...
+         */
+        .filter(Objects::nonNull)
         .map(StoreInfo::fromStore)
         .collect(Collectors.toList());
   }
@@ -7111,8 +7146,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailAdded) {
+    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+
     RegionPushDetails ret = new RegionPushDetails();
-    OfflinePushStatus zkData = retrievePushStatus(clusterName, storeName);
+    OfflinePushStatus zkData = retrievePushStatus(clusterName, store);
 
     for (StatusSnapshot status: zkData.getStatusHistory()) {
       if (shouldUpdateEndTime(ret, status)) {
@@ -7125,7 +7165,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
     for (Version v: store.getVersions()) {
       ret.addVersion(v.getNumber());
     }
@@ -7136,9 +7175,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return ret;
   }
 
-  public OfflinePushStatus retrievePushStatus(String clusterName, String storeName) {
-    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
-
+  public OfflinePushStatus retrievePushStatus(String clusterName, StoreInfo store) {
     VeniceOfflinePushMonitorAccessor accessor =
         new VeniceOfflinePushMonitorAccessor(clusterName, getZkClient(), getAdapterSerializer());
 
