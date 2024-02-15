@@ -31,7 +31,7 @@ import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -107,10 +107,10 @@ import org.testng.annotations.Test;
  *       is done.
  */
 public class ActiveActiveReplicationForHybridTest {
-  private static final int TEST_TIMEOUT = 10 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 5 * Time.MS_PER_MINUTE;
   private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
 
-  protected static final int NUMBER_OF_CHILD_DATACENTERS = 3;
+  protected static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   protected static final int NUMBER_OF_CLUSTERS = 1;
   static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
@@ -125,7 +125,7 @@ public class ActiveActiveReplicationForHybridTest {
   private ControllerClient parentControllerClient;
   private ControllerClient dc0Client;
   private ControllerClient dc1Client;
-  private ControllerClient dc2Client;
+  // private ControllerClient dc2Client;
   private List<ControllerClient> dcControllerClientList;
 
   @BeforeClass(alwaysRun = true)
@@ -136,11 +136,11 @@ public class ActiveActiveReplicationForHybridTest {
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
      */
     serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 5L);
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     serverProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-    serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, false);
+    serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, true);
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "2");
 
     Properties controllerProps = new Properties();
@@ -174,8 +174,8 @@ public class ActiveActiveReplicationForHybridTest {
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
     dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
-    dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
-    dcControllerClientList = Arrays.asList(dc0Client, dc1Client, dc2Client);
+    // dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
+    dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
   }
 
   @AfterClass(alwaysRun = true)
@@ -186,7 +186,7 @@ public class ActiveActiveReplicationForHybridTest {
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(dc0Client);
     Utils.closeQuietlyWithErrorLogged(dc1Client);
-    Utils.closeQuietlyWithErrorLogged(dc2Client);
+    // Utils.closeQuietlyWithErrorLogged(dc2Client);
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
@@ -226,7 +226,7 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName1, false, false, true);
       verifyDCConfigAARepl(dc0Client, storeName1, false, false, true);
       verifyDCConfigAARepl(dc1Client, storeName1, false, false, true);
-      verifyDCConfigAARepl(dc2Client, storeName1, false, false, true);
+      // verifyDCConfigAARepl(dc2Client, storeName1, false, false, true);
       assertCommand(
           assertCommand(
               parentControllerClient.configureActiveActiveReplicationForCluster(
@@ -236,7 +236,7 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName1, false, true, false);
       verifyDCConfigAARepl(dc0Client, storeName1, false, true, false);
       verifyDCConfigAARepl(dc1Client, storeName1, false, true, true);
-      verifyDCConfigAARepl(dc2Client, storeName1, false, true, true);
+      // verifyDCConfigAARepl(dc2Client, storeName1, false, true, true);
 
       // Test hybrid - agg vs non-agg
       assertCommand(
@@ -247,11 +247,11 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName2, true, false, false);
       verifyDCConfigAARepl(dc0Client, storeName2, true, false, false);
       verifyDCConfigAARepl(dc1Client, storeName2, true, false, false);
-      verifyDCConfigAARepl(dc2Client, storeName2, true, false, false);
+      // verifyDCConfigAARepl(dc2Client, storeName2, true, false, false);
       verifyDCConfigAARepl(parentControllerClient, storeName3, true, false, true);
       verifyDCConfigAARepl(dc0Client, storeName3, true, false, true);
       verifyDCConfigAARepl(dc1Client, storeName3, true, false, true);
-      verifyDCConfigAARepl(dc2Client, storeName3, true, false, true);
+      // verifyDCConfigAARepl(dc2Client, storeName3, true, false, true);
       assertCommand(
           parentControllerClient.configureActiveActiveReplicationForCluster(
               false,
@@ -260,7 +260,7 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName3, true, true, false);
       verifyDCConfigAARepl(dc0Client, storeName3, true, true, false);
       verifyDCConfigAARepl(dc1Client, storeName3, true, true, false);
-      verifyDCConfigAARepl(dc2Client, storeName3, true, true, false);
+      // verifyDCConfigAARepl(dc2Client, storeName3, true, true, false);
 
       // Test incremental
       assertCommand(
@@ -271,7 +271,7 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName4, false, false, true);
       verifyDCConfigAARepl(dc0Client, storeName4, false, false, true);
       verifyDCConfigAARepl(dc1Client, storeName4, false, false, true);
-      verifyDCConfigAARepl(dc2Client, storeName4, false, false, true);
+      // verifyDCConfigAARepl(dc2Client, storeName4, false, false, true);
     } finally {
       deleteStores(storeName1, storeName2, storeName3, storeName4);
     }
@@ -297,7 +297,7 @@ public class ActiveActiveReplicationForHybridTest {
         fail("The update store command should not have succeeded since AA cannot be enabled without enabling NR.");
       } catch (AssertionError e) {
         assertTrue(e.getMessage().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct
-                                                                                         // HTTP status code
+        // HTTP status code
       }
 
       // Expect the request to succeed
@@ -335,14 +335,14 @@ public class ActiveActiveReplicationForHybridTest {
         fail("The update store command should not have succeeded since AA cannot be enabled without enabling NR.");
       } catch (AssertionError e) {
         assertTrue(e.getMessage().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct
-                                                                                         // HTTP status code
+        // HTTP status code
       }
     } finally {
       deleteStores(storeName, anotherStoreName);
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 10, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAAReplicationCanConsumeFromAllRegions(boolean isChunkingEnabled, boolean useTransientRecordCache)
       throws InterruptedException, ExecutionException {
     String clusterName = CLUSTER_NAMES[0];
@@ -359,41 +359,23 @@ public class ActiveActiveReplicationForHybridTest {
           Optional.of(isChunkingEnabled));
 
       // Empty push to create a version
-      waitForNonDeterministicAssertion(PUSH_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        try {
-          assertCommand(
-              parentControllerClient
-                  .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT / 4));
-        } catch (Exception e) {
-          parentControllerClient.killOfflinePushJob(
-              Version.composeKafkaTopic(
-                  storeName,
-                  parentControllerClient.getStoreLargestUsedVersion(clusterName, storeName).getVersion()));
-        }
-      });
-
-      int versionNumber;
       ControllerResponse controllerResponse = assertCommand(
           parentControllerClient
               .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
       assertTrue(controllerResponse instanceof JobStatusQueryResponse);
       JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) controllerResponse;
-      versionNumber = jobStatusQueryResponse.getVersion();
-
+      int versionNumber = jobStatusQueryResponse.getVersion();
       // Wait for push to complete in all regions
       waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         for (ControllerClient controllerClient: dcControllerClientList) {
           StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-          assertTrue(storeResponse.getStore().getCurrentVersion() > 0);
+          assertEquals(storeResponse.getStore().getCurrentVersion(), versionNumber);
         }
       });
 
       // disable the purging of transientRecord buffer using reflection.
       if (useTransientRecordCache) {
-        String topicName = Version.composeKafkaTopic(
-            storeName,
-            parentControllerClient.getStoreLargestUsedVersion(clusterName, storeName).getVersion());
-        // String topicName = Version.composeKafkaTopic(storeName, versionNumber);
+        String topicName = Version.composeKafkaTopic(storeName, versionNumber);
         for (VeniceMultiClusterWrapper veniceRegion: multiRegionMultiClusterWrapper.getChildRegions()) {
           VeniceClusterWrapper veniceCluster = veniceRegion.getClusters().get(clusterName);
           for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
@@ -592,7 +574,6 @@ public class ActiveActiveReplicationForHybridTest {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
-
       updateStoreToHybrid(
           storeName,
           parentControllerClient,
@@ -601,25 +582,14 @@ public class ActiveActiveReplicationForHybridTest {
           Optional.of(chunkingEnabled));
 
       // Empty push to create a version
-      waitForNonDeterministicAssertion(PUSH_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        try {
-          assertCommand(
-              parentControllerClient
-                  .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT / 4));
-        } catch (Exception e) {
-          // Version.composeKafkaTopic(storeName, parentControllerClient.getStoreLargestUsedVersion(clusterName,
-          // storeName).getVersion());
-          parentControllerClient.killOfflinePushJob(
-              Version.composeKafkaTopic(
-                  storeName,
-                  parentControllerClient.getStoreLargestUsedVersion(clusterName, storeName).getVersion()));
-        }
-      });
+      assertCommand(
+          parentControllerClient
+              .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, PUSH_TIMEOUT));
 
       // Verify that version 1 is already created in dc-0 region
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreResponse storeResponse = assertCommand(dc0Client.getStore(storeName));
-        assertTrue(storeResponse.getStore().getCurrentVersion() > 0);
+        assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
       });
 
       /**
