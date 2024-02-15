@@ -2102,8 +2102,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // Not enabled!
       return;
     }
-    long producerTimeStamp =
-        max(consumerRecord.getPubSubMessageTime(), consumerRecord.getValue().producerMetadata.messageTimestamp);
+
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       for (int subPartition: PartitionUtils
           .getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {
@@ -2112,7 +2111,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             versionNumber,
             subPartition,
             serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-            producerTimeStamp);
+            consumerRecord.getValue().producerMetadata.messageTimestamp);
       }
     } else {
       heartbeatMonitoringService.recordFollowerHeartbeat(
@@ -2120,7 +2119,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           versionNumber,
           partitionConsumptionState.getUserPartition(),
           serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          producerTimeStamp);
+          consumerRecord.getValue().producerMetadata.messageTimestamp);
     }
   }
 
