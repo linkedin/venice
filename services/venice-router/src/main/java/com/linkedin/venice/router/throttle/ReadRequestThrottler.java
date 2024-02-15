@@ -8,7 +8,6 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutersClusterManager;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -39,7 +38,6 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
   private static final Logger LOGGER = LogManager.getLogger(ReadRequestThrottler.class);
   private final ZkRoutersClusterManager zkRoutersManager;
   private final ReadOnlyStoreRepository storeRepository;
-  private final RoutingDataRepository routingDataRepository;
   private final long maxRouterReadCapacity;
   private int lastRouterCount;
 
@@ -68,13 +66,11 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
   public ReadRequestThrottler(
       ZkRoutersClusterManager zkRoutersManager,
       ReadOnlyStoreRepository storeRepository,
-      RoutingDataRepository routingDataRepository,
       AggRouterHttpRequestStats stats,
       VeniceRouterConfig routerConfig) {
     this(
         zkRoutersManager,
         storeRepository,
-        routingDataRepository,
         routerConfig.getMaxReadCapacityCu(),
         stats,
         routerConfig.getPerStoreRouterQuotaBuffer(),
@@ -84,23 +80,25 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
   public ReadRequestThrottler(
       ZkRoutersClusterManager zkRoutersManager,
       ReadOnlyStoreRepository storeRepository,
-      RoutingDataRepository routingDataRepository,
       long maxRouterReadCapacity,
       AggRouterHttpRequestStats stats,
       double perStoreRouterQuotaBuffer,
       long storeQuotaCheckTimeWindow) {
     this.zkRoutersManager = zkRoutersManager;
     this.storeRepository = storeRepository;
-    this.routingDataRepository = routingDataRepository;
     this.storeQuotaCheckTimeWindow = storeQuotaCheckTimeWindow;
-    this.storeRepository.registerStoreDataChangedListener(this);
     this.stats = stats;
     this.maxRouterReadCapacity = maxRouterReadCapacity;
     this.lastRouterCount = zkRoutersManager.getExpectedRoutersCount();
     this.perStoreRouterQuotaBuffer = perStoreRouterQuotaBuffer;
     this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
-    this.storesThrottlers = new AtomicReference<>(buildAllStoreReadThrottlers());
     this.isNoopThrottlerEnabled = false;
+
+    /** Calling {@link #buildAllStoreReadThrottlers()} should be done after all internal state is initialized */
+    this.storesThrottlers = new AtomicReference<>(buildAllStoreReadThrottlers());
+
+    /** Subscribing to listeners should be the very last thing, to avoid calls prior to full initialization */
+    this.storeRepository.registerStoreDataChangedListener(this);
   }
 
   /**

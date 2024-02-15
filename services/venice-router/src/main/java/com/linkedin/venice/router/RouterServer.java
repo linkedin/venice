@@ -896,7 +896,6 @@ public class RouterServer extends AbstractVeniceService {
       readRequestThrottler = new ReadRequestThrottler(
           routersClusterManager,
           metadataRepository,
-          routingDataRepository,
           routerStats.getStatsByType(RequestType.SINGLE_GET),
           config);
 
