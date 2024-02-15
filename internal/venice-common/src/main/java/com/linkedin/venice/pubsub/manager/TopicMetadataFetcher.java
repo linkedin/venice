@@ -563,6 +563,7 @@ class TopicMetadataFetcher implements Closeable {
       }
 
       // consume latest records
+      ensureConsumerHasNoSubscriptions(pubSubConsumerAdapter);
       long consumePastOffset = Math.max(Math.max(latestOffset - lastRecordsCount, earliestOffset) - 1, -1);
       pubSubConsumerAdapter.subscribe(pubSubTopicPartition, consumePastOffset);
       subscribed = true;
@@ -605,6 +606,19 @@ class TopicMetadataFetcher implements Closeable {
       }
       releaseConsumer(pubSubConsumerAdapter);
     }
+  }
+
+  void ensureConsumerHasNoSubscriptions(PubSubConsumerAdapter pubSubConsumerAdapter) {
+    Set<PubSubTopicPartition> assignedPartitions = pubSubConsumerAdapter.getAssignment();
+    if (assignedPartitions.isEmpty()) {
+      return;
+    }
+    LOGGER.warn(
+        "Consumer: {} of has lingering subscriptions: {}. Unsubscribing from all of them." + " Consumer belongs to {}",
+        pubSubConsumerAdapter,
+        assignedPartitions,
+        this);
+    pubSubConsumerAdapter.batchUnsubscribe(assignedPartitions);
   }
 
   void invalidateKey(PubSubTopicPartition pubSubTopicPartition) {
