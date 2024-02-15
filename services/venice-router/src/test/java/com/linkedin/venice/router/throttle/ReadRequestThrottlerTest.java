@@ -425,6 +425,7 @@ public class ReadRequestThrottlerTest {
           listener.handleStoreDeleted("testStore");
         } catch (Throwable t) {
           LOGGER.error("Caught a throwable when calling the listener immediately after subscription", t);
+          listenerThrewException.set(true);
         }
       }
 
