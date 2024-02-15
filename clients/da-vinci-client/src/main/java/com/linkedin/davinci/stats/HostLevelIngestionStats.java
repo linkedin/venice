@@ -270,6 +270,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
                 .sum(),
             "ingestion_stuck_by_memory_constraint"));
 
+    // Stats which are per-store only:
     String keySizeSensorName = "record_key_size_in_bytes";
     this.keySizeSensor = registerSensor(
         keySizeSensorName,

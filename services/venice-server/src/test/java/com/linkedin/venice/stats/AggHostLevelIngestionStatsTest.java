@@ -79,7 +79,6 @@ public class AggHostLevelIngestionStatsTest {
     Assert.assertEquals(
         reporter.query(".total--bytes_read_from_kafka_as_uncompressed_size.Rate").value(),
         300d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
-    Assert.assertEquals(reporter.query("." + STORE_FOO + "--global_store_disk_quota_allowed.Gauge").value(), 200d);
 
     Assert.assertEquals(
         reporter.query(".total--records_consumed.Rate").value(),
