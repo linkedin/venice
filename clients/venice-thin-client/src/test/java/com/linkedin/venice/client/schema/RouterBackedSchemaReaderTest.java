@@ -202,8 +202,11 @@ public class RouterBackedSchemaReaderTest {
 
     try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), VALUE_SCHEMA_2.toString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
       Assert.assertEquals(schemaReader.getValueSchema(1).toString(), VALUE_SCHEMA_1.toString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
       Assert.assertEquals(schemaReader.getValueSchema(2).toString(), VALUE_SCHEMA_2.toString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
       schemaReader.getLatestValueSchema();
       Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
     }

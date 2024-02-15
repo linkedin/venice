@@ -33,6 +33,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -67,7 +68,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final Map<Integer, DerivedSchemaEntry> valueSchemaIdToUpdateSchemaEntryMap = new VeniceConcurrentHashMap<>();
   private final AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
   private final AtomicInteger supersetSchemaIdAtomic = new AtomicInteger(SchemaData.INVALID_VALUE_SCHEMA_ID);
-
+  private final AtomicBoolean shouldRefreshLatestValueSchemaEntry = new AtomicBoolean(false);
   private final String storeName;
   private final InternalAvroStoreClient storeClient;
   private final boolean externalClient;
@@ -413,13 +414,15 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   private SchemaEntry maybeUpdateLatestValueSchemaEntry() {
     SchemaEntry latest = latestValueSchemaEntry.get();
-    if (latest == null) {
+    if (latest == null || shouldRefreshLatestValueSchemaEntry.get()) {
       /**
-       * Every time it sees latestValueSchemaEntry is null, it will try to update it once.
+       * Every time it sees latestValueSchemaEntry is null or the flag to update latest schema entry is set to true,
+       * it will try to update it once.
        * The update is expensive, but we expect it to be filled after the first fetch, as each store should have at least
        * one active value schema.
        */
       updateAllValueSchemaEntriesAndLatestValueSchemaEntry(false);
+      shouldRefreshLatestValueSchemaEntry.compareAndSet(true, false);
       latestValueSchemaEntry.set(latestValueSchemaEntry.get());
       latest = latestValueSchemaEntry.get();
     }
@@ -453,6 +456,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
         if (entry == null) {
           return NOT_EXIST_VALUE_SCHEMA_ENTRY;
         }
+        // Every time when we fetch a new value schema to cache during non-force-refresh logic, we should try to mark
+        // the flag as true.
+        shouldRefreshLatestValueSchemaEntry.compareAndSet(false, true);
         valueSchemaMapR.put(entry.getSchema(), valueSchemaId);
         return entry;
       });
