@@ -23,6 +23,7 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -155,6 +156,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final Set<String> nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
   private final VeniceWriterFactory veniceWriterFactory;
 
+  private final HeartbeatMonitoringService heartbeatMonitoringService;
+
   /**
    * Leader must maintain producer DIV states separate from drainers, because leader is always ahead of drainer;
    * if leader and drainer share the same DIV validator, leader will pollute the data in shared DIV validator;
@@ -209,6 +212,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheBackend,
         recordTransformer,
         builder.getLeaderFollowerNotifiers());
+    this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the
      * split-brain problem happens in prod, we could design a way to periodically produce snapshot to the meta system
@@ -2086,6 +2090,36 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           leaderMetadataWrapper,
           leaderCompleteState,
           producerTimeStamp);
+    }
+  }
+
+  @Override
+  protected void recordHeartbeatReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      String kafkaUrl) {
+    if (heartbeatMonitoringService == null) {
+      // Not enabled!
+      return;
+    }
+
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      for (int subPartition: PartitionUtils
+          .getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {
+        heartbeatMonitoringService.recordLeaderHeartbeat(
+            storeName,
+            versionNumber,
+            subPartition,
+            serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+            consumerRecord.getValue().producerMetadata.messageTimestamp);
+      }
+    } else {
+      heartbeatMonitoringService.recordFollowerHeartbeat(
+          storeName,
+          versionNumber,
+          partitionConsumptionState.getUserPartition(),
+          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().producerMetadata.messageTimestamp);
     }
   }
 

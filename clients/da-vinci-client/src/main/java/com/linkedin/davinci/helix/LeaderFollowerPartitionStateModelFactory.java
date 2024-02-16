@@ -3,6 +3,7 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.HelixUtils;
@@ -17,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModelFactory {
   private final LeaderFollowerIngestionProgressNotifier leaderFollowerStateModelNotifier =
       new LeaderFollowerIngestionProgressNotifier();
+  private final HeartbeatMonitoringService heartbeatMonitoringService;
 
   public LeaderFollowerPartitionStateModelFactory(
       VeniceIngestionBackend ingestionBackend,
@@ -25,7 +27,8 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
       ParticipantStateTransitionStats stateTransitionStats,
       ReadOnlyStoreRepository metadataRepo,
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
-      String instanceName) {
+      String instanceName,
+      HeartbeatMonitoringService heartbeatMonitoringService) {
     super(
         ingestionBackend,
         configService,
@@ -34,6 +37,7 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
         metadataRepo,
         partitionPushStatusAccessorFuture,
         instanceName);
+    this.heartbeatMonitoringService = heartbeatMonitoringService;
 
     // Add a new notifier to let state model knows ingestion has caught up the lag so that it can complete the offline
     // to standby state transition.
@@ -52,7 +56,8 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
         getStoreMetadataRepo(),
         partitionPushStatusAccessorFuture,
         instanceName,
-        getStateTransitionStats(resourceName));
+        getStateTransitionStats(resourceName),
+        heartbeatMonitoringService);
   }
 
   /**

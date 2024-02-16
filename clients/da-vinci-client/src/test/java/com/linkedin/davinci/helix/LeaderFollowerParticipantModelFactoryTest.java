@@ -5,6 +5,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -12,6 +13,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
+import io.tehuti.metrics.MetricsRepository;
+import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.helix.model.Message;
@@ -72,7 +75,8 @@ public class LeaderFollowerParticipantModelFactoryTest {
         Mockito.mock(ParticipantStateTransitionStats.class),
         mockReadOnlyStoreRepository,
         null,
-        null);
+        null,
+        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, new HashSet<>(), "local"));
   }
 
   @Test

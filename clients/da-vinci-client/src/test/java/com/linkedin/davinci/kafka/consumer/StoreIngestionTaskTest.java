@@ -79,8 +79,8 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.helix.LeaderFollowerIngestionProgressNotifier;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.helix.StateModelIngestionProgressNotifier;
 import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
@@ -511,7 +511,7 @@ public abstract class StoreIngestionTaskTest {
     }).when(mockLogNotifier).error(anyString(), anyInt(), anyString(), any());
 
     mockPartitionStatusNotifier = mock(PartitionPushStatusNotifier.class);
-    mockLeaderFollowerStateModelNotifier = mock(LeaderFollowerIngestionProgressNotifier.class);
+    mockLeaderFollowerStateModelNotifier = mock(StateModelIngestionProgressNotifier.class);
 
     mockStorageMetadataService = mock(StorageMetadataService.class);
 
