@@ -3719,19 +3719,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
-        if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
-          throw new VeniceException("Version:" + versionNumber + " does not exist for store:" + storeName);
-        }
+      // Parent colo should not update the current version of a store
+      if (!isParent()) {
+        if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
+          if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
+            throw new VeniceException("Version:" + versionNumber + " does not exist for store:" + storeName);
+          }
 
-        if (!store.isEnableWrites()) {
-          throw new VeniceException(
-              "Unable to update store:" + storeName + " current version since store writeability is false");
+          if (!store.isEnableWrites()) {
+            throw new VeniceException(
+                "Unable to update store:" + storeName + " current version since store writeability is false");
+          }
         }
+        int previousVersion = store.getCurrentVersion();
+        store.setCurrentVersion(versionNumber);
+        realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
       }
-      int previousVersion = store.getCurrentVersion();
-      store.setCurrentVersion(versionNumber);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
       return store;
     });
   }
