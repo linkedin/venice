@@ -196,6 +196,13 @@ public class TestActiveActiveReplicationForIncPush {
           dc0ControllerClient,
           dc1ControllerClient,
           dc2ControllerClient);
+      TestUtils.verifyHybridStoreDataReplicationPolicy(
+          storeName,
+          DataReplicationPolicy.ACTIVE_ACTIVE,
+          parentControllerClient,
+          dc0ControllerClient,
+          dc1ControllerClient,
+          dc2ControllerClient);
 
       verifyHybridAndIncPushConfig(
           storeName,

@@ -46,6 +46,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -681,6 +682,23 @@ public class TestUtils {
             storeResponse.getStore().isActiveActiveReplicationEnabled(),
             enabledAA,
             "The active active replication config does not match.");
+      }
+    });
+  }
+
+  public static void verifyHybridStoreDataReplicationPolicy(
+      String storeName,
+      DataReplicationPolicy dataReplicationPolicy,
+      ControllerClient... controllerClients) {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      for (ControllerClient controllerClient: controllerClients) {
+        StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
+        Assert.assertNotNull(storeResponse.getStore().getHybridStoreConfig());
+        Assert.assertNotNull(storeResponse.getStore().getHybridStoreConfig());
+        Assert.assertEquals(
+            storeResponse.getStore().getHybridStoreConfig().getDataReplicationPolicy(),
+            dataReplicationPolicy,
+            "The data replication policy does not match.");
       }
     });
   }

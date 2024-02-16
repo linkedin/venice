@@ -2337,6 +2337,15 @@ public class VeniceParentHelixAdmin implements Admin {
           && clusterConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
         setStore.activeActiveReplicationEnabled = true;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+        if (!hybridDataReplicationPolicy.isPresent()) {
+          LOGGER.info(
+              "Data replication policy was not explicitly set when converting store to hybrid store: {}."
+                  + " Setting it to active-active replication policy.",
+              storeName);
+
+          updatedHybridStoreConfig.setDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE);
+          updatedConfigsList.add(DATA_REPLICATION_POLICY);
+        }
       }
       // When turning off hybrid store, we will also turn off A/A store config.
       if (storeBeingConvertedToBatch && setStore.activeActiveReplicationEnabled) {

@@ -74,6 +74,11 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   }
 
   @Override
+  public void setDataReplicationPolicy(DataReplicationPolicy dataReplicationPolicy) {
+    this.hybridConfig.dataReplicationPolicy = dataReplicationPolicy.getValue();
+  }
+
+  @Override
   public BufferReplayPolicy getBufferReplayPolicy() {
     return BufferReplayPolicy.valueOf(this.hybridConfig.bufferReplayPolicy);
   }
