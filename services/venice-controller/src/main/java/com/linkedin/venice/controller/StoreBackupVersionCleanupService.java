@@ -105,7 +105,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     });
     Optional<SSLFactory> sslFactory = admin.getSslFactory();
     this.httpAsyncClient = HttpAsyncClients.custom()
-        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
+        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(10000).build())
         .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
         .build();
   }
@@ -152,7 +152,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       try {
         HttpGet routerRequest =
             new HttpGet(routerInstance.getHostUrl(true) + TYPE_CURRENT_VERSION + "/" + store.getName());
-        HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(500, TimeUnit.MILLISECONDS);
+        HttpResponse response = getHttpAsyncClient().execute(routerRequest, null).get(5000, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
               "Got status code {} from host {} while querying router current version for store {}",
@@ -189,7 +189,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       try {
         HttpGet serverRequest = new HttpGet(
             instance.getHostUrl(true) + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + store.getName());
-        HttpResponse response = getHttpAsyncClient().execute(serverRequest, null).get(500, TimeUnit.MILLISECONDS);
+        HttpResponse response = getHttpAsyncClient().execute(serverRequest, null).get(10000, TimeUnit.MILLISECONDS);
         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
           LOGGER.warn(
               "Got status code {} from host {} while querying server current version for store {}",
