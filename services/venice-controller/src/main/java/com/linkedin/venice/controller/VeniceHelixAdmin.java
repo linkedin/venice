@@ -3719,22 +3719,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      // Parent colo should not update the current version of a store
-      if (!isParent()) {
-        if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
-          if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
-            throw new VeniceException("Version:" + versionNumber + " does not exist for store:" + storeName);
-          }
-
-          if (!store.isEnableWrites()) {
-            throw new VeniceException(
-                "Unable to update store:" + storeName + " current version since store writeability is false");
-          }
-        }
-        int previousVersion = store.getCurrentVersion();
-        store.setCurrentVersion(versionNumber);
-        realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+      if (isParent()) {
+        // Parent colo should not update the current version of a store
+        return store;
       }
+
+      if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
+        if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
+          throw new VeniceException("Version: " + versionNumber + " does not exist for store:" + storeName);
+        }
+
+        if (!store.isEnableWrites()) {
+          throw new VeniceException(
+              "Unable to update store: " + storeName + " current version since store writeability is false");
+        }
+      }
+      int previousVersion = store.getCurrentVersion();
+      store.setCurrentVersion(versionNumber);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
       return store;
     });
   }
@@ -4237,21 +4239,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private void internalUpdateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
     /**
-     * Check whether the command affects this fabric.
+     * Check whether the command affects this region.
      */
+    boolean onlyParentRegionFilter = false;
     if (params.getRegionsFilter().isPresent()) {
       Set<String> regionsFilter = parseRegionsFilterList(params.getRegionsFilter().get());
       if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
         LOGGER.info(
-            "UpdateStore command will be skipped for store: {} in cluster: {}, because the fabrics filter is {} "
-                + "which doesn't include the current fabric: {}",
+            "UpdateStore command will be skipped for store: {} in cluster: {}, because the region filter is {}"
+                + " which doesn't include the current region: {}",
             storeName,
             clusterName,
             regionsFilter,
             multiClusterConfigs.getRegionName());
         return;
       }
+
+      if (isParent() && regionsFilter.size() == 1) {
+        onlyParentRegionFilter = true;
+      }
     }
+
+    // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
+    // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
+    // only if the regions filter only specifies the parent region.
+    boolean childRegionOnlyConfigUpdateAllowed = !isParent() || onlyParentRegionFilter;
 
     Store originalStore = getStore(clusterName, storeName);
     if (originalStore == null) {
@@ -4381,7 +4393,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (currentVersion.isPresent()) {
-        setStoreCurrentVersion(clusterName, storeName, currentVersion.get());
+        if (childRegionOnlyConfigUpdateAllowed) {
+          setStoreCurrentVersion(clusterName, storeName, currentVersion.get());
+        } else {
+          LOGGER.info(
+              "Skipping current version update for store: {} in cluster: {} because it is not allowed in the "
+                  + "parent region",
+              storeName,
+              clusterName);
+        }
       }
 
       if (largestUsedVersionNumber.isPresent()) {

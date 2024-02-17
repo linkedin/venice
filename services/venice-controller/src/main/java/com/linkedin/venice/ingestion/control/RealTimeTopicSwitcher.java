@@ -214,11 +214,11 @@ public class RealTimeTopicSwitcher {
     Version previousStoreVersion = store.getVersion(previousVersion)
         .orElseThrow(
             () -> new VeniceException(
-                "Corresponding version " + previousVersion + "does not exist for store: " + store.getName()));
+                "Corresponding version " + previousVersion + " does not exist for store: " + store.getName()));
     Version nextStoreVersion = store.getVersion(nextVersion)
         .orElseThrow(
             () -> new VeniceException(
-                "Corresponding version " + nextVersion + "does not exist for store: " + store.getName()));
+                "Corresponding version " + nextVersion + " does not exist for store: " + store.getName()));
 
     // Only transmit version swap message to RT's if there is a view config (temporary check)
     if (!hasViewConfigs(nextStoreVersion, previousStoreVersion)) {
