@@ -70,13 +70,15 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
 
       this.storeClient = (InternalAvroStoreClient<K, V>) tempStoreClient;
 
-      ClientConfig clientConfigForSchemaReader =
-          ClientConfig.cloneConfig(storeClientConfig).setSchemaRefreshPeriod(schemaRefreshPeriod);
+      ClientConfig clientConfigForSchemaReader = ClientConfig.cloneConfig(storeClientConfig)
+          .setSchemaRefreshPeriod(schemaRefreshPeriod)
+          .setMetricsRepository(null);
 
       this.schemaReader = ClientFactory.getSchemaReader(clientConfigForSchemaReader, icProvider);
       ClientConfig<KafkaMessageEnvelope> kmeClientConfig = ClientConfig.cloneConfig(storeClientConfig)
           .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
-          .setSpecificValueClass(KafkaMessageEnvelope.class);
+          .setSpecificValueClass(KafkaMessageEnvelope.class)
+          .setMetricsRepository(null);
 
       try (SchemaReader kmeSchemaReader = ClientFactory.getSchemaReader(kmeClientConfig, icProvider)) {
         configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
