@@ -104,7 +104,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       try {
         long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
         setupNewStorePartition();
-        heartbeatMonitoringService.addFollowerLagMonitor(store.getVersion(version).get(), getPartition());
+        store.getVersion(version).ifPresent(v -> heartbeatMonitoringService.addFollowerLagMonitor(v, getPartition()));
         logger.info(
             "Completed setting up new store partition for {} partition {}. Total elapsed time: {} ms",
             resourceName,
@@ -130,7 +130,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
     int version = Version.parseVersionFromKafkaTopicName(resourceName);
     Store store = getStoreRepo().getStoreOrThrow(storeName);
-    heartbeatMonitoringService.addLeaderLagMonitor(store.getVersion(version).get(), getPartition());
+    store.getVersion(version).ifPresent(v -> heartbeatMonitoringService.addLeaderLagMonitor(v, getPartition()));
     executeStateTransition(
         message,
         context,
@@ -144,7 +144,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
     int version = Version.parseVersionFromKafkaTopicName(resourceName);
     Store store = getStoreRepo().getStoreOrThrow(storeName);
-    heartbeatMonitoringService.addFollowerLagMonitor(store.getVersion(version).get(), getPartition());
+    store.getVersion(version).ifPresent(v -> heartbeatMonitoringService.addFollowerLagMonitor(v, getPartition()));
     executeStateTransition(
         message,
         context,
@@ -157,7 +157,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
     int version = Version.parseVersionFromKafkaTopicName(resourceName);
     Store store = getStoreRepo().getStoreOrThrow(storeName);
-    heartbeatMonitoringService.removeLagMonitor(store.getVersion(version).get(), getPartition());
+    store.getVersion(version).ifPresent(v -> heartbeatMonitoringService.removeLagMonitor(v, getPartition()));
     executeStateTransition(message, context, () -> stopConsumption(true));
   }
 
