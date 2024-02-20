@@ -35,6 +35,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -121,8 +122,8 @@ public class TestActiveActiveReplicationForIncPush {
    * The purpose of this test is to verify that incremental push with RT policy succeeds when A/A is enabled in all
    * regions. And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
    */
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testAAReplicationForIncrementalPushToRT() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testAAReplicationForIncrementalPushToRT(boolean overrideDataReplicationPolicy) throws Exception {
     String clusterName = this.clusterNames[0];
     File inputDirBatch = getTempDataDirectory();
     File inputDirInc1 = getTempDataDirectory();
@@ -179,6 +180,12 @@ public class TestActiveActiveReplicationForIncPush {
               .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
               .setHybridRewindSeconds(2L)
               .setNativeReplicationSourceFabric("dc-2");
+
+      // Override the data replication policy to be non-aggregate.
+      if (overrideDataReplicationPolicy) {
+        updateStoreParams.setHybridDataReplicationPolicy(DataReplicationPolicy.NON_AGGREGATE);
+      }
+
       TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
 
       // Print all the kafka cluster URLs
@@ -192,6 +199,13 @@ public class TestActiveActiveReplicationForIncPush {
           storeName,
           true,
           true,
+          parentControllerClient,
+          dc0ControllerClient,
+          dc1ControllerClient,
+          dc2ControllerClient);
+      TestUtils.verifyHybridStoreDataReplicationPolicy(
+          storeName,
+          overrideDataReplicationPolicy ? DataReplicationPolicy.NON_AGGREGATE : DataReplicationPolicy.ACTIVE_ACTIVE,
           parentControllerClient,
           dc0ControllerClient,
           dc1ControllerClient,

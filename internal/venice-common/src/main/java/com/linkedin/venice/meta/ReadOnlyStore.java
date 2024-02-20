@@ -131,6 +131,11 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public void setDataReplicationPolicy(DataReplicationPolicy dataReplicationPolicy) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public BufferReplayPolicy getBufferReplayPolicy() {
       return this.delegate.getBufferReplayPolicy();
     }
