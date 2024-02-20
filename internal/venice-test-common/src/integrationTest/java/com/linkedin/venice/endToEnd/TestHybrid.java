@@ -294,16 +294,7 @@ public class TestHybrid {
                     .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
                     .build());
         ControllerClient controllerClient =
-            new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
-        TopicManager topicManager =
-            IntegrationTestPushUtils
-                .getTopicManagerRepo(
-                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-                    100,
-                    0l,
-                    venice.getPubSubBrokerWrapper(),
-                    venice.getPubSubTopicRepository())
-                .getTopicManager()) {
+            new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
       final String storeName = Utils.getUniqueString("hybrid-store");
