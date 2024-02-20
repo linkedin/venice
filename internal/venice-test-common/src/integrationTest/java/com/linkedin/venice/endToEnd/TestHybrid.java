@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
@@ -49,6 +50,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -106,6 +108,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.CompletableFutureCallback;
+import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.File;
@@ -269,6 +272,165 @@ public class TestHybrid {
               sharedVenice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))),
           StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
           "RT retention not updated properly");
+    }
+  }
+
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testHybridSplitBrainIssue() {
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
+    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    try (
+        VeniceClusterWrapper venice =
+            ServiceFactory.getVeniceCluster(1, 2, 1, 1, 1000000, false, false, extraProperties);
+        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(
+                venice.getClusterName(),
+                parentZk,
+                venice.getPubSubBrokerWrapper())
+                    .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                    .build());
+        ControllerClient controllerClient =
+            new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100,
+                    0l,
+                    venice.getPubSubBrokerWrapper(),
+                    venice.getPubSubTopicRepository())
+                .getTopicManager()) {
+      long streamingRewindSeconds = 25L;
+      long streamingMessageLag = 2L;
+      final String storeName = Utils.getUniqueString("hybrid-store");
+
+      // Create store at parent, make it a hybrid store
+      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+      controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setHybridRewindSeconds(streamingRewindSeconds)
+              .setHybridOffsetLagThreshold(streamingMessageLag));
+
+      // There should be no version on the store yet
+      assertEquals(
+          controllerClient.getStore(storeName).getStore().getCurrentVersion(),
+          0,
+          "The newly created store must have a current version of 0");
+
+      VersionResponse versionResponse = controllerClient.addVersionAndStartIngestion(
+          storeName,
+          Utils.getUniqueString("test-hybrid-push"),
+          1,
+          3,
+          Version.PushType.BATCH,
+          null,
+          -1,
+          1);
+      assertFalse(
+          versionResponse.isError(),
+          "Version creation shouldn't return error, but received: " + versionResponse.getError());
+      String versionTopicName = Version.composeKafkaTopic(storeName, 1);
+
+      String writer1 = "writer_1_hostname";
+      String writer2 = "writer_2_hostname";
+      Properties veniceWriterProperties1 = new Properties();
+      veniceWriterProperties1.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
+      veniceWriterProperties1.putAll(
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
+      veniceWriterProperties1.put(INSTANCE_ID, writer1);
+
+      AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+
+      Properties veniceWriterProperties2 = new Properties();
+      veniceWriterProperties2.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
+      veniceWriterProperties2.putAll(
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
+      veniceWriterProperties2.put(INSTANCE_ID, writer2);
+
+      try (
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter1 =
+              TestUtils.getVeniceWriterFactory(veniceWriterProperties1, pubSubProducerAdapterFactory)
+                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter2 =
+              TestUtils.getVeniceWriterFactory(veniceWriterProperties2, pubSubProducerAdapterFactory)
+                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build())) {
+        veniceWriter1.broadcastStartOfPush(false, Collections.emptyMap());
+
+        /**
+         * Explicitly simulate split-brain issue.
+         * Writer1:
+         *
+         * key_0: value_0 with upstream offset: 5
+         * key_1: value_1 with upstream offset: 6
+         * key_2: value_2 with upstream offset: 7
+         * key_3: value_3 with upstream offset: 8
+         * key_4: value_4 with upstream offset: 9
+         * Writer2:
+         * key_0: value_x with upstream offset: 3
+         * key_5: value_5 with upstream offset: 10
+         * key_6: value_6 with upstream offset: 11
+         * key_7: value_7 with upstream offset: 12
+         * key_8: value_8 with upstream offset: 13
+         * key_9: value_9 with upstream offset: 14
+         */
+
+        // Sending out dummy records first to push out SOS messages first.
+        veniceWriter1.put(
+            stringSerializer.serialize("key_writer_1"),
+            stringSerializer.serialize("value_writer_1"),
+            1,
+            null,
+            new LeaderMetadataWrapper(0, 0));
+        veniceWriter1.flush();
+        veniceWriter2.put(
+            stringSerializer.serialize("key_writer_2"),
+            stringSerializer.serialize("value_writer_2"),
+            1,
+            null,
+            new LeaderMetadataWrapper(1, 0));
+        veniceWriter2.flush();
+
+        for (int i = 0; i < 5; ++i) {
+          veniceWriter1.put(
+              stringSerializer.serialize("key_" + i),
+              stringSerializer.serialize("value_" + i),
+              1,
+              null,
+              new LeaderMetadataWrapper(i + 5, 0));
+        }
+        veniceWriter1.flush();
+        veniceWriter2.put(
+            stringSerializer.serialize("key_" + 0),
+            stringSerializer.serialize("value_x"),
+            1,
+            null,
+            new LeaderMetadataWrapper(3, 0));
+        for (int i = 5; i < 10; ++i) {
+          veniceWriter2.put(
+              stringSerializer.serialize("key_" + i),
+              stringSerializer.serialize("value_" + i),
+              1,
+              null,
+              new LeaderMetadataWrapper(i + 5, 0));
+        }
+        veniceWriter2.flush();
+        veniceWriter1.broadcastEndOfPush(Collections.emptyMap());
+        veniceWriter1.flush();
+      }
+
+      TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
+        // Now the store should have version 1
+        JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, 1));
+        Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
+        assertEquals(jobStatus.getStatus(), "ERROR");
+      });
     }
   }
 
