@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.meta.VeniceSerializer;
@@ -15,11 +16,18 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
   private final static int serializedMapSizeLimit = 0xfffff;
   protected static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private Class<T> type;
+  private TypeReference<T> typeReference;
 
   public VeniceJsonSerializer(Class<T> type) {
     // Ignore unknown properties
     OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     this.type = type;
+  }
+
+  public VeniceJsonSerializer(TypeReference<T> typeReference) {
+    // Ignore unknown properties
+    OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    this.typeReference = typeReference;
   }
 
   @Override
@@ -34,6 +42,9 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
 
   @Override
   public T deserialize(byte[] bytes, String path) throws IOException {
+    if (typeReference != null) {
+      return OBJECT_MAPPER.readValue(bytes, typeReference);
+    }
     return OBJECT_MAPPER.readValue(bytes, type);
   }
 }

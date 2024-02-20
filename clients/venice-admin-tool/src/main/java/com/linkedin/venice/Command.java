@@ -486,6 +486,11 @@ public enum Command {
       "Dump the real-time ingestion state for a certain store version in a certain storage node",
       new Arg[] { SERVER_URL, STORE, VERSION }, new Arg[] { PARTITION }
   ),
+  DUMP_TOPIC_PARTITION_INGESTION_CONTEXT(
+      "dump-topic-partition-ingestion-context",
+      "Dump the topic partition ingestion context belong to a certain store version in a certain storage node",
+      new Arg[] { SERVER_URL, STORE, VERSION, KAFKA_TOPIC_NAME, KAFKA_TOPIC_PARTITION }
+  ),
   CONFIGURE_STORE_VIEW(
       "configure-store-view", "Configure store view of a certain store", new Arg[] { URL, CLUSTER, STORE, VIEW_NAME },
       new Arg[] { VIEW_CLASS, VIEW_PARAMS, REMOVE_VIEW }

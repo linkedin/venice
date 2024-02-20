@@ -22,6 +22,7 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -67,6 +68,8 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -1203,6 +1206,29 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       response.setMessage(msg);
     }
     return response;
+  }
+
+  public TopicPartitionIngestionContextResponse getTopicPartitionIngestionContext(
+      String versionTopic,
+      String topicName,
+      Integer partitionNum) {
+    TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
+        new TopicPartitionIngestionContextResponse();
+    PubSubTopic pubSubVersionTopic = pubSubTopicRepository.getTopic(versionTopic);
+    PubSubTopic requestTopic = pubSubTopicRepository.getTopic(topicName);
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(requestTopic, partitionNum);
+    try {
+      byte[] topicPartitionInfo = aggKafkaConsumerService.getIngestionInfoFor(pubSubVersionTopic, pubSubTopicPartition);
+      topicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(topicPartitionInfo);
+    } catch (Exception e) {
+      topicPartitionIngestionContextResponse.setError(true);
+      topicPartitionIngestionContextResponse.setMessage(e.getMessage());
+      LOGGER.error(
+          "Error on get topic partition ingestion context for version topic: " + versionTopic + ", topic name: "
+              + topicName + ", partition number: " + partitionNum,
+          e);
+    }
+    return topicPartitionIngestionContextResponse;
   }
 
   @Override

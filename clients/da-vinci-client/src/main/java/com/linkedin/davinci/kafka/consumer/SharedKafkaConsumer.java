@@ -78,7 +78,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   private Set<PubSubTopicPartition> currentAssignment;
 
   /**
-   * an ever increasing count of number of time poll has been invoked.
+   * an ever-increasing count of number of time poll has been invoked.
    */
   private volatile long pollTimes = 0;
 

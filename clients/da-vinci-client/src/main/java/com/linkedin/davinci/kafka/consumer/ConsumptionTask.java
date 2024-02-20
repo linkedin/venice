@@ -11,6 +11,8 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricConfig;
+import io.tehuti.metrics.stats.Rate;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -50,6 +52,18 @@ class ConsumptionTask implements Runnable {
   private final AggKafkaConsumerServiceStats aggStats;
   private final ConsumerSubscriptionCleaner cleaner;
 
+  /**
+   * Maintain rate counter with default window size to calculate the message and bytes rate at topic partition level.
+   * Those topic partition level information will not be emitted out as a metric, to avoid emitting too many metrics per
+   * server host, they are for admin tool debugging purpose. 
+   */
+  private final Map<PubSubTopicPartition, Rate> messageRatePerTopicPartition = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Rate> bytesRatePerTopicPartition = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Long> lastSuccessfulPollTimestampPerTopicPartition =
+      new VeniceConcurrentHashMap<>();
+
+  private final MetricConfig metricConfig = new MetricConfig();
+
   private volatile boolean running = true;
 
   /**
@@ -57,6 +71,11 @@ class ConsumptionTask implements Runnable {
    * the get-go.
    */
   private volatile long lastSuccessfulPollTimestamp = System.currentTimeMillis();
+
+  /**
+   * If a topic partition has not got any record polled back, we use -1 for the last poll timestamp.
+   */
+  public final static long DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP = -1L;
 
   public ConsumptionTask(
       final String kafkaUrl,
@@ -145,12 +164,21 @@ class ConsumptionTask implements Runnable {
               }
               polledPubSubMessagesCount += topicPartitionMessages.size();
               counter.msgCount += topicPartitionMessages.size();
-              int payloadSizePerMsg = 0;
+              int payloadSizePerTopicPartition = 0;
               for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: topicPartitionMessages) {
-                payloadSizePerMsg += pubSubMessage.getPayloadSize();
+                payloadSizePerTopicPartition += pubSubMessage.getPayloadSize();
               }
-              counter.byteSize += payloadSizePerMsg;
-              payloadBytesConsumedInOnePoll += payloadSizePerMsg;
+              counter.byteSize += payloadSizePerTopicPartition;
+              payloadBytesConsumedInOnePoll += payloadSizePerTopicPartition;
+
+              lastSuccessfulPollTimestampPerTopicPartition.put(pubSubTopicPartition, lastSuccessfulPollTimestamp);
+              messageRatePerTopicPartition
+                  .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
+                  .record(topicPartitionMessages.size(), lastSuccessfulPollTimestamp);
+              bytesRatePerTopicPartition
+                  .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
+                  .record(payloadSizePerTopicPartition, lastSuccessfulPollTimestamp);
+
               consumedDataReceiver.write(topicPartitionMessages);
             }
             aggStats.recordTotalConsumerRecordsProducingToWriterBufferLatency(
@@ -222,6 +250,33 @@ class ConsumptionTask implements Runnable {
     synchronized (this) {
       notifyAll();
     }
+  }
+
+  private Rate createRate(long now) {
+    Rate rate = new Rate();
+    rate.init(metricConfig, now);
+    return rate;
+  }
+
+  Double getMessageRate(PubSubTopicPartition topicPartition) {
+    if (messageRatePerTopicPartition.containsKey(topicPartition)) {
+      return messageRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
+    }
+    return 0.0D;
+  }
+
+  Double getByteRate(PubSubTopicPartition topicPartition) {
+    if (bytesRatePerTopicPartition.containsKey(topicPartition)) {
+      return bytesRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
+    }
+    return 0.0D;
+  }
+
+  Long getLastSuccessfulPollTimestamp(PubSubTopicPartition topicPartition) {
+    if (lastSuccessfulPollTimestampPerTopicPartition.containsKey(topicPartition)) {
+      return lastSuccessfulPollTimestampPerTopicPartition.get(topicPartition);
+    }
+    return DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
   }
 
   void removeDataReceiver(PubSubTopicPartition topicPartition) {
