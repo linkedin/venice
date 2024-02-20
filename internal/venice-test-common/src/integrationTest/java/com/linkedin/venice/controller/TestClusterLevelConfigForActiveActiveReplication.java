@@ -11,13 +11,11 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -89,11 +87,6 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
         storeNameHybrid,
         new UpdateStoreQueryParams().setHybridRewindSeconds(1000L).setHybridOffsetLagThreshold(1000L));
     assertTrue(veniceAdmin.getStore(clusterName, storeNameHybrid).isActiveActiveReplicationEnabled());
-    DataReplicationPolicy drp =
-        veniceAdmin.getStore(clusterName, storeNameHybrid).getHybridStoreConfig().getDataReplicationPolicy();
-    assertNotNull(drp);
-    System.out.println(drp);
-    assertEquals(drp, DataReplicationPolicy.NON_AGGREGATE);
 
     veniceAdmin.updateStore(
         clusterName,

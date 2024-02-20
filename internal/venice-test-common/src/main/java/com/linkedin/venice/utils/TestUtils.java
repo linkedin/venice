@@ -12,6 +12,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.github.luben.zstd.Zstd;
@@ -674,11 +675,11 @@ public class TestUtils {
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
       for (ControllerClient controllerClient: controllerClients) {
         StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-        Assert.assertEquals(
+        assertEquals(
             storeResponse.getStore().isNativeReplicationEnabled(),
             enabledNR,
             "The native replication config does not match.");
-        Assert.assertEquals(
+        assertEquals(
             storeResponse.getStore().isActiveActiveReplicationEnabled(),
             enabledAA,
             "The active active replication config does not match.");
@@ -693,9 +694,9 @@ public class TestUtils {
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
       for (ControllerClient controllerClient: controllerClients) {
         StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-        Assert.assertNotNull(storeResponse.getStore().getHybridStoreConfig());
-        Assert.assertNotNull(storeResponse.getStore().getHybridStoreConfig());
-        Assert.assertEquals(
+        assertNotNull(storeResponse.getStore(), "Store should not be null");
+        assertNotNull(storeResponse.getStore().getHybridStoreConfig(), "Hybrid store config should not be null");
+        assertEquals(
             storeResponse.getStore().getHybridStoreConfig().getDataReplicationPolicy(),
             dataReplicationPolicy,
             "The data replication policy does not match.");
@@ -893,7 +894,7 @@ public class TestUtils {
       Assert.assertNull(record.get(fieldName));
     } catch (AvroRuntimeException e) {
       // But in Avro 1.10+, it throws instead...
-      Assert.assertEquals(e.getMessage(), "Not a valid schema field: " + fieldName);
+      assertEquals(e.getMessage(), "Not a valid schema field: " + fieldName);
     }
   }
 }
