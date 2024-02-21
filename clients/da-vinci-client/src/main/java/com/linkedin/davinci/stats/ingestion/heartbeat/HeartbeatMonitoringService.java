@@ -220,20 +220,17 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   protected void record() {
-    long currentTime = System.currentTimeMillis();
     recordLags(
         leaderHeartbeatTimeStamps,
-        ((storeName, version, region, lag) -> versionStatsReporter
-            .recordLeaderLag(storeName, version, region, currentTime - lag)));
+        ((storeName, version, region, lag) -> versionStatsReporter.recordLeaderLag(storeName, version, region, lag)));
     recordLags(
         followerHeartbeatTimeStamps,
-        ((storeName, version, region, lag) -> versionStatsReporter
-            .recordFollowerLag(storeName, version, region, currentTime - lag)));
+        ((storeName, version, region, lag) -> versionStatsReporter.recordFollowerLag(storeName, version, region, lag)));
   }
 
   @FunctionalInterface
   interface ReportLagFunction {
-    void apply(String storeName, int version, String region, double lag);
+    void apply(String storeName, int version, String region, Long lag);
   }
 
   private class HeartbeatReporterThread extends Thread {
