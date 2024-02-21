@@ -15,7 +15,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
-import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -196,7 +195,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
-      Pair<Store, Version> res = getStoreRepo().waitVersion(storeName, storeVersion, Duration.ofSeconds(30));
+      Pair<Store, Version> res = getStoreRepo()
+          .waitVersion(storeName, storeVersion, getStoreAndServerConfigs().getServerMaxWaitForVersionInfo(), 200);
       Store store = res.getFirst();
       Version version = res.getSecond();
       if (store == null || version == null) {

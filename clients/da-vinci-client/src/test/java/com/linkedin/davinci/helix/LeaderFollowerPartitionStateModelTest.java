@@ -2,6 +2,7 @@ package com.linkedin.davinci.helix;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -74,25 +75,25 @@ public class LeaderFollowerPartitionStateModelTest {
     LeaderFollowerPartitionStateModel leaderFollowerPartitionStateModelSpy = spy(leaderFollowerPartitionStateModel);
 
     // test when both store and version are null
-    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class)))
+    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
         .thenReturn(Pair.create(null, null));
     leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(metadataRepo).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class));
+    verify(metadataRepo).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt());
 
     // test when store is not null and version is null
-    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class)))
+    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
         .thenReturn(Pair.create(store, null));
     leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(metadataRepo, times(2)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class));
+    verify(metadataRepo, times(2)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt());
 
     // test both store and version are not null
-    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class)))
+    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
         .thenReturn(Pair.create(store, version));
     doNothing().when(leaderFollowerPartitionStateModelSpy).executeStateTransition(any(), any(), any());
     leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(metadataRepo, times(3)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class));
+    verify(metadataRepo, times(3)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService).addLeaderLagMonitor(version, partition);
   }
 }
