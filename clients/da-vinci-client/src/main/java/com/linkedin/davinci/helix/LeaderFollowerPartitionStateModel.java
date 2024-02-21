@@ -192,24 +192,25 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     logger.warn("unexpected state transition from ERROR to OFFLINE");
   }
 
-  private void updateLagMonitor(String resourceName, BiConsumer<Version, Integer> lagMonFunction) {
+  void updateLagMonitor(String resourceName, BiConsumer<Version, Integer> lagMonFunction) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
-      Pair<Store, Version> res = getStoreRepo().waitVersion(storeName, storeVersion, Duration.ofMillis(500));
+      Pair<Store, Version> res = getStoreRepo().waitVersion(storeName, storeVersion, Duration.ofSeconds(30));
       Store store = res.getFirst();
       Version version = res.getSecond();
       if (store == null || version == null) {
-        logger.warn(
-            "Failed to get store or version for store: {} version: {} partition: {}",
-            storeName,
-            storeVersion,
-            getPartition());
+        logger.error(
+            "Failed to get store or version for resource: {}-{}. store: {} version: {}. Will not update lag monitor.",
+            resourceName,
+            getPartition(),
+            store,
+            version);
         return;
       }
       lagMonFunction.accept(version, getPartition());
     } catch (Exception e) {
-      logger.error("Failed to update lag monitor for resource: {}", resourceName, e);
+      logger.error("Failed to update lag monitor for resource: {}-{}", resourceName, getPartition(), e);
     }
   }
 
