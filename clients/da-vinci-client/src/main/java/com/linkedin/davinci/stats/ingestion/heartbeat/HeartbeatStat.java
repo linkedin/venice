@@ -29,12 +29,12 @@ public class HeartbeatStat {
     defaultSensor = new WritePathLatencySensor(localRepository, metricConfig, "default-");
   }
 
-  public void recordLeaderLag(String region, Long startTime) {
+  public void recordLeaderLag(String region, long startTime) {
     long endTime = System.currentTimeMillis();
     leaderSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
   }
 
-  public void recordFollowerLag(String region, Long startTime) {
+  public void recordFollowerLag(String region, long startTime) {
     long endTime = System.currentTimeMillis();
     followerSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
   }
