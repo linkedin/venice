@@ -2,6 +2,7 @@ package com.linkedin.venice.throttle;
 
 import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -46,7 +47,10 @@ public class TestRouterReadQuotaThrottler {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
-    cluster = ServiceFactory.getVeniceCluster(1, 1, numberOfRouter);
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 0.0);
+
+    cluster = ServiceFactory.getVeniceCluster(1, 1, numberOfRouter, 1, 10000, false, false, properties);
 
     VersionCreationResponse response = cluster.getNewStoreVersion();
     Assert.assertFalse(response.isError());
@@ -192,6 +196,49 @@ public class TestRouterReadQuotaThrottler {
       Assert.assertTrue(metrics.containsKey("." + storeName + "--read_quota_per_router.Gauge"));
       Assert
           .assertEquals(metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(), expectedQuota, 0.0001);
+    });
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testRouterQuotaOnRouterCountChange() {
+    VeniceRouterWrapper router1 = cluster.getVeniceRouters().get(0);
+    VeniceRouterWrapper router2 = cluster.getVeniceRouters().get(1);
+
+    MetricsRepository metricsRepository = router2.getMetricsRepository();
+    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+
+    // Get default read quota
+    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    StoreResponse response = controllerClient.getStore(storeName);
+    Assert.assertFalse(response.isError());
+    final double expectedDefaultQuota = (double) response.getStore().getReadQuotaInCU() / numberOfRouter;
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Assert.assertTrue(metrics.containsKey("." + storeName + "--read_quota_per_router.Gauge"));
+      Assert.assertEquals(
+          metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(),
+          expectedDefaultQuota,
+          0.0001);
+    });
+
+    cluster.stopVeniceRouter(router1.getPort());
+    final double expectedQuotaAfterShutdown = (double) response.getStore().getReadQuotaInCU() / (numberOfRouter - 1);
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(),
+          expectedQuotaAfterShutdown,
+          0.0001);
+    });
+
+    cluster.restartVeniceRouter(router1.getPort());
+    final double expectedQuotaAfterRestart = (double) response.getStore().getReadQuotaInCU() / numberOfRouter;
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(),
+          expectedQuotaAfterRestart,
+          0.0001);
     });
   }
 }

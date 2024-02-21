@@ -89,6 +89,7 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
     this.storeQuotaCheckTimeWindow = storeQuotaCheckTimeWindow;
     this.stats = stats;
     this.maxRouterReadCapacity = maxRouterReadCapacity;
+    this.zkRoutersManager.subscribeRouterCountChangedEvent(this);
     this.lastRouterCount = zkRoutersManager.getExpectedRoutersCount();
     this.perStoreRouterQuotaBuffer = perStoreRouterQuotaBuffer;
     this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
