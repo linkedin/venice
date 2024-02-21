@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import org.apache.spark.sql.Row;
 
@@ -34,11 +35,7 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
     List<byte[]> valuesForKey = null;
     while (rows.hasNext()) {
       Row row = rows.next();
-      byte[] incomingKey = row.getAs(KEY_COLUMN_NAME);
-
-      if (incomingKey == null) {
-        throw new NullPointerException("Key cannot be null");
-      }
+      byte[] incomingKey = Objects.requireNonNull(row.getAs(KEY_COLUMN_NAME), "Key cannot be null");
 
       if (!Arrays.equals(incomingKey, key)) {
         if (key != null) {

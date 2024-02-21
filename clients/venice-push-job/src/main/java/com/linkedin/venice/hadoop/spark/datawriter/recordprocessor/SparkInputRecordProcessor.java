@@ -5,7 +5,7 @@ import static com.linkedin.venice.hadoop.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.hadoop.spark.SparkConstants.VALUE_COLUMN_NAME;
 
 import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
-import com.linkedin.venice.hadoop.input.recordreader.avro.IdentityAvroRecordReader;
+import com.linkedin.venice.hadoop.input.recordreader.avro.IdentityVeniceRecordReader;
 import com.linkedin.venice.hadoop.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.hadoop.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.spark.engine.SparkEngineTaskConfigProvider;
@@ -22,6 +22,10 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 
 
+/**
+ * An implementation of {@link AbstractInputRecordProcessor} for Spark that processes input records from the dataframe
+ * and emits an {@link Iterator} of {@link Row} with {@link DEFAULT_SCHEMA} as the schema.
+ */
 public class SparkInputRecordProcessor extends AbstractInputRecordProcessor<ByteBuffer, ByteBuffer> {
   private final DataWriterTaskTracker dataWriterTaskTracker;
 
@@ -41,7 +45,7 @@ public class SparkInputRecordProcessor extends AbstractInputRecordProcessor<Byte
 
   @Override
   protected AbstractVeniceRecordReader<ByteBuffer, ByteBuffer> getRecordReader(VeniceProperties props) {
-    return IdentityAvroRecordReader.getInstance();
+    return IdentityVeniceRecordReader.getInstance();
   }
 
   private BiConsumer<byte[], byte[]> getRecordEmitter(List<Row> rows) {

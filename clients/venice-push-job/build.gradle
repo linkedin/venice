@@ -55,7 +55,7 @@ dependencies {
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
   }
 
-  implementation project(':clients:venice-thin-client') // Needed by the Post Bulk-load Analysis Job
+  implementation project(':clients:venice-thin-client') // Needed by the KME SchemaReader
 
   implementation libraries.commonsIo
   implementation libraries.fastUtil

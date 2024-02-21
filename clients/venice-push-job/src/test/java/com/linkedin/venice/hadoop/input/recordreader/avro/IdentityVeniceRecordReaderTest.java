@@ -7,8 +7,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class IdentityAvroRecordReaderTest {
-  private static final IdentityAvroRecordReader RECORD_READER = IdentityAvroRecordReader.getInstance();
+public class IdentityVeniceRecordReaderTest {
+  private static final IdentityVeniceRecordReader RECORD_READER = IdentityVeniceRecordReader.getInstance();
   private static final byte[] TEST_KEY_BYTES = "RANDOM_KEY".getBytes();
   private static final byte[] TEST_VALUE_BYTES = "RANDOM_VALUE".getBytes();
 

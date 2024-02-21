@@ -1,43 +1,47 @@
 package com.linkedin.venice.hadoop.spark.datawriter.task;
 
 import java.io.Serializable;
+import org.apache.spark.SparkContext;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.util.LongAccumulator;
 
 
+/**
+ * All the {@link org.apache.spark.util.AccumulatorV2} objects that are used in the Spark DataWriter jobs.
+ */
 public class DataWriterAccumulators implements Serializable {
   private static final long serialVersionUID = 1L;
 
-  final LongAccumulator sprayAllPartitionsTriggeredCount;
-  final LongAccumulator emptyRecordCounter;
-  final LongAccumulator totalKeySizeCounter;
-  final LongAccumulator uncompressedValueSizeCounter;
-  final LongAccumulator compressedValueSizeCounter;
-  final LongAccumulator gzipCompressedValueSizeCounter;
-  final LongAccumulator zstdCompressedValueSizeCounter;
-  final LongAccumulator outputRecordCounter;
-  final LongAccumulator duplicateKeyWithIdenticalValueCounter;
-  final LongAccumulator writeAclAuthorizationFailureCounter;
-  final LongAccumulator recordTooLargeFailureCounter;
-  final LongAccumulator duplicateKeyWithDistinctValueCounter;
-  final LongAccumulator partitionWriterCloseCounter;
-  final LongAccumulator repushTtlFilteredRecordCounter;
+  public final LongAccumulator sprayAllPartitionsTriggeredCount;
+  public final LongAccumulator emptyRecordCounter;
+  public final LongAccumulator totalKeySizeCounter;
+  public final LongAccumulator uncompressedValueSizeCounter;
+  public final LongAccumulator compressedValueSizeCounter;
+  public final LongAccumulator gzipCompressedValueSizeCounter;
+  public final LongAccumulator zstdCompressedValueSizeCounter;
+  public final LongAccumulator outputRecordCounter;
+  public final LongAccumulator duplicateKeyWithIdenticalValueCounter;
+  public final LongAccumulator writeAclAuthorizationFailureCounter;
+  public final LongAccumulator recordTooLargeFailureCounter;
+  public final LongAccumulator duplicateKeyWithDistinctValueCounter;
+  public final LongAccumulator partitionWriterCloseCounter;
+  public final LongAccumulator repushTtlFilteredRecordCounter;
 
   public DataWriterAccumulators(SparkSession session) {
-    sprayAllPartitionsTriggeredCount = session.sparkContext().longAccumulator("Spray All Partitions Triggered");
-    emptyRecordCounter = session.sparkContext().longAccumulator("Empty Records");
-    totalKeySizeCounter = session.sparkContext().longAccumulator("Total Key Size");
-    uncompressedValueSizeCounter = session.sparkContext().longAccumulator("Total Uncompressed Value Size");
-    compressedValueSizeCounter = session.sparkContext().longAccumulator("Total Compressed Value Size");
-    gzipCompressedValueSizeCounter = session.sparkContext().longAccumulator("Total Gzip Compressed Value Size");
-    zstdCompressedValueSizeCounter = session.sparkContext().longAccumulator("Total Zstd Compressed Value Size");
-    outputRecordCounter = session.sparkContext().longAccumulator("Total Output Records");
-    partitionWriterCloseCounter = session.sparkContext().longAccumulator("Partition Writers Closed");
-    repushTtlFilteredRecordCounter = session.sparkContext().longAccumulator("Repush TTL Filtered Records");
-    writeAclAuthorizationFailureCounter = session.sparkContext().longAccumulator("ACL Authorization Failures");
-    recordTooLargeFailureCounter = session.sparkContext().longAccumulator("Record Too Large Failures");
-    duplicateKeyWithIdenticalValueCounter =
-        session.sparkContext().longAccumulator("Duplicate Key With Identical Value");
-    duplicateKeyWithDistinctValueCounter = session.sparkContext().longAccumulator("Duplicate Key With Distinct Value");
+    SparkContext sparkContext = session.sparkContext();
+    sprayAllPartitionsTriggeredCount = sparkContext.longAccumulator("Spray All Partitions Triggered");
+    emptyRecordCounter = sparkContext.longAccumulator("Empty Records");
+    totalKeySizeCounter = sparkContext.longAccumulator("Total Key Size");
+    uncompressedValueSizeCounter = sparkContext.longAccumulator("Total Uncompressed Value Size");
+    compressedValueSizeCounter = sparkContext.longAccumulator("Total Compressed Value Size");
+    gzipCompressedValueSizeCounter = sparkContext.longAccumulator("Total Gzip Compressed Value Size");
+    zstdCompressedValueSizeCounter = sparkContext.longAccumulator("Total Zstd Compressed Value Size");
+    outputRecordCounter = sparkContext.longAccumulator("Total Output Records");
+    partitionWriterCloseCounter = sparkContext.longAccumulator("Partition Writers Closed");
+    repushTtlFilteredRecordCounter = sparkContext.longAccumulator("Repush TTL Filtered Records");
+    writeAclAuthorizationFailureCounter = sparkContext.longAccumulator("ACL Authorization Failures");
+    recordTooLargeFailureCounter = sparkContext.longAccumulator("Record Too Large Failures");
+    duplicateKeyWithIdenticalValueCounter = sparkContext.longAccumulator("Duplicate Key With Identical Value");
+    duplicateKeyWithDistinctValueCounter = sparkContext.longAccumulator("Duplicate Key With Distinct Value");
   }
 }

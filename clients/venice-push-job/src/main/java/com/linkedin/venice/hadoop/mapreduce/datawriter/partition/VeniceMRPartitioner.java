@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.partition;
 
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -12,9 +11,9 @@ import org.apache.hadoop.mapred.Partitioner;
 
 
 /**
- * {@link VeniceMRPartitioner} will use the exact same partitioner: {@link DefaultVenicePartitioner} inside
- * {@link com.linkedin.venice.writer.VeniceWriter} to make sure the messages inside each reducer belong to
- * the same Kafka topic partition.
+ * {@link VeniceMRPartitioner} will use the exact same partitioner as the one that will be used inside
+ * {@link com.linkedin.venice.writer.VeniceWriter} (e.g. {@link com.linkedin.venice.partitioner.DefaultVenicePartitioner})
+ * to make sure the messages inside each partition belong to the same PubSub topic partition.
  */
 public class VeniceMRPartitioner implements Partitioner<BytesWritable, BytesWritable> {
   protected VenicePartitioner venicePartitioner;

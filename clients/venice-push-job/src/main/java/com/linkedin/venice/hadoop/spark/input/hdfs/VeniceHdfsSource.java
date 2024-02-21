@@ -14,7 +14,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 
 /**
  * This is the entrypoint of the Avro input source. It is used by Spark to create a DataFrame from a directory on
- * HDFS. The directory must contain either Avro or VSON files. The format of input files must be homogenous, i.e., it
+ * HDFS. The directory must contain either Avro or Vson files. The format of input files must be homogenous, i.e., it
  * cannot contain mixed formats or schemas.
  */
 @SuppressWarnings("unused")

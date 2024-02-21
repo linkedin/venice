@@ -13,6 +13,11 @@ import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.Row;
 
 
+/**
+ * {@link VeniceSparkPartitioner} will use the exact same partitioner as the one that will be used inside
+ * {@link com.linkedin.venice.writer.VeniceWriter} (e.g. {@link com.linkedin.venice.partitioner.DefaultVenicePartitioner})
+ * to make sure the messages inside each partition belong to the same PubSub topic partition.
+ */
 public class VeniceSparkPartitioner extends Partitioner {
   private static final long serialVersionUID = 1L;
   private Broadcast<Properties> broadcastProperties;

@@ -10,21 +10,21 @@ import org.apache.avro.Schema;
 /**
  * A record reader that returns the input key and value as is.
  */
-public class IdentityAvroRecordReader extends AbstractVeniceRecordReader<ByteBuffer, ByteBuffer> {
-  private static final IdentityAvroRecordReader INSTANCE = new IdentityAvroRecordReader();
+public class IdentityVeniceRecordReader extends AbstractVeniceRecordReader<ByteBuffer, ByteBuffer> {
+  private static final IdentityVeniceRecordReader INSTANCE = new IdentityVeniceRecordReader();
 
-  private IdentityAvroRecordReader() {
+  private IdentityVeniceRecordReader() {
     final Schema BYTES_SCHEMA = Schema.create(Schema.Type.BYTES);
     configure(BYTES_SCHEMA, BYTES_SCHEMA);
   }
 
-  public static IdentityAvroRecordReader getInstance() {
+  public static IdentityVeniceRecordReader getInstance() {
     return INSTANCE;
   }
 
   @Override
   public Object getAvroKey(ByteBuffer keyBytes, ByteBuffer valueBytes) {
-    throw new VeniceUnsupportedOperationException("getAvroKey in IdentityAvroRecordReader");
+    throw new VeniceUnsupportedOperationException("getAvroKey in IdentityVeniceRecordReader");
   }
 
   @Override
@@ -34,7 +34,7 @@ public class IdentityAvroRecordReader extends AbstractVeniceRecordReader<ByteBuf
 
   @Override
   public Object getAvroValue(ByteBuffer keyBytes, ByteBuffer valueBytes) {
-    throw new VeniceUnsupportedOperationException("getAvroValue in IdentityAvroRecordReader");
+    throw new VeniceUnsupportedOperationException("getAvroValue in IdentityVeniceRecordReader");
   }
 
   @Override

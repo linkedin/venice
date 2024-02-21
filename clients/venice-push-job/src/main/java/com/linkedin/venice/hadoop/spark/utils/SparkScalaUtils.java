@@ -3,17 +3,18 @@ package com.linkedin.venice.hadoop.spark.utils;
 import org.apache.spark.sql.types.StructType;
 import scala.Int;
 import scala.Option;
-import scala.reflect.ClassTag;
 
 
+/**
+ * Utility methods for restricting Scala-ism in Spark code in a single class.
+ */
 public final class SparkScalaUtils {
   private SparkScalaUtils() {
   }
 
-  public static <T> ClassTag<T> classTag(Class<T> clazz) {
-    return scala.reflect.ClassManifestFactory.fromClass(clazz);
-  }
-
+  /**
+   * Get the index of a field in a StructType. If the field does not exist, return -1.
+   */
   public static int getFieldIndex(StructType dataSchema, String fieldName) {
     Option<Object> fieldIndexOption = dataSchema.getFieldIndex(fieldName);
     if (fieldIndexOption.isEmpty()) {

@@ -2,7 +2,6 @@ package com.linkedin.venice.hadoop.spark.datawriter.jobs;
 
 import static com.linkedin.venice.ConfigKeys.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
@@ -53,7 +52,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.hadoop.PushJobSetting;
-import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.jobs.DataWriterComputeJob;
 import com.linkedin.venice.hadoop.spark.datawriter.partition.PartitionSorter;
@@ -70,15 +68,14 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
-import org.apache.commons.lang3.Validate;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
@@ -91,6 +88,7 @@ import org.apache.spark.sql.functions;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.util.AccumulatorV2;
 
 
 /**
@@ -105,6 +103,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   private String jobGroupId;
   private SparkSession sparkSession;
   private Dataset<Row> dataFrame;
+  private DataWriterAccumulators accumulatorsForDataWriterJob;
   private SparkDataWriterTaskTracker taskTracker;
 
   @Override
@@ -122,13 +121,13 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     // Load data from input path
     Dataset<Row> dataFrameForDataWriterJob = getInputDataFrame();
-    Validate.notNull(dataFrameForDataWriterJob, "The input data frame cannot be null");
+    Objects.requireNonNull(dataFrameForDataWriterJob, "The input data frame cannot be null");
 
     Properties jobProps = new Properties();
     sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
-    Broadcast<Properties> broadcastProperties =
-        sparkSession.sparkContext().broadcast(jobProps, SparkScalaUtils.classTag(Properties.class));
-    DataWriterAccumulators accumulatorsForDataWriterJob = new DataWriterAccumulators(sparkSession);
+    JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
+    Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
+    accumulatorsForDataWriterJob = new DataWriterAccumulators(sparkSession);
     taskTracker = new SparkDataWriterTaskTracker(accumulatorsForDataWriterJob);
 
     // Validate the schema of the input data
@@ -192,8 +191,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     }
 
     for (String key: props.keySet()) {
-      String lowerCase = key.toLowerCase();
-      if (lowerCase.startsWith(SPARK_SESSION_CONF_PREFIX)) {
+      if (key.toLowerCase().startsWith(SPARK_SESSION_CONF_PREFIX)) {
         String overrideKey = key.substring(SPARK_SESSION_CONF_PREFIX.length());
         sparkSessionBuilder.config(overrideKey, props.getString(key));
       }
@@ -245,10 +243,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(REPUSH_TTL_ENABLE, pushJobSetting.repushTTLEnabled);
       jobConf.set(REPUSH_TTL_START_TIMESTAMP, pushJobSetting.repushTTLStartTimeMs);
       if (pushJobSetting.repushTTLEnabled) {
-        jobConf.set(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue()); // ony
-        // support
-        // one
-        // policy thus not allow any value passed in.
+        // Currently, we only support one policy. Thus, we don't allow overriding it.
+        jobConf.set(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue());
         jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
       }
       // Pass the compression strategy of source version to repush MR job
@@ -294,46 +290,21 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     jobConf.set(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
 
     /**
-     * Pass-through the properties whose names start with:
+     * Override the configs following the rules:
      * <ul>
-     *   <li> {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX} </li>
-     *   <li> {@link ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX} </li>
-     *   <li> {@link KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} </li>
+     *   <li>Pass-through the properties whose names start with the prefixes defined in {@link PASS_THROUGH_CONFIG_PREFIXES}.</li>
+     *   <li>Override the properties that are specified with the {@link SPARK_DATA_WRITER_CONF_PREFIX} prefix.</li>
      * </ul>
-     *
-     * Override the properties that are specified with the {@link SPARK_DATA_WRITER_CONF_PREFIX} prefix.
      **/
-    List<String> passThroughPrefixList = Arrays.asList(
-        VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
-        KAFKA_CONFIG_PREFIX,
-        KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX);
-    int passThroughPrefixListSize = passThroughPrefixList.size();
-    /**
-     * The following logic will make sure there is no prefix that is a prefix of another prefix.
-     */
-    for (int i = 0; i < passThroughPrefixListSize; ++i) {
-      for (int j = i + 1; j < passThroughPrefixListSize; ++j) {
-        String prefixI = passThroughPrefixList.get(i);
-        String prefixJ = passThroughPrefixList.get(j);
-        if (prefixI.startsWith(prefixJ)) {
-          throw new VeniceException("Prefix: " + prefixJ + " shouldn't be a prefix of another prefix: " + prefixI);
-        }
-
-        if (prefixJ.startsWith(prefixI)) {
-          throw new VeniceException("Prefix: " + prefixI + " shouldn't be a prefix of another prefix: " + prefixJ);
-        }
+    for (String configKey: props.keySet()) {
+      String lowerCaseConfigKey = configKey.toLowerCase();
+      if (lowerCaseConfigKey.startsWith(SPARK_DATA_WRITER_CONF_PREFIX)) {
+        String overrideKey = configKey.substring(SPARK_DATA_WRITER_CONF_PREFIX.length());
+        jobConf.set(overrideKey, props.getString(configKey));
       }
-    }
-
-    for (String key: props.keySet()) {
-      String lowerCase = key.toLowerCase();
-      if (lowerCase.startsWith(SPARK_DATA_WRITER_CONF_PREFIX)) {
-        String overrideKey = key.substring(SPARK_DATA_WRITER_CONF_PREFIX.length());
-        jobConf.set(overrideKey, props.getString(key));
-      }
-      for (String prefix: passThroughPrefixList) {
-        if (lowerCase.startsWith(prefix)) {
-          jobConf.set(key, props.getString(key));
+      for (String prefix: PASS_THROUGH_CONFIG_PREFIXES) {
+        if (lowerCaseConfigKey.startsWith(prefix)) {
+          jobConf.set(configKey, props.getString(configKey));
           break;
         }
       }
@@ -392,9 +363,14 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   @Override
   protected void runComputeJob() {
     LOGGER.info("Triggering Spark job for data writer");
-    // For VPJ, we don't care about the output from the DAG. ".count()" is an action that will trigger execution of the
-    // DAG to completion and will not copy all the rows to the driver to be more memory efficient.
-    dataFrame.count();
+    try {
+      // For VPJ, we don't care about the output from the DAG. ".count()" is an action that will trigger execution of
+      // the DAG to completion and will not copy all the rows to the driver to be more memory efficient.
+      dataFrame.count();
+    } finally {
+      // No matter what, always log the final accumulator values
+      logAccumulatorValues();
+    }
   }
 
   @Override
@@ -406,6 +382,27 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   @Override
   public void close() throws IOException {
     Utils.closeQuietlyWithErrorLogged(sparkSession);
+  }
+
+  private void logAccumulatorValues() {
+    LOGGER.info("Accumulator values for data writer job:");
+    logAccumulatorValue(accumulatorsForDataWriterJob.outputRecordCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.totalKeySizeCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.compressedValueSizeCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.gzipCompressedValueSizeCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.zstdCompressedValueSizeCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.emptyRecordCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.sprayAllPartitionsTriggeredCount);
+    logAccumulatorValue(accumulatorsForDataWriterJob.partitionWriterCloseCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.writeAclAuthorizationFailureCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.recordTooLargeFailureCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithDistinctValueCounter);
+  }
+
+  private void logAccumulatorValue(AccumulatorV2<?, ?> accumulator) {
+    LOGGER.info("  {}: {}", accumulator.name().get(), accumulator.value());
   }
 
   private void validateDataFrameSchema(Dataset<Row> dataFrameForDataWriterJob) {

@@ -8,6 +8,9 @@ import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.Row;
 
 
+/**
+ * A Factory class to create individual {@link SparkInputRecordProcessor} for processing records in a Spark Dataframe.
+ */
 public class SparkInputRecordProcessorFactory implements FlatMapFunction<Row, Row> {
   private static final long serialVersionUID = 1L;
   private transient SparkInputRecordProcessor processor = null;
@@ -21,6 +24,7 @@ public class SparkInputRecordProcessorFactory implements FlatMapFunction<Row, Ro
 
   @Override
   public Iterator<Row> call(Row row) throws Exception {
+    // Lazily initialize the processor to avoid serialization issues since it is transient
     if (processor == null) {
       processor = new SparkInputRecordProcessor(jobProps.getValue(), accumulators);
     }

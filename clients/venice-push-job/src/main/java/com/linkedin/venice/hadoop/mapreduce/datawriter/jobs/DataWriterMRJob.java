@@ -3,7 +3,6 @@ package com.linkedin.venice.hadoop.mapreduce.datawriter.jobs;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
@@ -58,7 +57,6 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormat;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormatCombiner;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputKeyComparator;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputMRPartitioner;
-import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputValueGroupingComparator;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
@@ -73,8 +71,6 @@ import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.mapred.AvroInputFormat;
@@ -155,9 +151,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       conf.setBoolean(REPUSH_TTL_ENABLE, pushJobSetting.repushTTLEnabled);
       conf.setLong(REPUSH_TTL_START_TIMESTAMP, pushJobSetting.repushTTLStartTimeMs);
       if (pushJobSetting.repushTTLEnabled) {
-        conf.setInt(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue()); // only support one policy
-        // thus not allow any value passed
-        // in.
+        // Currently, we only support one policy. Thus, we don't allow overriding it.
+        conf.setInt(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue());
         conf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
         conf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       }
@@ -209,46 +204,21 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     conf.setBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
 
     /**
-     * Pass-through the properties whose names start with:
+     * Override the configs following the rules:
      * <ul>
-     *   <li> {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX} </li>
-     *   <li> {@link ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX} </li>
-     *   <li> {@link KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} </li>
+     *   <li>Pass-through the properties whose names start with the prefixes defined in {@link PASS_THROUGH_CONFIG_PREFIXES}.</li>
+     *   <li>Override the properties that are specified with the {@link HADOOP_PREFIX} prefix.</li>
      * </ul>
-     *
-     * Override the properties that are specified with the {@link HADOOP_PREFIX} prefix.
      **/
-    List<String> passThroughPrefixList = Arrays.asList(
-        VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
-        KAFKA_CONFIG_PREFIX,
-        KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX);
-    int passThroughPrefixListSize = passThroughPrefixList.size();
-    /**
-     * The following logic will make sure there is no prefix that is a prefix of another prefix.
-     */
-    for (int i = 0; i < passThroughPrefixListSize; ++i) {
-      for (int j = i + 1; j < passThroughPrefixListSize; ++j) {
-        String prefixI = passThroughPrefixList.get(i);
-        String prefixJ = passThroughPrefixList.get(j);
-        if (prefixI.startsWith(prefixJ)) {
-          throw new VeniceException("Prefix: " + prefixJ + " shouldn't be a prefix of another prefix: " + prefixI);
-        }
-
-        if (prefixJ.startsWith(prefixI)) {
-          throw new VeniceException("Prefix: " + prefixI + " shouldn't be a prefix of another prefix: " + prefixJ);
-        }
+    for (String configKey: props.keySet()) {
+      String lowerCaseConfigKey = configKey.toLowerCase();
+      if (lowerCaseConfigKey.startsWith(HADOOP_PREFIX)) {
+        String overrideKey = configKey.substring(HADOOP_PREFIX.length());
+        jobConf.set(overrideKey, props.getString(configKey));
       }
-    }
-
-    for (String key: props.keySet()) {
-      String lowerCase = key.toLowerCase();
-      if (lowerCase.startsWith(HADOOP_PREFIX)) {
-        String overrideKey = key.substring(HADOOP_PREFIX.length());
-        conf.set(overrideKey, props.getString(key));
-      }
-      for (String prefix: passThroughPrefixList) {
-        if (lowerCase.startsWith(prefix)) {
-          conf.set(key, props.getString(key));
+      for (String prefix: PASS_THROUGH_CONFIG_PREFIXES) {
+        if (lowerCaseConfigKey.startsWith(prefix)) {
+          jobConf.set(configKey, props.getString(configKey));
           break;
         }
       }

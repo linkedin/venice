@@ -8,11 +8,14 @@ public final class ArrayUtils {
    * This is mostly a copy of Arrays.compareUnsigned(T[], T[]) from Java 9.
    */
   public static int compareUnsigned(byte[] a, byte[] b) {
-    if (a == b)
+    if (a == b) {
       return 0;
+    }
+
     // A null array is less than a non-null array
-    if (a == null || b == null)
+    if (a == null || b == null) {
       return a == null ? -1 : 1;
+    }
 
     int length = Math.min(a.length, b.length);
     for (int i = 0; i < length; i++) {

@@ -4,13 +4,13 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARTITION_COUNT;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.spark.SparkConstants;
-import com.linkedin.venice.hadoop.spark.utils.SparkScalaUtils;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.commons.lang3.RandomUtils;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
@@ -34,7 +34,8 @@ public class VeniceSparkPartitionerTest {
     spark = SparkSession.builder().appName("TestApp").master(SparkConstants.DEFAULT_SPARK_CLUSTER).getOrCreate();
     properties.setProperty(PARTITION_COUNT, String.valueOf(TEST_PARTITION_COUNT));
 
-    broadcastProperties = spark.sparkContext().broadcast(properties, SparkScalaUtils.classTag(Properties.class));
+    JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(spark.sparkContext());
+    broadcastProperties = sparkContext.broadcast(properties);
     veniceSparkPartitioner = new VeniceSparkPartitioner(broadcastProperties, TEST_PARTITION_COUNT);
   }
 

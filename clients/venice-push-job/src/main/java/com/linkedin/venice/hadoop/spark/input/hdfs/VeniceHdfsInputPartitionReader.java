@@ -61,11 +61,12 @@ public class VeniceHdfsInputPartitionReader extends VeniceAbstractPartitionReade
       VeniceVsonRecordReader recordReader =
           new VeniceVsonRecordReader(fileKeySchema, fileValueSchema, keyFieldStr, valueFieldStr);
       return new VeniceVsonFileIterator(fs, filePath, recordReader);
-    } else {
-      Schema fileSchema = AvroCompatibilityHelper.parse(jobConfig.getString(SCHEMA_STRING_PROP));
-      VeniceAvroRecordReader recordReader =
-          new VeniceAvroRecordReader(fileSchema, keyFieldStr, valueFieldStr, etlValueSchemaTransformation, null);
-      return new VeniceAvroFileIterator(fs, filePath, recordReader);
     }
+
+    // Input data is not in Vson format. It must be Avro.
+    Schema fileSchema = AvroCompatibilityHelper.parse(jobConfig.getString(SCHEMA_STRING_PROP));
+    VeniceAvroRecordReader recordReader =
+        new VeniceAvroRecordReader(fileSchema, keyFieldStr, valueFieldStr, etlValueSchemaTransformation, null);
+    return new VeniceAvroFileIterator(fs, filePath, recordReader);
   }
 }
