@@ -220,14 +220,15 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   protected void record() {
+    long currentTime = System.currentTimeMillis();
     recordLags(
         leaderHeartbeatTimeStamps,
         ((storeName, version, region, lag) -> versionStatsReporter
-            .recordLeaderLag(storeName, version, region, System.currentTimeMillis() - lag)));
+            .recordLeaderLag(storeName, version, region, currentTime - lag)));
     recordLags(
         followerHeartbeatTimeStamps,
         ((storeName, version, region, lag) -> versionStatsReporter
-            .recordFollowerLag(storeName, version, region, System.currentTimeMillis() - lag)));
+            .recordFollowerLag(storeName, version, region, currentTime - lag)));
   }
 
   @FunctionalInterface
