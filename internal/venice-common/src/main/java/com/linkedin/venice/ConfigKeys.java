@@ -548,6 +548,12 @@ public class ConfigKeys {
       "server." + PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
 
   /**
+   * Maximum duration (in milliseconds) to wait for the version information to become available in the store metadata
+   * repository before skipping Heartbeat (HB) lag monitor setup activity during state transition.
+   */
+  public static final String SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG = "server.max.wait.for.version.info.ms";
+
+  /**
    * This config decides the frequency of the disk health check; the disk health check service writes
    * 64KB data to a temporary file in the database directory and read from the file for each health check.
    */

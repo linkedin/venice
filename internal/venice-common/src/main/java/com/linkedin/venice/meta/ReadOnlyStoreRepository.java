@@ -36,8 +36,11 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    *         (null, null) if store still doesn't exit after waiting for allowed time.
    */
   default Pair<Store, Version> waitVersion(String storeName, int versionNumber, Duration timeout) {
-    long delay = TimeUnit.SECONDS.toMillis(1);
-    long expirationTime = System.currentTimeMillis() + timeout.toMillis() - delay;
+    return waitVersion(storeName, versionNumber, timeout, TimeUnit.SECONDS.toMillis(1));
+  }
+
+  default Pair<Store, Version> waitVersion(String storeName, int versionNumber, Duration timeout, long delayMs) {
+    long expirationTime = System.currentTimeMillis() + timeout.toMillis() - delayMs;
     Store store = getStore(storeName);
     for (;;) {
       if (store != null) {
@@ -46,7 +49,7 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
           return new Pair<>(store, version.get());
         }
       }
-      if (expirationTime < System.currentTimeMillis() || !Utils.sleep(delay)) {
+      if (expirationTime < System.currentTimeMillis() || !Utils.sleep(delayMs)) {
         return new Pair<>(store, null);
       }
       store = refreshOneStore(storeName);

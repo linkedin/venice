@@ -271,11 +271,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
             "ingestion_stuck_by_memory_constraint"));
 
     // Stats which are per-store only:
-    // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk
-    // quota
-    // allowed.
-    registerSensor(new AsyncGauge((ignored, ignored2) -> diskQuotaAllowedGauge, "global_store_disk_quota_allowed"));
-
     String keySizeSensorName = "record_key_size_in_bytes";
     this.keySizeSensor = registerSensor(
         keySizeSensorName,

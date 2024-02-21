@@ -7,6 +7,7 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -35,6 +36,7 @@ import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -368,6 +370,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       context.writeAndFlush(response);
     } else if (message instanceof CurrentVersionRequest) {
       ServerCurrentVersionResponse response = handleCurrentVersionRequest((CurrentVersionRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof TopicPartitionIngestionContextRequest) {
+      TopicPartitionIngestionContextResponse response =
+          handleTopicPartitionIngestionContextRequest((TopicPartitionIngestionContextRequest) message);
       context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
@@ -850,5 +856,13 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       default:
         throw new VeniceException("Not a valid admin action: " + adminRequest.getServerAdminAction().toString());
     }
+  }
+
+  private TopicPartitionIngestionContextResponse handleTopicPartitionIngestionContextRequest(
+      TopicPartitionIngestionContextRequest topicPartitionIngestionContextRequest) {
+    Integer partition = topicPartitionIngestionContextRequest.getPartition();
+    String versionTopic = topicPartitionIngestionContextRequest.getVersionTopic();
+    String topicName = topicPartitionIngestionContextRequest.getTopic();
+    return metadataRetriever.getTopicPartitionIngestionContext(versionTopic, topicName, partition);
   }
 }

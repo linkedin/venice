@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -175,6 +176,8 @@ public class AdminTool {
       new ApacheKafkaProducerAdapterFactory(),
       new ApacheKafkaConsumerAdapterFactory(),
       new ApacheKafkaAdminAdapterFactory());
+
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static ControllerClient controllerClient;
   private static Optional<SSLFactory> sslFactory = Optional.empty();
@@ -552,6 +555,9 @@ public class AdminTool {
           break;
         case RECOVER_STORE_METADATA:
           recoverStoreMetadata(cmd);
+          break;
+        case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
+          dumpTopicPartitionIngestionContext(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -3038,6 +3044,22 @@ public class AdminTool {
     }
   }
 
+  private static void dumpTopicPartitionIngestionContext(CommandLine cmd) throws Exception {
+    TransportClient transportClient = null;
+    try {
+      transportClient =
+          getTransportClientForServer(getRequiredArgument(cmd, Arg.STORE), getRequiredArgument(cmd, Arg.SERVER_URL));
+      dumpTopicPartitionIngestionContext(
+          transportClient,
+          getRequiredArgument(cmd, Arg.STORE),
+          getRequiredArgument(cmd, Arg.VERSION),
+          getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME),
+          getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
   private static void configureStoreView(CommandLine cmd) {
     UpdateStoreQueryParams params = getConfigureStoreViewQueryParams(cmd);
     String storeName = getRequiredArgument(cmd, Arg.STORE, Command.CONFIGURE_STORE_VIEW);
@@ -3074,6 +3096,28 @@ public class AdminTool {
     // Use the Avro record's toString() instead and pretty print it.
     Object printObject = ObjectMapperFactory.getInstance().readValue(responseRecord.toString(), Object.class);
     System.out.println(jsonWriter.writeValueAsString(printObject));
+  }
+
+  static void dumpTopicPartitionIngestionContext(
+      TransportClient transportClient,
+      String storeName,
+      String version,
+      String topicName,
+      String partition) throws Exception {
+    StringBuilder sb =
+        new StringBuilder(QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT.toString().toLowerCase()).append("/")
+            .append(Version.composeKafkaTopic(storeName, Integer.parseInt(version)))
+            .append("/")
+            .append(topicName)
+            .append("/")
+            .append(partition);
+    String requestUrl = sb.toString();
+    byte[] responseBody;
+    TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
+    responseBody = transportClientResponse.getBody();
+    TopicPartitionIngestionContextResponse currentVersionResponse =
+        OBJECT_MAPPER.readValue(responseBody, TopicPartitionIngestionContextResponse.class);
+    System.out.println(new String(currentVersionResponse.getTopicPartitionIngestionContext()));
   }
 
   static void getAndPrintRequestBasedMetadata(

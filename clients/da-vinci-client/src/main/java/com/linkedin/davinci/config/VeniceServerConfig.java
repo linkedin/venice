@@ -85,6 +85,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENAB
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_REQUEST_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_IDLE_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_WORKER_THREADS;
@@ -156,6 +157,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -329,6 +331,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long diskHealthCheckTimeoutInMs;
 
   private final boolean diskHealthCheckServiceEnabled;
+
+  private final Duration serverMaxWaitForVersionInfo;
 
   private final boolean computeFastAvroEnabled;
 
@@ -555,6 +559,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     diskHealthCheckTimeoutInMs =
         TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS, 30));
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
+    serverMaxWaitForVersionInfo =
+        Duration.ofMillis(serverProperties.getLong(SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG, 5000));
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
     serverPromotionToLeaderReplicaDelayMs =
@@ -1012,6 +1018,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDiskHealthCheckServiceEnabled() {
     return diskHealthCheckServiceEnabled;
+  }
+
+  public Duration getServerMaxWaitForVersionInfo() {
+    return serverMaxWaitForVersionInfo;
   }
 
   public BlockingQueueType getBlockingQueueType() {

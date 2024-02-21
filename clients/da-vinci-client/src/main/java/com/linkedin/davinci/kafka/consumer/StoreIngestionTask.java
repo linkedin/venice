@@ -7,6 +7,7 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -2254,6 +2255,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  protected void recordHeartbeatReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      String kafkaUrl) {
+    // No Op
+  }
+
   /**
    * Retrieve current LeaderFollowerState from partition's PCS. This method is used by IsolatedIngestionServer to sync
    * user-partition LeaderFollower status from child process to parent process in ingestion isolation.
@@ -2296,8 +2304,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * TODO: if we know some other types of Control Messages are frequent as START_OF_SEGMENT and END_OF_SEGMENT in the future,
        * we need to consider to exclude them to avoid the issue described above.
        */
-      if (controlMessageType != ControlMessageType.START_OF_SEGMENT
-          && controlMessageType != ControlMessageType.END_OF_SEGMENT) {
+      if (controlMessageType != START_OF_SEGMENT && controlMessageType != ControlMessageType.END_OF_SEGMENT) {
         syncOffset = true;
       }
     } else {
@@ -2692,12 +2699,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Maintain the latest processed offsets by drainers in memory; in most of the time, these offsets are ahead of the
    * checkpoint offsets inside {@link OffsetRecord}. Prior to update the offset in memory, the underlying storage engine
    * should have persisted the given record.
+   *
+   * Dry-run mode will only do offset rewind check and it won't update the processed offset.
    */
   protected abstract void updateLatestInMemoryProcessedOffset(
       PartitionConsumptionState partitionConsumptionState,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      String kafkaUrl);
+      String kafkaUrl,
+      boolean dryRun);
 
   /**
    * Process the message consumed from Kafka by de-serializing it and persisting it with the storage engine.
@@ -2774,7 +2784,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getTopicPartition().getPartitionNumber(),
             consumerRecord.getOffset(),
             partitionConsumptionState);
+        try {
+          if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
+              && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+            recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+          }
+        } catch (Exception e) {
+          LOGGER.error("Failed to record Record heartbeat with message: ", e);
+        }
       } else {
+        updateLatestInMemoryProcessedOffset(
+            partitionConsumptionState,
+            consumerRecord,
+            leaderProducedRecordContext,
+            kafkaUrl,
+            true);
         sizeOfPersistedData = processKafkaDataMessage(
             consumerRecord,
             partitionConsumptionState,
@@ -2835,7 +2859,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState,
           consumerRecord,
           leaderProducedRecordContext,
-          kafkaUrl);
+          kafkaUrl,
+          false);
       if (checkReadyToServeAfterProcess) {
         defaultReadyToServeChecker.apply(partitionConsumptionState);
       }
@@ -3787,7 +3812,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected boolean isSegmentControlMsg(ControlMessageType msgType) {
-    return ControlMessageType.START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType);
+    return START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType);
   }
 
   /**

@@ -22,6 +22,8 @@ public interface HybridStoreConfig extends DataModelBackedStructure<StoreHybridC
 
   DataReplicationPolicy getDataReplicationPolicy();
 
+  void setDataReplicationPolicy(DataReplicationPolicy dataReplicationPolicy);
+
   BufferReplayPolicy getBufferReplayPolicy();
 
   HybridStoreConfig clone();

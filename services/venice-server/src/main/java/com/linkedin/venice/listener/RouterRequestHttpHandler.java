@@ -10,8 +10,10 @@ import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.Version;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -127,6 +129,12 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setStoreName(currentVersionRequest.getStoreName());
           ctx.fireChannelRead(currentVersionRequest);
           break;
+        case TOPIC_PARTITION_INGESTION_CONTEXT:
+          TopicPartitionIngestionContextRequest topicPartitionIngestionContextRequest =
+              TopicPartitionIngestionContextRequest.parseGetHttpRequest(req);
+          statsHandler.setStoreName(
+              Version.parseStoreFromVersionTopic(topicPartitionIngestionContextRequest.getVersionTopic()));
+          ctx.fireChannelRead(topicPartitionIngestionContextRequest);
         default:
           throw new VeniceException("Unrecognized query action");
       }

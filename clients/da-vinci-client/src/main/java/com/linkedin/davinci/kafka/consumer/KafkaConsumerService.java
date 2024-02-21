@@ -474,6 +474,38 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
   }
 
+  public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition) {
+    SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = new HashMap<>();
+    if (consumer != null) {
+      ConsumptionTask consumptionTask = consumerToConsumptionTask.get(consumer);
+      int consumerIdx = consumptionTask.getTaskId();
+      for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
+        long offsetLag = consumer.getOffsetLag(topicPartition);
+        long latestOffset = consumer.getLatestOffset(topicPartition);
+        double msgRate = consumptionTask.getMessageRate(topicPartition);
+        double byteRate = consumptionTask.getByteRate(topicPartition);
+        long lastSuccessfulPollTimestamp = consumptionTask.getLastSuccessfulPollTimestamp(topicPartition);
+        long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+        if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
+          elapsedTimeSinceLastPollInMs =
+              LatencyUtils.getElapsedTimeInMs(consumptionTask.getLastSuccessfulPollTimestamp());
+        }
+        TopicPartitionIngestionInfo topicPartitionIngestionInfo = new TopicPartitionIngestionInfo(
+            latestOffset,
+            offsetLag,
+            msgRate,
+            byteRate,
+            consumerIdx,
+            elapsedTimeSinceLastPollInMs);
+        topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
+      }
+    }
+    return topicPartitionIngestionInfoMap;
+  }
+
   private interface OffsetGetter {
     long apply(PubSubConsumerAdapter consumer, PubSubTopicPartition pubSubTopicPartition);
   }
@@ -493,4 +525,5 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       this.constructor = constructor;
     }
   }
+
 }
