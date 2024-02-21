@@ -7,8 +7,8 @@ import java.util.Set;
 
 
 public class HeartbeatStatReporter extends AbstractVeniceStatsReporter<HeartbeatStat> {
-  private static final String LEADER_METRIC_PREFIX = "--heartbeat_delay_leader-";
-  private static final String FOLLOWER_METRIC_PREFIX = "--heartbeat_delay_follower-";
+  private static final String LEADER_METRIC_PREFIX = "heartbeat_delay_leader-";
+  private static final String FOLLOWER_METRIC_PREFIX = "heartbeat_delay_follower-";
   private static final String MAX = ".Max";
   private static final String AVG = ".Avg";
 
