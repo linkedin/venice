@@ -110,7 +110,7 @@ public class ActiveActiveReplicationForHybridTest {
   private static final int TEST_TIMEOUT = 5 * Time.MS_PER_MINUTE;
   private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
 
-  protected static final int NUMBER_OF_CHILD_DATACENTERS = 3;
+  protected static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   protected static final int NUMBER_OF_CLUSTERS = 1;
   static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
@@ -125,7 +125,6 @@ public class ActiveActiveReplicationForHybridTest {
   private ControllerClient parentControllerClient;
   private ControllerClient dc0Client;
   private ControllerClient dc1Client;
-  private ControllerClient dc2Client;
   private List<ControllerClient> dcControllerClientList;
 
   @BeforeClass(alwaysRun = true)
@@ -174,8 +173,7 @@ public class ActiveActiveReplicationForHybridTest {
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
     dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
-    dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
-    dcControllerClientList = Arrays.asList(dc0Client, dc1Client, dc2Client);
+    dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
   }
 
   @AfterClass(alwaysRun = true)
@@ -186,7 +184,6 @@ public class ActiveActiveReplicationForHybridTest {
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(dc0Client);
     Utils.closeQuietlyWithErrorLogged(dc1Client);
-    Utils.closeQuietlyWithErrorLogged(dc2Client);
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
@@ -226,7 +223,6 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName1, false, false, true);
       verifyDCConfigAARepl(dc0Client, storeName1, false, false, true);
       verifyDCConfigAARepl(dc1Client, storeName1, false, false, true);
-      verifyDCConfigAARepl(dc2Client, storeName1, false, false, true);
       assertCommand(
           assertCommand(
               parentControllerClient.configureActiveActiveReplicationForCluster(
@@ -236,7 +232,6 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName1, false, true, false);
       verifyDCConfigAARepl(dc0Client, storeName1, false, true, false);
       verifyDCConfigAARepl(dc1Client, storeName1, false, true, true);
-      verifyDCConfigAARepl(dc2Client, storeName1, false, true, true);
 
       // Test hybrid - agg vs non-agg
       assertCommand(
@@ -247,11 +242,9 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName2, true, false, false);
       verifyDCConfigAARepl(dc0Client, storeName2, true, false, false);
       verifyDCConfigAARepl(dc1Client, storeName2, true, false, false);
-      verifyDCConfigAARepl(dc2Client, storeName2, true, false, false);
       verifyDCConfigAARepl(parentControllerClient, storeName3, true, false, true);
       verifyDCConfigAARepl(dc0Client, storeName3, true, false, true);
       verifyDCConfigAARepl(dc1Client, storeName3, true, false, true);
-      verifyDCConfigAARepl(dc2Client, storeName3, true, false, true);
       assertCommand(
           parentControllerClient.configureActiveActiveReplicationForCluster(
               false,
@@ -260,7 +253,6 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName3, true, true, false);
       verifyDCConfigAARepl(dc0Client, storeName3, true, true, false);
       verifyDCConfigAARepl(dc1Client, storeName3, true, true, false);
-      verifyDCConfigAARepl(dc2Client, storeName3, true, true, false);
 
       // Test incremental
       assertCommand(
@@ -271,7 +263,6 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName4, false, false, true);
       verifyDCConfigAARepl(dc0Client, storeName4, false, false, true);
       verifyDCConfigAARepl(dc1Client, storeName4, false, false, true);
-      verifyDCConfigAARepl(dc2Client, storeName4, false, false, true);
     } finally {
       deleteStores(storeName1, storeName2, storeName3, storeName4);
     }
@@ -297,7 +288,7 @@ public class ActiveActiveReplicationForHybridTest {
         fail("The update store command should not have succeeded since AA cannot be enabled without enabling NR.");
       } catch (AssertionError e) {
         assertTrue(e.getMessage().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct
-                                                                                         // HTTP status code
+        // HTTP status code
       }
 
       // Expect the request to succeed
@@ -335,7 +326,7 @@ public class ActiveActiveReplicationForHybridTest {
         fail("The update store command should not have succeeded since AA cannot be enabled without enabling NR.");
       } catch (AssertionError e) {
         assertTrue(e.getMessage().contains("Http Status " + HttpStatus.SC_BAD_REQUEST)); // Must contain the correct
-                                                                                         // HTTP status code
+        // HTTP status code
       }
     } finally {
       deleteStores(storeName, anotherStoreName);

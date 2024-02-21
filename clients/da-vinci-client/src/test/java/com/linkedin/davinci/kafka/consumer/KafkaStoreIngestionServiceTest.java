@@ -4,10 +4,12 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atMostOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -47,6 +49,10 @@ import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -87,6 +93,8 @@ public abstract class KafkaStoreIngestionServiceTest {
   private StorageEngineBackedCompressorFactory compressorFactory;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
+
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -172,7 +180,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         false,
         null,
         mockPubSubClientsFactory,
-        Optional.empty());
+        Optional.empty(),
+        null);
 
     String mockStoreName = "test";
     String mockSimilarStoreName = "testTest";
@@ -257,7 +266,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         false,
         null,
         mockPubSubClientsFactory,
-        Optional.empty());
+        Optional.empty(),
+        null);
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
     String invalidTopic = "invalid-store_v1";
@@ -346,7 +356,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         false,
         null,
         mockPubSubClientsFactory,
-        Optional.empty());
+        Optional.empty(),
+        null);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -412,7 +423,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         false,
         null,
         mockPubSubClientsFactory,
-        Optional.empty());
+        Optional.empty(),
+        null);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -448,6 +460,14 @@ public abstract class KafkaStoreIngestionServiceTest {
     storeIngestionTask.setPartitionConsumptionState(1, mock(PartitionConsumptionState.class));
     kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
     Assert.assertNotNull(storeIngestionTask);
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    Properties consumerProperties = new Properties();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:16637");
+    AbstractKafkaConsumerService kafkaConsumerService =
+        spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService(consumerProperties));
+    kafkaStoreIngestionService.getTopicPartitionIngestionContext(topicName, topicName, 0);
+    verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFromConsumer(pubSubTopic, pubSubTopicPartition);
   }
 
   @Test
@@ -476,7 +496,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         false,
         null,
         mockPubSubClientsFactory,
-        Optional.empty());
+        Optional.empty(),
+        null);
     String storeName = "test-store";
     String otherStoreName = "test-store2";
     Store mockStore = new ZKStore(

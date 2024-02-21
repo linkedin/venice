@@ -20,7 +20,7 @@ import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 
 
-public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends AbstractPartitionStateModel, NOTIFIER_TYPE extends StateModelIngestionProgressNotifier> {
+public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends AbstractPartitionStateModel, NOTIFIER_TYPE extends LeaderFollowerIngestionProgressNotifier> {
   protected KafkaStoreIngestionService mockStoreIngestionService;
   protected StorageService mockStorageService;
   protected VeniceIngestionBackend mockIngestionBackend;

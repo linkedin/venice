@@ -23,6 +23,7 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -155,6 +156,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final Set<String> nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
   private final VeniceWriterFactory veniceWriterFactory;
 
+  private final HeartbeatMonitoringService heartbeatMonitoringService;
+
   /**
    * Leader must maintain producer DIV states separate from drainers, because leader is always ahead of drainer;
    * if leader and drainer share the same DIV validator, leader will pollute the data in shared DIV validator;
@@ -209,6 +212,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheBackend,
         recordTransformer,
         builder.getLeaderFollowerNotifiers());
+    this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the
      * split-brain problem happens in prod, we could design a way to periodically produce snapshot to the meta system
@@ -1274,6 +1278,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *
    * In LeaderFollowerStoreIngestionTask, "sourceKafkaUrlSupplier" should always return {@link OffsetRecord#NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY};
    * in ActiveActiveStoreIngestionTask, "sourceKafkaUrlSupplier" should return the actual source Kafka url of the "consumerRecordWrapper"
+   *
+   * Dry-run mode would only check whether the offset rewind is benign or not instead of persisting the processed offset.
    */
   protected void updateOffsetsFromConsumerRecord(
       PartitionConsumptionState partitionConsumptionState,
@@ -1282,7 +1288,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       UpdateVersionTopicOffset updateVersionTopicOffsetFunction,
       UpdateUpstreamTopicOffset updateUpstreamTopicOffsetFunction,
       GetLastKnownUpstreamTopicOffset lastKnownUpstreamTopicOffsetSupplier,
-      Supplier<String> sourceKafkaUrlSupplier) {
+      Supplier<String> sourceKafkaUrlSupplier,
+      boolean dryRun) {
 
     // Only update the metadata if this replica should NOT produce to version topic.
     if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
@@ -1316,26 +1323,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (upstreamTopic == null) {
             upstreamTopic = versionTopic;
           }
-          final long previousUpstreamOffset = lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
-          checkAndHandleUpstreamOffsetRewind(
-              partitionConsumptionState,
-              consumerRecord,
-              newUpstreamOffset,
-              previousUpstreamOffset,
-              this);
-          /**
-           * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
-           * to the true leader when the old leader doesn't stop producing.
-           */
-          updateUpstreamTopicOffsetFunction.apply(sourceKafkaUrl, upstreamTopic, newUpstreamOffset);
+          if (dryRun) {
+            final long previousUpstreamOffset =
+                lastKnownUpstreamTopicOffsetSupplier.apply(sourceKafkaUrl, upstreamTopic);
+            checkAndHandleUpstreamOffsetRewind(
+                partitionConsumptionState,
+                consumerRecord,
+                newUpstreamOffset,
+                previousUpstreamOffset,
+                this);
+          } else {
+            /**
+             * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
+             * to the true leader when the old leader doesn't stop producing.
+             */
+            updateUpstreamTopicOffsetFunction.apply(sourceKafkaUrl, upstreamTopic, newUpstreamOffset);
+          }
         }
-        // update leader producer GUID
-        partitionConsumptionState.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
-        if (kafkaValue.leaderMetadataFooter != null) {
-          partitionConsumptionState.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
+        if (!dryRun) {
+          // update leader producer GUID
+          partitionConsumptionState.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
+          if (kafkaValue.leaderMetadataFooter != null) {
+            partitionConsumptionState.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
+          }
         }
       }
-    } else {
+    } else if (!dryRun) {
       updateOffsetsAsRemoteConsumeLeader(
           partitionConsumptionState,
           leaderProducedRecordContext,
@@ -1402,7 +1415,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      String kafkaUrl) {
+      String kafkaUrl,
+      boolean dryRun) {
     updateOffsetsFromConsumerRecord(
         partitionConsumptionState,
         consumerRecordWrapper,
@@ -1418,7 +1432,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         (sourceKafkaUrl, upstreamTopic) -> upstreamTopic.isRealTime()
             ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
             : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
-        () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+        () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+        dryRun);
   }
 
   protected static void checkAndHandleUpstreamOffsetRewind(
@@ -2086,6 +2101,36 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           leaderMetadataWrapper,
           leaderCompleteState,
           producerTimeStamp);
+    }
+  }
+
+  @Override
+  protected void recordHeartbeatReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      String kafkaUrl) {
+    if (heartbeatMonitoringService == null) {
+      // Not enabled!
+      return;
+    }
+
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      for (int subPartition: PartitionUtils
+          .getSubPartitions(partitionConsumptionState.getUserPartition(), amplificationFactor)) {
+        heartbeatMonitoringService.recordLeaderHeartbeat(
+            storeName,
+            versionNumber,
+            subPartition,
+            serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+            consumerRecord.getValue().producerMetadata.messageTimestamp);
+      }
+    } else {
+      heartbeatMonitoringService.recordFollowerHeartbeat(
+          storeName,
+          versionNumber,
+          partitionConsumptionState.getUserPartition(),
+          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
+          consumerRecord.getValue().producerMetadata.messageTimestamp);
     }
   }
 

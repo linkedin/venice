@@ -4,17 +4,21 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Pair;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.apache.helix.participant.statemachine.StateModelInfo;
@@ -57,6 +61,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   private final LeaderFollowerIngestionProgressNotifier notifier;
   private final ParticipantStateTransitionStats threadPoolStats;
 
+  private final HeartbeatMonitoringService heartbeatMonitoringService;
+
   public LeaderFollowerPartitionStateModel(
       VeniceIngestionBackend ingestionBackend,
       VeniceStoreVersionConfig storeAndServerConfigs,
@@ -65,7 +71,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       ReadOnlyStoreRepository metadataRepo,
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
       String instanceName,
-      ParticipantStateTransitionStats threadPoolStats) {
+      ParticipantStateTransitionStats threadPoolStats,
+      HeartbeatMonitoringService heartbeatMonitoringService) {
     super(
         ingestionBackend,
         metadataRepo,
@@ -75,6 +82,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         instanceName);
     this.notifier = notifier;
     this.threadPoolStats = threadPoolStats;
+    this.heartbeatMonitoringService = heartbeatMonitoringService;
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
@@ -83,8 +91,9 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       String resourceName = message.getResourceName();
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);
-      boolean isRegularStoreCurrentVersion = getStoreRepo().getStoreOrThrow(storeName).getCurrentVersion() == version
-          && !VeniceSystemStoreUtils.isSystemStore(storeName);
+      Store store = getStoreRepo().getStoreOrThrow(storeName);
+      boolean isRegularStoreCurrentVersion =
+          store.getCurrentVersion() == version && !VeniceSystemStoreUtils.isSystemStore(storeName);
 
       /**
        * For regular store current version, firstly create a latch, then start ingestion and wait for ingestion
@@ -97,6 +106,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       try {
         long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
         setupNewStorePartition();
+        updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::addFollowerLagMonitor);
         logger.info(
             "Completed setting up new store partition for {} partition {}. Total elapsed time: {} ms",
             resourceName,
@@ -118,6 +128,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
+    updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::addLeaderLagMonitor);
     executeStateTransition(
         message,
         context,
@@ -127,6 +138,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
+    updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::addFollowerLagMonitor);
     executeStateTransition(
         message,
         context,
@@ -135,6 +147,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
+    updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::removeLagMonitor);
     executeStateTransition(message, context, () -> stopConsumption(true));
   }
 
@@ -176,6 +189,29 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   public void onBecomeOfflineFromError(Message message, NotificationContext context) {
     // Venice is not supporting automatically partition recovery. No-oped here.
     logger.warn("unexpected state transition from ERROR to OFFLINE");
+  }
+
+  void updateLagMonitor(String resourceName, BiConsumer<Version, Integer> lagMonFunction) {
+    try {
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
+      Pair<Store, Version> res = getStoreRepo()
+          .waitVersion(storeName, storeVersion, getStoreAndServerConfigs().getServerMaxWaitForVersionInfo(), 200);
+      Store store = res.getFirst();
+      Version version = res.getSecond();
+      if (store == null || version == null) {
+        logger.error(
+            "Failed to get store or version for resource: {}-{}. store: {} version: {}. Will not update lag monitor.",
+            resourceName,
+            getPartition(),
+            store,
+            version);
+        return;
+      }
+      lagMonFunction.accept(version, getPartition());
+    } catch (Exception e) {
+      logger.error("Failed to update lag monitor for resource: {}-{}", resourceName, getPartition(), e);
+    }
   }
 
   /**

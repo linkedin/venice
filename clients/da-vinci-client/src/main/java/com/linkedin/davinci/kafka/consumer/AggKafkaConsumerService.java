@@ -2,10 +2,12 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -26,6 +28,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -79,6 +82,10 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   private final static String STUCK_CONSUMER_MSG =
       "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
+
+  private final VeniceJsonSerializer<Map<String, Map<String, TopicPartitionIngestionInfo>>> topicPartitionIngestionContextJsonSerializer =
+      new VeniceJsonSerializer<>(new TypeReference<Map<String, Map<String, TopicPartitionIngestionInfo>>>() {
+      });
 
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
@@ -465,5 +472,22 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       }
     }
     return kafkaUrls;
+  }
+
+  byte[] getIngestionInfoFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) throws IOException {
+    Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContext = new HashMap<>();
+    for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
+      AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
+      Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+          consumerService.getIngestionInfoFromConsumer(versionTopic, pubSubTopicPartition);
+      for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
+          .entrySet()) {
+        PubSubTopicPartition topicPartition = entry.getKey();
+        TopicPartitionIngestionInfo topicPartitionIngestionInfo = entry.getValue();
+        topicPartitionIngestionContext.computeIfAbsent(kafkaUrl, k -> new HashMap<>())
+            .put(topicPartition.toString(), topicPartitionIngestionInfo);
+      }
+    }
+    return topicPartitionIngestionContextJsonSerializer.serialize(topicPartitionIngestionContext, "");
   }
 }
