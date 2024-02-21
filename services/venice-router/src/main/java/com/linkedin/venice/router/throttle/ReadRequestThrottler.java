@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutersClusterManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -29,8 +28,8 @@ import org.apache.logging.log4j.Logger;
  * For each read request throttler will ask the related StoreReadThrottler to check both store level quota and storage
  * level quota then accept or reject it.
  */
-public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedListener,
-    RoutersClusterManager.RouterCountChangedListener, RoutersClusterManager.RouterClusterConfigChangedListener {
+public class ReadRequestThrottler
+    implements RouterThrottler, StoreDataChangedListener, RoutersClusterManager.RouterCountChangedListener {
   // We want to give more tight restriction for store-level quota to protect router but more lenient restriction for
   // storage node level quota. Because in some case per-storage node quota is too small to user.
   public static final long DEFAULT_STORE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(10); // 10sec
@@ -89,6 +88,7 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
     this.storeQuotaCheckTimeWindow = storeQuotaCheckTimeWindow;
     this.stats = stats;
     this.maxRouterReadCapacity = maxRouterReadCapacity;
+    this.zkRoutersManager.subscribeRouterCountChangedEvent(this);
     this.lastRouterCount = zkRoutersManager.getExpectedRoutersCount();
     this.perStoreRouterQuotaBuffer = perStoreRouterQuotaBuffer;
     this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
@@ -302,13 +302,6 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
 
   private boolean storeHasNoValidVersion(Store store) {
     return store.getCurrentVersion() == NON_EXISTING_VERSION;
-  }
-
-  @Override
-  public void handleRouterClusterConfigChanged(RoutersClusterConfig newConfig) {
-    LOGGER.info("Router cluster config has been changed, reset all throttlers.");
-    resetAllThrottlers();
-    LOGGER.info("All throttlers were reset");
   }
 
   private void resetAllThrottlers() {

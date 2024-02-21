@@ -45,20 +45,6 @@ public interface RoutersClusterManager {
    */
   void unSubscribeRouterCountChangedEvent(RouterCountChangedListener listener);
 
-  /**
-   * Listen on the router cluster config, get the notification once the config is changed.
-   *
-   * @param listener
-   */
-  void subscribeRouterClusterConfigChangedEvent(RouterClusterConfigChangedListener listener);
-
-  /**
-   * Stop listening on the router cluster config.
-   *
-   * @param listener
-   */
-  void unSubscribeRouterClusterConfighangedEvent(RouterClusterConfigChangedListener listener);
-
   boolean isThrottlingEnabled();
 
   boolean isMaxCapacityProtectionEnabled();
@@ -80,9 +66,5 @@ public interface RoutersClusterManager {
 
   interface RouterCountChangedListener {
     void handleRouterCountChanged(int newRouterCount);
-  }
-
-  interface RouterClusterConfigChangedListener {
-    void handleRouterClusterConfigChanged(RoutersClusterConfig newConfig);
   }
 }
