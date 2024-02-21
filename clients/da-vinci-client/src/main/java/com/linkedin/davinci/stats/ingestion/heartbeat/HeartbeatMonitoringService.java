@@ -230,7 +230,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   @FunctionalInterface
   interface ReportLagFunction {
-    void apply(String storeName, int version, String region, double lag);
+    void apply(String storeName, int version, String region, long lag);
   }
 
   private class HeartbeatReporterThread extends Thread {
