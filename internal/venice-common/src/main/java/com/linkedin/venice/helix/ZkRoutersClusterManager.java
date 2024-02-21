@@ -43,8 +43,6 @@ public class ZkRoutersClusterManager
 
   private final Set<RouterCountChangedListener> routerCountListeners;
 
-  private final Set<RouterClusterConfigChangedListener> configListeners;
-
   private final CachedResourceZkStateListener zkStateListener;
 
   private Set<Instance> liveRouterInstanceSet;
@@ -58,7 +56,6 @@ public class ZkRoutersClusterManager
     this.zkClient = zkClient;
     this.clusterName = clusterName;
     routerCountListeners = new HashSet<>();
-    configListeners = new HashSet<>();
     this.liveRouterInstanceSet = new HashSet<>();
     adapter.registerSerializer(getRouterRootPath(), new RouterClusterConfigJSONSerializer());
     zkClient.setZkSerializer(adapter);
@@ -185,20 +182,6 @@ public class ZkRoutersClusterManager
   }
 
   @Override
-  public void subscribeRouterClusterConfigChangedEvent(RouterClusterConfigChangedListener listener) {
-    synchronized (configListeners) {
-      configListeners.add(listener);
-    }
-  }
-
-  @Override
-  public void unSubscribeRouterClusterConfighangedEvent(RouterClusterConfigChangedListener listener) {
-    synchronized (configListeners) {
-      configListeners.remove(listener);
-    }
-  }
-
-  @Override
   public boolean isThrottlingEnabled() {
     // If router's config could not be found, by default we think the throttling is enabled.
     return routersClusterConfig.isThrottlingEnabled();
@@ -278,14 +261,6 @@ public class ZkRoutersClusterManager
     }
   }
 
-  protected void triggerRouterClusterConfigChangedEvent(RoutersClusterConfig newConfig) {
-    synchronized (configListeners) {
-      for (RouterClusterConfigChangedListener listener: configListeners) {
-        listener.handleRouterClusterConfigChanged(newConfig);
-      }
-    }
-  }
-
   /**
    * Once a router instance is added/remove from cluster, its ephemeral zk node will be added/removed, then this
    * handler
@@ -311,7 +286,6 @@ public class ZkRoutersClusterManager
       RoutersClusterConfig newConfig = (RoutersClusterConfig) data;
       if (routersClusterConfig == null || !routersClusterConfig.equals(newConfig)) {
         routersClusterConfig = newConfig;
-        triggerRouterClusterConfigChangedEvent(routersClusterConfig);
         LOGGER.info("Router Cluster Config have been changed.");
       } else {
         LOGGER.info("Router Cluster Config have not been changed, ignore the data changed event.");
@@ -353,7 +327,6 @@ public class ZkRoutersClusterManager
     // registration is a rare operation.
     // Synchronized keyword protect routersClusterConfig from conflict updating.
     routersClusterConfig = dataAccessor.get(getRouterRootPath(), null, AccessOption.PERSISTENT);
-    triggerRouterClusterConfigChangedEvent(routersClusterConfig);
   }
 
   @Override

@@ -176,32 +176,6 @@ public class ZkRoutersClusterManagerTest {
         () -> !router.isThrottlingEnabled() && !router.isMaxCapacityProtectionEnabled());
   }
 
-  @Test
-  public void testTriggerRouterClusterConfigChangedEvent() {
-    int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
-    ZkRoutersClusterManager manager = createManager(zkClient);
-    manager.registerRouter(instanceId);
-    int expectedNumber = 100;
-
-    boolean[] isUpdated = new boolean[1];
-    isUpdated[0] = false;
-    manager.subscribeRouterClusterConfigChangedEvent(newConfig -> {
-      if (newConfig.getExpectedRouterCount() == expectedNumber || newConfig.isThrottlingEnabled() == false) {
-        isUpdated[0] = true;
-      }
-    });
-
-    manager.updateExpectedRouterCount(expectedNumber);
-
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> isUpdated[0]);
-
-    // Trigger event because throttling feature flag was changed.
-    isUpdated[0] = false;
-    manager.enableThrottling(false);
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> isUpdated[0]);
-  }
-
   private ZkRoutersClusterManager createManager(ZkClient zkClient) {
     ZkRoutersClusterManager manager = new ZkRoutersClusterManager(zkClient, adapter, clusterName, 1, 1000);
     manager.refresh();
