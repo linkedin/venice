@@ -35,6 +35,12 @@ dependencies {
     // Spark 3.3 depends on hadoop-client-runtime and hadoop-client-api, which are shaded jars that were added in Hadoop 3.0.3
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-runtime'
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
+
+    // Spark 3.3 depends on Avro 1.11 which is known to be susceptible to a deadlock bug (AVRO-3243)
+    exclude group: 'org.apache.avro'
+
+    // Spark 3.3 depends on log4j 2.17.2 which has a performance regression (LOG4J2-3487)
+    exclude group: 'org.apache.logging.log4j'
   }
   implementation (libraries.apacheSparkCore) {
     // Spark 3.1 depends on Avro 1.8.2 - which uses avro-mapred with the hadoop2 classifier. Starting from Avro 1.9
@@ -44,6 +50,12 @@ dependencies {
     // Spark 3.3 depends on hadoop-client-runtime and hadoop-client-api, which are shaded jars that were added in Hadoop 3.0.3
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-runtime'
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
+
+    // Spark 3.3 depends on Avro 1.11 which is known to be susceptible to a deadlock bug (AVRO-3243)
+    exclude group: 'org.apache.avro'
+
+    // Spark 3.3 depends on log4j 2.17.2 which has a performance regression (LOG4J2-3487)
+    exclude group: 'org.apache.logging.log4j'
   }
   implementation (libraries.apacheSparkSql) {
     // Spark 3.1 depends on Avro 1.8.2 - which uses avro-mapred with the hadoop2 classifier. Starting from Avro 1.9
@@ -53,12 +65,21 @@ dependencies {
     // Spark 3.3 depends on hadoop-client-runtime and hadoop-client-api, which are shaded jars that were added in Hadoop 3.0.3
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-runtime'
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
+
+    // Spark 3.3 depends on Avro 1.11 which is known to be susceptible to a deadlock bug (AVRO-3243)
+    exclude group: 'org.apache.avro'
+
+    // Spark 3.3 depends on log4j 2.17.2 which has a performance regression (LOG4J2-3487)
+    exclude group: 'org.apache.logging.log4j'
   }
 
   // Spark versions 3.2.X - 3.3.X are compiled with antlr4 4.8. In our classpath, antlr4 version 4.5 is used. This
   // discrepancy causes errors at runtime.
   implementation libraries.antlr4
   implementation libraries.antlr4Runtime
+
+  // Spark needs log4j-slf4j-impl that got excluded via exclude group: 'org.apache.logging.log4j'
+  implementation libraries.log4j2Slf4j
 
   implementation project(':clients:venice-thin-client') // Needed by the KME SchemaReader
 

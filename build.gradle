@@ -105,6 +105,7 @@ ext.libraries = [
     kafkaClientsTest: "${kafkaGroup}:kafka-clients:${kafkaVersion}:test",
     log4j2api: "org.apache.logging.log4j:log4j-api:${log4j2Version}",
     log4j2core: "org.apache.logging.log4j:log4j-core:${log4j2Version}",
+    log4j2Slf4j: "org.apache.logging.log4j:log4j-slf4j-impl:${log4j2Version}",
     mail: 'javax.mail:mail:1.4.4',
     mapreduceClientCore: "org.apache.hadoop:hadoop-mapreduce-client-core:${hadoopVersion}",
     mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
@@ -245,17 +246,6 @@ subprojects {
     }
     all {
       resolutionStrategy.force libraries.zookeeper
-      resolutionStrategy.eachDependency { details ->
-        // Spark pulls in Avro 1.11 which is known to be susceptible to a deadlock bug (AVRO-3243)
-        if (details.requested.group == 'org.apache.avro') {
-          details.useVersion "${avroVersion}"
-        }
-
-        // Spark pulls in log4j 2.17.2 which has a performance regression (LOG4J2-3487)
-        if (details.requested.group == 'org.apache.logging.log4j') {
-          details.useVersion "${log4j2Version}"
-        }
-      }
     }
     avroCompiler {
     }
