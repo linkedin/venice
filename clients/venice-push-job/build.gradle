@@ -55,6 +55,11 @@ dependencies {
     exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
   }
 
+  // Spark versions 3.2.X - 3.3.X are compiled with antlr4 4.8. In our classpath, antlr4 version 4.5 is used. This
+  // discrepancy causes errors at runtime.
+  implementation libraries.antlr4
+  implementation libraries.antlr4Runtime
+
   implementation project(':clients:venice-thin-client') // Needed by the KME SchemaReader
 
   implementation libraries.commonsIo
