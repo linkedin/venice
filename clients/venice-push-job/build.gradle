@@ -27,7 +27,35 @@ dependencies {
     exclude group: 'javax.servlet'
   }
 
-  implementation project(':clients:venice-thin-client') // Needed by the Post Bulk-load Analysis Job
+  implementation (libraries.apacheSparkAvro) {
+    // Spark 3.1 depends on Avro 1.8.2 - which uses avro-mapred with the hadoop2 classifier. Starting from Avro 1.9
+    // onwards, avro-mapred is no longer published with a hadoop2 classifier, but Gradle still looks for one.
+    exclude group: 'org.apache.avro', module: 'avro-mapred'
+
+    // Spark 3.3 depends on hadoop-client-runtime and hadoop-client-api, which are shaded jars that were added in Hadoop 3.0.3
+    exclude group: 'org.apache.hadoop', module: 'hadoop-client-runtime'
+    exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
+  }
+  implementation (libraries.apacheSparkCore) {
+    // Spark 3.1 depends on Avro 1.8.2 - which uses avro-mapred with the hadoop2 classifier. Starting from Avro 1.9
+    // onwards, avro-mapred is no longer published with a hadoop2 classifier, but Gradle still looks for one.
+    exclude group: 'org.apache.avro', module: 'avro-mapred'
+
+    // Spark 3.3 depends on hadoop-client-runtime and hadoop-client-api, which are shaded jars that were added in Hadoop 3.0.3
+    exclude group: 'org.apache.hadoop', module: 'hadoop-client-runtime'
+    exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
+  }
+  implementation (libraries.apacheSparkSql) {
+    // Spark 3.1 depends on Avro 1.8.2 - which uses avro-mapred with the hadoop2 classifier. Starting from Avro 1.9
+    // onwards, avro-mapred is no longer published with a hadoop2 classifier, but Gradle still looks for one.
+    exclude group: 'org.apache.avro', module: 'avro-mapred'
+
+    // Spark 3.3 depends on hadoop-client-runtime and hadoop-client-api, which are shaded jars that were added in Hadoop 3.0.3
+    exclude group: 'org.apache.hadoop', module: 'hadoop-client-runtime'
+    exclude group: 'org.apache.hadoop', module: 'hadoop-client-api'
+  }
+
+  implementation project(':clients:venice-thin-client') // Needed by the KME SchemaReader
 
   implementation libraries.commonsIo
   implementation libraries.fastUtil

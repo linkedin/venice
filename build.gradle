@@ -50,9 +50,13 @@ def pulsarGroup = 'org.apache.pulsar'
 def pulsarVersion = '2.10.3'
 def alpnAgentVersion = '2.0.10'
 def hadoopVersion = '2.10.2'
+def apacheSparkVersion = '3.1.3'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
+    apacheSparkAvro: "org.apache.spark:spark-avro_2.12:${apacheSparkVersion}",
+    apacheSparkCore: "org.apache.spark:spark-core_2.12:${apacheSparkVersion}",
+    apacheSparkSql: "org.apache.spark:spark-sql_2.12:${apacheSparkVersion}",
     avro: "org.apache.avro:avro:${avroVersion}",
     avroCompiler: "org.apache.avro:avro-compiler:${avroVersion}",
     avroMapred: "org.apache.avro:avro-mapred:${avroVersion}",
@@ -367,6 +371,18 @@ subprojects {
 
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
+
+    // For Spark to run on Java 17
+    jvmArgs "-XX:+IgnoreUnrecognizedVMOptions"
+    jvmArgs "--add-opens=java.base/java.nio=ALL-UNNAMED"
+    jvmArgs "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+    jvmArgs "--add-opens=java.base/java.lang=ALL-UNNAMED"
+    jvmArgs "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    jvmArgs "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED"
+
+    if (JavaVersion.current() == JavaVersion.VERSION_11) {
+      jvmArgs "-Dio.netty.tryReflectionSetAccessible=true"
+    }
 
     forkEvery = Integer.valueOf(System.getProperty('forkEvery', '0'))
     maxParallelForks = Integer.valueOf(System.getProperty('maxParallelForks', '4'))

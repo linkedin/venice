@@ -59,7 +59,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
    */
   private final Lazy<ExecutorService> hdfsExecutorService;
 
-  DefaultInputDataInfoProvider(PushJobSetting pushJobSetting, VeniceProperties props) {
+  public DefaultInputDataInfoProvider(PushJobSetting pushJobSetting, VeniceProperties props) {
     this.pushJobSetting = pushJobSetting;
     this.props = props;
     this.hdfsExecutorService =

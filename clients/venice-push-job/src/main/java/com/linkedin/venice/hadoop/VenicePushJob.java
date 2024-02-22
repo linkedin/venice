@@ -236,7 +236,7 @@ public class VenicePushJob implements AutoCloseable {
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
   private InputStorageQuotaTracker inputStorageQuotaTracker;
-  private PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
+  private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
 
   /**
@@ -246,7 +246,7 @@ public class VenicePushJob implements AutoCloseable {
    * 3. Negative enums are error scenarios (Can be user or system errors)
    */
   public enum PushJobCheckpoints {
-    INITIALIZE_PUSH_JOB(0), NEW_VERSION_CREATED(1), START_MAP_REDUCE_JOB(2), MAP_REDUCE_JOB_COMPLETED(3),
+    INITIALIZE_PUSH_JOB(0), NEW_VERSION_CREATED(1), START_DATA_WRITER_JOB(2), DATA_WRITER_JOB_COMPLETED(3),
     START_JOB_STATUS_POLLING(4), JOB_STATUS_POLLING_COMPLETED(5), START_VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB(6),
     VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED(7), QUOTA_EXCEEDED(-1), WRITE_ACL_FAILED(-2),
     DUP_KEY_WITH_DIFF_VALUE(-3), INPUT_DATA_SCHEMA_VALIDATION_FAILED(-4),
@@ -1003,34 +1003,38 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   void runJobAndUpdateStatus() {
-    updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_MAP_REDUCE_JOB);
-    LOGGER.info("Configuring data writer job");
-    dataWriterComputeJob = getDataWriterComputeJob();
-    dataWriterComputeJob.configure(props, pushJobSetting);
-    LOGGER.info("Triggering data writer job");
-    dataWriterComputeJob.runJob();
-    if (dataWriterComputeJob.getStatus() != ComputeJob.Status.SUCCEEDED) {
-      if (!pushJobSetting.isSourceKafka) {
-        try {
-          checkLastModificationTimeAndLog();
-        } catch (IOException e) {
-          LOGGER.warn("Failed to check last modification time of input file", e);
+    try {
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_DATA_WRITER_JOB);
+      LOGGER.info("Configuring data writer job");
+      dataWriterComputeJob = getDataWriterComputeJob();
+      dataWriterComputeJob.configure(props, pushJobSetting);
+      LOGGER.info("Triggering data writer job");
+      dataWriterComputeJob.runJob();
+      if (dataWriterComputeJob.getStatus() != ComputeJob.Status.SUCCEEDED) {
+        if (!pushJobSetting.isSourceKafka) {
+          try {
+            checkLastModificationTimeAndLog();
+          } catch (IOException e) {
+            LOGGER.warn("Failed to check last modification time of input file", e);
+          }
+        }
+        Throwable t = dataWriterComputeJob.getFailureReason();
+        if (t == null) {
+          throw new VeniceException(
+              "Data writer job failed unexpectedly with status: " + dataWriterComputeJob.getStatus());
+        } else {
+          throwVeniceException(t);
+        }
+      } else {
+        String errorMessage = updatePushJobDetailsWithJobDetails(dataWriterComputeJob.getTaskTracker());
+        if (errorMessage != null) {
+          throw new VeniceException(errorMessage);
         }
       }
-      Throwable t = dataWriterComputeJob.getFailureReason();
-      if (t == null) {
-        throw new VeniceException(
-            "Data writer job failed unexpectedly with status: " + dataWriterComputeJob.getStatus());
-      } else {
-        throwVeniceException(t);
-      }
-    } else {
-      String errorMessage = updatePushJobDetailsWithJobDetails(dataWriterComputeJob.getTaskTracker());
-      if (errorMessage != null) {
-        throw new VeniceException(errorMessage);
-      }
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED);
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     }
-    updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED);
   }
 
   private void runValidateSchemaAndBuildDictJobAndUpdateStatus(JobConf conf) throws Exception {
@@ -1646,7 +1650,7 @@ public class VenicePushJob implements AutoCloseable {
       // size of the Zstd with Dict compressed data
       pushJobDetails.totalZstdWithDictCompressedValueBytes = taskTracker.getTotalZstdCompressedValueSize();
       LOGGER.info(
-          "pushJobDetails MR Counters: " + "\n\tTotal number of records: {} " + "\n\tSize of keys: {} "
+          "Data writer job summary: " + "\n\tTotal number of records: {} " + "\n\tSize of keys: {} "
               + "\n\tsize of uncompressed value: {} " + "\n\tConfigured value Compression Strategy: {} "
               + "\n\tFinal data size stored in Venice based on this compression strategy: {} "
               + "\n\tCompression Metrics collection is: {} ",

@@ -17,6 +17,9 @@ import org.apache.logging.log4j.Logger;
 public class HadoopUtils {
   private static final Logger LOGGER = LogManager.getLogger(HadoopUtils.class);
 
+  private HadoopUtils() {
+  }
+
   public static VeniceProperties getVeniceProps(JobConf conf) {
     return new VeniceProperties(getProps(conf));
   }
@@ -50,8 +53,5 @@ public class HadoopUtils {
     } catch (IOException e) {
       LOGGER.error("Failed to clean up the HDFS path: {}", path);
     }
-  }
-
-  private HadoopUtils() {
   }
 }

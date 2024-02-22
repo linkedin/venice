@@ -472,7 +472,18 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
   }
 
-  protected abstract long getTotalIncomingDataSizeInBytes();
+  /**
+   * Return the size of serialized key and serialized value in bytes across the entire dataset. This is an optimization
+   * to skip writing the data to Kafka and reduce the load on Kafka and Venice storage nodes. Not all engines can
+   * support fetching this information during the execution of the job (eg Spark), but we can live with it for now. The
+   * quota is checked again in the Driver after the completion of the DataWriter job, and it will kill the VenicePushJob
+   * soon after.
+   *
+   * @return the size of serialized key and serialized value in bytes across the entire dataset
+   */
+  protected long getTotalIncomingDataSizeInBytes() {
+    return 0;
+  }
 
   private void setSendException(Exception e) {
     sendException = e;

@@ -1,9 +1,15 @@
 package com.linkedin.venice.hadoop.jobs;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -13,6 +19,20 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class DataWriterComputeJob implements ComputeJob {
   private static final Logger LOGGER = LogManager.getLogger(DataWriterComputeJob.class);
+
+  /**
+   * Pass-through the properties whose names start with:
+   * <ul>
+   *   <li> {@link VeniceWriter#VENICE_WRITER_CONFIG_PREFIX} </li>
+   *   <li> {@link ConfigKeys#KAFKA_CONFIG_PREFIX} </li>
+   *   <li> {@link KafkaInputRecordReader#KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} </li>
+   * </ul>
+   **/
+  public static final List<String> PASS_THROUGH_CONFIG_PREFIXES = Collections.unmodifiableList(
+      Arrays.asList(
+          VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
+          ConfigKeys.KAFKA_CONFIG_PREFIX,
+          KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX));
 
   private Status jobStatus = Status.NOT_STARTED;
   private Throwable failureReason = null;
@@ -98,7 +118,7 @@ public abstract class DataWriterComputeJob implements ComputeJob {
     LOGGER.warn("Data writer compute job needs additional configs to be configured.");
   }
 
-  public abstract PushJobSetting getPushJobSetting();
+  protected abstract PushJobSetting getPushJobSetting();
 
   public abstract void configure(VeniceProperties props, PushJobSetting pushJobSetting);
 
