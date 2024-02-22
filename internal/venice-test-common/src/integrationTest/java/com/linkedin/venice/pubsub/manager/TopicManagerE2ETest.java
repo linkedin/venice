@@ -270,7 +270,7 @@ public class TopicManagerE2ETest {
     assertEquals(topicManager.getLatestOffsetCached(nonExistentTopic, 1), StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
   }
 
-  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE, invocationCount = 50)
   public void testMetadataApisForExistingTopics() throws ExecutionException, InterruptedException, TimeoutException {
     int numPartitions = 35;
     int replicationFactor = 1;
@@ -306,9 +306,9 @@ public class TopicManagerE2ETest {
 
     // produce messages to the topic-partitions: p0, p1, p2
     PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
-    List<MutablePubSubMessage> p0Messages = PubSubHelper.produceMessages(pubSubProducerAdapter, p0, 10, 2, false);
-    List<MutablePubSubMessage> p1Messages = PubSubHelper.produceMessages(pubSubProducerAdapter, p1, 14, 2, false);
-    List<MutablePubSubMessage> p2Messages = PubSubHelper.produceMessages(pubSubProducerAdapter, p2, 19, 2, false);
+    List<MutablePubSubMessage> p0Messages = PubSubHelper.produceMessages(pubSubProducerAdapter, p0, 10, 10, false);
+    List<MutablePubSubMessage> p1Messages = PubSubHelper.produceMessages(pubSubProducerAdapter, p1, 14, 10, false);
+    List<MutablePubSubMessage> p2Messages = PubSubHelper.produceMessages(pubSubProducerAdapter, p2, 19, 10, false);
 
     // get the latest offsets
     latestOffsets = topicManager.getTopicLatestOffsets(existingTopic);
@@ -339,8 +339,10 @@ public class TopicManagerE2ETest {
 
     // If the provided timestamp is less than or equal to the timestamp of a message,
     // the offset returned should correspond to that message.
-    long p0M4Ts = p0Messages.get(4).getTimestampAfterProduce();
-    assertEquals(topicManager.getOffsetByTime(p0, p0M4Ts), 5);
+    long tsAfterM4ButBeforeM5 = p0Messages.get(4).getTimestampAfterProduce() + 1;
+    assertTrue(tsAfterM4ButBeforeM5 > p0Messages.get(4).getTimestampAfterProduce());
+    assertTrue(tsAfterM4ButBeforeM5 < p0Messages.get(5).getTimestampBeforeProduce());
+    assertEquals(topicManager.getOffsetByTime(p0, tsAfterM4ButBeforeM5), 5);
 
     long p0TsBeforeM0 = p0Messages.get(0).getTimestampBeforeProduce();
     assertEquals(topicManager.getOffsetByTime(p0, p0TsBeforeM0), 0);

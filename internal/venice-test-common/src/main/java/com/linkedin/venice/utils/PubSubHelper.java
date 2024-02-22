@@ -72,13 +72,15 @@ public class PubSubHelper {
               null)
           .whenComplete((result, throwable) -> {
             if (throwable == null) {
-              message.setOffset(result.getOffset());
-              message.setTimestampAfterProduce(System.currentTimeMillis());
               try {
                 TimeUnit.MILLISECONDS.sleep(delayBetweenMessagesInMs);
               } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
+              } finally {
+                // update the offset and timestamp after produce (and delay) so that each message has a unique timestamp
+                message.setOffset(result.getOffset());
+                message.setTimestampAfterProduce(System.currentTimeMillis());
               }
             }
           })
