@@ -387,11 +387,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   private void logAccumulatorValues() {
     LOGGER.info("Accumulator values for data writer job:");
     logAccumulatorValue(accumulatorsForDataWriterJob.outputRecordCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.emptyRecordCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.totalKeySizeCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.compressedValueSizeCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.gzipCompressedValueSizeCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.zstdCompressedValueSizeCounter);
-    logAccumulatorValue(accumulatorsForDataWriterJob.emptyRecordCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.sprayAllPartitionsTriggeredCount);
     logAccumulatorValue(accumulatorsForDataWriterJob.partitionWriterCloseCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter);

@@ -8,6 +8,7 @@ import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,10 +28,11 @@ public abstract class DataWriterComputeJob implements ComputeJob {
    *   <li> {@link KafkaInputRecordReader#KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} </li>
    * </ul>
    **/
-  public static final List<String> PASS_THROUGH_CONFIG_PREFIXES = Arrays.asList(
-      VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
-      ConfigKeys.KAFKA_CONFIG_PREFIX,
-      KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX);
+  public static final List<String> PASS_THROUGH_CONFIG_PREFIXES = Collections.unmodifiableList(
+      Arrays.asList(
+          VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
+          ConfigKeys.KAFKA_CONFIG_PREFIX,
+          KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX));
 
   private Status jobStatus = Status.NOT_STARTED;
   private Throwable failureReason = null;
