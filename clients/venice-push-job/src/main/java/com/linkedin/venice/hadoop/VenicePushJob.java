@@ -2066,8 +2066,10 @@ public class VenicePushJob implements AutoCloseable {
       // use source grid fabric as target region to reduce data hop, else use default NR source
       if (!StringUtils.isEmpty(jobSetting.sourceGridFabric)) {
         jobSetting.targetedRegions = jobSetting.sourceGridFabric;
+        LOGGER.info("Setting target region to {} from source grid.", jobSetting.targetedRegions);
       } else {
         jobSetting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
+        LOGGER.info("Setting target region to {} from NR source.", jobSetting.targetedRegions);
       }
       if (StringUtils.isEmpty(jobSetting.targetedRegions)) {
         throw new VeniceException(
@@ -2181,6 +2183,9 @@ public class VenicePushJob implements AutoCloseable {
 
     // If WriteCompute is enabled, request for intermediate topic
     final boolean finalWriteComputeEnabled = writeComputeEnabled;
+    if (setting.isTargetedRegionPushEnabled) {
+      LOGGER.info("Creating topic in target region {}", setting.targetedRegions);
+    }
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(
         controllerClient,
         setting.controllerRetries,
