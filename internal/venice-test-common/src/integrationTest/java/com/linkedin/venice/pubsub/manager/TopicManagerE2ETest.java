@@ -270,7 +270,7 @@ public class TopicManagerE2ETest {
     assertEquals(topicManager.getLatestOffsetCached(nonExistentTopic, 1), StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
   }
 
-  @Test(timeOut = 3 * Time.MS_PER_MINUTE, invocationCount = 50)
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE, invocationCount = 100, groups = "smokyBear")
   public void testMetadataApisForExistingTopics() throws ExecutionException, InterruptedException, TimeoutException {
     int numPartitions = 35;
     int replicationFactor = 1;

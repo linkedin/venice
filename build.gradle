@@ -411,6 +411,7 @@ subprojects {
     }
 
     useTestNG {
+      includeGroups 'smokyBear'
       excludeGroups 'flaky'
       listeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
     }
