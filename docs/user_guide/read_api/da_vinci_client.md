@@ -17,7 +17,7 @@ It's capable of handling records that are compressed and/or chunked.
 ### Usage
 To use the record transformer, you will need to implement the 
 [DaVinciRecordTransformer](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformer.html) 
-interface and pass the object into 
+abstract class and pass the object into 
 [setRecordTransformer()](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformer(com.linkedin.davinci.client.DaVinciRecordTransformer)). 
 
 When a message is being consumed, the 
@@ -26,14 +26,18 @@ modify the value before it is written to storage.
 
 Here's an example implementation:
 ```
+package com.linkedin.davinci.transformer;
+
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.TransformedRecord;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 
 
-public class StringRecordTransformer
-    implements DaVinciRecordTransformer<Integer, String, TransformedRecord<Integer, String>> {
+public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
+  public StringRecordTransformer(int storeVersion) {
+    super(storeVersion);
+  }
+
   public Schema getKeyOutputSchema() {
     return Schema.create(Schema.Type.INT);
   }
@@ -42,11 +46,9 @@ public class StringRecordTransformer
     return Schema.create(Schema.Type.STRING);
   }
 
-  public TransformedRecord<Integer, String> put(Lazy<Integer> key, Lazy<String> value) {
-    TransformedRecord<Integer, String> transformedRecord = new TransformedRecord<>();
-    transformedRecord.setKey(key.get());
-    transformedRecord.setValue(value.get() + "Transformed");
-    return transformedRecord;
+  public String put(Lazy<String> value) {
+    return value.get() + "Transformed";
   }
 }
+
 ```
