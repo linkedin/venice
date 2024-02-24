@@ -499,7 +499,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null);
     String storeName = "test-store";
-    String otherStoreName = "test-store2";
     Store mockStore = new ZKStore(
         storeName,
         "unit-test",
@@ -538,6 +537,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     Assert.assertEquals(versionProperties.getCurrentVersion(), 2);
     Assert.assertEquals(versionProperties.getPartitionCount(), 1);
     Assert.assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
+    // If batch get limit is not set should use {@link Store.DEFAULT_BATCH_GET_LIMIT}
+    Assert.assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), Store.DEFAULT_BATCH_GET_LIMIT);
     String metadataInvokeMetricName = "." + storeName + "--request_based_metadata_invoke_count.Rate";
     String metadataFailureMetricName = "." + storeName + "--request_based_metadata_failure_count.Rate";
     Assert.assertTrue(metricsRepository.getMetric(metadataInvokeMetricName).value() > 0);
@@ -548,5 +549,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     Assert.assertNotNull(currentVersionResponse);
     Assert.assertEquals(currentVersionResponse.getCurrentVersion(), 2);
 
+    mockStore.setBatchGetLimit(300);
+    metadataResponse = kafkaStoreIngestionService.getMetadata(storeName);
+    Assert.assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), 300);
   }
 }

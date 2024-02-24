@@ -75,7 +75,6 @@ public class DualReadAvroGenericStoreClientTest {
     doReturn(dualClientStats).when(clientConfig).getStats(RequestType.MULTI_GET_STREAMING);
     doReturn(dualClientStats).when(clientConfig).getStats(RequestType.SINGLE_GET);
     doReturn(thinClient).when(clientConfig).getGenericThinClient();
-    doReturn(2).when(clientConfig).getMaxAllowedKeyCntInBatchGetReq();
 
     if (fastClientThrowExceptionWhenSending) {
       String fcRequestFailException = "Mocked VeniceClientException for fast-client while sending out request";

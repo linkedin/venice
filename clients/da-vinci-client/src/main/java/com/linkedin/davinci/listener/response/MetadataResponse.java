@@ -51,6 +51,10 @@ public class MetadataResponse {
     responseRecord.setHelixGroupInfo(helixGroupInfo);
   }
 
+  public void setBatchGetLimit(int batchGetLimit) {
+    responseRecord.setBatchGetLimit(batchGetLimit);
+  }
+
   public ByteBuf getResponseBody() {
     return Unpooled.wrappedBuffer(serializedResponse());
   }

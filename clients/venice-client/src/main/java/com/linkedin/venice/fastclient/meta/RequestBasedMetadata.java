@@ -104,6 +104,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
+  private final AtomicInteger batchGetLimit = new AtomicInteger();
   private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
@@ -364,7 +365,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writerSchema, MetadataResponseRecord.class);
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
-
+      batchGetLimit.set(metadataResponse.getBatchGetLimit());
       int fetchedCurrentVersion = versionMetadata.getCurrentVersion();
 
       // call the DICTIONARY endpoint if needed
@@ -611,6 +612,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   @Override
   public boolean isReady() {
     return isReady;
+  }
+
+  @Override
+  public int getBatchGetLimit() {
+    return batchGetLimit.get();
   }
 
   /**
