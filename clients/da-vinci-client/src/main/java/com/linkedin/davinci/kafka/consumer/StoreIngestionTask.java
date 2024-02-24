@@ -12,7 +12,6 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.TransformedRecord;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -435,6 +434,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordTransformer = recordTransformer;
     if (recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
+      versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
     }
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
@@ -3141,8 +3141,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
           Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
           Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
-          TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
-          ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
+
+          Object transformedRecord = null;
+          try {
+            transformedRecord = recordTransformer.put(lazyValue);
+          } catch (Exception e) {
+            versionedIngestionStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
+            String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
+
+            throw new VeniceMessageException(errorMessage, e);
+          }
+          ByteBuffer transformedBytes =
+              recordTransformer.getValueBytes(recordTransformer.getValueOutputSchema(), transformedRecord);
 
           put.putValue = transformedBytes;
           versionedIngestionStats.recordTransformerLatency(

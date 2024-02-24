@@ -4285,7 +4285,7 @@ public abstract class StoreIngestionTaskTest {
 
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
 
-    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer();
+    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer(0);
 
     VenicePartitioner partitioner = getVenicePartitioner(1);
     int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
@@ -4309,6 +4309,55 @@ public abstract class StoreIngestionTaskTest {
 
     // verify the shared consumer should be detached when the ingestion task is closed.
     verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
+  }
+
+  // Test to throw type error when performing record transformation with incompatible types
+  @Test(dataProvider = "aaConfigProvider")
+  public void testStoreIngestionRecordTransformerError(AAConfig aaConfig) throws Exception {
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    byte[] putValue = ByteBuffer.allocate(Double.BYTES).putDouble(1.0).array();
+    PubSubProduceResult putMetadata = (PubSubProduceResult) localVeniceWriter
+        .put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null)
+        .get();
+
+    Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
+    pollStrategies.add(new RandomPollStrategy());
+
+    // We re-deliver the old put out of order, so we can make sure it's ignored.
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
+    pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata));
+    pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
+
+    PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
+
+    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer(0);
+
+    VenicePartitioner partitioner = getVenicePartitioner(1);
+    int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
+
+    runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {}, () -> {
+      Schema keySchema = Schema.create(Schema.Type.INT);
+      SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+      when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+      when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+      Schema valueSchema = Schema.create(Schema.Type.DOUBLE);
+      SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+      when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+      when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+
+      mockAbstractStorageEngine.put(
+          targetPartitionPutKeyFoo,
+          putKeyFoo,
+          ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
+    }, aaConfig, recordTransformer);
+
+    // verify the shared consumer should be detached when the ingestion task is closed.
+    verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
+
+    // Verify transformer error was recorded
+    verify(mockVersionedStorageIngestionStats)
+        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   @Test

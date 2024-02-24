@@ -206,7 +206,7 @@ public class DaVinciClientTest {
     MetricsRepository metricsRepository = new MetricsRepository();
 
     // Test record transformation
-    TestRecordTransformer recordTransformer = new TestRecordTransformer();
+    TestRecordTransformer recordTransformer = new TestRecordTransformer(0);
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
