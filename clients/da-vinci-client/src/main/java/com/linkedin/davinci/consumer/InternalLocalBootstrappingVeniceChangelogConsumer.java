@@ -17,6 +17,7 @@ import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -51,7 +52,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -74,8 +74,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
   // (we'll keep the local data in the event of a repush, but clear out if a user push comes through)
   private static final String LOCAL_STATE_TOPIC_SUFFIX = "_Bootstrap_v1";
   private final String localStateTopicName;
-  private final VeniceConcurrentHashMap<Integer, BootstrapState> bootstrapStateMap = new VeniceConcurrentHashMap<>();
-  private final Thread checkpointTask;
+  private final VeniceConcurrentHashMap<Integer, BootstrapState> bootstrapStateMap;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
   private VeniceConfigLoader configLoader;
@@ -84,12 +83,24 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
   private int bootstrapCompletedCount = 0;
 
+  private long syncBytesInterval;
+
   public InternalLocalBootstrappingVeniceChangelogConsumer(
       ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter pubSubConsumer) {
+      PubSubConsumerAdapter pubSubConsumer,
+      String consumerId) {
     super(changelogClientConfig, pubSubConsumer);
-    localStateTopicName = changelogClientConfig.getStoreName() + LOCAL_STATE_TOPIC_SUFFIX;
-    configLoader = buildVeniceConfig();
+    bootstrapStateMap = new VeniceConcurrentHashMap<>();
+    syncBytesInterval = changelogClientConfig.getDatabaseSyncBytesInterval();
+    String localStateTopicNameTemp = changelogClientConfig.getStoreName() + LOCAL_STATE_TOPIC_SUFFIX;
+    String bootstrapFileSystemPath = changelogClientConfig.getBootstrapFileSystemPath();
+    if (StringUtils.isNotEmpty(consumerId)) {
+      localStateTopicNameTemp += "-" + consumerId;
+      bootstrapFileSystemPath += "-" + consumerId;
+    }
+
+    localStateTopicName = localStateTopicNameTemp;
+    configLoader = buildVeniceConfig(bootstrapFileSystemPath);
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
         changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
         this.storeRepository,
@@ -121,7 +132,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
     storageMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
-    checkpointTask = new VeniceChangelogCheckpointThread();
   }
 
   private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
@@ -187,7 +197,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     return false;
   }
 
-  private VeniceConfigLoader buildVeniceConfig() {
+  private VeniceConfigLoader buildVeniceConfig(String bootstrapFileSystemPath) {
     VeniceProperties config = new PropertyBuilder().put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB
         // default config
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20) // RocksDB default config
@@ -196,7 +206,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 60)
         .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 80)
         .put(changelogClientConfig.getConsumerProperties())
-        .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
+        .put(DATA_BASE_PATH, bootstrapFileSystemPath)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false)
         .build();
     return new VeniceConfigLoader(config, config);
@@ -234,6 +244,42 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       }
     }
     return super.internalPoll(timeoutInMs, topicSuffix);
+  }
+
+  /**
+   * This method flushes data partition on disk and syncs the underlying database with {@link OffsetRecord}.
+   */
+  private void syncOffset(int partitionId, BootstrapState bootstrapState) {
+    OffsetRecord lastOffset = storageMetadataService.getLastOffset(localStateTopicName, partitionId);
+    AbstractStorageEngine storageEngineReloadedFromRepo =
+        storageService.getStorageEngineRepository().getLocalStorageEngine(localStateTopicName);
+    if (storageEngineReloadedFromRepo == null) {
+      LOGGER.warn(
+          "Storage engine has been removed. Could not execute sync offset for topic: {} and partition: {}",
+          localStateTopicName,
+          partitionId);
+      return;
+    }
+
+    // Flush data partition
+    Map<String, String> dbInfo = lastOffset.getDatabaseInfo();
+    Map<String, String> dbCheckpointingInfo = storageEngineReloadedFromRepo.sync(partitionId);
+    dbInfo.putAll(dbCheckpointingInfo);
+    try {
+      dbInfo.put(
+          CHANGE_CAPTURE_COORDINATE,
+          VeniceChangeCoordinate.convertVeniceChangeCoordinateToStringAndEncode(bootstrapState.currentPubSubPosition));
+      LOGGER.info(
+          "Update checkpoint for partition: {}, new offset: {}",
+          partitionId,
+          getOffset(bootstrapState.currentPubSubPosition));
+    } catch (IOException e) {
+      LOGGER.error("Failed to update change capture coordinate position: {}", bootstrapState.currentPubSubPosition);
+    }
+
+    lastOffset.setDatabaseInfo(dbInfo);
+    storageMetadataService.put(localStateTopicName, partitionId, lastOffset);
+    bootstrapState.resetProcessedRecordSizeSinceLastSync();
   }
 
   @VisibleForTesting
@@ -352,14 +398,19 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
               ValueRecord.create(readerSchemaId, decompressedBytes.array()).serialize());
     }
 
-    // Update currentPubSubPosition for a partition, this will later be saved in RocksDb by
-    // VeniceChangelogCheckpointThread
-    VeniceChangeCoordinate currentPubSubPosition =
-        bootstrapStateMap.get(partition.getPartitionNumber()).currentPubSubPosition;
-    bootstrapStateMap.get(partition.getPartitionNumber()).currentPubSubPosition = new VeniceChangeCoordinate(
+    // Update currentPubSubPosition for a partition
+    BootstrapState bootstrapState = bootstrapStateMap.get(partition.getPartitionNumber());
+    VeniceChangeCoordinate currentPubSubPosition = bootstrapState.currentPubSubPosition;
+    bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(
         currentPubSubPosition.getTopic(),
         new ApacheKafkaOffsetPosition(recordOffset),
         currentPubSubPosition.getPartition());
+
+    bootstrapState.incrementProcessedRecordSizeSinceLastSync(value.array().length);
+    if (bootstrapState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval) {
+      syncOffset(partition.getPartitionNumber(), bootstrapState);
+    }
+
     return deserializedValue;
   }
 
@@ -378,6 +429,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
             configLoader.getStoreConfig(localStateTopicName, PersistenceType.ROCKS_DB),
             partition,
             () -> null);
+        // Get the last persisted Offset record from metadata service
         OffsetRecord offsetRecord = storageMetadataService.getLastOffset(localStateTopicName, partition);
         // Where we're at now
         String offsetString = offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE);
@@ -448,7 +500,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       throw new RuntimeException(e);
     }
 
-    checkpointTask.start();
     return seekWithBootStrap(partitions);
   }
 
@@ -466,7 +517,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     storageService.stop();
     ((AbstractVeniceService) storageMetadataService).stop();
     storeRepository.clear();
-    checkpointTask.interrupt();
     LOGGER.info("Successfully stopped the BootstrappingVeniceChangelogConsumer");
   }
 
@@ -491,48 +541,22 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     PollState bootstrapState;
     VeniceChangeCoordinate currentPubSubPosition;
     VeniceChangeCoordinate targetPubSubPosition;
+    long processedRecordSizeSinceLastSync;
 
     boolean isCaughtUp() {
       return currentPubSubPosition.comparePosition(targetPubSubPosition) > -1;
     }
-  }
 
-  private class VeniceChangelogCheckpointThread extends Thread {
-    VeniceChangelogCheckpointThread() {
-      super("Venice-Changelog-Checkpoint-Thread");
+    public void resetProcessedRecordSizeSinceLastSync() {
+      this.processedRecordSizeSinceLastSync = 0;
     }
 
-    @Override
-    public void run() {
-      while (!Thread.interrupted()) {
-        for (Map.Entry<Integer, BootstrapState> state: bootstrapStateMap.entrySet()) {
-          OffsetRecord lastOffset = storageMetadataService.getLastOffset(localStateTopicName, state.getKey());
-          Map<String, String> dbInfo = lastOffset.getDatabaseInfo();
-          try {
-            dbInfo.put(
-                CHANGE_CAPTURE_COORDINATE,
-                VeniceChangeCoordinate
-                    .convertVeniceChangeCoordinateToStringAndEncode(state.getValue().currentPubSubPosition));
-            LOGGER.info(
-                "Update checkpoint for partition: {}, new offset: {}",
-                state.getKey(),
-                getOffset(state.getValue().currentPubSubPosition));
-          } catch (IOException e) {
-            LOGGER.error(
-                "Failed to update change capture coordinate position: {}",
-                state.getValue().currentPubSubPosition);
-          }
+    public long getProcessedRecordSizeSinceLastSync() {
+      return this.processedRecordSizeSinceLastSync;
+    }
 
-          lastOffset.setDatabaseInfo(dbInfo);
-          storageMetadataService.put(localStateTopicName, state.getKey(), lastOffset);
-        }
-        try {
-          TimeUnit.SECONDS.sleep(20);
-        } catch (InterruptedException e) {
-          // We've received an interrupt which is to be expected, so we'll just leave the loop and log
-          break;
-        }
-      }
+    public void incrementProcessedRecordSizeSinceLastSync(int recordSize) {
+      this.processedRecordSizeSinceLastSync += recordSize;
     }
   }
 }

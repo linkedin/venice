@@ -19,8 +19,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private int controllerRequestRetryCount;
 
   private String bootstrapFileSystemPath;
-
   private long versionSwapDetectionIntervalTimeInMs = 600000L;
+
+  // Default is 32 MB
+  private long databaseSyncBytesInterval = 33554432;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -142,6 +144,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public long getDatabaseSyncBytesInterval() {
+    return databaseSyncBytesInterval;
+  }
+
+  public ChangelogClientConfig setDatabaseSyncBytesInterval(long databaseSyncBytesInterval) {
+    this.databaseSyncBytesInterval = databaseSyncBytesInterval;
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -154,7 +165,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setD2Client(config.getD2Client())
         .setControllerRequestRetryCount(config.getControllerRequestRetryCount())
         .setBootstrapFileSystemPath(config.getBootstrapFileSystemPath())
-        .setVersionSwapDetectionIntervalTimeInMs(config.getVersionSwapDetectionIntervalTimeInMs());
+        .setVersionSwapDetectionIntervalTimeInMs(config.getVersionSwapDetectionIntervalTimeInMs())
+        .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval());
     return newConfig;
   }
 }

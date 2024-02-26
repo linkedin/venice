@@ -22,6 +22,7 @@ import com.google.common.collect.ImmutableSet;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -106,7 +107,9 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   private static final int TEST_PARTITION_ID_2 = 2;
   private static final long TEST_OFFSET_OLD = 1L;
   private static final long TEST_OFFSET_NEW = 2L;
+  private static final long TEST_DB_SYNC_BYTES_INTERVAL = 10L;
   private String storeName;
+  private String localStateTopicName;
   private InternalLocalBootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer;
   private RecordSerializer<String> keySerializer;
   private RecordSerializer<String> valueSerializer;
@@ -127,6 +130,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   @BeforeMethod
   public void setUp() {
     storeName = Utils.getUniqueString();
+    localStateTopicName = storeName + "_Bootstrap_v1";
     schemaReader = mock(SchemaReader.class);
     Schema keySchema = AvroCompatibilityHelper.parse("\"string\"");
     doReturn(keySchema).when(schemaReader).getKeySchema();
@@ -175,9 +179,10 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .setViewName("changeCaptureView")
             .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
             .setConsumerProperties(consumerProperties)
-            .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS);
+            .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
+            .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL);
     bootstrappingVeniceChangelogConsumer =
-        new InternalLocalBootstrappingVeniceChangelogConsumer<>(changelogClientConfig, pubSubConsumer);
+        new InternalLocalBootstrappingVeniceChangelogConsumer<>(changelogClientConfig, pubSubConsumer, null);
 
     metadataRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
@@ -338,6 +343,62 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .getOffset(),
         TEST_OFFSET_NEW);
     verify(mockStorageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
+  }
+
+  @Test
+  public void testProcessRecordBytes_SyncOffsetAndUpdatesBootstrapStateMap() throws IOException {
+    byte[] key = "key".getBytes();
+    // Value size is > TEST_DB_SYNC_BYTES_INTERVAL
+    byte[] valueBytes = "valuevaluevalue".getBytes();
+    ByteBuffer value = mock(ByteBuffer.class);
+    when(value.array()).thenReturn(valueBytes);
+    RecordDeserializer deserializer = mock(RecordDeserializer.class);
+    RecordChangeEvent recordChangeEvent = new RecordChangeEvent();
+    recordChangeEvent.setCurrentValue(new ValueBytes(value, TEST_SCHEMA_ID));
+    when(deserializer.deserialize(value)).thenReturn(recordChangeEvent);
+    VeniceCompressor compressor = mock(VeniceCompressor.class);
+    when(compressor.decompress(value)).thenReturn(value);
+    PubSubTopicPartition partition = mock(PubSubTopicPartition.class);
+    when(partition.getPartitionNumber()).thenReturn(TEST_PARTITION_ID_0);
+    StorageService storageService = mock(StorageService.class);
+    StorageMetadataService storageMetadataService = mock(StorageMetadataService.class);
+    OffsetRecord lastOffsetRecord = new OffsetRecord(mock(InternalAvroSpecificSerializer.class));
+    when(storageMetadataService.getLastOffset(anyString(), anyInt())).thenReturn(lastOffsetRecord);
+    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    when(storageService.getStorageEngine(anyString())).thenReturn(storageEngine);
+    StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
+    when(storageService.getStorageEngineRepository()).thenReturn(storageEngineRepository);
+    AbstractStorageEngine storageEngineReloadedFromRepo = mock(AbstractStorageEngine.class);
+    when(storageEngineReloadedFromRepo.sync(TEST_PARTITION_ID_0)).thenReturn(new HashMap());
+    when(storageEngineRepository.getLocalStorageEngine(localStateTopicName)).thenReturn(storageEngineReloadedFromRepo);
+
+    bootstrappingVeniceChangelogConsumer.setStorageAndMetadataService(storageService, storageMetadataService);
+    VeniceConcurrentHashMap<Integer, InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState> bootstrapStateMap =
+        bootstrappingVeniceChangelogConsumer.getBootstrapStateMap();
+    InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState bootstrapState =
+        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
+    bootstrapState.currentPubSubPosition =
+        new VeniceChangeCoordinate(TEST_TOPIC, new ApacheKafkaOffsetPosition(TEST_OFFSET_OLD), TEST_PARTITION_ID_0);
+    bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);
+
+    ByteBuffer decompressedBytes = compressor.decompress(value);
+    bootstrappingVeniceChangelogConsumer.processRecordBytes(
+        decompressedBytes,
+        deserializer.deserialize(decompressedBytes),
+        key,
+        value,
+        partition,
+        TEST_SCHEMA_ID,
+        TEST_OFFSET_NEW);
+
+    Assert.assertEquals(
+        ((ApacheKafkaOffsetPosition) bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition())
+            .getOffset(),
+        TEST_OFFSET_NEW);
+    verify(storageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
+    verify(storageEngineReloadedFromRepo, times(1)).sync(TEST_PARTITION_ID_0);
+    verify(storageMetadataService, times(1))
+        .put(eq(localStateTopicName), eq(TEST_PARTITION_ID_0), any(OffsetRecord.class));
   }
 
   @Test

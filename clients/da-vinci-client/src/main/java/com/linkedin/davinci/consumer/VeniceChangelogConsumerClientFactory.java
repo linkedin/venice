@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import org.apache.commons.lang.StringUtils;
 
 
 public class VeniceChangelogConsumerClientFactory {
@@ -74,15 +75,35 @@ public class VeniceChangelogConsumerClientFactory {
 
   public synchronized <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
       String storeName) {
-    return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap.computeIfAbsent(storeName, name -> {
+    return getBootstrappingChangelogConsumer(storeName, null);
+  }
+
+  /**
+   * Creates a BootstrappingVeniceChangelogConsumer with consumer id. This is used to create multiple
+   * consumers so that each consumer can only subscribe to certain partitions.
+   */
+  public synchronized <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
+      String storeName,
+      String consumerId) {
+    String storeClientKey = storeName;
+    if (StringUtils.isNotEmpty(consumerId)) {
+      storeClientKey += "-" + consumerId;
+    }
+
+    return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap.computeIfAbsent(storeClientKey, name -> {
       ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
+      if (StringUtils.isNotEmpty(consumerId)) {
+        consumerName += "-" + consumerId;
+      }
+
       return new LocalBootstrappingVeniceChangelogConsumer(
           newStoreChangelogClientConfig,
           consumer != null
               ? consumer
-              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
+              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
+          consumerId);
     });
   }
 
