@@ -189,9 +189,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           // URI: /latest_value_schema/{$storeName} - Get the latest value schema
           handleLatestValueSchemaLookup(ctx, helper);
           break;
-        case TYPE_VALUE_SCHEMA_IDS:
+        case TYPE_ALL_VALUE_SCHEMA_IDS:
           // The request could fetch all the value schema IDs for the given store, also superset schema ID.
-          // URI: /value_schema_ids/{$storeName} - Get all value schema IDs.
+          // URI: /all_value_schema_ids/{$storeName} - Get all value schema IDs.
           handleValueSchemaIdsLookup(ctx, helper);
           break;
         case TYPE_GET_UPDATE_SCHEMA:
@@ -342,7 +342,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleValueSchemaIdsLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName, "/" + TYPE_VALUE_SCHEMA_IDS + "/${storeName}");
+    checkResourceName(storeName, "/" + TYPE_ALL_VALUE_SCHEMA_IDS + "/${storeName}");
     // URI: /value_schema_ids/{$storeName}
     // Return all value schema IDs as a set.
     // If superset schema id exists, also return it.
