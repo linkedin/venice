@@ -7,8 +7,10 @@ import static org.apache.avro.Schema.Type.UNION;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
+import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -471,4 +473,10 @@ public class AvroSchemaUtils {
     }
   }
 
+  /**
+   * @return true if UnresolvedUnionException is available in the Avro version on the classpath, or false otherwise
+   */
+  public static boolean isUnresolvedUnionExceptionAvailable() {
+    return AvroCompatibilityHelperCommon.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_4);
+  }
 }

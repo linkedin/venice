@@ -8,6 +8,8 @@ import com.linkedin.alpini.io.IOUtils;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.serializer.VeniceSerializationException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -356,32 +358,30 @@ public class UpdateBuilderImplTest {
    */
   @Test
   public void testValidateUpdateRecordIsSerializable() {
-    GenericRecord record = new GenericData.Record(UPDATE_SCHEMA);
     UpdateBuilderImpl builder = new UpdateBuilderImpl(UPDATE_SCHEMA);
+    VeniceAvroKafkaSerializer serializer = new VeniceAvroKafkaSerializer(UPDATE_SCHEMA);
+    String topic = "dummyTopic";
+
+    // All good values
+    GenericRecord record = generateValidRecord();
+    Exception e = builder.validateUpdateRecordIsSerializable(record);
+    assertNull(e);
+    byte[] goodBytes = serializer.serialize(topic, record);
 
     // The "name" field is mandatory, so not setting it will leave it null, which is wrong.
-    Exception e = builder.validateUpdateRecordIsSerializable(record);
-    assertTrue(e instanceof VeniceException);
+    record = new GenericData.Record(UPDATE_SCHEMA);
+    e = builder.validateUpdateRecordIsSerializable(record);
+    assertTrue(e instanceof VeniceSerializationException);
     assertEquals(e.getMessage(), "The following type does not conform to any branch of the union: null");
 
     // The "name" field is of type string, so a boolean value is also wrong
     record.put("name", true);
     e = builder.validateUpdateRecordIsSerializable(record);
-    assertTrue(e instanceof VeniceException);
+    assertTrue(e instanceof VeniceSerializationException);
     assertEquals(e.getMessage(), "The following type does not conform to any branch of the union: Boolean");
 
-    // All good values
-    record.put("name", "John Doe");
-    record.put("age", 60);
-    // The "address" field can be omitted since it allows null...
-    record.put("intArray", Collections.emptyList());
-    record.put("recordArray", Collections.emptyList());
-    record.put("stringMap", Collections.emptyMap());
-    record.put("recordMap", Collections.emptyMap());
-    e = builder.validateUpdateRecordIsSerializable(record);
-    assertNull(e);
-
     // Almost correct record, but with wrong namespace
+    record = generateValidRecord();
     List<Schema.Field> fields = new ArrayList<>(2);
     fields.add(
         AvroCompatibilityHelper.createSchemaField("streetaddress", Schema.create(Schema.Type.STRING), "", "unknown"));
@@ -390,10 +390,35 @@ public class UpdateBuilderImplTest {
     GenericRecord wrongAddressRecord = new GenericData.Record(wrongAddressSchema);
     record.put("address", wrongAddressRecord);
     e = builder.validateUpdateRecordIsSerializable(record);
-    assertTrue(e instanceof VeniceException);
+    assertTrue(e instanceof VeniceSerializationException);
     assertEquals(
         e.getMessage(),
         "The following type does not conform to any branch of the union: {\"type\":\"record\",\"name\":\"AddressUSRecord\",\"namespace\":\"wrong.namespace\",\"doc\":\"\",\"fields\":[{\"name\":\"streetaddress\",\"type\":\"string\",\"doc\":\"\",\"default\":\"unknown\"},{\"name\":\"city\",\"type\":\"string\",\"doc\":\"\",\"default\":\"Sunnyvale\"}]}");
+
+    // After exercising the serializer to detect invalid records, the thread local internal state should not be corrupt
+    record = generateValidRecord();
+    byte[] bytes = serializer.serialize(topic, record);
+    assertEquals(
+        bytes,
+        goodBytes,
+        "The binary payload produced by the serializer after having checked bad records is not the same as in the beginning!");
+
+    // The deserialization below would throw if we passed badly serialized payload due to corrupt internal state.
+    GenericRecord genericRecordResult = (GenericRecord) serializer.deserialize(topic, bytes);
+    assertEquals(genericRecordResult, record, "Serialization and deserialization should yield equal records.");
+  }
+
+  private GenericRecord generateValidRecord() {
+    GenericRecord record = new GenericData.Record(UPDATE_SCHEMA);
+    // All good values
+    record.put("name", "John Doe");
+    record.put("age", 60);
+    // The "address" field can be omitted since it allows null...
+    record.put("intArray", Collections.emptyList());
+    record.put("recordArray", Collections.emptyList());
+    record.put("stringMap", Collections.emptyMap());
+    record.put("recordMap", Collections.emptyMap());
+    return record;
   }
 
   private GenericRecord createRecordForListField(int number) {
