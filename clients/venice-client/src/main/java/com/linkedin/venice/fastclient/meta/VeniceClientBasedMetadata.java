@@ -385,7 +385,7 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
     String route = routes.get(ThreadLocalRandom.current().nextInt(routes.size()));
     String url = route + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
 
-    LOGGER.info("Fetching compression dictionary for version {} from URL {} ", version, url);
+    LOGGER.debug("Fetching compression dictionary for version {} from URL {} ", version, url);
     transportClient.get(url).whenComplete((response, throwable) -> {
       if (throwable != null) {
         String message = String.format(

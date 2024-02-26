@@ -352,7 +352,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @return if the fetched metadata was an updated version
    */
   synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
-    LOGGER.info("Metadata fetch operation for store: {} started", storeName);
+    LOGGER.debug("Metadata fetch operation for store: {} started", storeName);
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
@@ -453,7 +453,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       routingStrategy.updateHelixGroupInfo(helixGroupInfo);
       // Update the metadata timestamp only if all updates are successful
       clientStats.updateCacheTimestamp(currentTimeMs);
-      LOGGER.info(
+      LOGGER.debug(
           "Metadata fetch operation for store: {} finished successfully with current version {}.",
           storeName,
           fetchedCurrentVersion);
@@ -526,7 +526,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     CompletableFuture<TransportClientResponse> metadataFuture = new CompletableFuture<>();
     String url = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
 
-    LOGGER.info("Fetching metadata for store {} from URL {} ", storeName, url);
+    LOGGER.debug("Fetching metadata for store {} from URL {} ", storeName, url);
     d2TransportClient.get(url).whenComplete((response, throwable) -> {
       if (throwable != null) {
         String message = String.format("Problem fetching metadata from URL:%s for store:%s ", url, storeName);
@@ -543,7 +543,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     CompletableFuture<TransportClientResponse> compressionDictionaryFuture = new CompletableFuture<>();
     String url = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
 
-    LOGGER.info("Fetching compression dictionary for version {} from URL {} ", version, url);
+    LOGGER.debug("Fetching compression dictionary for version {} from URL {} ", version, url);
     d2TransportClient.get(url).whenComplete((response, throwable) -> {
       if (throwable != null) {
         String message = String.format(
