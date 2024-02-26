@@ -307,7 +307,7 @@ public class TestMetaDataHandler {
     SchemaEntry valueSchemaEntry2 = new SchemaEntry(valueSchemaId2, valueSchemaStr2);
     Mockito.doReturn(Arrays.asList(valueSchemaEntry1, valueSchemaEntry2)).when(schemaRepo).getValueSchemas(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
-        "http://myRouterHost:4567/value_schema_ids/" + storeName,
+        "http://myRouterHost:4567/all_value_schema_ids/" + storeName,
         null,
         schemaRepo,
         Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
