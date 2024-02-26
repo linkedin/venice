@@ -550,7 +550,7 @@ public class RouterBackedSchemaReaderTest {
     multiSchemaIdResponse.setSchemaIdSet(schemaIdSet);
     doAnswer(invocation -> getResponseWithDelay(MAPPER.writeValueAsBytes(multiSchemaIdResponse), delayInResponseMs))
         .when(storeClient)
-        .getRaw(eq("value_schema_ids/" + storeName));
+        .getRaw(eq("all_value_schema_ids/" + storeName));
 
     String keySchemaStr = KEY_SCHEMA.toString();
     SchemaResponse keySchemaResponse = new SchemaResponse();
