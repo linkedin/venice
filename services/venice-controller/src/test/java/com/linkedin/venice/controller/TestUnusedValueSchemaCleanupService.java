@@ -108,7 +108,7 @@ public class TestUnusedValueSchemaCleanupService {
     doReturn(true).when(admin).isLeaderControllerFor(any());
     Store store = mockStore();
     ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
-    Collection<SchemaEntry> schemaEntries = new ArrayList<>();
+    List<SchemaEntry> schemaEntries = new ArrayList<>();
     schemaEntries.add(new SchemaEntry(1, SCHEMA));
     schemaEntries.add(new SchemaEntry(2, SCHEMA));
     schemaEntries.add(new SchemaEntry(3, SCHEMA));

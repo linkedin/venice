@@ -7,7 +7,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import java.util.Collection;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -64,8 +65,8 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
           if (isHybridStore(store) || VeniceSystemStoreUtils.isSystemStore(storeName)) {
             continue;
           }
-          Collection<SchemaEntry> allSchemas = veniceParentHelixAdmin.getValueSchemas(clusterName, storeName);
-
+          List<SchemaEntry> allSchemas =
+              new ArrayList<>(veniceParentHelixAdmin.getValueSchemas(clusterName, storeName));
           if (allSchemas.size() < minSchemaCountToKeep) {
             continue;
           }
@@ -85,10 +86,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
               inUseValueSchemaIds);
 
           if (!schemasToDelete.isEmpty()) {
-            // delete from child colos
             veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
-            // delete from the parent colo
-            admin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
           }
         }
       }
@@ -109,13 +107,15 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
   }
 
   Set<Integer> findSchemaIdsToDelete(
-      Collection<SchemaEntry> allSchemas,
+      List<SchemaEntry> allSchemas,
       Store store,
       ReadWriteSchemaRepository schemaRepository,
       Set<Integer> inUseValueSchemaIds) {
     Set<Integer> schemasToDelete = new HashSet<>();
 
-    // assumes `getValueSchemas` returns ascending schema ids so that the older schemas are deleted first
+    // sort in ascending schema ids so that the older schemas are deleted first
+    allSchemas.sort(Comparator.comparingInt(SchemaEntry::getId));
+
     for (SchemaEntry schemaEntry: allSchemas) {
       int schemaId = schemaEntry.getId();
       // skip latest value schema or super-set schema id
@@ -124,7 +124,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
         continue;
       }
 
-      // delete only if its not used
+      // delete only if it is not used
       if (!inUseValueSchemaIds.contains(schemaId)) {
         schemasToDelete.add(schemaId);
         // maintain minimum of SCHEMA_COUNT_THRESHOLD schemas in repo
