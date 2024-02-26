@@ -175,7 +175,7 @@ public class AvroGenericStoreClientImplTest {
 
     FullHttpResponse multiValueSchemaIdResponse =
         StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
-    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA_ID + "/" + storeName;
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
 
     routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
@@ -237,7 +237,7 @@ public class AvroGenericStoreClientImplTest {
 
     FullHttpResponse multiValueSchemaIdResponse =
         StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
-    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA_ID + "/" + storeName;
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
 
     String key = "test_key";
@@ -292,7 +292,7 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
     FullHttpResponse multiValueSchemaIdResponse =
         StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
-    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA_ID + "/" + storeName;
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
 
     int nonExistingSchemaId = 2;
@@ -418,7 +418,7 @@ public class AvroGenericStoreClientImplTest {
 
     FullHttpResponse multiValueSchemaIdResponse =
         StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
-    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA_ID + "/" + storeName;
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
 
     String key = "test_key";
@@ -480,7 +480,7 @@ public class AvroGenericStoreClientImplTest {
 
     FullHttpResponse multiValueSchemaIdResponse =
         StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
-    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA_ID + "/" + storeName;
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
 
     Set<String> keys = new TreeSet<>();
