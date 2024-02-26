@@ -107,7 +107,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   private static final int TEST_PARTITION_ID_2 = 2;
   private static final long TEST_OFFSET_OLD = 1L;
   private static final long TEST_OFFSET_NEW = 2L;
-  private static final long TEST_DB_SYNC_BYTES_INTERVAL = 10L;
+  private static final long TEST_DB_SYNC_BYTES_INTERVAL = 1000L;
   private String storeName;
   private String localStateTopicName;
   private InternalLocalBootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer;
@@ -349,7 +349,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   public void testProcessRecordBytes_SyncOffsetAndUpdatesBootstrapStateMap() throws IOException {
     byte[] key = "key".getBytes();
     // Value size is > TEST_DB_SYNC_BYTES_INTERVAL
-    byte[] valueBytes = "valuevaluevalue".getBytes();
+    byte[] valueBytes = new byte[1001];
     ByteBuffer value = mock(ByteBuffer.class);
     when(value.array()).thenReturn(valueBytes);
     RecordDeserializer deserializer = mock(RecordDeserializer.class);
