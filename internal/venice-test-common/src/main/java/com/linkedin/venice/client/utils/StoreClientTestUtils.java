@@ -5,6 +5,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -82,6 +83,29 @@ public class StoreClientTestUtils {
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
 
     return response;
+  }
+
+  public static FullHttpResponse constructHttpMultiSchemaIdResponse(
+      String storeName,
+      Map<Integer, String> valueSchemaEntries) throws IOException {
+    ByteBuf body = Unpooled.wrappedBuffer(constructMultiSchemaIdResponseInBytes(storeName, valueSchemaEntries));
+    FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
+    response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+    // We must specify content_length header, otherwise netty will keep polling, since it
+    // doesn't know when to finish writing the response.
+    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+
+    return response;
+  }
+
+  public static byte[] constructMultiSchemaIdResponseInBytes(String storeName, Map<Integer, String> valueSchemaEntries)
+      throws IOException {
+    MultiSchemaIdResponse responseObject = new MultiSchemaIdResponse();
+    responseObject.setCluster("test_cluster");
+    responseObject.setName(storeName);
+    responseObject.setSchemaIdSet(valueSchemaEntries.keySet());
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
+    return mapper.writeValueAsBytes(responseObject);
   }
 
   public static byte[] constructMultiSchemaResponseInBytes(String storeName, Map<Integer, String> valueSchemaEntries)

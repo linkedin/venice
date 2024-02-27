@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -50,6 +51,7 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -289,6 +291,68 @@ public class TestMetaDataHandler {
 
     Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "text/plain");
+  }
+
+  @Test
+  public void testAllValueSchemaIdLookup() throws IOException {
+    String storeName = "test_store";
+    String valueSchemaStr1 = "\"string\"";
+    String valueSchemaStr2 = "\"long\"";
+    String clusterName = "test-cluster";
+    int valueSchemaId1 = 1;
+    int valueSchemaId2 = 2;
+    // Mock ReadOnlySchemaRepository
+    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
+    SchemaEntry valueSchemaEntry1 = new SchemaEntry(valueSchemaId1, valueSchemaStr1);
+    SchemaEntry valueSchemaEntry2 = new SchemaEntry(valueSchemaId2, valueSchemaStr2);
+    Mockito.doReturn(Arrays.asList(valueSchemaEntry1, valueSchemaEntry2)).when(schemaRepo).getValueSchemas(storeName);
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/all_value_schema_ids/" + storeName,
+        null,
+        schemaRepo,
+        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    MultiSchemaIdResponse multiSchemaIdResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaIdResponse.class);
+
+    Assert.assertEquals(multiSchemaIdResponse.getName(), storeName);
+    Assert.assertEquals(multiSchemaIdResponse.getCluster(), clusterName);
+    Assert.assertFalse(multiSchemaIdResponse.isError());
+    Assert.assertEquals(multiSchemaIdResponse.getSchemaIdSet().size(), 2);
+    Assert.assertTrue(multiSchemaIdResponse.getSchemaIdSet().contains(1));
+    Assert.assertTrue(multiSchemaIdResponse.getSchemaIdSet().contains(2));
+    Assert.assertEquals(multiSchemaIdResponse.getSuperSetSchemaId(), SchemaData.INVALID_VALUE_SCHEMA_ID);
+
+  }
+
+  @Test
+  public void testAllValueSchemaIdLookupWithNoValueSchema() throws IOException {
+    String storeName = "test_store";
+    String clusterName = "test-cluster";
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/value_schema/" + storeName,
+        null,
+        null,
+        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    MultiSchemaIdResponse multiSchemaIdResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaIdResponse.class);
+
+    Assert.assertEquals(multiSchemaIdResponse.getName(), storeName);
+    Assert.assertEquals(multiSchemaIdResponse.getCluster(), clusterName);
+    Assert.assertFalse(multiSchemaIdResponse.isError());
+    Assert.assertEquals(multiSchemaIdResponse.getSchemaIdSet().size(), 0);
+    Assert.assertEquals(multiSchemaIdResponse.getSuperSetSchemaId(), SchemaData.INVALID_VALUE_SCHEMA_ID);
+
   }
 
   @Test

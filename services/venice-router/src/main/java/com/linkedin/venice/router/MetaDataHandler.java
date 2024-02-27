@@ -27,6 +27,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -73,9 +74,11 @@ import java.security.cert.CertificateExpiredException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -161,7 +164,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
     VenicePathParserHelper helper = parseRequest(req);
-
     RouterResourceType resourceType = helper.getResourceType(); // may be null
 
     try {
@@ -186,6 +188,11 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           // The request could fetch the latest value schema for the given store
           // URI: /latest_value_schema/{$storeName} - Get the latest value schema
           handleLatestValueSchemaLookup(ctx, helper);
+          break;
+        case TYPE_ALL_VALUE_SCHEMA_IDS:
+          // The request could fetch all the value schema IDs for the given store, also superset schema ID.
+          // URI: /all_value_schema_ids/{$storeName} - Get all value schema IDs.
+          handleValueSchemaIdsLookup(ctx, helper);
           break;
         case TYPE_GET_UPDATE_SCHEMA:
           // URI: /update_schema/{$storeName} - Get all the update schema
@@ -330,6 +337,28 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
     responseObject.setId(latestValueSchemaEntry.getId());
     responseObject.setSchemaStr(latestValueSchemaEntry.getSchemaStr());
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
+  }
+
+  private void handleValueSchemaIdsLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+    String storeName = helper.getResourceName();
+    checkResourceName(storeName, "/" + TYPE_ALL_VALUE_SCHEMA_IDS + "/${storeName}");
+    // URI: /value_schema_ids/{$storeName}
+    // Return all value schema IDs as a set.
+    // If superset schema id exists, also return it.
+    MultiSchemaIdResponse responseObject = new MultiSchemaIdResponse();
+    responseObject.setCluster(clusterName);
+    responseObject.setName(storeName);
+
+    int superSetSchemaId = storeRepository.getStore(storeName).getLatestSuperSetValueSchemaId();
+    if (superSetSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      responseObject.setSuperSetSchemaId(superSetSchemaId);
+    }
+    Set<Integer> schemaIdSet = new HashSet<>();
+    for (SchemaEntry entry: schemaRepo.getValueSchemas(storeName)) {
+      schemaIdSet.add(entry.getId());
+    }
+    responseObject.setSchemaIdSet(schemaIdSet);
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
