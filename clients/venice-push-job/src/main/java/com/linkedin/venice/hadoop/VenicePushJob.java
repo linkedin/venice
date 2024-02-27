@@ -2439,7 +2439,7 @@ public class VenicePushJob implements AutoCloseable {
               .append(pushJobSetting.veniceControllerUrl)
               .append("\ncontroller response: ")
               .append(response);
-
+          sendPushJobDetailsToController();
           throw new VeniceException(errorMsg.toString());
         }
 
@@ -2455,6 +2455,7 @@ public class VenicePushJob implements AutoCloseable {
           VenicePushJob.this.pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
       long durationMs = System.currentTimeMillis() - pollStartTimeMs;
       if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
+        sendPushJobDetailsToController();
         throw new VeniceException(
             "Failing push-job for store " + VenicePushJob.this.pushJobSetting.storeResponse.getName()
                 + " which is still running after " + TimeUnit.MILLISECONDS.toHours(durationMs) + " hours.");
@@ -2468,12 +2469,11 @@ public class VenicePushJob implements AutoCloseable {
         double elapsedMinutes = (double) (System.currentTimeMillis() - unknownStateStartTimeMs) / Time.MS_PER_MINUTE;
         LOGGER.warn("Some data centers are still in unknown state after waiting for {} minutes", elapsedMinutes);
       } else {
+        sendPushJobDetailsToController();
         long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
         throw new VeniceException(
             "After waiting for " + timeoutMinutes + " minutes; push job is still in unknown state.");
       }
-
-      // Only send the push job details after all error checks have passed and job is not completed yet.
       sendPushJobDetailsToController();
     }
   }
