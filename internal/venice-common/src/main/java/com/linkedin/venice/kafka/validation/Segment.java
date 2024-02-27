@@ -407,4 +407,9 @@ public class Segment {
     }
     return deduped;
   }
+
+  // Only for testing.
+  public void setStarted(boolean started) {
+    this.started = started;
+  }
 }

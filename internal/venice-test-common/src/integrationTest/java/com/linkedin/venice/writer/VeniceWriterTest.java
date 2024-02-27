@@ -2,6 +2,8 @@ package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
+import static com.linkedin.venice.writer.VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -13,6 +15,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
@@ -224,6 +227,55 @@ public class VeniceWriterTest {
         fail("Producer closing should have succeeded without an exception", e);
       } finally {
         executor.shutdownNow();
+      }
+    }
+  }
+
+  /**
+   * This is a regression test for the VeniceWriter issue where the VeniceWriter could run into
+   * infinite recursions, eventually run out of the stack space and throw StackOverflowError.
+   *
+   * The conditions to trigger this issue are:
+   * 1. The VeniceWriter's cached segment is neither started nor ended.
+   * 2. The elapsed time for the segment is greater than MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS.
+   */
+  @Test(timeOut = 30 * MS_PER_SECOND)
+  public void testVeniceWriterShouldNotCauseStackOverflow() {
+    String topicName = TestUtils.getUniqueTopicString("topic-for-vw-stack-overflow");
+    int partitionCount = 1;
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
+
+    topicManager.createTopic(pubSubTopic, partitionCount, 1, true);
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+    properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
+
+    // Explicitly set MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS to 1 second.
+    properties.put(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 1000);
+    properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
+
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
+        TestUtils.getVeniceWriterFactory(properties, pubSubProducerAdapterFactory)
+            .createVeniceWriter(
+                new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
+                    .setPartitionCount(partitionCount)
+                    .build())) {
+      try {
+        Segment seg = veniceWriter.getSegment(0, false);
+        seg.setStarted(false);
+
+        // Verify that segment is neither started nor ended.
+        assertFalse(seg.isStarted());
+        assertFalse(seg.isEnded());
+
+        // Sleep for 1.1 seconds to make sure the elapsed time for the segment is greater than
+        // MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS.
+        Thread.sleep(1100);
+
+        // Send an SOS control message to the topic and it should not cause StackOverflowError.
+        veniceWriter.sendStartOfSegment(0, null);
+      } catch (Throwable t) {
+        Assert.fail("VeniceWriter should not cause stack overflow", t);
       }
     }
   }

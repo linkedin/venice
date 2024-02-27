@@ -238,10 +238,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   private final Segment[] segments;
   /**
-   * Map of partition to its segment creation time in milliseconds.
+   * Map of partition to its segment start time in milliseconds.
    * -1: the current segment is ended
    */
-  private final long[] segmentsCreationTimeArray;
+  private final long[] segmentsStartTimeArray;
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer =
       new ChunkedValueManifestSerializer(true);
@@ -361,13 +361,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       if (this.numberOfPartitions <= 0) {
         throw new VeniceException("Invalid number of partitions: " + this.numberOfPartitions);
       }
-      this.segmentsCreationTimeArray = new long[this.numberOfPartitions];
+      this.segmentsStartTimeArray = new long[this.numberOfPartitions];
       // Prepare locks for all partitions instead of using map to avoid the searching and creation cost during
       // ingestion.
       this.partitionLocks = new Object[this.numberOfPartitions];
       for (int i = 0; i < numberOfPartitions; i++) {
         partitionLocks[i] = new Object();
-        segmentsCreationTimeArray[i] = -1L;
+        segmentsStartTimeArray[i] = -1L;
       }
       this.segments = new Segment[this.numberOfPartitions];
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
@@ -1935,7 +1935,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @return the existing {@link Segment} associated with the requested partition, or
    *         a new one if none existed previously.
    */
-  private Segment getSegment(int partition, boolean sendEndOfSegment) {
+  Segment getSegment(int partition, boolean sendEndOfSegment) {
     synchronized (this.partitionLocks[partition]) {
       Segment currentSegment = segments[partition];
       if (currentSegment == null || currentSegment.isEnded()) {
@@ -1945,9 +1945,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         // timed out. The segment won't be closed if the ongoing message itself is
         // an "end_of_segment" message.
         if (!sendEndOfSegment) {
-          long currentSegmentCreationTime = segmentsCreationTimeArray[partition];
-          if (currentSegmentCreationTime != -1
-              && LatencyUtils.getElapsedTimeInMs(currentSegmentCreationTime) > maxElapsedTimeForSegmentInMs) {
+          long currentSegmentStartTime = segmentsStartTimeArray[partition];
+          if (currentSegmentStartTime != -1
+              && LatencyUtils.getElapsedTimeInMs(currentSegmentStartTime) > maxElapsedTimeForSegmentInMs) {
             endSegment(partition, false);
             currentSegment = startSegment(partition);
           }
@@ -1972,20 +1972,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private Segment startSegment(int partition) {
     synchronized (this.partitionLocks[partition]) {
       Segment currentSegment = segments[partition];
-      long segmentStartTime = segmentsCreationTimeArray[partition];
 
       if (currentSegment == null) {
         currentSegment = new Segment(partition, 0, checkSumType);
-        segmentStartTime = time.getMilliseconds();
       } else if (currentSegment.isEnded()) {
         int newSegmentNumber = currentSegment.getSegmentNumber() + 1;
         currentSegment = new Segment(partition, newSegmentNumber, checkSumType);
-        segmentStartTime = time.getMilliseconds();
       }
 
       if (!currentSegment.isStarted()) {
         segments[partition] = currentSegment;
-        segmentsCreationTimeArray[partition] = segmentStartTime;
+        // Record the new start time of the segment.
+        segmentsStartTimeArray[partition] = time.getMilliseconds();
         sendStartOfSegment(partition, null);
         currentSegment.start();
       }
