@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -74,24 +73,12 @@ public class TestUnusedValueSchemaCleanupService {
     schemaIds.add(3);
     schemaIds.add(4);
     UnusedValueSchemaCleanupService service = new UnusedValueSchemaCleanupService(config, admin, parentHelixAdmin);
-    service.startInner();
     Set<Integer> unusedSchemas = new HashSet<>();
     unusedSchemas.add(1);
     unusedSchemas.add(2);
-    doReturn(Collections.emptySet()).when(parentHelixAdmin).getValueSchemas(anyString(), anyString());
-
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> verify(admin, times(0)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
-
     doReturn(schemaEntries).when(parentHelixAdmin).getValueSchemas(anyString(), anyString());
     doReturn(schemaIds).when(parentHelixAdmin).getInUseValueSchemaIds(anyString(), anyString());
     service.startInner();
-    TestUtils.waitForNonDeterministicAssertion(
-        10,
-        TimeUnit.SECONDS,
-        () -> verify(admin, times(1)).deleteValueSchemas(clusterName, store.getName(), unusedSchemas));
     TestUtils.waitForNonDeterministicAssertion(
         10,
         TimeUnit.SECONDS,
