@@ -322,13 +322,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
       }
 
       for (int id: valueSchemaIdSet) {
-        try {
-          maybeFetchValueSchemaEntryById(id, forceRefresh);
-        } catch (VeniceClientException e) {
-          LOGGER.error("Got exception while trying fetch schema id: " + id + " from router for store: " + storeName);
-        }
+        maybeFetchValueSchemaEntryById(id, forceRefresh);
       }
-
     } catch (Exception ex) {
       throw new VeniceClientException(
           "Got exception while trying to fetch all value schemas for store: " + storeName,
