@@ -1,5 +1,7 @@
 package com.linkedin.venice.serializer;
 
+import static org.testng.Assert.assertEquals;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.schemas.TestValueRecord;
@@ -23,10 +25,18 @@ public class SerializerDeserializerFactoryTest {
     Assert.assertSame(anotherSerializer, serializer);
   }
 
+  /**
+   * The Vson serializer should never be used with a SpecificRecord.
+   */
   @Test
   public void getVsonSerializerTest() throws VeniceClientException {
     RecordSerializer<Object> serializer = SerializerDeserializerFactory.getVsonSerializer(TestValueRecord.SCHEMA$);
-    Assert.assertThrows(IllegalStateException.class, () -> serializer.serialize(new TestValueRecord()));
+    Assert.assertThrows(VeniceSerializationException.class, () -> serializer.serialize(new TestValueRecord()));
+    try {
+      serializer.serialize(new TestValueRecord());
+    } catch (VeniceSerializationException e) {
+      assertEquals(e.getCause().getClass(), IllegalStateException.class);
+    }
   }
 
   @Test

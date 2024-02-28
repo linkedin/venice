@@ -11,17 +11,27 @@ import java.io.IOException;
 public interface ComputeJob extends Closeable {
   enum Status {
     /** A job that has not started execution yet */
-    NOT_STARTED,
+    NOT_STARTED(false),
     /** A job that is currently executing */
-    RUNNING,
+    RUNNING(false),
     /** A job that has completed execution successfully */
-    SUCCEEDED,
+    SUCCEEDED(true),
     /** A job that failed during it's execution */
-    FAILED,
+    FAILED(true),
     /** A job that has completed execution but failed verification */
-    FAILED_VERIFICATION,
+    FAILED_VERIFICATION(true),
     /** A job that was killed */
-    KILLED
+    KILLED(true);
+
+    private final boolean isTerminal;
+
+    Status(boolean terminal) {
+      this.isTerminal = terminal;
+    }
+
+    public boolean isTerminal() {
+      return isTerminal;
+    }
   }
 
   void configure(VeniceProperties properties);

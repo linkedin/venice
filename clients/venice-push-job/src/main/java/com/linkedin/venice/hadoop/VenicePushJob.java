@@ -2779,7 +2779,7 @@ public class VenicePushJob implements AutoCloseable {
       }
       runningJob.killJob();
     } catch (Exception ex) {
-      // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws exception or not.
+      // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws an exception or not.
       LOGGER.info(
           "Received exception while killing map-reduce job with name {} and ID {}",
           runningJob.getJobName(),
@@ -2793,7 +2793,17 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.warn("No op to kill a null data writer job");
       return;
     }
-    dataWriterComputeJob.kill();
+    try {
+      ComputeJob.Status jobStatus = dataWriterComputeJob.getStatus();
+      if (jobStatus.isTerminal()) {
+        LOGGER.warn("No op to kill a compute job in a terminal state: {}", jobStatus);
+        return;
+      }
+      dataWriterComputeJob.kill();
+    } catch (Exception ex) {
+      // Will try to kill Venice Offline Push Job no matter whether the compute job kill throws an exception or not.
+      LOGGER.info("Received exception while killing data writer job", ex);
+    }
   }
 
   // Visible for testing

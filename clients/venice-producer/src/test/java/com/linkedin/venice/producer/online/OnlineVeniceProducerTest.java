@@ -29,6 +29,7 @@ import com.linkedin.venice.client.store.ClientFactoryTestUtils;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -67,9 +68,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -803,6 +806,25 @@ public class OnlineVeniceProducerTest {
     doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaResponse), 0))
         .when(transportClient)
         .get(eq("value_schema/" + KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()), anyMap());
+
+    for (int i = 0; i < schemasInLocalResources.size(); i++) {
+      SchemaResponse valueSchemaResponse = new SchemaResponse();
+      valueSchemaResponse.setId(i + 1);
+      valueSchemaResponse.setSchemaStr(schemasInLocalResources.get(i + 1).toString());
+      doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(valueSchemaResponse), 0))
+          .when(transportClient)
+          .get(eq("value_schema/" + KAFKA_MESSAGE_ENVELOPE.getSystemStoreName() + "/" + (i + 1)), anyMap());
+    }
+
+    MultiSchemaIdResponse multiSchemaIdResponse = new MultiSchemaIdResponse();
+    Set<Integer> schemaIdSet = new HashSet<>();
+    for (int i = 1; i <= schemasInLocalResources.size(); i++) {
+      schemaIdSet.add(i);
+    }
+    multiSchemaIdResponse.setSchemaIdSet(schemaIdSet);
+    doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaIdResponse), 0))
+        .when(transportClient)
+        .get(eq("value_schema_ids/" + KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()), anyMap());
   }
 
   private ClientConfig configureMocksAndGetStoreConfig(String storeName) throws IOException {
@@ -845,7 +867,7 @@ public class OnlineVeniceProducerTest {
       TransportClient transportClient,
       boolean updateEnabled,
       byte[] requestTopicResponse,
-      int delayInResponseMs) throws IOException {
+      int delayInResponseMs) {
     doCallRealMethod().when(transportClient).getCopyIfNotUsableInCallback();
     doCallRealMethod().when(transportClient).get(anyString());
     doCallRealMethod().when(transportClient).post(anyString(), any());
@@ -925,6 +947,28 @@ public class OnlineVeniceProducerTest {
     doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(keySchemaResponse), delayInResponseMs))
         .when(transportClient)
         .get(eq("key_schema/" + storeName), anyMap());
+
+    MultiSchemaIdResponse multiSchemaIdResponse = new MultiSchemaIdResponse();
+    if (supersetSchemaId > 0) {
+      multiSchemaIdResponse.setSuperSetSchemaId(supersetSchemaId);
+    }
+    Set<Integer> schemaIdSet = new HashSet<>();
+    for (int i = 1; i <= valueSchemas.size(); i++) {
+      schemaIdSet.add(i);
+    }
+    multiSchemaIdResponse.setSchemaIdSet(schemaIdSet);
+    doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaIdResponse), delayInResponseMs))
+        .when(transportClient)
+        .get(eq("value_schema_ids/" + storeName), anyMap());
+
+    for (int i = 0; i < valueSchemas.size(); i++) {
+      SchemaResponse valueSchemaResponse = new SchemaResponse();
+      valueSchemaResponse.setId(i + 1);
+      valueSchemaResponse.setSchemaStr(valueSchemas.get(i).toString());
+      doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(valueSchemaResponse), delayInResponseMs))
+          .when(transportClient)
+          .get(eq("value_schema/" + storeName + "/" + (i + 1)), anyMap());
+    }
 
     MultiSchemaResponse.Schema[] valueSchemaArr = new MultiSchemaResponse.Schema[valueSchemas.size()];
     for (int i = 0; i < valueSchemas.size(); i++) {

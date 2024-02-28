@@ -3,6 +3,7 @@ package com.linkedin.venice.serializer;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -30,7 +31,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
 
   private static class ReusableObjects {
     public final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    public final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(outputStream, true, null);
+    public BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(outputStream, true, null);
   }
 
   static {
@@ -67,8 +68,21 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
     try {
       write(object, encoder);
       encoder.flush();
-    } catch (IOException e) {
-      throw new VeniceException("Unable to serialize object", e);
+    } catch (Throwable t) {
+      /**
+       * If we caught an exception, then the {@link BinaryEncoder} is possibly left in an unclean state, and even
+       * calling {@link AvroCompatibilityHelper#newBinaryEncoder(OutputStream, boolean, BinaryEncoder)} does not
+       * seem to guarantee that it's in a clean state. We therefore set it to null here so that the next invocation
+       * will create a brand new one.
+       */
+      LOGGER.error(
+          "Caught a {} when serializing. Will reset the BinaryEncoder to avoid contaminating future serializations.",
+          t.getClass().getSimpleName());
+      reusableObjects.binaryEncoder = null;
+      if (AvroSchemaUtils.isUnresolvedUnionExceptionAvailable()) {
+        UnresolvedUnionUtil.handleUnresolvedUnion(t);
+      }
+      throw new VeniceSerializationException("Unable to serialize object", t);
     }
     return reusableObjects.outputStream.toByteArray();
   }

@@ -173,10 +173,11 @@ public class AvroGenericStoreClientImplTest {
     String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
 
-    FullHttpResponse multiValueSchemaResponse =
-        StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
-    String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
-    routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
+    FullHttpResponse multiValueSchemaIdResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+
+    routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: {}", entry.getKey());
       Assert.assertEquals(entry.getValue().getKeySchema(), Schema.parse(defaultKeySchemaStr));
@@ -234,10 +235,15 @@ public class AvroGenericStoreClientImplTest {
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
+    FullHttpResponse multiValueSchemaIdResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
+
     String key = "test_key";
     Schema valueSchema = Schema.parse(valueSchemaStr);
     GenericData.Record valueRecord = new GenericData.Record(valueSchema);
-    valueRecord.put("a", 100l);
+    valueRecord.put("a", 100L);
     valueRecord.put("b", "test_b_value");
     byte[] valueArray = StoreClientTestUtils.serializeRecord(valueRecord, valueSchema);
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId, valueArray);
@@ -249,7 +255,7 @@ public class AvroGenericStoreClientImplTest {
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
       GenericData.Record recordValue = (GenericData.Record) value;
-      Assert.assertEquals(recordValue.get("a"), 100l);
+      Assert.assertEquals(recordValue.get("a"), 100L);
       Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
 
       testMetric(entry.getValue(), RequestType.SINGLE_GET);
@@ -284,6 +290,10 @@ public class AvroGenericStoreClientImplTest {
         StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
+    FullHttpResponse multiValueSchemaIdResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
 
     int nonExistingSchemaId = 2;
     FullHttpResponse valueResponse =
@@ -406,10 +416,15 @@ public class AvroGenericStoreClientImplTest {
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
+    FullHttpResponse multiValueSchemaIdResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
+
     String key = "test_key";
     Schema valueSchema = Schema.parse(valueSchemaStr1);
     GenericData.Record valueRecord = new GenericData.Record(valueSchema);
-    valueRecord.put("a", 100l);
+    valueRecord.put("a", 100L);
     valueRecord.put("b", "test_b_value");
     byte[] valueArray = StoreClientTestUtils.serializeRecord(valueRecord, valueSchema);
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId1, valueArray);
@@ -419,7 +434,7 @@ public class AvroGenericStoreClientImplTest {
     String key2 = "test_key_2";
     Schema valueSchema2 = Schema.parse(valueSchemaStr2);
     GenericData.Record valueRecord2 = new GenericData.Record(valueSchema2);
-    valueRecord2.put("a", 102l);
+    valueRecord2.put("a", 102L);
     valueRecord2.put("b", "test_b_value_2");
     valueRecord2.put("c", "test_c_value_2");
     byte[] valueArray2 = StoreClientTestUtils.serializeRecord(valueRecord2, valueSchema2);
@@ -435,7 +450,7 @@ public class AvroGenericStoreClientImplTest {
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
       GenericData.Record recordValue = (GenericData.Record) value;
-      Assert.assertEquals(recordValue.get("a"), 100l);
+      Assert.assertEquals(recordValue.get("a"), 100L);
       Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
       Assert.assertEquals(recordValue.get("c").toString(), "c_default_value");
 
@@ -443,13 +458,13 @@ public class AvroGenericStoreClientImplTest {
       Object value2 = entry.getValue().get(key2).get();
       Assert.assertTrue(value2 instanceof GenericData.Record);
       GenericData.Record recordValue2 = (GenericData.Record) value2;
-      Assert.assertEquals(recordValue2.get("a"), 102l);
+      Assert.assertEquals(recordValue2.get("a"), 102L);
       Assert.assertEquals(recordValue2.get("b").toString(), "test_b_value_2");
       Assert.assertEquals(recordValue2.get("c").toString(), "test_c_value_2");
     }
   }
 
-  private Set setupSchemaAndRequest(int valueSchemaId, String valueSchemaStr) throws IOException {
+  private Set<String> setupSchemaAndRequest(int valueSchemaId, String valueSchemaStr) throws IOException {
     Map<Integer, String> valueSchemaEntries = new HashMap<>();
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
@@ -462,6 +477,11 @@ public class AvroGenericStoreClientImplTest {
         StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
+
+    FullHttpResponse multiValueSchemaIdResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIdPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIdPath, multiValueSchemaIdResponse);
 
     Set<String> keys = new TreeSet<>();
     keys.add("key1");
