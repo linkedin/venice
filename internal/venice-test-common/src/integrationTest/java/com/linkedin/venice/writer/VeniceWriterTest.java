@@ -260,23 +260,21 @@ public class VeniceWriterTest {
                 new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
                     .setPartitionCount(partitionCount)
                     .build())) {
-      try {
-        Segment seg = veniceWriter.getSegment(0, false);
-        seg.setStarted(false);
+      Segment seg = veniceWriter.getSegment(0, false);
+      seg.setStarted(false);
 
-        // Verify that segment is neither started nor ended.
-        assertFalse(seg.isStarted());
-        assertFalse(seg.isEnded());
+      // Verify that segment is neither started nor ended.
+      assertFalse(seg.isStarted());
+      assertFalse(seg.isEnded());
 
-        // Sleep for 1.1 seconds to make sure the elapsed time for the segment is greater than
-        // MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS.
-        Thread.sleep(1100);
+      // Sleep for 1.1 seconds to make sure the elapsed time for the segment is greater than
+      // MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS.
+      Thread.sleep(1100);
 
-        // Send an SOS control message to the topic and it should not cause StackOverflowError.
-        veniceWriter.sendStartOfSegment(0, null);
-      } catch (Throwable t) {
-        Assert.fail("VeniceWriter should not cause stack overflow", t);
-      }
+      // Send an SOS control message to the topic and it should not cause StackOverflowError.
+      veniceWriter.sendStartOfSegment(0, null);
+    } catch (Throwable t) {
+      Assert.fail("VeniceWriter should not cause stack overflow", t);
     }
   }
 }
