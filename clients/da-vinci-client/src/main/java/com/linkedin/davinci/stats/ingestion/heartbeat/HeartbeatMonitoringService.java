@@ -75,36 +75,32 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     if (version.getHybridStoreConfig() == null) {
       return;
     }
-    if (heartbeatTimestamps.get(version.getStoreName()) == null) {
-      heartbeatTimestamps.put(version.getStoreName(), new VeniceConcurrentHashMap<>());
-    }
-    if (heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()) == null) {
-      heartbeatTimestamps.get(version.getStoreName()).put(version.getNumber(), new VeniceConcurrentHashMap<>());
-    }
-    if (heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()).get(partition) == null) {
-      Map<String, Long> regionTimestamps = new VeniceConcurrentHashMap<>();
-      if (version.isActiveActiveReplicationEnabled()) {
-        for (String region: regionNames) {
-          regionTimestamps.put(region, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
-        }
-      } else {
-        regionTimestamps.put(localRegionName, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
-      }
-      heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()).put(partition, regionTimestamps);
-    }
+    heartbeatTimestamps.computeIfAbsent(version.getStoreName(), storeKey -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(version.getNumber(), versionKey -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, partitionKey -> {
+          Map<String, Long> regionTimestamps = new VeniceConcurrentHashMap<>();
+          if (version.isActiveActiveReplicationEnabled()) {
+            for (String region: regionNames) {
+              regionTimestamps.put(region, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
+            }
+          } else {
+            regionTimestamps.put(localRegionName, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
+          }
+          return regionTimestamps;
+        });
   }
 
   private synchronized void removeEntry(
       Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> heartbeatTimestamps,
       Version version,
       int partition) {
-    if (heartbeatTimestamps.get(version.getStoreName()) != null) {
-      if (heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()) != null) {
-        if (heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()).get(partition) != null) {
-          heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()).remove(partition);
-        }
-      }
-    }
+    heartbeatTimestamps.computeIfPresent(version.getStoreName(), (storeKey, map1) -> {
+      map1.computeIfPresent(version.getNumber(), (versionKey, map2) -> {
+        map2.remove(partition);
+        return map2;
+      });
+      return map1;
+    });
   }
 
   /**
@@ -187,14 +183,17 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       String region,
       Long timestamp,
       Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> heartbeatTimestamps) {
-    if (heartbeatTimestamps.get(store) != null) {
-      if (heartbeatTimestamps.get(store).get(version) != null) {
-        if (heartbeatTimestamps.get(store).get(version).get(partition) != null) {
-          if (region != null) {
-            heartbeatTimestamps.get(store).get(version).get(partition).put(region, timestamp);
-          }
-        }
-      }
+    if (region != null) {
+      heartbeatTimestamps.computeIfPresent(store, (storeKey, perVersionMap) -> {
+        perVersionMap.computeIfPresent(version, (versionKey, perPartitionMap) -> {
+          perPartitionMap.computeIfPresent(partition, (partitionKey, perRegionMap) -> {
+            perRegionMap.put(region, timestamp);
+            return perRegionMap;
+          });
+          return perPartitionMap;
+        });
+        return perVersionMap;
+      });
     }
   }
 
