@@ -859,6 +859,8 @@ public class VenicePushJob implements AutoCloseable {
         sendPushJobDetailsToController();
         closeVeniceWriter();
       } catch (Exception ex) {
+        sendPushJobDetailsToController();
+        closeVeniceWriter();
         LOGGER.error(
             "Error before killing the failed push job; still issue the kill job command to clean up states in backend",
             ex);
@@ -2434,7 +2436,6 @@ public class VenicePushJob implements AutoCloseable {
           // but if the majority of datacenters have completed, we give up on the unreachable datacenter
           // and start truncating the data topic.
           // 2) For targeted region push, not all targeted regions have completed.
-
           StringBuilder errorMsg = new StringBuilder().append("Push job error reported by controller: ")
               .append(pushJobSetting.veniceControllerUrl)
               .append("\ncontroller response: ")
@@ -2455,7 +2456,6 @@ public class VenicePushJob implements AutoCloseable {
           VenicePushJob.this.pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
       long durationMs = System.currentTimeMillis() - pollStartTimeMs;
       if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
-        sendPushJobDetailsToController();
         throw new VeniceException(
             "Failing push-job for store " + VenicePushJob.this.pushJobSetting.storeResponse.getName()
                 + " which is still running after " + TimeUnit.MILLISECONDS.toHours(durationMs) + " hours.");
@@ -2469,7 +2469,6 @@ public class VenicePushJob implements AutoCloseable {
         double elapsedMinutes = (double) (System.currentTimeMillis() - unknownStateStartTimeMs) / Time.MS_PER_MINUTE;
         LOGGER.warn("Some data centers are still in unknown state after waiting for {} minutes", elapsedMinutes);
       } else {
-        sendPushJobDetailsToController();
         long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
         throw new VeniceException(
             "After waiting for " + timeoutMinutes + " minutes; push job is still in unknown state.");
