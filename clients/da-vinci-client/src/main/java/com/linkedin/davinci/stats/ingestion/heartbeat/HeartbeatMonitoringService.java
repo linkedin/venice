@@ -63,7 +63,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         metricsRepository,
         metadataRepository,
         () -> new HeartbeatStat(new MetricConfig(), regionNames),
-        (aMetricsRepository, s) -> new HeartbeatStatReporter(aMetricsRepository, s, regionNames));
+        (aMetricsRepository, s) -> new HeartbeatStatReporter(aMetricsRepository, s, regionNames),
+        this);
   }
 
   private synchronized void initializeEntry(
@@ -231,6 +232,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   @FunctionalInterface
   interface ReportLagFunction {
     void apply(String storeName, int version, String region, long lag);
+  }
+
+  Set<String> getReportedStores() {
+    Set<String> monitoredStores = leaderHeartbeatTimeStamps.keySet();
+    monitoredStores.addAll(followerHeartbeatTimeStamps.keySet());
+    return monitoredStores;
   }
 
   private class HeartbeatReporterThread extends Thread {
