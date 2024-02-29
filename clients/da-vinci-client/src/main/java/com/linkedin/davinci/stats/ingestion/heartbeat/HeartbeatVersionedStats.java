@@ -5,9 +5,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.stats.StatsSupplier;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Collections;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Supplier;
 
 
@@ -37,9 +35,8 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
 
   @Override
   public synchronized void loadAllStats() {
-    Set<String> stores = getReportedStores();
     metadataRepository.getAllStores().forEach(store -> {
-      if (stores.contains(store.getName())) {
+      if (isStoreAssignedToThisNode(store.getName())) {
         addStore(store.getName());
         updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
       }
@@ -48,28 +45,24 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
 
   @Override
   public void handleStoreCreated(Store store) {
-    Set<String> stores = getReportedStores();
-    if (stores.contains(store.getName())) {
+    if (isStoreAssignedToThisNode(store.getName())) {
       addStore(store.getName());
     }
   }
 
   @Override
   public void handleStoreChanged(Store store) {
-    Set<String> stores = getReportedStores();
-    if (stores.contains(store.getName())) {
+    if (isStoreAssignedToThisNode(store.getName())) {
       updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
     }
   }
 
-  Set<String> getReportedStores() {
+  boolean isStoreAssignedToThisNode(String store) {
     if (leaderMonitors == null || followerMonitors == null) {
       // TODO: We have to do this because theres a self call in the constructor
       // of the superclass of this class. We shouldn't have to do this
-      return Collections.EMPTY_SET;
+      return false;
     }
-    Set<String> monitoredStores = leaderMonitors.keySet();
-    monitoredStores.addAll(followerMonitors.keySet());
-    return monitoredStores;
+    return leaderMonitors.containsKey(store) || followerMonitors.containsKey(store);
   }
 }

@@ -71,7 +71,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private synchronized void initializeEntry(
       Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> heartbeatTimestamps,
       Version version,
-      int partition) {
+      int partition,
+      boolean isFollower) {
     // We don't monitor heartbeat lag for non hybrid versions
     if (version.getHybridStoreConfig() == null) {
       return;
@@ -80,7 +81,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         .computeIfAbsent(version.getNumber(), versionKey -> new VeniceConcurrentHashMap<>())
         .computeIfAbsent(partition, partitionKey -> {
           Map<String, Long> regionTimestamps = new VeniceConcurrentHashMap<>();
-          if (version.isActiveActiveReplicationEnabled()) {
+          if (version.isActiveActiveReplicationEnabled() && !isFollower) {
             for (String region: regionNames) {
               regionTimestamps.put(region, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
             }
@@ -112,7 +113,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addFollowerLagMonitor(Version version, int partition) {
-    initializeEntry(followerHeartbeatTimeStamps, version, partition);
+    initializeEntry(followerHeartbeatTimeStamps, version, partition, true);
     removeEntry(leaderHeartbeatTimeStamps, version, partition);
   }
 
@@ -124,7 +125,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addLeaderLagMonitor(Version version, int partition) {
-    initializeEntry(leaderHeartbeatTimeStamps, version, partition);
+    initializeEntry(leaderHeartbeatTimeStamps, version, partition, false);
     removeEntry(followerHeartbeatTimeStamps, version, partition);
   }
 
