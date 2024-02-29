@@ -1,0 +1,132 @@
+{
+  "type": "record",
+  "name": "MetadataResponseRecord",
+  "namespace": "com.linkedin.venice.metadata.response",
+  "doc": "This record will store version properties, key & value schemas, and routing information",
+  "fields": [
+    {
+      "name": "versionMetadata",
+      "doc": "The current version number and other version properties such as the compression strategy",
+      "type": [
+        "null",
+        {
+          "name": "VersionProperties",
+          "type": "record",
+          "fields": [
+            {
+              "name": "currentVersion",
+              "doc": "Current version number",
+              "type": "int"
+            },
+            {
+              "name": "compressionStrategy",
+              "doc": "The current version's compression strategy. 0 -> NO_OP, 1 -> GZIP, 2 -> ZSTD, 3 -> ZSTD_WITH_DICT",
+              "type": {
+                "name": "CompressionStrategy",
+                "type": "int"
+              }
+            },
+            {
+              "name": "partitionCount",
+              "doc": "Partition count of the current version",
+              "type": "int"
+            },
+            {
+              "name": "partitionerClass",
+              "doc": "Partitioner class name",
+              "type": "string"
+            },
+            {
+              "name": "partitionerParams",
+              "doc": "Partitioner parameters",
+              "type": {
+                "type": "map",
+                "values": "string"
+              }
+            },
+            {
+              "name": "amplificationFactor",
+              "doc": "Partitioner amplification factor",
+              "type": "int"
+            }
+          ]
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "versions",
+      "doc": "List of all version numbers",
+      "type": {
+        "type": "array",
+        "items": "int"
+      }
+    },
+    {
+      "name": "keySchema",
+      "doc": "Key schema",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "string"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "valueSchemas",
+      "doc": "Value schemas",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "string"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "latestSuperSetValueSchemaId",
+      "doc": "Latest super set value schema ID",
+      "type": [
+        "null",
+        "int"
+      ],
+      "default": null
+    },
+    {
+      "name": "routingInfo",
+      "doc": "Routing table information, maps resource to partition ID to a list of replicas",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": {
+            "type": "array",
+            "items": "string"
+          }
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "helixGroupInfo",
+      "doc": "Helix group information, maps replicas to their respective groups",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "int"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "batchGetLimit",
+      "doc": "The max key number allowed in a batch get request",
+      "type": "int",
+      "default": 150
+    }
+  ]
+}

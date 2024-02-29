@@ -6,7 +6,8 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.IngestionMetadataRetriever;
+import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
@@ -28,7 +29,8 @@ public class ListenerServiceTest {
   ReadOnlyStoreRepository storeMetadataRepository;
   ReadOnlySchemaRepository schemaRepository;
   CompletableFuture<HelixCustomizedViewOfflinePushRepository> cvRepository;
-  MetadataRetriever metadataRetriever;
+  IngestionMetadataRetriever ingestionMetadataRetriever;
+  ReadMetadataRetriever readMetadataRetriever;
   VeniceServerConfig serverConfig;
   MetricsRepository metricsRepository;
   Optional<SSLFactory> sslFactory;
@@ -44,7 +46,8 @@ public class ListenerServiceTest {
     storeMetadataRepository = mock(ReadOnlyStoreRepository.class);
     schemaRepository = mock(ReadOnlySchemaRepository.class);
     cvRepository = mock(CompletableFuture.class);
-    metadataRetriever = mock(MetadataRetriever.class);
+    ingestionMetadataRetriever = mock(IngestionMetadataRetriever.class);
+    readMetadataRetriever = mock(ReadMetadataRetriever.class);
     serverConfig = mock(VeniceServerConfig.class);
     metricsRepository = new MetricsRepository();
     sslFactory = Optional.of(mock(SSLFactory.class));
@@ -72,7 +75,8 @@ public class ListenerServiceTest {
         storeMetadataRepository,
         schemaRepository,
         cvRepository,
-        metadataRetriever,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
         serverConfig,
         metricsRepository,
         sslFactory,

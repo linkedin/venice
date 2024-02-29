@@ -12,11 +12,15 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
+import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -27,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -127,7 +132,6 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(true)
             .setDualReadEnabled(false)
-            .setMaxAllowedKeyCntInBatchGetReq(recordCnt + 1) // +1 for nonExistingKey
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1);
 
@@ -169,7 +173,6 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(true)
             .setDualReadEnabled(false)
-            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
@@ -250,6 +253,52 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
 
     validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false);
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testStreamingBatchGetLimit() throws Exception {
+    // Start with a batch-get key limit that's less than the record count
+    veniceCluster.useControllerClient(
+        controllerClient -> controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(10)));
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setSpeculativeQueryEnabled(false)
+            .setDualReadEnabled(false);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, metricsRepository, StoreMetadataFetchMode.SERVER_BASED_METADATA);
+
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < recordCnt; ++i) {
+      keys.add(keyPrefix + i);
+    }
+    keys.add("nonExisting");
+
+    CompletableFuture future = genericFastClient.streamingBatchGet(keys);
+    try {
+      future.get();
+      fail(VeniceKeyCountLimitException.class.getSimpleName() + " should be thrown");
+    } catch (Exception e) {
+      assertEquals(VeniceKeyCountLimitException.class, e.getCause().getClass());
+    }
+    // Update the store config to increase batch-get key limit
+    veniceCluster.useControllerClient(
+        controllerClient -> controllerClient
+            .updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(Store.DEFAULT_BATCH_GET_LIMIT)));
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      try {
+        VeniceResponseMap<String, GenericRecord> veniceResponseMap =
+            genericFastClient.streamingBatchGet(keys).get(5, TimeUnit.SECONDS);
+        assertEquals(veniceResponseMap.getNonExistingKeys().size(), 1);
+        assertTrue(veniceResponseMap.isFullResponse());
+        assertEquals(veniceResponseMap.getTotalEntryCount(), recordCnt + 1); // 1 for nonExisting key
+      } catch (Exception e) {
+        fail("Key limit increase not reflected yet");
+      }
+    });
   }
 
   @Test(dataProvider = "Boolean-And-StoreMetadataFetchModes", timeOut = TIME_OUT)

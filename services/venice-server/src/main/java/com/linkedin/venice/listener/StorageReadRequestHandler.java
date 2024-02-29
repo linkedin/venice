@@ -9,7 +9,8 @@ import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.IngestionMetadataRetriever;
+import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.chunking.BatchGetChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -114,7 +115,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private final StorageEngineRepository storageEngineRepository;
   private final ReadOnlyStoreRepository metadataRepository;
   private final ReadOnlySchemaRepository schemaRepository;
-  private final MetadataRetriever metadataRetriever;
+  private final IngestionMetadataRetriever ingestionMetadataRetriever;
+  private final ReadMetadataRetriever readMetadataRetriever;
   private final Map<Utf8, Schema> computeResultSchemaCache;
   private final boolean fastAvroEnabled;
   private final Function<Schema, RecordSerializer<GenericRecord>> genericSerializerGetter;
@@ -189,7 +191,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository metadataStoreRepository,
       ReadOnlySchemaRepository schemaRepository,
-      MetadataRetriever metadataRetriever,
+      IngestionMetadataRetriever ingestionMetadataRetriever,
+      ReadMetadataRetriever readMetadataRetriever,
       DiskHealthCheckService healthCheckService,
       boolean fastAvroEnabled,
       boolean parallelBatchGetEnabled,
@@ -202,7 +205,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     this.storageEngineRepository = storageEngineRepository;
     this.metadataRepository = metadataStoreRepository;
     this.schemaRepository = schemaRepository;
-    this.metadataRetriever = metadataRetriever;
+    this.ingestionMetadataRetriever = ingestionMetadataRetriever;
+    this.readMetadataRetriever = readMetadataRetriever;
     this.diskHealthCheckService = healthCheckService;
     this.fastAvroEnabled = fastAvroEnabled;
     this.genericSerializerGetter = fastAvroEnabled
@@ -701,16 +705,16 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private BinaryResponse handleDictionaryFetchRequest(DictionaryFetchRequest request) {
-    ByteBuffer dictionary = metadataRetriever.getStoreVersionCompressionDictionary(request.getResourceName());
+    ByteBuffer dictionary = ingestionMetadataRetriever.getStoreVersionCompressionDictionary(request.getResourceName());
     return new BinaryResponse(dictionary);
   }
 
   private MetadataResponse handleMetadataFetchRequest(MetadataFetchRequest request) {
-    return metadataRetriever.getMetadata(request.getStoreName());
+    return readMetadataRetriever.getMetadata(request.getStoreName());
   }
 
   private ServerCurrentVersionResponse handleCurrentVersionRequest(CurrentVersionRequest request) {
-    return metadataRetriever.getCurrentVersionResponse(request.getStoreName());
+    return readMetadataRetriever.getCurrentVersionResponse(request.getStoreName());
   }
 
   private Schema getComputeResultSchema(ComputeRequest computeRequest, Schema valueSchema) {
@@ -843,7 +847,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         Integer partitionId = adminRequest.getPartition();
         ComplementSet<Integer> partitions =
             (partitionId == null) ? ComplementSet.universalSet() : ComplementSet.of(partitionId);
-        return metadataRetriever.getConsumptionSnapshots(topicName, partitions);
+        return ingestionMetadataRetriever.getConsumptionSnapshots(topicName, partitions);
       case DUMP_SERVER_CONFIGS:
         AdminResponse configResponse = new AdminResponse();
         if (this.serverConfig == null) {
@@ -863,6 +867,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     Integer partition = topicPartitionIngestionContextRequest.getPartition();
     String versionTopic = topicPartitionIngestionContextRequest.getVersionTopic();
     String topicName = topicPartitionIngestionContextRequest.getTopic();
-    return metadataRetriever.getTopicPartitionIngestionContext(versionTopic, topicName, partition);
+    return ingestionMetadataRetriever.getTopicPartitionIngestionContext(versionTopic, topicName, partition);
   }
 }

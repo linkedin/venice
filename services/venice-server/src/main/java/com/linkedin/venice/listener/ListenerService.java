@@ -3,7 +3,8 @@ package com.linkedin.venice.listener;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.IngestionMetadataRetriever;
+import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
@@ -71,7 +72,8 @@ public class ListenerService extends AbstractVeniceService {
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
-      MetadataRetriever metadataRetriever,
+      IngestionMetadataRetriever ingestionMetadataRetriever,
+      ReadMetadataRetriever readMetadataRetriever,
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
       Optional<SSLFactory> sslFactory,
@@ -112,7 +114,8 @@ public class ListenerService extends AbstractVeniceService {
         storageEngineRepository,
         storeMetadataRepository,
         schemaRepository,
-        metadataRetriever,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
         diskHealthService,
         serverConfig.isComputeFastAvroEnabled(),
         serverConfig.isEnableParallelBatchGet(),
@@ -226,7 +229,8 @@ public class ListenerService extends AbstractVeniceService {
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository metadataRepository,
       ReadOnlySchemaRepository schemaRepository,
-      MetadataRetriever metadataRetriever,
+      IngestionMetadataRetriever ingestionMetadataRetriever,
+      ReadMetadataRetriever readMetadataRetriever,
       DiskHealthCheckService diskHealthService,
       boolean fastAvroEnabled,
       boolean parallelBatchGetEnabled,
@@ -239,7 +243,8 @@ public class ListenerService extends AbstractVeniceService {
         storageEngineRepository,
         metadataRepository,
         schemaRepository,
-        metadataRetriever,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
         diskHealthService,
         fastAvroEnabled,
         parallelBatchGetEnabled,

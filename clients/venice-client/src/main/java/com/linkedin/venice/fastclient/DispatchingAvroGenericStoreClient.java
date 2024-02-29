@@ -416,12 +416,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       MultiKeyStreamingRouteResponseHandler routeResponseHandler) {
     verifyMetadataInitialized();
     int keyCnt = keys.size();
-    if (keyCnt > this.config.getMaxAllowedKeyCntInBatchGetReq()) {
-      throw new VeniceKeyCountLimitException(
-          getStoreName(),
-          requestType,
-          keyCnt,
-          this.config.getMaxAllowedKeyCntInBatchGetReq());
+    if (keyCnt > metadata.getBatchGetLimit()) {
+      VeniceKeyCountLimitException veniceKeyCountLimitException =
+          new VeniceKeyCountLimitException(getStoreName(), requestType, keyCnt, metadata.getBatchGetLimit());
+      callback.onCompletion(Optional.of(veniceKeyCountLimitException));
+      return;
     }
 
     /* Prepare each of the routes needed to query the keys */

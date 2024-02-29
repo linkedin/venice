@@ -3,7 +3,8 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.IngestionMetadataRetriever;
+import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
@@ -41,7 +42,8 @@ public class TestVeniceServer extends VeniceServer {
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
-      MetadataRetriever metadataRetriever,
+      IngestionMetadataRetriever ingestionMetadataRetriever,
+      ReadMetadataRetriever readMetadataRetriever,
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
       Optional<SSLFactory> sslFactory,
@@ -56,7 +58,8 @@ public class TestVeniceServer extends VeniceServer {
         storeMetadataRepository,
         schemaRepository,
         customizedViewRepository,
-        metadataRetriever,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
         serverConfig,
         metricsRepository,
         sslFactory,
@@ -72,7 +75,8 @@ public class TestVeniceServer extends VeniceServer {
           StorageEngineRepository storageEngineRepository,
           ReadOnlyStoreRepository metadataRepository,
           ReadOnlySchemaRepository schemaRepository,
-          MetadataRetriever metadataRetriever,
+          IngestionMetadataRetriever ingestionMetadataRetriever,
+          ReadMetadataRetriever readMetadataRetriever,
           DiskHealthCheckService diskHealthService,
           boolean fastAvroEnabled,
           boolean parallelBatchGetEnabled,
@@ -86,7 +90,8 @@ public class TestVeniceServer extends VeniceServer {
             storageEngineRepository,
             metadataRepository,
             schemaRepository,
-            metadataRetriever,
+            ingestionMetadataRetriever,
+            readMetadataRetriever,
             diskHealthService,
             fastAvroEnabled,
             parallelBatchGetEnabled,

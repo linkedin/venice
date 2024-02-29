@@ -56,6 +56,8 @@ public interface StoreMetadata extends SchemaReader {
 
   VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version);
 
+  int getBatchGetLimit();
+
   void start();
 
   default boolean isReady() {

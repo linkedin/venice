@@ -5,7 +5,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
-import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -14,7 +14,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * An interface for Store Ingestion Service for Venice.
  */
-public interface StoreIngestionService extends MetadataRetriever {
+public interface StoreIngestionService extends IngestionMetadataRetriever {
   /**
    * Starts consuming messages from Kafka Partition corresponding to Venice Partition.
    * @param veniceStore Venice Store for the partition.

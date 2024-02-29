@@ -19,20 +19,13 @@ import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.listener.response.MetadataResponse;
-import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.meta.ClusterInfoProvider;
-import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.Partition;
-import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -44,7 +37,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
@@ -61,13 +53,10 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import java.util.Collections;
-import java.util.List;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -86,8 +75,6 @@ public abstract class KafkaStoreIngestionServiceTest {
   private ClusterInfoProvider mockClusterInfoProvider;
   private ReadOnlyStoreRepository mockMetadataRepo;
   private ReadOnlySchemaRepository mockSchemaRepo;
-  private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
-  private HelixInstanceConfigRepository mockHelixInstanceConfigRepository;
   private ReadOnlyLiveClusterConfigRepository mockLiveClusterConfigRepo;
   private PubSubClientsFactory mockPubSubClientsFactory;
   private StorageEngineBackedCompressorFactory compressorFactory;
@@ -104,8 +91,6 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
-    mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
-    mockHelixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
     mockLiveClusterConfigRepo = mock(ReadOnlyLiveClusterConfigRepository.class);
     mockPubSubClientsFactory = new PubSubClientsFactory(
         mock(PubSubProducerAdapterFactory.class),
@@ -164,8 +149,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockClusterInfoProvider,
         mockMetadataRepo,
         mockSchemaRepo,
-        Optional.empty(),
-        Optional.empty(),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -250,8 +233,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockClusterInfoProvider,
         mockMetadataRepo,
         mockSchemaRepo,
-        Optional.empty(),
-        Optional.empty(),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -340,8 +321,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockClusterInfoProvider,
         mockMetadataRepo,
         mockSchemaRepo,
-        Optional.empty(),
-        Optional.empty(),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -407,8 +386,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockClusterInfoProvider,
         mockMetadataRepo,
         mockSchemaRepo,
-        Optional.empty(),
-        Optional.empty(),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -468,85 +445,5 @@ public abstract class KafkaStoreIngestionServiceTest {
         spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService(consumerProperties));
     kafkaStoreIngestionService.getTopicPartitionIngestionContext(topicName, topicName, 0);
     verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFromConsumer(pubSubTopic, pubSubTopicPartition);
-  }
-
-  @Test
-  public void testGetMetadata() {
-    MetricsRepository metricsRepository = new MetricsRepository();
-    kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        mockStorageEngineRepository,
-        mockVeniceConfigLoader,
-        storageMetadataService,
-        mockClusterInfoProvider,
-        mockMetadataRepo,
-        mockSchemaRepo,
-        Optional.of(CompletableFuture.completedFuture(mockCustomizedViewRepository)),
-        Optional.of(CompletableFuture.completedFuture(mockHelixInstanceConfigRepository)),
-        mockLiveClusterConfigRepo,
-        metricsRepository,
-        Optional.empty(),
-        Optional.empty(),
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-        Optional.empty(),
-        null,
-        false,
-        compressorFactory,
-        Optional.empty(),
-        null,
-        false,
-        null,
-        mockPubSubClientsFactory,
-        Optional.empty(),
-        null);
-    String storeName = "test-store";
-    String otherStoreName = "test-store2";
-    Store mockStore = new ZKStore(
-        storeName,
-        "unit-test",
-        0,
-        PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS,
-        1);
-    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
-    mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id2"));
-    mockStore.setCurrentVersion(2);
-    String topicName = Version.composeKafkaTopic(storeName, 2);
-    PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
-    Partition partition = mock(Partition.class);
-    doReturn(0).when(partition).getId();
-    List<Instance> readyToServeInstances = Collections.singletonList(new Instance("host1", "host1", 1234));
-    doReturn(readyToServeInstances).when(partition).getReadyToServeInstances();
-    partitionAssignment.addPartition(partition);
-
-    String schema = "\"string\"";
-    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
-    Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, schema));
-    Mockito.when(mockSchemaRepo.getValueSchemas(storeName))
-        .thenReturn(Collections.singletonList(new SchemaEntry(0, schema)));
-    Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
-    Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
-
-    MetadataResponse metadataResponse = kafkaStoreIngestionService.getMetadata(storeName);
-    Assert.assertNotNull(metadataResponse);
-    Assert.assertEquals(metadataResponse.getResponseRecord().getKeySchema().get("0"), "\"string\"");
-    // Verify the metadata
-    Assert.assertEquals(metadataResponse.getResponseRecord().getVersions().size(), 2);
-    VersionProperties versionProperties = metadataResponse.getResponseRecord().getVersionMetadata();
-    Assert.assertNotNull(versionProperties);
-    Assert.assertEquals(versionProperties.getCurrentVersion(), 2);
-    Assert.assertEquals(versionProperties.getPartitionCount(), 1);
-    Assert.assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
-    String metadataInvokeMetricName = "." + storeName + "--request_based_metadata_invoke_count.Rate";
-    String metadataFailureMetricName = "." + storeName + "--request_based_metadata_failure_count.Rate";
-    Assert.assertTrue(metricsRepository.getMetric(metadataInvokeMetricName).value() > 0);
-    Assert.assertEquals(metricsRepository.getMetric(metadataFailureMetricName).value(), 0d);
-
-    ServerCurrentVersionResponse currentVersionResponse =
-        kafkaStoreIngestionService.getCurrentVersionResponse(storeName);
-    Assert.assertNotNull(currentVersionResponse);
-    Assert.assertEquals(currentVersionResponse.getCurrentVersion(), 2);
-
   }
 }

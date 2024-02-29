@@ -145,7 +145,6 @@ public class VeniceGrpcEndToEndTest {
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
             .setSpeculativeQueryEnabled(false);
 
@@ -197,7 +196,6 @@ public class VeniceGrpcEndToEndTest {
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
             .setSpeculativeQueryEnabled(false);
 
@@ -205,7 +203,6 @@ public class VeniceGrpcEndToEndTest {
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setUseGrpc(true)
             .setGrpcClientConfig(grpcClientConfig)
-            .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
             .setSpeculativeQueryEnabled(false);
 
@@ -261,7 +258,6 @@ public class VeniceGrpcEndToEndTest {
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
             .setSpeculativeQueryEnabled(false);
 
@@ -269,7 +265,6 @@ public class VeniceGrpcEndToEndTest {
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setUseGrpc(true)
             .setGrpcClientConfig(grpcClientConfig)
-            .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
             .setSpeculativeQueryEnabled(false);
 
@@ -309,7 +304,6 @@ public class VeniceGrpcEndToEndTest {
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(fastR2Client)
-            .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
             .setSpeculativeQueryEnabled(false);
 
@@ -317,7 +311,6 @@ public class VeniceGrpcEndToEndTest {
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setUseGrpc(true)
             .setGrpcClientConfig(grpcClientConfig)
-            .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
             .setSpeculativeQueryEnabled(false);
 

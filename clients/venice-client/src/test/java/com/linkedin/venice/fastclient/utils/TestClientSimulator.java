@@ -531,7 +531,6 @@ public class TestClientSimulator implements Client {
     clientConfigBuilder.setR2Client(this);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(speculativeQueryEnabled);
-    clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(1000);
     if (longTailRetryEnabledForBatchGet) {
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true);
       clientConfigBuilder
@@ -624,6 +623,11 @@ public class TestClientSimulator implements Client {
       @Override
       public DerivedSchemaEntry getLatestUpdateSchema() {
         return null;
+      }
+
+      @Override
+      public int getBatchGetLimit() {
+        return 1000;
       }
     };
 
