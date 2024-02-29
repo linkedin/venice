@@ -35,12 +35,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
 
   @Override
   public synchronized void loadAllStats() {
-    metadataRepository.getAllStores().forEach(store -> {
-      if (isStoreAssignedToThisNode(store.getName())) {
-        addStore(store.getName());
-        updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
-      }
-    });
+    // No-op
   }
 
   @Override
