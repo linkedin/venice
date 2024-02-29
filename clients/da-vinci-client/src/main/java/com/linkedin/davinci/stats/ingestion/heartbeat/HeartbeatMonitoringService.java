@@ -95,12 +95,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> heartbeatTimestamps,
       Version version,
       int partition) {
-    heartbeatTimestamps.computeIfPresent(version.getStoreName(), (storeKey, map1) -> {
-      map1.computeIfPresent(version.getNumber(), (versionKey, map2) -> {
-        map2.remove(partition);
-        return map2;
+    heartbeatTimestamps.computeIfPresent(version.getStoreName(), (storeKey, versionMap) -> {
+      versionMap.computeIfPresent(version.getNumber(), (versionKey, partitionMap) -> {
+        partitionMap.remove(partition);
+        return partitionMap;
       });
-      return map1;
+      return versionMap;
     });
   }
 
