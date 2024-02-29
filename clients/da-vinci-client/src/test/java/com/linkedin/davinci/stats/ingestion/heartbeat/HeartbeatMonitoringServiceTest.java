@@ -60,6 +60,8 @@ public class HeartbeatMonitoringServiceTest {
     // Let's emit some heartbeats that don't exist in the registry yet
     heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, 1000L);
     heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 0, LOCAL_FABRIC, 1000L);
+    // and throw a null at it too for good measure
+    heartbeatMonitoringService.recordFollowerHeartbeat(TEST_STORE, 2, 0, null, 1000L);
 
     // Since we haven't gotten a signal to handle these heartbeats, we discard them.
     Assert.assertNull(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE));
