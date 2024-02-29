@@ -12,8 +12,8 @@ import java.util.function.Supplier;
 
 
 public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<HeartbeatStat, HeartbeatStatReporter> {
-  private Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> leaderMonitors;
-  private Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> followerMonitors;
+  private final Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> leaderMonitors;
+  private final Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> followerMonitors;
 
   public HeartbeatVersionedStats(
       MetricsRepository metricsRepository,
