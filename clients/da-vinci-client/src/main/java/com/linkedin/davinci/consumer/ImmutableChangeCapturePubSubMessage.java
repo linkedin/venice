@@ -69,4 +69,10 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   public boolean isEndOfBootstrap() {
     return isEndOfBootstrap;
   }
+
+  @Override
+  public String toString() {
+    return "PubSubMessage{" + topicPartition + ", offset=" + offset + ", timestamp=" + timestamp + ", isEndOfBootstrap="
+        + isEndOfBootstrap + '}';
+  }
 }
