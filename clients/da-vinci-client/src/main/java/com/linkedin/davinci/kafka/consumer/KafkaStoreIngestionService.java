@@ -189,8 +189,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ResourceAutoClosableLockManager<String> topicLockManager;
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private Optional<SSLFactory> sslFactory;
-
   private KafkaValueSerializer kafkaValueSerializer;
 
   public KafkaStoreIngestionService(
@@ -227,7 +225,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.compressorFactory = compressorFactory;
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
-    this.sslFactory = sslFactory;
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     Properties veniceWriterProperties =
