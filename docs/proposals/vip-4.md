@@ -24,6 +24,25 @@ Currently, the sequence of steps happening within a push job is as follows:
 
 ![Push Job Steps](../assets/images/push_job_steps.drawio.svg)
 
+A few notes on the above diagram:
+
+* A new schema will be registered only if the data being pushed does not conform to any already known schema, and 
+  the schema auto-registration config is enabled. If that config is disabled, then an unknown schema leads to job 
+  failure.
+
+* The compression job is optional, and whether it runs or not depends on configurations.
+
+* The data push job writes to a store-version pub sub topic in one of the regions (typically the one which is local to
+  where the push job is running), but all regions start ingesting right away, as soon as the data push job begins 
+  writing. For regions that are remote from the topic the data push job is writing to, the leader servers are performing 
+  replication, while in the region which contains that topic, the replication is a no-op.
+
+* The `SERVING` step is also called "version swap". If there are Da Vinci Clients, they will ingest and swap on their
+  own, and the child controller of that region will wait until all DVC instances have swapped (started serving) before
+  enacting the region-level swap, after which the servers will also start serving the new store-version to clients which
+  perform remote queries. That is why the "DVC Read Traffic SERVING" step is a dependency for the "Server Read Traffic
+  SERVING" step.
+
 ## Problem Statement 
 
 Pushing to all regions in parallel makes the push faster, but it also means that if the push causes an issue, the impact
@@ -68,6 +87,13 @@ The goal is for lifecycle hooks to achieve the following use cases:
     * Having the ability to abort the swapping of a store-version to further regions.
     * Having the ability to rollback to the previous store-version in regions that already swapped.
 * Trigger informational events in proprietary monitoring systems after important lifecycle milestones are completed.
+
+The above use cases all are operator-centric, and so (at least for now) there is no concern of making it very ergonomic
+for Venice users to register new hooks or evolve old hooks dynamically. The general expectation is that there would be
+a small number of hooks maintained by the Venice operators and that it's ok for hooks to be bundled and upgraded 
+alongside the Venice components. In cases where Venice users need to customize hook behaviors, that could be achieved
+via store-level configs passed into hooks, and there is no need to provide the flexibility of letting users register
+whole new hook implementations.
 
 ## Project Justification
 
@@ -152,6 +178,9 @@ There needs to be new configs:
 
 * `venice.store.lifecycle.hooks.threads`: Number of threads used by the hooks framework to execute all hooks.
 
+* `venice.store.lifecycle.hooks.timeout.seconds`: Max duration allowed for a hook before the hooks framework interrupts
+  it.
+
 * `venice.store.lifecycle.hooks.wait.interval.seconds`: The time to wait before re-invoking a hook which returned `WAIT` 
   (default: 60 seconds).
 
@@ -162,11 +191,13 @@ In addition, the store config will get a new `Map<String, String>` of store-leve
 
 ### Metrics
 
-There needs to be new metrics to monitor hook health including, for each individual hook:
+There needs to be new metrics to monitor hook health. Each new metric will be per function and per registered hooks 
+class (i.e. 13 functions per class if we implement all of them, or less if we cut the scope). For each class/function
+hook, there will be:
 
 * the occurrence rate of:
   * hook invocations
-  * each hook return signal
+  * each hook return signal (for the functions that return something other than `void`)
   * failures (exceptions)
   * timeouts
 * the time spend waiting in queue before being executed (which will be useful to determine if the thread pool count is 
