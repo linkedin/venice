@@ -16,7 +16,8 @@ import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.IngestionMetadataRetriever;
+import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -39,6 +40,7 @@ import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.ListenerService;
+import com.linkedin.venice.listener.ServerReadMetadataRepository;
 import com.linkedin.venice.listener.ServerStoreAclHandler;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
 import com.linkedin.venice.meta.IngestionMode;
@@ -115,6 +117,7 @@ public class VeniceServer {
   private ICProvider icProvider;
   StorageEngineBackedCompressorFactory compressorFactory;
   private HeartbeatMonitoringService heartbeatMonitoringService;
+  private ServerReadMetadataRepository serverReadMetadataRepository;
 
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
@@ -393,8 +396,6 @@ public class VeniceServer {
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),
         metadataRepo,
         schemaRepo,
-        Optional.of(customizedViewFuture),
-        Optional.of(helixInstanceFuture),
         liveClusterConfigRepo,
         metricsRepository,
         kafkaMessageEnvelopeSchemaReader,
@@ -442,6 +443,13 @@ public class VeniceServer {
         new StoreValueSchemasCacheService(metadataRepo, schemaRepo);
     services.add(storeValueSchemasCacheService);
 
+    serverReadMetadataRepository = new ServerReadMetadataRepository(
+        metricsRepository,
+        metadataRepo,
+        schemaRepo,
+        Optional.of(customizedViewFuture),
+        Optional.of(helixInstanceFuture));
+
     // create and add ListenerServer for handling GET requests
     ListenerService listenerService = createListenerService(
         storageService.getStorageEngineRepository(),
@@ -449,6 +457,7 @@ public class VeniceServer {
         storeValueSchemasCacheService,
         customizedViewFuture,
         kafkaStoreIngestionService,
+        serverReadMetadataRepository,
         serverConfig,
         metricsRepository,
         sslFactory,
@@ -702,7 +711,8 @@ public class VeniceServer {
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
-      MetadataRetriever metadataRetriever,
+      IngestionMetadataRetriever ingestionMetadataRetriever,
+      ReadMetadataRetriever readMetadataRetriever,
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
       Optional<SSLFactory> sslFactory,
@@ -716,7 +726,8 @@ public class VeniceServer {
         storeMetadataRepository,
         schemaRepository,
         customizedViewRepository,
-        metadataRetriever,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
         serverConfig,
         metricsRepository,
         sslFactory,

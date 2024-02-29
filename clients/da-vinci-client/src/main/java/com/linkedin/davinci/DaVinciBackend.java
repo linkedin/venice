@@ -241,8 +241,6 @@ public class DaVinciBackend implements Closeable {
           clusterInfoProvider,
           storeRepository,
           schemaRepository,
-          Optional.empty(),
-          Optional.empty(),
           null,
           metricsRepository,
           Optional.of(kafkaMessageEnvelopeSchemaReader),
