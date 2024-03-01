@@ -40,9 +40,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
 
   @Override
   public void handleStoreCreated(Store store) {
-    if (isStoreAssignedToThisNode(store.getName())) {
-      addStore(store.getName());
-    }
+    // No-op
   }
 
   @Override
