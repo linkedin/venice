@@ -63,47 +63,46 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         metricsRepository,
         metadataRepository,
         () -> new HeartbeatStat(new MetricConfig(), regionNames),
-        (aMetricsRepository, s) -> new HeartbeatStatReporter(aMetricsRepository, s, regionNames));
+        (aMetricsRepository, s) -> new HeartbeatStatReporter(aMetricsRepository, s, regionNames),
+        leaderHeartbeatTimeStamps,
+        followerHeartbeatTimeStamps);
   }
 
   private synchronized void initializeEntry(
       Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> heartbeatTimestamps,
       Version version,
-      int partition) {
+      int partition,
+      boolean isFollower) {
     // We don't monitor heartbeat lag for non hybrid versions
     if (version.getHybridStoreConfig() == null) {
       return;
     }
-    if (heartbeatTimestamps.get(version.getStoreName()) == null) {
-      heartbeatTimestamps.put(version.getStoreName(), new VeniceConcurrentHashMap<>());
-    }
-    if (heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()) == null) {
-      heartbeatTimestamps.get(version.getStoreName()).put(version.getNumber(), new VeniceConcurrentHashMap<>());
-    }
-    if (heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()).get(partition) == null) {
-      Map<String, Long> regionTimestamps = new VeniceConcurrentHashMap<>();
-      if (version.isActiveActiveReplicationEnabled()) {
-        for (String region: regionNames) {
-          regionTimestamps.put(region, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
-        }
-      } else {
-        regionTimestamps.put(localRegionName, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
-      }
-      heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()).put(partition, regionTimestamps);
-    }
+    heartbeatTimestamps.computeIfAbsent(version.getStoreName(), storeKey -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(version.getNumber(), versionKey -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, partitionKey -> {
+          Map<String, Long> regionTimestamps = new VeniceConcurrentHashMap<>();
+          if (version.isActiveActiveReplicationEnabled() && !isFollower) {
+            for (String region: regionNames) {
+              regionTimestamps.put(region, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
+            }
+          } else {
+            regionTimestamps.put(localRegionName, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
+          }
+          return regionTimestamps;
+        });
   }
 
   private synchronized void removeEntry(
       Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> heartbeatTimestamps,
       Version version,
       int partition) {
-    if (heartbeatTimestamps.get(version.getStoreName()) != null) {
-      if (heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()) != null) {
-        if (heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()).get(partition) != null) {
-          heartbeatTimestamps.get(version.getStoreName()).get(version.getNumber()).remove(partition);
-        }
-      }
-    }
+    heartbeatTimestamps.computeIfPresent(version.getStoreName(), (storeKey, versionMap) -> {
+      versionMap.computeIfPresent(version.getNumber(), (versionKey, partitionMap) -> {
+        partitionMap.remove(partition);
+        return partitionMap;
+      });
+      return versionMap;
+    });
   }
 
   /**
@@ -114,7 +113,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addFollowerLagMonitor(Version version, int partition) {
-    initializeEntry(followerHeartbeatTimeStamps, version, partition);
+    initializeEntry(followerHeartbeatTimeStamps, version, partition, true);
     removeEntry(leaderHeartbeatTimeStamps, version, partition);
   }
 
@@ -126,7 +125,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addLeaderLagMonitor(Version version, int partition) {
-    initializeEntry(leaderHeartbeatTimeStamps, version, partition);
+    initializeEntry(leaderHeartbeatTimeStamps, version, partition, false);
     removeEntry(followerHeartbeatTimeStamps, version, partition);
   }
 
@@ -186,14 +185,17 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       String region,
       Long timestamp,
       Map<String, Map<Integer, Map<Integer, Map<String, Long>>>> heartbeatTimestamps) {
-    if (heartbeatTimestamps.get(store) != null) {
-      if (heartbeatTimestamps.get(store).get(version) != null) {
-        if (heartbeatTimestamps.get(store).get(version).get(partition) != null) {
-          if (region != null) {
-            heartbeatTimestamps.get(store).get(version).get(partition).put(region, timestamp);
-          }
-        }
-      }
+    if (region != null) {
+      heartbeatTimestamps.computeIfPresent(store, (storeKey, perVersionMap) -> {
+        perVersionMap.computeIfPresent(version, (versionKey, perPartitionMap) -> {
+          perPartitionMap.computeIfPresent(partition, (partitionKey, perRegionMap) -> {
+            perRegionMap.put(region, timestamp);
+            return perRegionMap;
+          });
+          return perPartitionMap;
+        });
+        return perVersionMap;
+      });
     }
   }
 

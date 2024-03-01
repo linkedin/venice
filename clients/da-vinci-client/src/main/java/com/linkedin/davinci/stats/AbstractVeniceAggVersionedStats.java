@@ -50,7 +50,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     loadAllStats();
   }
 
-  public final synchronized void loadAllStats() {
+  public synchronized void loadAllStats() {
     metadataRepository.getAllStores().forEach(store -> {
       addStore(store.getName());
       updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
@@ -85,7 +85,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     return stats;
   }
 
-  private VeniceVersionedStats<STATS, STATS_REPORTER> addStore(String storeName) {
+  protected VeniceVersionedStats<STATS, STATS_REPORTER> addStore(String storeName) {
     return aggStats.computeIfAbsent(
         storeName,
         s -> new VeniceVersionedStats<>(metricsRepository, storeName, statsInitiator, reporterSupplier));
