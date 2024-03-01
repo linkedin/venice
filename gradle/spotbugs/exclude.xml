@@ -430,6 +430,7 @@
       <Class name="com.linkedin.venice.controller.VeniceParentHelixAdmin"/>
       <Class name="com.linkedin.venice.controller.VeniceHelixAdmin"/>
       <Class name="com.linkedin.davinci.kafka.consumer.ActiveActiveStoreIngestionTask"/>
+      <Class name="com.linkedin.davinci.kafka.consumer.StoreBufferService"/>
     </Or>
   </Match>
   <Match>

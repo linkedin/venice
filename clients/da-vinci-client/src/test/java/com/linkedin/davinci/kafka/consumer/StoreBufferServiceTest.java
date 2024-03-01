@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -25,8 +25,11 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.nio.ByteBuffer;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
@@ -39,10 +42,17 @@ public class StoreBufferServiceTest {
   private final LeaderProducedRecordContext leaderContext =
       LeaderProducedRecordContext.newPutRecord(0, 0, key.getKey(), put);
   private static final int TIMEOUT_IN_MS = 1000;
+  private final MetricsRepository mockMetricRepo = mock(MetricsRepository.class);
+
+  @BeforeClass
+  public void setUp() {
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
+  }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRun(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockMetricRepo);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;
@@ -83,7 +93,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRunWhenThrowException(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockMetricRepo);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;
@@ -112,7 +122,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testDrainBufferedRecordsWhenNotExists(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockMetricRepo);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition = 1;
@@ -133,7 +143,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testDrainBufferedRecordsWhenExists(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockMetricRepo);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition = 1;
@@ -164,7 +174,7 @@ public class StoreBufferServiceTest {
     doReturn(1000l).when(serverConfig).getStoreWriterBufferNotifyDelta();
     doReturn(10000l).when(serverConfig).getStoreWriterBufferMemoryCapacity();
     doReturn(queueLeaderWrites).when(serverConfig).isStoreWriterBufferAfterLeaderLogicEnabled();
-    SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(serverConfig);
+    SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(serverConfig, mockMetricRepo);
     for (int partition = 0; partition < partitionCount; ++partition) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
           new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
@@ -198,7 +208,7 @@ public class StoreBufferServiceTest {
     for (int i = 0; i < drainerNum; ++i) {
       drainerPartitionCount[i] = 0;
     }
-    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites, mockMetricRepo);
     for (int partition = 0; partition < partitionCount; ++partition) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
           new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
@@ -213,7 +223,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRunWhenThrowVeniceCheckSumFailException(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockMetricRepo);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;

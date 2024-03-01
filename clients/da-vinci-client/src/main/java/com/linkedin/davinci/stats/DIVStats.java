@@ -19,6 +19,7 @@ public class DIVStats {
   private final WritePathLatencySensor localBrokerFollowerConsumerLatencySensor;
   private final WritePathLatencySensor producerFollowerConsumerLatencySensor;
   private final WritePathLatencySensor leaderProducerCompletionLatencySensor;
+  private final WritePathLatencySensor leaderDIVCompletionLatencySensor;
   private final LongAdder duplicateMsg = new LongAdder();
   private final LongAdder successMsg = new LongAdder();
 
@@ -56,6 +57,8 @@ public class DIVStats {
         new WritePathLatencySensor(localRepository, metricConfig, "producer_to_follower_consumer_latency");
     leaderProducerCompletionLatencySensor =
         new WritePathLatencySensor(localRepository, metricConfig, "leader_producer_completion_latency");
+    leaderDIVCompletionLatencySensor =
+        new WritePathLatencySensor(localRepository, metricConfig, "leader_div_completion_latency");
   }
 
   public long getDuplicateMsg() {
@@ -162,6 +165,14 @@ public class DIVStats {
 
   public WritePathLatencySensor getLeaderProducerCompletionLatencySensor() {
     return leaderProducerCompletionLatencySensor;
+  }
+
+  public WritePathLatencySensor getLeaderDIVCompletionLatencySensor() {
+    return leaderDIVCompletionLatencySensor;
+  }
+
+  public void recordLeaderDIVCompletionLatencyMs(double value, long currentTimeMs) {
+    leaderDIVCompletionLatencySensor.record(value, currentTimeMs);
   }
 
   public synchronized void recordBenignLeaderOffsetRewind() {

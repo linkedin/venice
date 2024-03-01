@@ -28,7 +28,6 @@ import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
-import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -345,21 +344,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
     this.versionedIngestionStats = new AggVersionedIngestionStats(metricsRepository, metadataRepo, serverConfig);
     if (serverConfig.isDedicatedDrainerQueueEnabled()) {
-      this.storeBufferService = new SeparatedStoreBufferService(serverConfig);
+      this.storeBufferService = new SeparatedStoreBufferService(serverConfig, metricsRepository);
     } else {
       this.storeBufferService = new StoreBufferService(
           serverConfig.getStoreWriterNumber(),
           serverConfig.getStoreWriterBufferMemoryCapacity(),
           serverConfig.getStoreWriterBufferNotifyDelta(),
-          serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled());
+          serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
+          metricsRepository);
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
-    /**
-     * Collect metrics for {@link #storeBufferService}.
-     * Since all the metrics will be collected passively, there is no need to
-     * keep the reference of this {@link StoreBufferServiceStats} variable.
-     */
-    new StoreBufferServiceStats(metricsRepository, this.storeBufferService);
 
     if (clientConfig.isPresent()) {
       String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();

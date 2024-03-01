@@ -55,6 +55,7 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
       registerLatencySensor("local_broker_to_follower_consumer", DIVStats::getLocalBrokerFollowerConsumerLatencySensor);
       registerLatencySensor("producer_to_follower_consumer", DIVStats::getProducerFollowerConsumerLatencySensor);
       registerLatencySensor("leader_producer_completion", DIVStats::getLeaderProducerCompletionLatencySensor);
+      registerLatencySensor("leader_div_completion", DIVStats::getLeaderDIVCompletionLatencySensor);
     }
   }
 

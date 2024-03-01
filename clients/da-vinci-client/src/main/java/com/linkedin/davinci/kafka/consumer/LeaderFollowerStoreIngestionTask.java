@@ -2236,6 +2236,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerRecord,
             isEndOfPushReceived,
             partitionConsumptionState);
+        versionedDIVStats.recordLeaderDIVCompletionTime(
+            storeName,
+            versionNumber,
+            LatencyUtils.getElapsedTimeInMs(currentTimeForMetricsMs),
+            currentTimeForMetricsMs);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!isEndOfPushReceived) {
