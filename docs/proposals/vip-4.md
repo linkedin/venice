@@ -127,34 +127,49 @@ The main design consideration is where to execute the hooks. At a high level, th
 It is also possible to consider invoking some hooks in one of these location while other hooks would be executed 
 elsewhere. The table below summarizes the feasibility and tradeoffs for each of the proposed hooks:
 
-|                                              | Child Controller | Parent Controller | Push Job |
-|---------------------------------------------:|:----------------:|:-----------------:|:--------:|
-|                          `preStartOfPushJob` |        ❌         |         ✅         |    ✅     |
-|                         `postStartOfPushJob` |        ❌         |         ✅         |    ✅     |
-|                      `preSchemaRegistration` |        ❌         |         ✅         |   1️⃣    |
-|                     `postSchemaRegistration` |        ✅         |         ✅         |   1️⃣    |
-|                    `preStoreVersionCreation` |        ✅         |         ✅         |    ✅     |
-|                   `postStoreVersionCreation` |        ✅         |         ✅         |    ✅     |
-|  `preStartOfStoreVersionIngestionForDaVinci` |       2️⃣        |        2️⃣        |   2️⃣    |
-| `postStartOfStoreVersionIngestionForDaVinci` |       2️⃣        |        2️⃣        |   2️⃣    |
-|          `postStoreVersionLeaderReplication` |        ✅         |         ❌         |    ❌     |
-|                        `preStoreVersionSwap` |        ✅         |         ✅         |    ✅     |
-|                       `postStoreVersionSwap` |        ✅         |         ✅         |    ✅     |
-|                            `preEndOfPushJob` |        ✅         |         ✅         |    ✅     |
-|                           `postEndOfPushJob` |        ✅         |         ✅         |    ✅     |
+|                                              | Available Actions | Child Controller | Parent Controller | Push Job |
+|---------------------------------------------:|:-----------------:|:----------------:|:-----------------:|:--------:|
+|                         `validateHookConfig` |       ➡️ ☠️       |        ❌         |         ✅         |    ❌     |
+|                          `preStartOfPushJob` |       ➡️ ☠️       |        ❌         |         ✅         |    ✅     |
+|                         `postStartOfPushJob` |       None        |        ❌         |         ✅         |    ✅     |
+|                      `preSchemaRegistration` |       ➡️ ☠️       |        ❌         |         ✅         |   1️⃣    |
+|                     `postSchemaRegistration` |       None        |        ✅         |         ✅         |   1️⃣    |
+|                    `preStoreVersionCreation` |    ➡️ ☠️ ✋ ↩️     |        ✅         |         ✅         |    ✅     |
+|                   `postStoreVersionCreation` |       None        |        ✅         |         ✅         |    ✅     |
+|  `preStartOfStoreVersionIngestionForDaVinci` |    ➡️ ☠️ ✋ ↩️     |       2️⃣        |        2️⃣        |   2️⃣    |
+| `postStartOfStoreVersionIngestionForDaVinci` |    ➡️ ☠️ ✋ ↩️     |       2️⃣        |        2️⃣        |   2️⃣    |
+|          `postStoreVersionLeaderReplication` |       None        |        ✅         |         ❌         |    ❌     |
+|                        `preStoreVersionSwap` |    ➡️ ☠️ ✋ ↩️     |        ✅         |         ✅         |    ✅     |
+|                       `postStoreVersionSwap` |    ➡️ ☠️ ✋ ↩️     |        ✅         |         ✅         |    ✅     |
+|                            `preEndOfPushJob` |    ➡️ ☠️ ✋ ↩️     |        ✅         |         ✅         |    ✅     |
+|                           `postEndOfPushJob` |       None        |        ✅         |         ✅         |    ✅     |
 
-The cells with numbers in them represent special cases, which are explained below:
+**Legend:**
 
-1️⃣ : Schema registration hooks in push jobs could only be invoked in cases where auto-registration is enabled and the 
-new schema originates from the push job itself, whereas schema registrations which are performed directly on the 
-controller could not trigger the hook.
+* ➡️ Proceed: Move forward with this step.
 
-2️⃣ : The hook for the start of ingestion for Da Vinci Clients is tricky for a few reasons. The start of ingestion is 
-controlled by updating the Meta Store, which is a non-replicated system store updated by child controllers, so those
-must be involved (either by running the hook there in the first place, or by having some mechanism that enables the
-parent or VPJ to inform the child controllers of when the system store is eligible for getting updated, such as by
-adding a new field to the `AddVersion` admin channel command). However, see Rollback Support below for why running hooks
-in the child controller may be insufficient.
+* ☠️ Abort: Cancel this step (and as a consequence, short-circuit any future step that would come after this one).
+
+* ✋ Wait: Let the hooks framework re-run this step later (i.e. 1 minute later, by default).
+
+* ↩️ Rollback: Let the store go back to the store-version it had prior to beginning the push job (in all regions). 
+
+* ✅ It is feasible to implement this hook within this component (without unreasonable complexity).
+
+* ❌ It is NOT feasible to implement this hook within this component (without unreasonable complexity).
+
+* The cells with numbers in them represent special cases, which are explained below:
+
+  * 1️⃣ Schema registration hooks in push jobs could only be invoked in cases where auto-registration is enabled and 
+  the new schema originates from the push job itself, whereas schema registrations which are performed directly on the 
+  controller could not trigger the hook.
+
+  * 2️⃣ The hook for the start of ingestion for Da Vinci Clients is tricky for a few reasons. The start of ingestion is 
+  controlled by updating the Meta Store, which is a non-replicated system store updated by child controllers, so those
+  must be involved (either by running the hook there in the first place, or by having some mechanism that enables the
+  parent or VPJ to inform the child controllers of when the system store is eligible for getting updated, such as by
+  adding a new field to the `AddVersion` admin channel command). However, see Rollback Support below for why running 
+  hooks in the child controller may be insufficient.
 
 ### Rollback Support
 
@@ -187,7 +202,11 @@ There needs to be new configs:
 * `venice.store.lifecycle.hooks.configs.<arbitrary>`: Any number of configs to be passed (after clipping everything
   before the `<arbitrary>` part) into the hooks constructor.
 
-In addition, the store config will get a new `Map<String, String>` of store-level config overrides.
+In addition, the store config will get a new `Map<String, String>` of store-level config overrides. Those configs are
+"[stringly-typed](https://wiki.c2.com/?StringlyTyped)", rather than strongly-typed, since we are not aware of the 
+configs needed by each hook at compile-time, and we therefore cannot shape the definition of the store config schema 
+accordingly. This issue is mitigated via the `validateHookConfig`, which can be used to prevent invalid configs from
+entering the system.
 
 ### Metrics
 

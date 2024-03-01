@@ -77,6 +77,28 @@ public abstract class StoreLifecycleHooks {
   }
 
   /**
+   * Invoked prior to updating a store's config with a given hook config. If the hook implementation recognizes the
+   * config key and the associated config value is valid (e.g. can be parsed or cast to the correct type), then it
+   * should return {@link StoreLifecycleEventOutcome#PROCEED}, otherwise it should return
+   * {@link StoreLifecycleEventOutcome#ABORT}.<br>
+   * <br>
+   * Note that there is a single hook config bag shared by all registered hooks, and so config keys should be namespaced
+   * in order to avoid collisions (unless a given config key is intended to control similar behavior in many hooks).<br>
+   * <br>
+   * The hooks framework will reject the store config update if all registered hooks return the ABORT signal, and will
+   * accept it if at least one registered hook returns the PROCEED signal.<br>
+   * <br>
+   * Cardinality: once per config key/value pair included in a store update command.
+   */
+  public StoreLifecycleEventOutcome validateHookConfig(
+      String clusterName,
+      String storeName,
+      String configKey,
+      String configValue) {
+    return StoreLifecycleEventOutcome.PROCEED;
+  }
+
+  /**
    * Invoked prior to starting a new job. The hook has the option of aborting the job.<br>
    * <br>
    * N.B.: this hook returns a {@link StoreLifecycleEventOutcome}, and not a {@link StoreVersionLifecycleEventOutcome},
