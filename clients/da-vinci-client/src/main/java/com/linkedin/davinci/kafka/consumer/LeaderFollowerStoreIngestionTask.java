@@ -2239,7 +2239,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         versionedDIVStats.recordLeaderDIVCompletionTime(
             storeName,
             versionNumber,
-            LatencyUtils.getElapsedTimeInMs(beforeProcessingBatchRecordsTimestampMs),
+            LatencyUtils.getElapsedTimeInMs(beforeProcessingPerRecordTimestampNs),
             beforeProcessingBatchRecordsTimestampMs);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
