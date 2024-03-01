@@ -2163,8 +2163,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs) {
+      long beforeProcessingPerRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
     boolean produceToLocalKafka = false;
     try {
       KafkaKey kafkaKey = consumerRecord.getKey();
@@ -2218,7 +2218,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             kafkaClusterId,
             consumerRecord.getPayloadSize(),
             consumerRecord.getOffset(),
-            currentTimeForMetricsMs);
+            beforeProcessingBatchRecordsTimestampMs);
         updateLatestInMemoryLeaderConsumedRTOffset(partitionConsumptionState, kafkaUrl, consumerRecord.getOffset());
       }
 
@@ -2239,8 +2239,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         versionedDIVStats.recordLeaderDIVCompletionTime(
             storeName,
             versionNumber,
-            LatencyUtils.getElapsedTimeInMs(currentTimeForMetricsMs),
-            currentTimeForMetricsMs);
+            LatencyUtils.getElapsedTimeInMs(beforeProcessingBatchRecordsTimestampMs),
+            beforeProcessingBatchRecordsTimestampMs);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!isEndOfPushReceived) {
@@ -2302,7 +2302,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 subPartition,
                 kafkaUrl,
                 kafkaClusterId,
-                beforeProcessingRecordTimestampNs);
+                beforeProcessingPerRecordTimestampNs);
             break;
           case START_OF_SEGMENT:
           case END_OF_SEGMENT:
@@ -2336,7 +2336,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   subPartition,
                   kafkaUrl,
                   kafkaClusterId,
-                  beforeProcessingRecordTimestampNs);
+                  beforeProcessingPerRecordTimestampNs);
             } else {
               if (controlMessageType == START_OF_SEGMENT
                   && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
@@ -2347,7 +2347,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     subPartition,
                     kafkaUrl,
                     kafkaClusterId,
-                    beforeProcessingRecordTimestampNs);
+                    beforeProcessingPerRecordTimestampNs);
               } else {
                 /**
                  * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -2398,7 +2398,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 subPartition,
                 kafkaUrl,
                 kafkaClusterId,
-                beforeProcessingRecordTimestampNs);
+                beforeProcessingPerRecordTimestampNs);
             break;
           case TOPIC_SWITCH:
             /**
@@ -2428,7 +2428,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 subPartition,
                 kafkaUrl,
                 kafkaClusterId,
-                beforeProcessingRecordTimestampNs);
+                beforeProcessingPerRecordTimestampNs);
             break;
           case VERSION_SWAP:
             return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
@@ -2458,8 +2458,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             subPartition,
             kafkaUrl,
             kafkaClusterId,
-            beforeProcessingRecordTimestampNs,
-            currentTimeForMetricsMs);
+            beforeProcessingPerRecordTimestampNs,
+            beforeProcessingBatchRecordsTimestampMs);
       }
       return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
     } catch (Exception e) {

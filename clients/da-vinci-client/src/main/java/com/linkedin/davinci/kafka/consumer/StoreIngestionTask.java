@@ -1039,12 +1039,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     double elapsedTimeForPuttingIntoQueue = 0;
     int subPartition = PartitionUtils.getSubPartition(topicPartition, amplificationFactor);
     boolean metricsEnabled = emitMetrics.get();
-    long currentTimeForMetricsMs = System.currentTimeMillis();
+    long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
-      long beforeProcessingRecordTimestampNs = System.nanoTime();
+      long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
       if (partitionConsumptionState != null) {
-        partitionConsumptionState.setLatestPolledMessageTimestampInMs(currentTimeForMetricsMs);
+        partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       }
       if (!shouldProcessRecord(record, subPartition)) {
         if (partitionConsumptionState != null) {
@@ -1081,15 +1081,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestampNs,
-          currentTimeForMetricsMs);
+          beforeProcessingPerRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs);
       switch (delegateConsumerRecordResult) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = metricsEnabled ? System.nanoTime() : 0;
 
           // blocking call
           storeBufferService
-              .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingRecordTimestampNs);
+              .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingPerRecordTimestampNs);
 
           if (metricsEnabled) {
             elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
@@ -1107,7 +1107,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       totalBytesRead += record.getPayloadSize();
       // Update the latest message consumed time
       if (partitionConsumptionState != null) {
-        partitionConsumptionState.setLatestMessageConsumedTimestampInMs(currentTimeForMetricsMs);
+        partitionConsumptionState.setLatestMessageConsumedTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       }
     }
 
@@ -1121,12 +1121,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
       }
       if (elapsedTimeForPuttingIntoQueue > 0) {
-        hostLevelIngestionStats
-            .recordConsumerRecordsQueuePutLatency(elapsedTimeForPuttingIntoQueue, currentTimeForMetricsMs);
+        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
+            elapsedTimeForPuttingIntoQueue,
+            beforeProcessingBatchRecordsTimestampMs);
       }
 
-      hostLevelIngestionStats
-          .recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage(), currentTimeForMetricsMs);
+      hostLevelIngestionStats.recordStorageQuotaUsed(
+          storageUtilizationManager.getDiskQuotaUsage(),
+          beforeProcessingBatchRecordsTimestampMs);
     }
   }
 
@@ -3753,8 +3755,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs);
+      long beforeProcessingPerRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs);
 
   /**
    * This enum represents all potential results after calling {@link #delegateConsumerRecord(PubSubMessage, int, String, int, long, long)}.
