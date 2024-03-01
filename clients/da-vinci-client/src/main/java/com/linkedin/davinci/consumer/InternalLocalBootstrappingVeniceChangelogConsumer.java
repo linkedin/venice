@@ -547,14 +547,23 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       return currentPubSubPosition.comparePosition(targetPubSubPosition) > -1;
     }
 
+    /**
+     * Resets the processed record size.
+     */
     public void resetProcessedRecordSizeSinceLastSync() {
       this.processedRecordSizeSinceLastSync = 0;
     }
 
+    /**
+     * Gets the current processed record size since last sync.
+     */
     public long getProcessedRecordSizeSinceLastSync() {
       return this.processedRecordSizeSinceLastSync;
     }
 
+    /**
+     * Increases the processed record size since last sync.
+     */
     public void incrementProcessedRecordSizeSinceLastSync(int recordSize) {
       this.processedRecordSizeSinceLastSync += recordSize;
     }

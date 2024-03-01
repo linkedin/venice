@@ -21,7 +21,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private String bootstrapFileSystemPath;
   private long versionSwapDetectionIntervalTimeInMs = 600000L;
 
-  // Default is 32 MB
+  /**
+   * This will be used in BootstrappingVeniceChangelogConsumer to determine when to sync updates with the underlying
+   * storage engine, e.g. flushes entity and offset data to disk. Default is 32 MB.
+   */
   private long databaseSyncBytesInterval = 33554432;
 
   public ChangelogClientConfig(String storeName) {
@@ -144,10 +147,16 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  /**
+   * Gets the databaseSyncBytesInterval.
+   */
   public long getDatabaseSyncBytesInterval() {
     return databaseSyncBytesInterval;
   }
 
+  /**
+   * Sets the value for databaseSyncBytesInterval.
+   */
   public ChangelogClientConfig setDatabaseSyncBytesInterval(long databaseSyncBytesInterval) {
     this.databaseSyncBytesInterval = databaseSyncBytesInterval;
     return this;
