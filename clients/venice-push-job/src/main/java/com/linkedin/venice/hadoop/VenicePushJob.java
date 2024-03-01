@@ -457,15 +457,6 @@ public class VenicePushJob implements AutoCloseable {
         props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
     pushJobSettingToReturn.useMapperToBuildDict =
         props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
-    if (pushJobSettingToReturn.compressionMetricCollectionEnabled && !pushJobSettingToReturn.useMapperToBuildDict) {
-      // TODO the idea is to only have compressionMetricCollectionEnabled as a config and remove useMapperToBuildDict
-      // feature flag after its stable.
-      LOGGER.warn(
-          "Force enabling \"{}\" to support \"{}\"",
-          USE_MAPPER_TO_BUILD_DICTIONARY,
-          COMPRESSION_METRIC_COLLECTION_ENABLED);
-      pushJobSettingToReturn.useMapperToBuildDict = true;
-    }
     if (pushJobSettingToReturn.useMapperToBuildDict) {
       pushJobSettingToReturn.useMapperToBuildDictOutputPath = props
           .getString(MAPPER_OUTPUT_DIRECTORY, VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT);
@@ -1543,7 +1534,7 @@ public class VenicePushJob implements AutoCloseable {
 
         if (!pushJobSetting.useMapperToBuildDict) {
           LOGGER.info("Training Zstd dictionary");
-          compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
+          compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().trainZstdDictionary());
           pushJobSetting.isZstdDictCreationSuccess = true;
         } else {
           if (pushJobSetting.isZstdDictCreationSuccess) {

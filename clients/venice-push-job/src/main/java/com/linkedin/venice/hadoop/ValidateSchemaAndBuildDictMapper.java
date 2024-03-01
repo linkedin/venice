@@ -214,7 +214,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractDataWriterTask
                 inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
             ByteBuffer compressionDictionary;
             try {
-              compressionDictionary = ByteBuffer.wrap(inputDataInfoProvider.getZstdDictTrainSamples());
+              compressionDictionary = ByteBuffer.wrap(inputDataInfoProvider.trainZstdDictionary());
               mapperOutputRecord.put(KEY_ZSTD_COMPRESSION_DICTIONARY, compressionDictionary);
               MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
               LOGGER.info("ZSTD compression dictionary size = {} bytes", compressionDictionary.remaining());
