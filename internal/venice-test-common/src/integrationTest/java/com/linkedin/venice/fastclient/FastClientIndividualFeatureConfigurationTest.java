@@ -73,6 +73,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
     String readQuotaAllowedUnintentionally = "." + storeName + "--quota_rcu_allowed_unintentionally.Count";
     String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";
+    String errorRequestString = ".total--error_request.OccurrenceRate";
     String clientConnectionCountGaugeString = ".server_connection_stats--client_connection_count.Gauge";
     String routerConnectionCountGaugeString = ".server_connection_stats--router_connection_count.Gauge";
     String clientConnectionCountRateString = ".server_connection_stats--client_connection_request.OccurrenceRate";
@@ -83,6 +84,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
         assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
         assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
+        assertNotNull(serverMetric.getMetric(errorRequestString));
         assertNotNull(serverMetric.getMetric(readQuotaAllowedUnintentionally));
         assertNotNull(serverMetric.getMetric(clientConnectionCountGaugeString));
         assertNotNull(serverMetric.getMetric(routerConnectionCountGaugeString));
@@ -125,11 +127,17 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       assertTrue(clientException.getMessage().contains("VeniceClientRateExceededException"));
     }
     boolean readQuotaRejected = false;
+    boolean errorRequest = false;
+
     for (MetricsRepository serverMetric: serverMetrics) {
       if (serverMetric.getMetric(readQuotaRejectedString).value() > 0) {
         readQuotaRejected = true;
       }
+      if (serverMetric.getMetric(errorRequestString).value() > 0) {
+        errorRequest = true;
+      }
     }
+    assertFalse(errorRequest);
     assertTrue(readQuotaRejected);
     // Restart the servers and quota should still be working
     for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
