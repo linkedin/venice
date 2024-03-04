@@ -54,9 +54,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
       for (String clusterName: multiClusterConfig.getClusters()) {
         boolean cleanupEnabled =
             multiClusterConfig.getControllerConfig(clusterName).isUnusedValueSchemaCleanupServiceEnabled();
-        if (!cleanupEnabled) {
-          continue;
-        }
+
         // Get all stores for current cluster
         List<Store> stores = admin.getAllStores(clusterName);
         for (Store store: stores) {
@@ -86,7 +84,14 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
               inUseValueSchemaIds);
 
           if (!schemasToDelete.isEmpty()) {
-            veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
+            LOGGER.info(
+                "In cluster {}, store {} has the following unused schemas {}.",
+                clusterName,
+                storeName,
+                schemasToDelete);
+            if (cleanupEnabled) {
+              veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
+            }
           }
         }
       }
