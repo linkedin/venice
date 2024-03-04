@@ -8,7 +8,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
@@ -23,7 +22,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CON
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ABORT_MIGRATION;
@@ -35,7 +33,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_NATIVE
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ALL_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_UNUSED_VALUE_SCHEMAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
@@ -105,7 +102,6 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -282,27 +278,6 @@ public class StoresRoutes extends AbstractRoute {
         Set<Integer> schemaIds = admin.getInUseValueSchemaIds(clusterName, storeName);
         response.setInUseValueSchemaIds(schemaIds);
 
-      }
-    };
-  }
-
-  public Route deleteValueSchemas(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-      @Override
-      public void internalHandle(Request request, ControllerResponse response) {
-        AdminSparkServer.validateParams(request, DELETE_UNUSED_VALUE_SCHEMAS.getParams(), admin);
-
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        String schemaIdsString = AdminSparkServer.getOptionalParameterValue(request, VALUE_SCHEMA_IDS);
-        Set<Integer> schemaIds = schemaIdsString == null
-            ? Collections.emptySet()
-            : Arrays.stream(schemaIdsString.split(LOCKED_NODE_ID_LIST_SEPARATOR))
-                .map(String::trim)
-                .map(Integer::valueOf)
-                .collect(Collectors.toSet());
-        admin.deleteValueSchemas(clusterName, storeName, schemaIds);
-        response.setCluster(clusterName);
       }
     };
   }
