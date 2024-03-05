@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -205,14 +206,15 @@ public class StatsHandler extends ChannelDuplexHandler {
         serverStatsContext.recordBasicMetrics(serverHttpRequestStats);
         double elapsedTime = LatencyUtils.getLatencyInMS(serverStatsContext.getRequestStartTimeInNS());
         // if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
-        // records a successRequest in stats. Otherwise, records a errorRequest in stats;
+        // records a successRequest in stats. Otherwise, records a errorRequest in stats
+        // For TOO_MANY_REQUESTS do not record either success or error. Recording as success would give out
+        // wrong interpretation of latency, recording error would give out impression that server failed to serve
         if (result.isSuccess() && (serverStatsContext.getResponseStatus().equals(OK)
             || serverStatsContext.getResponseStatus().equals(NOT_FOUND))) {
           serverStatsContext.successRequest(serverHttpRequestStats, elapsedTime);
-        } else {
+        } else if (!serverStatsContext.getResponseStatus().equals(TOO_MANY_REQUESTS)) {
           serverStatsContext.errorRequest(serverHttpRequestStats, elapsedTime);
         }
-
         serverStatsContext.setStatCallBackExecuted(true);
       }
     });

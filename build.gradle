@@ -748,6 +748,7 @@ ext.createDiffFile = { ->
 
       // venice-server
       ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java',
+      ':!services/venice-server/src/main/java/com/linkedin/venice/listener/StatsHandler.java',
 
       // venice-standalone
       ':!services/venice-standalone/*', // exclude the entire standalone project
