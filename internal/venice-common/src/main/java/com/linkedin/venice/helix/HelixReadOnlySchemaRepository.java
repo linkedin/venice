@@ -528,7 +528,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  public class ValueSchemaChildListener extends SchemaChildListener {
+  class ValueSchemaChildListener extends SchemaChildListener {
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
       SchemaData schemaData = getSchemaMap().get(storeName);
