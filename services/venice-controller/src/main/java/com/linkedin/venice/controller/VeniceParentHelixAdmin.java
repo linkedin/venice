@@ -517,8 +517,7 @@ public class VeniceParentHelixAdmin implements Admin {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
-    this.unusedValueSchemaCleanupService =
-        new UnusedValueSchemaCleanupService(multiClusterConfigs, getVeniceHelixAdmin(), this);
+    this.unusedValueSchemaCleanupService = new UnusedValueSchemaCleanupService(multiClusterConfigs, this);
   }
 
   // For testing purpose.

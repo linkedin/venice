@@ -3998,7 +3998,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       StoreMetaValue metaValue = getMetaStoreValue(key, storeName);
 
       if (metaValue == null) {
-        continue;
+        String msg = "Could not find in-use value schema for store " + storeName;
+        LOGGER.warn(msg);
+        throw new VeniceException(msg);
       }
       // Skip if its recorded recently
       if (System.currentTimeMillis() < metaValue.timestamp + UNUSED_SCHEMA_DELETION_TIME_GAP) {
@@ -4013,9 +4015,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Set<Integer> inuseValueSchemaIds = getInUseValueSchemaIds(clusterName, storeName);
     boolean isCommon = unusedValueSchemaIds.stream().anyMatch(inuseValueSchemaIds::contains);
     if (isCommon) {
-      LOGGER
-          .error("For store {} cannot delete value schema ids {} as they being used.", storeName, unusedValueSchemaIds);
-      return;
+      String msg = "For store " + storeName + " cannot delete value schema ids they being used. schema ids: "
+          + unusedValueSchemaIds;
+      LOGGER.error(msg);
+      throw new VeniceException(msg);
     }
     // delete the unused schemas.
     unusedValueSchemaIds.forEach(id -> {

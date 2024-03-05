@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.linkedin.venice.meta.ReadWriteSchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -40,28 +40,26 @@ public class TestUnusedValueSchemaCleanupService {
 
   @Test
   public void testCleanupUnusedSchema() throws Exception {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1).when(config).getUnusedSchemaCleanupIntervalMinutes();
     doReturn(1).when(config).getMinSchemaCountToKeep();
     VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
     doReturn(controllerConfig).when(config).getControllerConfig(any());
+    doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(anyString());
     doReturn(true).when(controllerConfig).isUnusedValueSchemaCleanupServiceEnabled();
-    doReturn(true).when(admin).isLeaderControllerFor(any());
+    doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(any());
     Store store = mockStore();
 
     String clusterName = "test_cluster";
     Set<String> clusters = new HashSet<>();
-    HelixVeniceClusterResources helixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
-    ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
+    HelixReadOnlyZKSharedSchemaRepository schemaRepository = mock(HelixReadOnlyZKSharedSchemaRepository.class);
+    doReturn(schemaRepository).when(parentHelixAdmin).getReadOnlyZKSharedSchemaRepository();
     clusters.add(clusterName);
     doReturn(clusters).when(config).getClusters();
     List<Store> storeList = new ArrayList<>();
     storeList.add(store);
-    doReturn(storeList).when(admin).getAllStores(any());
-    doReturn(helixVeniceClusterResources).when(admin).getHelixVeniceClusterResources(anyString());
-    doReturn(schemaRepository).when(helixVeniceClusterResources).getSchemaRepository();
+    doReturn(storeList).when(parentHelixAdmin).getAllStores(any());
     SchemaEntry schemaEntry = new SchemaEntry(4, SCHEMA);
     doReturn(schemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(anyString());
     Collection<SchemaEntry> schemaEntries = new ArrayList<>();
@@ -72,7 +70,7 @@ public class TestUnusedValueSchemaCleanupService {
     Set<Integer> schemaIds = new HashSet<>();
     schemaIds.add(3);
     schemaIds.add(4);
-    UnusedValueSchemaCleanupService service = new UnusedValueSchemaCleanupService(config, admin, parentHelixAdmin);
+    UnusedValueSchemaCleanupService service = new UnusedValueSchemaCleanupService(config, parentHelixAdmin);
     Set<Integer> unusedSchemas = new HashSet<>();
     unusedSchemas.add(1);
     unusedSchemas.add(2);
@@ -87,14 +85,14 @@ public class TestUnusedValueSchemaCleanupService {
 
   @Test
   void testGetUnusedSchema() {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
     doReturn(true).when(controllerConfig).isUnusedValueSchemaCleanupServiceEnabled();
-    doReturn(true).when(admin).isLeaderControllerFor(any());
+    doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(any());
     Store store = mockStore();
-    ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
+    HelixReadOnlyZKSharedSchemaRepository schemaRepository = mock(HelixReadOnlyZKSharedSchemaRepository.class);
+    doReturn(schemaRepository).when(parentHelixAdmin).getReadOnlyZKSharedSchemaRepository();
     List<SchemaEntry> schemaEntries = new ArrayList<>();
     schemaEntries.add(new SchemaEntry(1, SCHEMA));
     schemaEntries.add(new SchemaEntry(2, SCHEMA));
@@ -107,13 +105,12 @@ public class TestUnusedValueSchemaCleanupService {
     inuseSchemaIds.add(3);
     inuseSchemaIds.add(4);
     doReturn(new SchemaEntry(6, SCHEMA)).when(schemaRepository).getSupersetOrLatestValueSchema(anyString());
-    UnusedValueSchemaCleanupService service = new UnusedValueSchemaCleanupService(config, admin, parentHelixAdmin);
+    UnusedValueSchemaCleanupService service = new UnusedValueSchemaCleanupService(config, parentHelixAdmin);
     Set<Integer> unusedSchemas = service.findSchemaIdsToDelete(schemaEntries, store, schemaRepository, inuseSchemaIds);
     Assert.assertTrue(unusedSchemas.contains(1));
     Assert.assertTrue(unusedSchemas.contains(2));
-    doReturn(5).when(store).getLatestSuperSetValueSchemaId();
+    doReturn(new SchemaEntry(5, SCHEMA)).when(schemaRepository).getSupersetOrLatestValueSchema(anyString());
     unusedSchemas = service.findSchemaIdsToDelete(schemaEntries, store, schemaRepository, inuseSchemaIds);
     Assert.assertFalse(unusedSchemas.contains(5));
-    Assert.assertFalse(unusedSchemas.contains(6));
   }
 }

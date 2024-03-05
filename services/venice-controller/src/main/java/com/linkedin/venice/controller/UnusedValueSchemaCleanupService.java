@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
-import com.linkedin.venice.meta.ReadWriteSchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -21,7 +21,7 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * This service runs in the parent controller to delete historical unused value schemas.
- * Currently it supports deletion of unused value schemas only for batch stores.
+ * Currently, it supports deletion of unused value schemas only for batch stores.
  */
 public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(UnusedValueSchemaCleanupService.class);
@@ -30,17 +30,14 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
       Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("UnusedValueSchemaCleanupService"));
   private final VeniceControllerMultiClusterConfig multiClusterConfig;
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
-  private final VeniceHelixAdmin admin;
   private final int scheduleIntervalMinutes;
   private boolean stop = false;
   public final int minSchemaCountToKeep;
 
   UnusedValueSchemaCleanupService(
       VeniceControllerMultiClusterConfig multiClusterConfig,
-      VeniceHelixAdmin admin,
       VeniceParentHelixAdmin parentHelixAdmin) {
     this.multiClusterConfig = multiClusterConfig;
-    this.admin = admin;
     this.scheduleIntervalMinutes = multiClusterConfig.getUnusedSchemaCleanupIntervalMinutes();
     this.minSchemaCountToKeep = multiClusterConfig.getMinSchemaCountToKeep();
     this.veniceParentHelixAdmin = parentHelixAdmin;
@@ -55,43 +52,51 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
         boolean cleanupEnabled =
             multiClusterConfig.getControllerConfig(clusterName).isUnusedValueSchemaCleanupServiceEnabled();
 
+        // cleanup in leader controller
+        if (!veniceParentHelixAdmin.isLeaderControllerFor(clusterName)) {
+          continue;
+        }
         // Get all stores for current cluster
-        List<Store> stores = admin.getAllStores(clusterName);
+        List<Store> stores = veniceParentHelixAdmin.getAllStores(clusterName);
         for (Store store: stores) {
           String storeName = store.getName();
           // Remove schema only for batch stores
           if (isHybridStore(store) || VeniceSystemStoreUtils.isSystemStore(storeName)) {
             continue;
           }
-          List<SchemaEntry> allSchemas =
-              new ArrayList<>(veniceParentHelixAdmin.getValueSchemas(clusterName, storeName));
-          if (allSchemas.size() < minSchemaCountToKeep) {
-            continue;
-          }
-
-          Set<Integer> inUseValueSchemaIds = veniceParentHelixAdmin.getInUseValueSchemaIds(clusterName, storeName);
-
-          // if any of the child colo is unreachable, skip deletion.
-          if (inUseValueSchemaIds.isEmpty()) {
-            LOGGER.warn("Could not find in-use value schemas for store {}", storeName);
-            continue;
-          }
-
-          Set<Integer> schemasToDelete = findSchemaIdsToDelete(
-              allSchemas,
-              store,
-              admin.getHelixVeniceClusterResources(clusterName).getSchemaRepository(),
-              inUseValueSchemaIds);
-
-          if (!schemasToDelete.isEmpty()) {
-            LOGGER.info(
-                "In cluster {}, store {} has the following unused schemas {}.",
-                clusterName,
-                storeName,
-                schemasToDelete);
-            if (cleanupEnabled) {
-              veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
+          try {
+            List<SchemaEntry> allSchemas =
+                new ArrayList<>(veniceParentHelixAdmin.getValueSchemas(clusterName, storeName));
+            if (allSchemas.size() < minSchemaCountToKeep) {
+              continue;
             }
+
+            Set<Integer> inUseValueSchemaIds = veniceParentHelixAdmin.getInUseValueSchemaIds(clusterName, storeName);
+
+            // if any of the child colo is unreachable, skip deletion.
+            if (inUseValueSchemaIds.isEmpty()) {
+              LOGGER.warn("Could not find in-use value schemas for store {}", storeName);
+              continue;
+            }
+
+            Set<Integer> schemasToDelete = findSchemaIdsToDelete(
+                allSchemas,
+                store,
+                veniceParentHelixAdmin.getReadOnlyZKSharedSchemaRepository(),
+                inUseValueSchemaIds);
+
+            if (!schemasToDelete.isEmpty()) {
+              LOGGER.info(
+                  "In cluster {}, store {} has the following unused schemas {}.",
+                  clusterName,
+                  storeName,
+                  schemasToDelete);
+              if (cleanupEnabled) {
+                veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
+              }
+            }
+          } catch (Exception e) {
+            LOGGER.warn("Could not cleanup used schema for store {}", storeName, e);
           }
         }
       }
@@ -114,7 +119,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
   Set<Integer> findSchemaIdsToDelete(
       List<SchemaEntry> allSchemas,
       Store store,
-      ReadWriteSchemaRepository schemaRepository,
+      HelixReadOnlyZKSharedSchemaRepository schemaRepository,
       Set<Integer> inUseValueSchemaIds) {
     Set<Integer> schemasToDelete = new HashSet<>();
 
@@ -124,8 +129,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
     for (SchemaEntry schemaEntry: allSchemas) {
       int schemaId = schemaEntry.getId();
       // skip latest value schema or super-set schema id
-      if (schemaId == store.getLatestSuperSetValueSchemaId()
-          || schemaRepository.getSupersetOrLatestValueSchema(store.getName()).getId() == schemaId) {
+      if (schemaRepository.getSupersetOrLatestValueSchema(store.getName()).getId() == schemaId) {
         continue;
       }
 

@@ -514,6 +514,12 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       return;
     }
     accessor.removeValueSchema(storeName, valueSchemaId);
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    if (store.isStoreMetaSystemStoreEnabled() && metaStoreWriter.isPresent()) {
+      Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
+      metaStoreWriter.get().writeStoreValueSchemas(storeName, valueSchemas);
+    }
+
   }
 
   // test only
