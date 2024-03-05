@@ -37,6 +37,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
@@ -72,6 +73,7 @@ import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
+import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
@@ -104,6 +106,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
@@ -260,6 +263,21 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
         veniceResponse.setStoreStatusMap(storeStatusMap);
+      }
+    };
+  }
+
+  public Route getInUseSchemaIds(Admin admin) {
+    return new VeniceRouteHandler<SchemaUsageResponse>(SchemaUsageResponse.class) {
+      @Override
+      public void internalHandle(Request request, SchemaUsageResponse response) {
+        AdminSparkServer.validateParams(request, GET_INUSE_SCHEMA_IDS.getParams(), admin);
+
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        Set<Integer> schemaIds = admin.getInUseValueSchemaIds(clusterName, storeName);
+        response.setInUseValueSchemaIds(schemaIds);
+
       }
     };
   }

@@ -262,6 +262,17 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO, params, StorageEngineOverheadRatioResponse.class);
   }
 
+  public SchemaUsageResponse getInUseSchemaIds(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.GET_INUSE_SCHEMA_IDS, params, SchemaUsageResponse.class);
+  }
+
+  public ControllerResponse deleteValueSchemas(String storeName, List<String> schemaIds) {
+    QueryParams params =
+        newParams().add(NAME, storeName).add(ControllerApiConstants.VALUE_SCHEMA_IDS, String.join(",", schemaIds));
+    return request(ControllerRoute.DELETE_UNUSED_VALUE_SCHEMAS, params, SchemaUsageResponse.class);
+  }
+
   public VersionCreationResponse requestTopicForWrites(
       String storeName,
       long storeSize,

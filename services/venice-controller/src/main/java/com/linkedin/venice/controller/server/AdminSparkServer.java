@@ -41,6 +41,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SC
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KAFKA_TOPIC_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
@@ -448,6 +449,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE.getPath(),
         storagePersonaRoutes.getPersonaAssociatedWithStore(admin));
     httpService.get(GET_CLUSTER_STORAGE_PERSONAS.getPath(), storagePersonaRoutes.getClusterStoragePersonas(admin));
+    httpService.get(GET_INUSE_SCHEMA_IDS.getPath(), storesRoutes.getInUseSchemaIds(admin));
 
     httpService
         .post(CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(), clusterRoutes.cleanupInstanceCustomizedStates(admin));

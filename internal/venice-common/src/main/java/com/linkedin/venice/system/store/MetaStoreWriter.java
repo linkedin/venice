@@ -2,6 +2,7 @@ package com.linkedin.venice.system.store;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
@@ -251,6 +252,10 @@ public class MetaStoreWriter implements Closeable {
     });
   }
 
+  Schema getDerivedComputeSchema() {
+    return this.derivedComputeSchema;
+  }
+
   /**
    * Write {@link com.linkedin.venice.meta.StoreConfig} equivalent to the meta system store. This is still only invoked
    * by child controllers only.
@@ -340,7 +345,7 @@ public class MetaStoreWriter implements Closeable {
        * Fetch the derived compute schema id on demand for integration test since the meta system store is being created
        * during cluster initialization.
        */
-      GeneratedSchemaID derivedSchemaId = zkSharedSchemaRepository
+      GeneratedSchemaID derivedSchemaId = getSchemaRepository()
           .getDerivedSchemaId(VeniceSystemStoreType.META_STORE.getZkSharedStoreName(), derivedComputeSchema.toString());
       if (!derivedSchemaId.isValid()) {
         throw new VeniceException(
@@ -358,6 +363,10 @@ public class MetaStoreWriter implements Closeable {
           derivedComputeSchemaId,
           null);
     });
+  }
+
+  HelixReadOnlySchemaRepository getSchemaRepository() {
+    return zkSharedSchemaRepository;
   }
 
   void writeMessageWithRetry(String metaStoreName, Consumer<VeniceWriter> writerConsumer) {

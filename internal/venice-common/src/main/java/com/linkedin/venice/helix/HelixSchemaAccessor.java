@@ -279,9 +279,12 @@ public class HelixSchemaAccessor {
         .toString();
   }
 
-  // For testing purpose only.
-  public void removeValueSchema(String storeName, String schemaId) {
-    HelixUtils.remove(schemaAccessor, getValueSchemaPath(storeName, schemaId));
-    logger.info("Removed value schema: {} for store: {}.", schemaId, storeName);
+  public void removeValueSchema(String storeName, int schemaID) {
+    if (!HelixUtils.exists(schemaAccessor, getValueSchemaPath(storeName, String.valueOf(schemaID)))) {
+      logger.info("Value schema with id : " + schemaID + " does not exist for store: " + storeName);
+      return;
+    }
+    HelixUtils.remove(schemaAccessor, getValueSchemaPath(storeName, String.valueOf(schemaID)));
+    logger.info("Removed value schema: " + schemaID + " for store: " + storeName);
   }
 }

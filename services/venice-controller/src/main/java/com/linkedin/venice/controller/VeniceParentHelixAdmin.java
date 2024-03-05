@@ -94,6 +94,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
@@ -138,6 +139,7 @@ import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
@@ -205,6 +207,8 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -330,6 +334,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private final ExecutorService systemStoreAclSynchronizationExecutor;
 
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
+
+  private final UnusedValueSchemaCleanupService unusedValueSchemaCleanupService;
 
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
 
@@ -511,6 +517,7 @@ public class VeniceParentHelixAdmin implements Admin {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
+    this.unusedValueSchemaCleanupService = new UnusedValueSchemaCleanupService(multiClusterConfigs, this);
   }
 
   // For testing purpose.
@@ -622,6 +629,52 @@ public class VeniceParentHelixAdmin implements Admin {
       releaseAdminMessageExecutionIdLock(clusterName);
     }
     waitingMessageToBeConsumed(clusterName, storeName, message.executionId);
+  }
+
+  @Override
+  public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedValueSchemaIds) {
+    Set<Integer> inuseValueSchemaIds = getInUseValueSchemaIds(clusterName, storeName);
+    boolean isCommon = unusedValueSchemaIds.stream().anyMatch(inuseValueSchemaIds::contains);
+    if (isCommon) {
+      LOGGER
+          .error("For store {} cannot delete value schema ids {} as they being used.", storeName, unusedValueSchemaIds);
+      return;
+    }
+    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    DeleteUnusedValueSchemas deleteValueSchemas =
+        (DeleteUnusedValueSchemas) AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getNewInstance();
+    deleteValueSchemas.setClusterName(clusterName);
+    deleteValueSchemas.setStoreName(storeName);
+    deleteValueSchemas.setSchemaIds(new ArrayList<>(unusedValueSchemaIds));
+
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getValue();
+    message.payloadUnion = deleteValueSchemas;
+
+    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+  }
+
+  @Override
+  public Set<Integer> getInUseValueSchemaIds(String clusterName, String storeName) {
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    Set<Integer> result = new HashSet<>();
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+      SchemaUsageResponse response = controllerClient.getInUseSchemaIds(storeName);
+      if (response.isError() || response.getInUseValueSchemaIds().isEmpty()) {
+        if (response.isError()) {
+          LOGGER.error(
+              "Could not query store from region: " + region + " for cluster: " + clusterName + ". "
+                  + response.getError());
+        }
+        return Collections.emptySet();
+      } else {
+        // make union of all used schemas
+        result.addAll(response.getInUseValueSchemaIds());
+      }
+    }
+    return result;
   }
 
   private void checkAndRepairCorruptedExecutionId(String clusterName) {
@@ -4123,6 +4176,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     newFabricControllerClientMap.forEach(
         (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
+    unusedValueSchemaCleanupService.close();
   }
 
   /**
@@ -4291,6 +4345,11 @@ public class VeniceParentHelixAdmin implements Admin {
     message.operationType = AdminMessageType.ABORT_MIGRATION.getValue();
     message.payloadUnion = abortMigration;
     sendAdminMessageAndWaitForConsumed(srcClusterName, storeName, message);
+  }
+
+  @Override
+  public StoreMetaValue getMetaStoreValue(StoreMetaKey metaKey, String storeName) {
+    throw new VeniceException("Not implemented in parent");
   }
 
   /**
