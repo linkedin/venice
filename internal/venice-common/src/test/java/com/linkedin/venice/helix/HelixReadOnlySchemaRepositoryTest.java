@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -29,6 +30,7 @@ import com.linkedin.venice.writer.update.UpdateBuilderImplTest;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -181,6 +183,26 @@ public class HelixReadOnlySchemaRepositoryTest {
     SchemaEntry schemaEntry = schemaRepository.getSupersetOrLatestValueSchema(storeName);
     assertNotNull(schemaEntry);
     assertEquals(schemaEntry, schemaEntryToReturn);
+  }
+
+  @Test
+  public void testSchemaDeletion() {
+    HelixSchemaAccessor accessor = mock(HelixSchemaAccessor.class);
+    String storeName = "store";
+    SchemaData schemaData = new SchemaData(storeName, null);
+    Map<String, SchemaData> map = new HashMap<>();
+    map.put(storeName, schemaData);
+    List<String> list = new ArrayList<>();
+    HelixReadOnlySchemaRepository.ValueSchemaChildListener listener =
+        mock(HelixReadOnlySchemaRepository.ValueSchemaChildListener.class);
+    doReturn(map).when(listener).getSchemaMap();
+    doReturn(accessor).when(listener).getSchemaAccessor();
+    SchemaEntry schemaEntry = new SchemaEntry(1, VALUE_SCHEMA.toString());
+    doReturn(schemaEntry).when(accessor).getValueSchema(storeName, "1");
+    list.add("1");
+    doCallRealMethod().when(listener).handleSchemaChanges(storeName, list);
+    listener.handleSchemaChanges(storeName, list);
+    verify(accessor, times(1)).getValueSchema(anyString(), anyString());
   }
 
   private static String loadFileAsString(String fileName) {

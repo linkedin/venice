@@ -48,6 +48,7 @@ public class HelixReadOnlyStoreRepositoryAdapterTest {
     HelixReadWriteSchemaRepositoryAdapter adapter =
         new HelixReadWriteSchemaRepositoryAdapter(readOnlyZKSharedSchemaRepository, repository);
     adapter.removeValueSchema(storeName, 2);
+    adapter.removeDerivedSchema(storeName, 2, 1);
     MetaStoreWriter metaStoreWriter = mock(MetaStoreWriter.class);
     ReadWriteStoreRepository storeRepository = mock(ReadWriteStoreRepository.class);
     HelixSchemaAccessor schemaAccessor = mock(HelixSchemaAccessor.class);

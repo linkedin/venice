@@ -1,6 +1,7 @@
 package com.linkedin.venice.system.store;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -80,7 +81,7 @@ public class MetaStoreWriterTest {
     ArgumentCaptor<StoreMetaValue> valueArgumentCaptor = ArgumentCaptor.forClass(StoreMetaValue.class);
     ArgumentCaptor<Integer> schemaArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(goodWriter).put(keyArgumentCaptor.capture(), valueArgumentCaptor.capture(), schemaArgumentCaptor.capture());
-
+    metaStoreWriter.writeInUseValueSchema(anyString(), anyInt(), anyInt());
     // Assertion
     StoreMetaKey capturedKey = keyArgumentCaptor.getValue();
     Assert.assertEquals(capturedKey.keyStrings, Collections.singletonList(metaStoreName));

@@ -528,17 +528,17 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  private class ValueSchemaChildListener extends SchemaChildListener {
+  public class ValueSchemaChildListener extends SchemaChildListener {
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = getSchemaMap().get(storeName);
       Set<Integer> schemaSet = new HashSet<>();
 
       for (String id: currentChildren) {
         int schemaId = Integer.parseInt(id);
 
         if (schemaData.getValueSchema(Integer.parseInt(id)) == null) {
-          schemaData.addValueSchema(accessor.getValueSchema(storeName, id));
+          schemaData.addValueSchema(getSchemaAccessor().getValueSchema(storeName, id));
         }
         schemaSet.add(schemaId);
       }
@@ -547,6 +547,14 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
           schemaData.deleteValueSchema(schemaEntry);
         }
       }
+    }
+
+    Map<String, SchemaData> getSchemaMap() {
+      return schemaMap;
+    }
+
+    HelixSchemaAccessor getSchemaAccessor() {
+      return accessor;
     }
   }
 
