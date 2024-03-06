@@ -3730,13 +3730,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       int versionNumber,
       boolean allowedInParent) {
-    storeMetadataUpdate(clusterName, storeName, store -> {
-      if (isParent() && !allowedInParent) {
-        // Parent colo should not update the current version of a store
-        LOGGER.info("Updating current version in parent region is not allowed. Skipping.");
-        return store;
-      }
+    if (isParent() && !allowedInParent) {
+      // Parent colo should not update the current version of a store unless explicitly asked to do so
+      LOGGER.info(
+          "Skipping current version update for store: {} in cluster: {} because it is not allowed in the "
+              + "parent region",
+          storeName,
+          clusterName);
+      return;
+    }
 
+    storeMetadataUpdate(clusterName, storeName, store -> {
       if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
         if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
           throw new VeniceException("Version: " + versionNumber + " does not exist for store:" + storeName);
@@ -4409,15 +4413,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (currentVersion.isPresent()) {
-        if (childRegionOnlyConfigUpdateAllowed) {
-          setStoreCurrentVersion(clusterName, storeName, currentVersion.get(), true);
-        } else {
-          LOGGER.info(
-              "Skipping current version update for store: {} in cluster: {} because it is not allowed in the "
-                  + "parent region",
-              storeName,
-              clusterName);
-        }
+        setStoreCurrentVersion(clusterName, storeName, currentVersion.get(), childRegionOnlyConfigUpdateAllowed);
       }
 
       if (largestUsedVersionNumber.isPresent()) {
