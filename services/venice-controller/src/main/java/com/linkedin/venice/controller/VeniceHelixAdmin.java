@@ -4258,10 +4258,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void internalUpdateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
-    /**
-     * Check whether the command affects this region.
-     */
+    // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
+    // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
+    // if the regions filter only specifies one region, which is the parent region.
     boolean onlyParentRegionFilter = false;
+
+    // Check whether the command affects this region.
     if (params.getRegionsFilter().isPresent()) {
       Set<String> regionsFilter = parseRegionsFilterList(params.getRegionsFilter().get());
       if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
@@ -4279,11 +4281,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         onlyParentRegionFilter = true;
       }
     }
-
-    // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
-    // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
-    // only if the regions filter only specifies the parent region.
-    boolean childRegionOnlyConfigUpdateAllowed = !isParent() || onlyParentRegionFilter;
 
     Store originalStore = getStore(clusterName, storeName);
     if (originalStore == null) {
@@ -4413,7 +4410,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (currentVersion.isPresent()) {
-        setStoreCurrentVersion(clusterName, storeName, currentVersion.get(), childRegionOnlyConfigUpdateAllowed);
+        setStoreCurrentVersion(clusterName, storeName, currentVersion.get(), onlyParentRegionFilter);
       }
 
       if (largestUsedVersionNumber.isPresent()) {
