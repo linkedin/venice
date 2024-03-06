@@ -3718,9 +3718,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber) {
+    this.setStoreCurrentVersion(clusterName, storeName, versionNumber, false);
+  }
+
+  /**
+   * In most cases, parent region should not update the current version. This is only allowed via an update-store call
+   * where the region filter list only contains one region, which is the region of the parent controller
+   */
+  private void setStoreCurrentVersion(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean allowedInParent) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      if (isParent()) {
+      if (isParent() && !allowedInParent) {
         // Parent colo should not update the current version of a store
+        LOGGER.info("Updating current version in parent region is not allowed. Skipping.");
         return store;
       }
 
@@ -3736,7 +3749,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(versionNumber);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+      if (!isParent()) {
+        // Parent controller should not transmit the version swap message
+        realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+      }
       return store;
     });
   }
@@ -4394,7 +4410,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (currentVersion.isPresent()) {
         if (childRegionOnlyConfigUpdateAllowed) {
-          setStoreCurrentVersion(clusterName, storeName, currentVersion.get());
+          setStoreCurrentVersion(clusterName, storeName, currentVersion.get(), true);
         } else {
           LOGGER.info(
               "Skipping current version update for store: {} in cluster: {} because it is not allowed in the "
