@@ -3722,12 +3722,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber) {
-    storeMetadataUpdate(clusterName, storeName, store -> {
-      if (isParent()) {
-        // Parent colo should not update the current version of a store
-        return store;
-      }
+    this.setStoreCurrentVersion(clusterName, storeName, versionNumber, false);
+  }
 
+  /**
+   * In most cases, parent region should not update the current version. This is only allowed via an update-store call
+   * where the region filter list only contains one region, which is the region of the parent controller
+   */
+  private void setStoreCurrentVersion(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean allowedInParent) {
+    if (isParent() && !allowedInParent) {
+      // Parent colo should not update the current version of a store unless explicitly asked to do so
+      LOGGER.info(
+          "Skipping current version update for store: {} in cluster: {} because it is not allowed in the "
+              + "parent region",
+          storeName,
+          clusterName);
+      return;
+    }
+
+    storeMetadataUpdate(clusterName, storeName, store -> {
       if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
         if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
           throw new VeniceException("Version: " + versionNumber + " does not exist for store:" + storeName);
@@ -3740,7 +3757,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(versionNumber);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+      if (!isParent()) {
+        // Parent controller should not transmit the version swap message
+        realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+      }
       return store;
     });
   }
@@ -4300,10 +4320,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void internalUpdateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
-    /**
-     * Check whether the command affects this region.
-     */
+    // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
+    // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
+    // if the regions filter only specifies one region, which is the parent region.
     boolean onlyParentRegionFilter = false;
+
+    // Check whether the command affects this region.
     if (params.getRegionsFilter().isPresent()) {
       Set<String> regionsFilter = parseRegionsFilterList(params.getRegionsFilter().get());
       if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
@@ -4321,11 +4343,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         onlyParentRegionFilter = true;
       }
     }
-
-    // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
-    // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
-    // only if the regions filter only specifies the parent region.
-    boolean childRegionOnlyConfigUpdateAllowed = !isParent() || onlyParentRegionFilter;
 
     Store originalStore = getStore(clusterName, storeName);
     if (originalStore == null) {
@@ -4455,15 +4472,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (currentVersion.isPresent()) {
-        if (childRegionOnlyConfigUpdateAllowed) {
-          setStoreCurrentVersion(clusterName, storeName, currentVersion.get());
-        } else {
-          LOGGER.info(
-              "Skipping current version update for store: {} in cluster: {} because it is not allowed in the "
-                  + "parent region",
-              storeName,
-              clusterName);
-        }
+        setStoreCurrentVersion(clusterName, storeName, currentVersion.get(), onlyParentRegionFilter);
       }
 
       if (largestUsedVersionNumber.isPresent()) {
