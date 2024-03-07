@@ -42,6 +42,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSchemaWithUnknownFie
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithASchemaWithAWrongDefaultValue;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithCustomSize;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithDuplicateKey;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -260,7 +261,7 @@ public abstract class TestBatch {
       }
     };
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
@@ -276,7 +277,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testZstdCompressingAvroRecordCanFailWhenNoFallbackAvailable() throws Exception {
     testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {
           // test single get. Can throw exception since no fallback available
@@ -333,7 +334,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testZstdCompressingAvroRecordWhenNoFallbackAvailableWithSleep() throws Exception {
     testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> properties.setProperty(ZSTD_COMPRESSION_LEVEL, String.valueOf(17)),
         getSimpleFileWithUserSchemaValidatorForZstd(),
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
@@ -345,7 +346,7 @@ public abstract class TestBatch {
       boolean useMapperToBuildDict) throws Exception {
     // Running a batch push first.
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
@@ -414,7 +415,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testEarlyDeleteBackupStore() throws Exception {
     String storeName = testBatchStoreMultiVersionPush(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {
           // test single get
@@ -443,7 +444,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPush() throws Exception {
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {
           for (int i = 1; i <= 100; i++) {
@@ -467,6 +468,18 @@ public abstract class TestBatch {
         },
         storeName,
         new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+
+    testBatchStore(
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        properties -> properties.setProperty(INCREMENTAL_PUSH, "true"),
+        (avroClient, vsonClient, metricsRepository) -> {
+          // Original data from the 2nd inc push
+          for (int i = 1; i <= 100; i++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
+        },
+        storeName,
+        new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -474,7 +487,7 @@ public abstract class TestBatch {
       boolean compressionMetricCollectionEnabled,
       boolean useMapperToBuildDict) throws Exception {
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
@@ -516,7 +529,7 @@ public abstract class TestBatch {
     LOGGER.info("Start of {}", uniqueTestId);
     try {
       String storeName = testBatchStore(
-          inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
           properties -> {},
           (avroClient, vsonClient, metricsRepository) -> {
             for (int i = 1; i <= 100; i++) {
@@ -541,7 +554,7 @@ public abstract class TestBatch {
           null);
 
       testBatchStore(
-          inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
           properties -> {},
           (avroClient, vsonClient, metricsRepository) -> {
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -565,7 +578,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testMetaStoreSchemaValidation() throws Exception {
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {
           // test single get
@@ -610,7 +623,7 @@ public abstract class TestBatch {
       }
     };
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         validator);
     // Re-push with Kafka Input
@@ -626,7 +639,7 @@ public abstract class TestBatch {
       }
     };
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         validator,
         new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
@@ -646,7 +659,7 @@ public abstract class TestBatch {
       }
     };
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 1)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir, 1)),
         properties -> {},
         validator,
         new UpdateStoreQueryParams().setPartitionCount(3));

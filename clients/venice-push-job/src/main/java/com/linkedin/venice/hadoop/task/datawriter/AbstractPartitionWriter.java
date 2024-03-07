@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
@@ -340,14 +342,18 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
   private VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
     Properties writerProps = props.toProperties();
-    writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
     // Closing segments based on elapsed time should always be disabled in MR to prevent storage nodes consuming out of
     // order keys when speculative execution is in play.
     writerProps.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
 
     EngineTaskConfigProvider engineTaskConfigProvider = getEngineTaskConfigProvider();
-    writerProps.put(ConfigKeys.PUSH_JOB_COMPUTE_JOB_ID, engineTaskConfigProvider.getJobName());
-    writerProps.put(ConfigKeys.PUSH_JOB_COMPUTE_TASK_ID, getTaskId());
+    Properties jobProps = engineTaskConfigProvider.getJobProps();
+
+    // Use a deterministic GUID generator for VPJ
+    writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
+    writerProps.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS));
+    writerProps.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
+
     VeniceWriterFactory veniceWriterFactoryFactory =
         new VeniceWriterFactory(writerProps, new ApacheKafkaProducerAdapterFactory(), null);
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
