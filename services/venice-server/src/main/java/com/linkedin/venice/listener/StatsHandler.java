@@ -47,8 +47,8 @@ public class StatsHandler extends ChannelDuplexHandler {
     serverStatsContext.setStoreName(name);
   }
 
-  public void setHealthCheck(boolean healthCheck) {
-    serverStatsContext.setHealthCheck(healthCheck);
+  public void setMetadataRequest(boolean metadataRequest) {
+    serverStatsContext.setMetadataRequest(metadataRequest);
   }
 
   public void setRequestTerminatedEarly() {
@@ -190,8 +190,8 @@ public class StatsHandler extends ChannelDuplexHandler {
         throw new VeniceException("request status could not be null");
       }
 
-      // we don't record if it is a health check request
-      if (serverStatsContext.isHealthCheck()) {
+      // we don't record if it is a metatadata request
+      if (serverStatsContext.isMetadataRequest()) {
         return;
       }
 
