@@ -1,7 +1,7 @@
 package com.linkedin.venice.guid;
 
-import static com.linkedin.venice.ConfigKeys.PUSH_JOB_COMPUTE_JOB_ID;
-import static com.linkedin.venice.ConfigKeys.PUSH_JOB_COMPUTE_TASK_ID;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.guid.GuidUtils.GUID_GENERATOR_IMPLEMENTATION;
 
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -78,6 +78,8 @@ public class GuidUtilsTest {
     // When no job ID and compute task id is provided, a default value will be used
     Properties properties1 = new Properties();
     properties1.put(GUID_GENERATOR_IMPLEMENTATION, DeterministicGuidGenerator.class.getName());
+    properties1.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, "10");
+    properties1.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, "1200");
     VeniceProperties props1 = new VeniceProperties(properties1);
     GUID guid1 = GuidUtils.getGUID(props1);
     Assert.assertEquals(
@@ -88,7 +90,8 @@ public class GuidUtilsTest {
     // When a job id is provided but no compute task id is provided, a default compute task id will be used
     Properties properties2 = new Properties();
     properties2.put(GUID_GENERATOR_IMPLEMENTATION, DeterministicGuidGenerator.class.getName());
-    properties2.put(PUSH_JOB_COMPUTE_JOB_ID, "Test_JOB_ID_2");
+    properties2.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, "120");
+    properties2.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, "170");
     VeniceProperties props2 = new VeniceProperties(properties2);
     GUID guid2 = GuidUtils.getGUID(props2);
     Assert.assertEquals(
@@ -99,8 +102,8 @@ public class GuidUtilsTest {
     // When job id and compute task id are provided, they will be used to generate the guid
     Properties properties3 = new Properties();
     properties3.put(GUID_GENERATOR_IMPLEMENTATION, DeterministicGuidGenerator.class.getName());
-    properties3.put(PUSH_JOB_COMPUTE_JOB_ID, "Test_JOB_ID_3");
-    properties3.put(PUSH_JOB_COMPUTE_TASK_ID, "100");
+    properties3.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, "3");
+    properties3.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, "100");
     VeniceProperties props3 = new VeniceProperties(properties3);
     GUID guid3 = GuidUtils.getGUID(props3);
     Assert.assertEquals(

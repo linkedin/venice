@@ -1375,14 +1375,14 @@ public class ConfigKeys {
   public static final String PUSH_JOB_STATUS_STORE_CLUSTER_NAME = "controller.push.job.status.store.cluster.name";
 
   /**
-   * The job tracker identifier as part of a map reduce job id.
+   * The most-significant-bits of the producer GUID used by {@code VenicePushJob} encoded as a {@code long}.
    */
-  public static final String PUSH_JOB_COMPUTE_JOB_ID = "push.job.compute.job.id";
+  public static final String PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS = "push.job.guid.most.significant.bits";
 
   /**
-   * The job identifier as part of a map reduce job id.
+   * The least-significant-bits of the producer GUID used by {@code VenicePushJob} encoded as a {@code long}.
    */
-  public static final String PUSH_JOB_COMPUTE_TASK_ID = "push.job.compute.task.id";
+  public static final String PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS = "push.job.guid.least.significant.bits";
 
   /**
    * Flag to indicate whether to perform add version and start of ingestion via the admin protocol.

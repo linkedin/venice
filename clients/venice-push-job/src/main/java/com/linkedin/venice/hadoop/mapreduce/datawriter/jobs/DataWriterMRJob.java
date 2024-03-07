@@ -7,6 +7,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
@@ -71,6 +73,7 @@ import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
+import java.util.UUID;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.mapred.AvroInputFormat;
@@ -202,6 +205,12 @@ public class DataWriterMRJob extends DataWriterComputeJob {
         ZSTD_COMPRESSION_LEVEL,
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     conf.setBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
+
+    // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
+    // deterministically.
+    UUID producerGuid = UUID.randomUUID();
+    conf.setLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
+    conf.setLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
 
     /**
      * Override the configs following the rules:
