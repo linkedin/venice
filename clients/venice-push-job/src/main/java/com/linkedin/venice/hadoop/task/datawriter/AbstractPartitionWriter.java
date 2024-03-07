@@ -349,7 +349,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     EngineTaskConfigProvider engineTaskConfigProvider = getEngineTaskConfigProvider();
     Properties jobProps = engineTaskConfigProvider.getJobProps();
 
-    // Use a deterministic GUID generator for VPJ
+    // Use the UUID bits created by the VPJ driver to build a producerGUID deterministically
     writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
     writerProps.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS));
     writerProps.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
