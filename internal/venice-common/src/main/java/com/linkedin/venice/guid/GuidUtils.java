@@ -35,8 +35,8 @@ public class GuidUtils {
       guidGenerator = new JavaUtilGuidV4Generator();
     } else if (implName.equals(DeterministicGuidGenerator.class.getName())) {
       guidGenerator = new DeterministicGuidGenerator(
-          properties.getLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, 0L),
-          properties.getLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, 0L));
+          properties.getLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS),
+          properties.getLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
     } else {
       Class<? extends GuidGenerator> implClass = ReflectUtils.loadClass(implName);
       guidGenerator = ReflectUtils.callConstructor(implClass, new Class[0], new Object[0]);
