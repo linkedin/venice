@@ -7,6 +7,8 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -30,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -186,6 +189,14 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(false)));
     });
 
+    // It takes time for metadata to be propagated for fast client. To make the test deterministic we can create a new
+    // client.
+
+    genericFastClient = getGenericFastClient(
+        clientConfigBuilder,
+        new MetricsRepository(),
+        StoreMetadataFetchMode.SERVER_BASED_METADATA);
+
     try {
       genericFastClient.compute()
           .project(VALUE_FIELD_NAME)
@@ -259,5 +270,52 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         assertEquals(result.get(key).get(SECOND_VALUE_FIELD_NAME), i);
       }
     });
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testStreamingBatchGetWithRetryAndQuotaRejection() throws Exception {
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils
+          .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(10)));
+    });
+    ArrayList<MetricsRepository> serverMetrics = new ArrayList<>();
+    for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
+      serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
+    }
+
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setLongTailRetryEnabledForBatchGet(true)
+            .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
+            .setSpeculativeQueryEnabled(false);
+    MetricsRepository clientMetric = new MetricsRepository();
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, clientMetric, StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < recordCnt; ++i) {
+      String key = keyPrefix + i;
+      keys.add(key);
+    }
+    int requestCountToTriggerQuotaRejection = 0;
+    try {
+      for (int i = 0; i < 10; i++) {
+        requestCountToTriggerQuotaRejection = i;
+        genericFastClient.batchGet(keys).get();
+      }
+      fail();
+    } catch (ExecutionException exception) {
+      assertTrue(exception.getCause() instanceof VeniceClientException);
+      assertTrue(exception.getCause().getCause() instanceof VeniceClientRateExceededException);
+      String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
+      String metricPrefix = "." + storeName + "--multiget_streaming_";
+      int quotaRequestedSum = 0;
+      for (MetricsRepository serverMetric: serverMetrics) {
+        quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
+      }
+      // Make sure retry is not triggered after encountering 429
+      assertTrue(quotaRequestedSum <= requestCountToTriggerQuotaRejection * recordCnt + recordCnt);
+      assertTrue(clientMetric.getMetric(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() < 1);
+    }
   }
 }

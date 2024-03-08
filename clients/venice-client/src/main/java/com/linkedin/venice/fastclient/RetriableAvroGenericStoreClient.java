@@ -2,6 +2,8 @@ package com.linkedin.venice.fastclient;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
@@ -266,6 +268,17 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
     Runnable retryTask = () -> { // Look at the remaining keys and setup completion
       if (!pendingKeysFuture.isEmpty()) {
+        Throwable throwable = savedException.get();
+        if (throwable != null) {
+          // Do not trigger retry and complete the final request completion future if we encountered 429.
+          if (throwable instanceof VeniceClientHttpException) {
+            VeniceClientHttpException clientHttpException = (VeniceClientHttpException) throwable;
+            if (clientHttpException.getHttpStatus() == VeniceClientRateExceededException.HTTP_TOO_MANY_REQUESTS) {
+              finalRequestCompletionFuture.completeExceptionally(throwable);
+              return;
+            }
+          }
+        }
         Set<K> pendingKeys = Collections.unmodifiableSet(pendingKeysFuture.keySet());
         R retryRequestContext =
             requestContextConstructor.construct(pendingKeys.size(), requestContext.isPartialSuccessAllowed);
