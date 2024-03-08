@@ -1053,7 +1053,7 @@
           ]
         },
         {
-          "name": "DeleteStoragePersona",
+          "name": "RollbackCurrentVersion",
           "type": "record",
           "fields": [
             {
@@ -1061,13 +1061,19 @@
               "type": "string"
             },
             {
-              "name": "name",
+              "name": "storeName",
               "type": "string"
+            },
+            {
+              "name": "regionsFilter",
+              "doc": "A list of regions that will be impacted by the RollbackCurrentVersion command",
+              "type": ["null", "string"],
+              "default": null
             }
           ]
         },
         {
-          "name": "DeleteStoragePersona",
+          "name": "RollForwardCurrentVersion",
           "type": "record",
           "fields": [
             {
@@ -1075,8 +1081,14 @@
               "type": "string"
             },
             {
-              "name": "name",
+              "name": "storeName",
               "type": "string"
+            },
+            {
+              "name": "regionsFilter",
+              "doc": "A list of regions that will be impacted by the RollForwardCurrentVersion command",
+              "type": ["null", "string"],
+              "default": null
             }
           ]
         }

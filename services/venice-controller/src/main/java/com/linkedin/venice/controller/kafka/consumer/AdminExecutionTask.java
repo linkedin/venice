@@ -28,6 +28,8 @@ import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.RollForwardCurrentVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.RollbackCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
@@ -260,6 +262,13 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case DELETE_UNUSED_VALUE_SCHEMA:
           handleDeleteUnusedValueSchema((DeleteUnusedValueSchemas) adminOperation.payloadUnion);
+          break;
+        case ROLLBACK_CURRENT_VERSION:
+          handleRollbackCurrentVersion((RollbackCurrentVersion) adminOperation.payloadUnion);
+          break;
+        case ROLLFORWARD_CURRENT_VERSION:
+          handleRollForwardToFutureVersion((RollForwardCurrentVersion) adminOperation.payloadUnion);
+          break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
       }
@@ -766,6 +775,20 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.getClusterName().toString();
     String personaName = message.getName().toString();
     admin.deleteStoragePersona(clusterName, personaName);
+  }
+
+  private void handleRollForwardToFutureVersion(RollForwardCurrentVersion message) {
+    String clusterName = message.getClusterName().toString();
+    String storeName = message.getStoreName().toString();
+    String regionFilter = message.getRegionsFilter().toString();
+    admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
+  }
+
+  private void handleRollbackCurrentVersion(RollbackCurrentVersion message) {
+    String clusterName = message.getClusterName().toString();
+    String storeName = message.getStoreName().toString();
+    String regionFilter = message.getRegionsFilter().toString();
+    admin.rollbackToBackupVersion(clusterName, storeName, regionFilter);
   }
 
   private void handleDeleteUnusedValueSchema(DeleteUnusedValueSchemas message) {

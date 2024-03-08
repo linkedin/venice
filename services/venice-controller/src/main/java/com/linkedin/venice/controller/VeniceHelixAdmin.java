@@ -3078,6 +3078,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return Store.NON_EXISTING_VERSION;
   }
 
+  public int getOnlineFutureVersion(String clusterName, String storeName) {
+    Store store = getStoreForReadOnly(clusterName, storeName);
+    Version version = store.getVersions().stream().max(Comparable::compareTo).get();
+    if (version.getNumber() != store.getCurrentVersion() && version.getStatus().equals(ONLINE)) {
+      return version.getNumber();
+    }
+    return NON_EXISTING_VERSION;
+  }
+
   @Override
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
     return null;
@@ -3766,15 +3775,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public void rollForwardToFutureVersion(String clusterName, String storeName) {
+  public void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter) {
+    if (!StringUtils.isEmpty(regionFilter)) {
+      Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
+      if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
+        LOGGER.info(
+            "rollForwardToFutureVersion command will be skipped for store: {} in cluster: {}, because the region filter is {}"
+                + " which doesn't include the current region: {}",
+            storeName,
+            clusterName,
+            regionsFilter,
+            multiClusterConfigs.getRegionName());
+        return;
+      }
+    }
+    int futureVersion = getOnlineFutureVersion(clusterName, storeName);
+    if (futureVersion == Store.NON_EXISTING_VERSION) {
+      return;
+    }
     storeMetadataUpdate(clusterName, storeName, store -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
             "Unable to update store:" + storeName + " current version since store does not enable writes");
-      }
-      int futureVersion = getFutureVersion(clusterName, storeName);
-      if (futureVersion == Store.NON_EXISTING_VERSION) {
-        throw new VeniceException("Future version does not exist for store:" + storeName);
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(futureVersion);
@@ -3787,7 +3809,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Set backup version as current version in a child region.
    */
   @Override
-  public void rollbackToBackupVersion(String clusterName, String storeName) {
+  public void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter) {
+    if (!StringUtils.isEmpty(regionFilter)) {
+      Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
+      if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
+        LOGGER.info(
+            "rollbackToBackupVersion command will be skipped for store: {} in cluster: {}, because the region filter is {}"
+                + " which doesn't include the current region: {}",
+            storeName,
+            clusterName,
+            regionsFilter,
+            multiClusterConfigs.getRegionName());
+        return;
+      }
+    }
+
     storeMetadataUpdate(clusterName, storeName, store -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -3795,7 +3831,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int backupVersion = getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
       if (backupVersion == Store.NON_EXISTING_VERSION) {
-        throw new VeniceException("Backup version does not exist for store:" + storeName);
+        return store;
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);

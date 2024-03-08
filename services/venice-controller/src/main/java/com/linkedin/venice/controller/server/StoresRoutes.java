@@ -618,7 +618,8 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, ROLLBACK_TO_BACKUP_VERSION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        admin.rollbackToBackupVersion(clusterName, storeName);
+        String regionFilter = request.queryParamOrDefault(REGIONS_FILTER, "");
+        admin.rollbackToBackupVersion(clusterName, storeName, regionFilter);
 
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
@@ -637,7 +638,8 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, ROLL_FORWARD_TO_FUTURE_VERSION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        admin.rollForwardToFutureVersion(clusterName, storeName);
+        String regionFilter = request.queryParamOrDefault(REGIONS_FILTER, "");
+        admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
 
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
