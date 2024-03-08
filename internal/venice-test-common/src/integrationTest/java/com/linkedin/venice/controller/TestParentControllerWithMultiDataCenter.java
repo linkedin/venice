@@ -440,14 +440,9 @@ public class TestParentControllerWithMultiDataCenter {
       childControllerClients.add(dc0Client);
       childControllerClients.add(dc1Client);
       emptyPushToStore(parentControllerClient, childControllerClients, storeName, 1);
-      // Rollback should fail since there is no backup version
-      ControllerResponse response = parentControllerClient.rollbackToBackupVersion(storeName);
-      // Assert.assertTrue(response.isError());
-
       emptyPushToStore(parentControllerClient, childControllerClients, storeName, 2);
       // Should roll back to version 1
-      response = parentControllerClient.rollbackToBackupVersion(storeName);
-      // Assert.assertFalse(response.isError());
+      parentControllerClient.rollbackToBackupVersion(storeName);
       for (ControllerClient childControllerClient: childControllerClients) {
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
@@ -458,8 +453,7 @@ public class TestParentControllerWithMultiDataCenter {
       }
 
       // Now lets go back to the future version for fun
-      response = parentControllerClient.rollForwardToFutureVersion(storeName);
-      // Assert.assertFalse(response.isError());
+      parentControllerClient.rollForwardToFutureVersion(storeName);
       for (ControllerClient childControllerClient: childControllerClients) {
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
