@@ -63,7 +63,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         metricsRepository,
         metadataRepository,
         () -> new HeartbeatStat(new MetricConfig(), regionNames),
-        (aMetricsRepository, s) -> new HeartbeatStatReporter(aMetricsRepository, s, regionNames),
+        (aMetricsRepository, storeName) -> new HeartbeatStatReporter(aMetricsRepository, storeName, regionNames),
         leaderHeartbeatTimeStamps,
         followerHeartbeatTimeStamps);
   }
@@ -162,7 +162,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    */
   public void recordLeaderHeartbeat(String store, int version, int partition, String region, Long timestamp) {
     recordHeartbeat(store, version, partition, region, timestamp, leaderHeartbeatTimeStamps);
-
   }
 
   /**
