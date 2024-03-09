@@ -122,6 +122,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
@@ -193,7 +194,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
 
-  private final DaVinciRecordTransformer recordTransformer;
+  private final Function<Integer, DaVinciRecordTransformer> getRecordTransformer;
 
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
@@ -227,13 +228,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformer recordTransformer,
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
       boolean isDaVinciClient,
       RemoteIngestionRepairService remoteIngestionRepairService,
       PubSubClientsFactory pubSubClientsFactory,
       Optional<SSLFactory> sslFactory) {
     this.cacheBackend = cacheBackend;
-    this.recordTransformer = recordTransformer;
+    this.getRecordTransformer = getRecordTransformer;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.schemaRepo = schemaRepo;
@@ -570,7 +571,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformer);
+        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null);
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {

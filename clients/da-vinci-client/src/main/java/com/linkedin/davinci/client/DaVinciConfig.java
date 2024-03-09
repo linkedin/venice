@@ -1,7 +1,7 @@
 package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 
 public class DaVinciConfig {
@@ -37,7 +37,7 @@ public class DaVinciConfig {
   /**
    * Record transformer reference
    */
-  private Supplier<DaVinciRecordTransformer> recordTransformerSupplier;
+  private Function<Integer, DaVinciRecordTransformer> recordTransformerFunction;
 
   /**
    * Whether to enable read-path metrics.
@@ -104,7 +104,7 @@ public class DaVinciConfig {
   }
 
   public boolean isRecordTransformerEnabled() {
-    return recordTransformerSupplier != null;
+    return recordTransformerFunction != null;
   }
 
   public ObjectCacheConfig getCacheConfig() {
@@ -116,15 +116,16 @@ public class DaVinciConfig {
     return this;
   }
 
-  public DaVinciRecordTransformer getRecordTransformer() {
-    if (recordTransformerSupplier != null) {
-      return recordTransformerSupplier.get();
+  public DaVinciRecordTransformer getRecordTransformer(Integer storeVersion) {
+    if (recordTransformerFunction != null) {
+      return recordTransformerFunction.apply(storeVersion);
     }
     return null;
   }
 
-  public DaVinciConfig setRecordTransformerSupplier(Supplier<DaVinciRecordTransformer> recordTransformerSupplier) {
-    this.recordTransformerSupplier = recordTransformerSupplier;
+  public DaVinciConfig setRecordTransformerFunction(
+      Function<Integer, DaVinciRecordTransformer> recordTransformerFunction) {
+    this.recordTransformerFunction = recordTransformerFunction;
     return this;
   }
 

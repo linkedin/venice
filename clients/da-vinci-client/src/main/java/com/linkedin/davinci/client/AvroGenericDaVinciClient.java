@@ -74,6 +74,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -670,8 +671,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)
         .put(
             RECORD_TRANSFORMER_VALUE_SCHEMA,
-            daVinciConfig.getRecordTransformer() != null
-                ? daVinciConfig.getRecordTransformer().getValueOutputSchema().toString()
+            daVinciConfig.isRecordTransformerEnabled()
+                // We're creating a new record transformer here just to get the schema
+                ? daVinciConfig.getRecordTransformer(0).getValueOutputSchema().toString()
                 : "null")
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + INGESTION_MEMORY_LIMIT, -1) // Explicitly disable memory limiter
                                                                                    // in Isolated Process
@@ -686,13 +688,19 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformer recordTransformer) {
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         logger
             .info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
         daVinciBackend = new ReferenceCounted<>(
-            new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig, recordTransformer),
+            new DaVinciBackend(
+                clientConfig,
+                configLoader,
+                managedClients,
+                icProvider,
+                cacheConfig,
+                getRecordTransformer),
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
@@ -734,7 +742,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         managedClients,
         icProvider,
         cacheConfig,
-        daVinciConfig.getRecordTransformer());
+        daVinciConfig::getRecordTransformer);
 
     try {
       if (!getBackend().compareCacheConfig(cacheConfig)) {

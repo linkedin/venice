@@ -1,7 +1,7 @@
 package com.linkedin.davinci.config;
 
-import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
@@ -35,17 +35,17 @@ public class DaVinciConfigTest {
   public void testRecordTransformerEnabled() {
     DaVinciConfig config = new DaVinciConfig();
     assertFalse(config.isRecordTransformerEnabled());
-    config.setRecordTransformerSupplier(() -> new TestRecordTransformer(0));
+    config.setRecordTransformerFunction((storeVersion) -> new TestRecordTransformer(storeVersion));
     assertTrue(config.isRecordTransformerEnabled());
   }
 
   @Test
   public void testGetAndSetRecordTransformer() {
-    DaVinciRecordTransformer transformer = new TestRecordTransformer(0);
+    Integer testStoreVersion = 0;
     DaVinciConfig config = new DaVinciConfig();
-    assertNull(config.getRecordTransformer());
-    config.setRecordTransformerSupplier(() -> transformer);
-    assertEquals(transformer, config.getRecordTransformer());
+    assertNull(config.getRecordTransformer(testStoreVersion));
+    config.setRecordTransformerFunction((storeVersion) -> new TestRecordTransformer(storeVersion));
+    assertNotNull(config.getRecordTransformer(testStoreVersion));
   }
 
 }
