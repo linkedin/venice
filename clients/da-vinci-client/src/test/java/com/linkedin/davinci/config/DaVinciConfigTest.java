@@ -44,7 +44,7 @@ public class DaVinciConfigTest {
     DaVinciRecordTransformer transformer = new TestRecordTransformer(0);
     DaVinciConfig config = new DaVinciConfig();
     assertNull(config.getRecordTransformer());
-    config.setRecordTransformerSupplier(() -> new TestRecordTransformer(0));
+    config.setRecordTransformerSupplier(() -> transformer);
     assertEquals(transformer, config.getRecordTransformer());
   }
 
