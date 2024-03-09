@@ -58,13 +58,33 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   }
 
   /**
-   * By default, takes a value, serializes it and wrap it in a ByteByffer.
+   * This function is called as a lifecycle event at the beginning of an ingestion task.
+   * 
+   * By default, it performs no operation.
+   * 
+   */
+  public void onStartIngestionTask() {
+    return;
+  }
+
+  /**
+   * This function is called as a lifecycle event at the end of an ingestion task
+   * 
+   * By default, it performs no operation.
+   * 
+   */
+  public void onEndIngestionTask() {
+    return;
+  }
+
+  /**
+   * Takes a value, serializes it and wrap it in a ByteByffer.
    * 
    * @param schema the Avro schema defining the serialization format
    * @param value value the value to be serialized
    * @return a ByteBuffer containing the serialized value wrapped according to Avro specifications
    */
-  public ByteBuffer getValueBytes(Schema schema, V value) {
+  public final ByteBuffer getValueBytes(Schema schema, V value) {
     ByteBuffer transformedBytes = ByteBuffer.wrap(new AvroSerializer(schema).serialize(value));
     ByteBuffer newBuffer = ByteBuffer.allocate(Integer.BYTES + transformedBytes.remaining());
     newBuffer.putInt(1);

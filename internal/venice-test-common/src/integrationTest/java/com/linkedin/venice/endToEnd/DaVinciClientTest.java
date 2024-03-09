@@ -213,8 +213,8 @@ public class DaVinciClientTest {
         metricsRepository,
         backendConfig)) {
       recordTransformer.setOriginalSchema(Schema.parse(DEFAULT_VALUE_SCHEMA));
-      DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName1, clientConfig.setRecordTransformer(recordTransformer));
+      DaVinciClient<Integer, Object> clientWithRecordTransformer = factory
+          .getAndStartGenericAvroClient(storeName1, clientConfig.setRecordTransformerSupplier(() -> recordTransformer));
 
       // Test non-existent key access
       clientWithRecordTransformer.subscribeAll().get();
@@ -228,7 +228,7 @@ public class DaVinciClientTest {
     }
 
     if (clientConfig.isRecordTransformerEnabled()) {
-      clientConfig.setRecordTransformer(null);
+      clientConfig.setRecordTransformerSupplier(null);
     }
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path

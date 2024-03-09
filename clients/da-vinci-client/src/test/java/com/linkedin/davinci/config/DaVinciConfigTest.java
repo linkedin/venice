@@ -33,10 +33,9 @@ public class DaVinciConfigTest {
 
   @Test
   public void testRecordTransformerEnabled() {
-    DaVinciRecordTransformer transformer = new TestRecordTransformer(0);
     DaVinciConfig config = new DaVinciConfig();
     assertFalse(config.isRecordTransformerEnabled());
-    config.setRecordTransformer(transformer);
+    config.setRecordTransformerSupplier(() -> new TestRecordTransformer(0));
     assertTrue(config.isRecordTransformerEnabled());
   }
 
@@ -45,7 +44,7 @@ public class DaVinciConfigTest {
     DaVinciRecordTransformer transformer = new TestRecordTransformer(0);
     DaVinciConfig config = new DaVinciConfig();
     assertNull(config.getRecordTransformer());
-    config.setRecordTransformer(transformer);
+    config.setRecordTransformerSupplier(() -> new TestRecordTransformer(0));
     assertEquals(transformer, config.getRecordTransformer());
   }
 
