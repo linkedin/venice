@@ -3131,15 +3131,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               consumerRecord.getOffset(),
               Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
               putSchemaId,
-              compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+              compressor.get());
 
           // Current record is a chunk. We only write to the storage engine for fully assembled records
           if (assembledObject == null) {
             return 0;
           }
 
-          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
           Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
 
           Object transformedRecord = null;

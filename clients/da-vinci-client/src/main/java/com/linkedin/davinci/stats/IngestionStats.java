@@ -516,7 +516,7 @@ public class IngestionStats {
 
   public double getTransformerErrorCount() {
     if (transformerErrorCount != null) {
-      transformerErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
+      return transformerErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
     }
     return 0;
   }

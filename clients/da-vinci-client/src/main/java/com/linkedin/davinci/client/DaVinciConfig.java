@@ -117,7 +117,10 @@ public class DaVinciConfig {
   }
 
   public DaVinciRecordTransformer getRecordTransformer() {
-    return recordTransformerSupplier.get();
+    if (recordTransformerSupplier != null) {
+      return recordTransformerSupplier.get();
+    }
+    return null;
   }
 
   public DaVinciConfig setRecordTransformerSupplier(Supplier<DaVinciRecordTransformer> recordTransformerSupplier) {
