@@ -17,14 +17,14 @@ It's capable of handling records that are compressed and/or chunked.
 ### Usage
 To use the record transformer, you will need to implement the 
 [DaVinciRecordTransformer](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformer.html) 
-abstract class and pass the object into 
-[setRecordTransformer()](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformer(com.linkedin.davinci.client.DaVinciRecordTransformer)). 
+abstract class, then pass in a functional interface into 
+[setRecordTransformerFunction()](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformerFunction(com.linkedin.davinci.client.DaVinciRecordTransformer)). 
 
 When a message is being consumed, the 
 [DaVinciRecordTransformer](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformer.html) will 
 modify the value before it is written to storage.
 
-Here's an example implementation:
+Here's an example `DaVinciRecordTransformer` implementation:
 ```
 package com.linkedin.davinci.transformer;
 
@@ -51,4 +51,10 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
   }
 }
 
+```
+
+Here's an example `setRecordTransformerFunction()` implementation:
+```
+DaVinciConfig config = new DaVinciConfig();
+config.setRecordTransformerFunction((storeVersion) -> new StringRecordTransformer(storeVersion));
 ```

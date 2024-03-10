@@ -667,7 +667,7 @@ public abstract class StoreIngestionTaskTest {
       Runnable beforeStartingConsumption,
       Runnable assertions,
       AAConfig aaConfig,
-      DaVinciRecordTransformer recordTransformer) throws Exception {
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
     runTest(
         pollStrategy,
         partitions,
@@ -680,7 +680,7 @@ public abstract class StoreIngestionTaskTest {
         1,
         Collections.emptyMap(),
         storeVersionConfigOverride -> {},
-        recordTransformer);
+        getRecordTransformer);
   }
 
   private void runTest(
@@ -739,7 +739,7 @@ public abstract class StoreIngestionTaskTest {
       int amplificationFactor,
       Map<String, Object> extraServerProperties,
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride,
-      DaVinciRecordTransformer recordTransformer) throws Exception {
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
 
     int partitionCount = PARTITION_COUNT / amplificationFactor;
     VenicePartitioner partitioner = getVenicePartitioner(1); // Only get base venice partitioner
@@ -780,7 +780,7 @@ public abstract class StoreIngestionTaskTest {
         leaderSubPartition,
         false,
         Optional.empty(),
-        recordTransformer);
+        getRecordTransformer);
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -4285,8 +4285,6 @@ public abstract class StoreIngestionTaskTest {
 
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
 
-    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer(0);
-
     VenicePartitioner partitioner = getVenicePartitioner(1);
     int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
 
@@ -4305,7 +4303,7 @@ public abstract class StoreIngestionTaskTest {
           targetPartitionPutKeyFoo,
           putKeyFoo,
           ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
-    }, aaConfig, recordTransformer);
+    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
 
     // verify the shared consumer should be detached when the ingestion task is closed.
     verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
@@ -4330,8 +4328,6 @@ public abstract class StoreIngestionTaskTest {
 
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
 
-    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer(0);
-
     VenicePartitioner partitioner = getVenicePartitioner(1);
     int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
 
@@ -4350,7 +4346,7 @@ public abstract class StoreIngestionTaskTest {
           targetPartitionPutKeyFoo,
           putKeyFoo,
           ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
-    }, aaConfig, recordTransformer);
+    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
 
     // verify the shared consumer should be detached when the ingestion task is closed.
     verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);

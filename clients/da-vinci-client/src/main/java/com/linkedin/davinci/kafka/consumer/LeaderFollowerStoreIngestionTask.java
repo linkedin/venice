@@ -101,6 +101,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -196,7 +197,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformer recordTransformer) {
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
     super(
         builder,
         store,
@@ -207,7 +208,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         errorPartitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformer,
+        getRecordTransformer,
         builder.getLeaderFollowerNotifiers());
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the

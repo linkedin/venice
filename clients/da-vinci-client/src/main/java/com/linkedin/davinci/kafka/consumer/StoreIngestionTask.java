@@ -331,7 +331,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformer recordTransformer,
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
       Queue<VeniceNotifier> notifiers) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -431,7 +431,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
-    this.recordTransformer = recordTransformer;
+    this.recordTransformer =
+        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
     if (recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);

@@ -571,7 +571,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null);
+        getRecordTransformer);
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
