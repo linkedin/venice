@@ -73,6 +73,14 @@ public class VeniceChangelogConsumerClientFactory {
     });
   }
 
+  /**
+   * Creates a VeniceChangelogConsumer with consumer id. This is used to create multiple consumers so that
+   * each consumer can only subscribe to certain partitions. Multiple such consumers can work in parallel.
+   */
+  public synchronized <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId) {
+    return getChangelogConsumer(storeName + "-" + consumerId);
+  }
+
   public synchronized <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
       String storeName) {
     return getBootstrappingChangelogConsumer(storeName, null);

@@ -123,6 +123,63 @@ public class VeniceChangelogConsumerClientFactoryTest {
   }
 
   @Test
+  public void testGetChangelogConsumerWithConsumerId()
+      throws ExecutionException, InterruptedException, JsonProcessingException {
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
+    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
+    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
+    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+
+    SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
+    Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
+    PubSubConsumerAdapter mockKafkaConsumer = Mockito.mock(PubSubConsumerAdapter.class);
+
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties).setSchemaReader(mockSchemaReader);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
+    D2ControllerClient mockControllerClient = Mockito.mock(D2ControllerClient.class);
+
+    veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
+    veniceChangelogConsumerClientFactory.setConsumer(mockKafkaConsumer);
+
+    setUpMockStoreResponse(mockControllerClient, STORE_NAME);
+    setUpMockStoreResponse(mockControllerClient, STORE_NAME + "-" + "consumer1");
+    setUpMockStoreResponse(mockControllerClient, STORE_NAME + "-" + "consumer2");
+
+    VeniceChangelogConsumer consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
+    Assert.assertTrue(consumer instanceof VeniceAfterImageConsumerImpl);
+
+    VeniceChangelogConsumer consumer1 =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME, "consumer1");
+    Assert.assertTrue(consumer1 instanceof VeniceAfterImageConsumerImpl);
+
+    VeniceChangelogConsumer consumer2 =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME, "consumer2");
+    Assert.assertTrue(consumer2 instanceof VeniceAfterImageConsumerImpl);
+
+    Assert.assertNotSame(consumer, consumer1);
+    Assert.assertNotSame(consumer, consumer2);
+    Assert.assertNotSame(consumer1, consumer2);
+  }
+
+  private void setUpMockStoreResponse(D2ControllerClient mockControllerClient, String storeConsumer) {
+    StoreResponse mockStoreResponse = Mockito.mock(StoreResponse.class);
+    Mockito.when(mockStoreResponse.isError()).thenReturn(false);
+    StoreInfo mockStoreInfo = new StoreInfo();
+    mockStoreInfo.setPartitionCount(1);
+    mockStoreInfo.setCurrentVersion(1);
+    ViewConfig viewConfig = new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), new HashMap<>());
+    Map<String, ViewConfig> viewConfigMap = new HashMap<>();
+    viewConfigMap.put(VIEW_NAME, viewConfig);
+    mockStoreInfo.setViewConfigs(viewConfigMap);
+    Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
+    Mockito.when(mockControllerClient.getStore(storeConsumer)).thenReturn(mockStoreResponse);
+  }
+
+  @Test
   public void testGetChangelogConsumerThrowsException() {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
