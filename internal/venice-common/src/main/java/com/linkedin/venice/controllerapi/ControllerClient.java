@@ -250,6 +250,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.FUTURE_VERSION, params, MultiStoreStatusResponse.class);
   }
 
+  public MultiStoreStatusResponse getBackupVersions(String clusterName, String storeName) {
+    QueryParams params = newParams().add(NAME, storeName).add(CLUSTER, clusterName);
+    return request(ControllerRoute.BACKUP_VERSION, params, MultiStoreStatusResponse.class);
+  }
+
   @Deprecated
   public static StoreResponse getStore(String urlsToFindLeaderController, String clusterName, String storeName) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindLeaderController)) {

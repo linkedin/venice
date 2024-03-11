@@ -224,6 +224,8 @@ public enum ControllerRoute {
 
   ADD_VERSION("/add_version", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID, VERSION, PARTITION_COUNT)),
   FUTURE_VERSION("/list_future_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+  BACKUP_VERSION("/list_backup_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+
   SET_TOPIC_COMPACTION("/set_topic_compaction", HttpMethod.POST, Arrays.asList(TOPIC, TOPIC_COMPACTION_POLICY)),
   UPDATE_ACL("/update_acl", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, ACCESS_PERMISSION)),
   GET_ACL("/get_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),

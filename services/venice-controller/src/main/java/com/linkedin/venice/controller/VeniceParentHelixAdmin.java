@@ -1793,11 +1793,38 @@ public class VeniceParentHelixAdmin implements Admin {
     return result;
   }
 
+  @Override
+  public Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {
+    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    Map<String, String> result = new HashMap<>();
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+      MultiStoreStatusResponse response = controllerClient.getBackupVersions(clusterName, storeName);
+      if (response.isError()) {
+        LOGGER.error(
+            "Could not query store from region: {} for cluster: {}. Error: {}",
+            region,
+            clusterName,
+            response.getError());
+        result.put(region, String.valueOf(AdminConsumptionTask.IGNORED_CURRENT_VERSION));
+      } else {
+        result.put(region, response.getStoreStatusMap().get(storeName));
+      }
+    }
+    return result;
+  }
+
   /**
    * Unsupported operation in the parent controller and returns {@linkplain Store#NON_EXISTING_VERSION}.
    */
   @Override
   public int getFutureVersion(String clusterName, String storeName) {
+    return Store.NON_EXISTING_VERSION;
+  }
+
+  @Override
+  public int getBackupVersion(String clusterName, String storeName) {
     return Store.NON_EXISTING_VERSION;
   }
 

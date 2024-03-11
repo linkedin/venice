@@ -277,12 +277,11 @@ public interface Admin extends AutoCloseable, Closeable {
 
   Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName);
 
-  /**
-   * The difference between this api and getBootStrappingStores is subtle.  getBootStrappingStores will retrieve all those
-   * store versions which are undergoing a bootstrap for any reason (be it an offline push or a rebalance).  This api
-   * will only return those stores which are currently undergoing a push.
-   */
   Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName);
+
+  Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName);
+
+  int getBackupVersion(String clusterName, String storeName);
 
   int getFutureVersion(String clusterName, String storeName);
 

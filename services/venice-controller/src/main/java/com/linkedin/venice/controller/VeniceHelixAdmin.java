@@ -3078,6 +3078,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return Store.NON_EXISTING_VERSION;
   }
 
+  @Override
+  public int getBackupVersion(String clusterName, String storeName) {
+    checkControllerLeadershipFor(clusterName);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+      Store store = resources.getStoreMetadataRepository().getStore(storeName);
+      return getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+    }
+  }
+
   public int getOnlineFutureVersion(String clusterName, String storeName) {
     Store store = getStoreForReadOnly(clusterName, storeName);
     Version version = store.getVersions().stream().max(Comparable::compareTo).get();
@@ -3115,6 +3125,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
+    return Collections.EMPTY_MAP;
+  }
+
+  @Override
+  public Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {
     return Collections.EMPTY_MAP;
   }
 

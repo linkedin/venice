@@ -25,6 +25,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COM
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ABORT_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
@@ -335,9 +336,6 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
-  /**
-   * @see Admin#getFutureVersion(String, String)
-   */
   public Route getFutureVersion(Admin admin) {
     return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
       @Override
@@ -352,9 +350,32 @@ public class StoresRoutes extends AbstractRoute {
         }
         Map<String, String> storeStatusMap = admin.getFutureVersionsForMultiColos(clusterName, storeName);
         if (storeStatusMap.isEmpty()) {
-          // Non parent controllers will return an empty map, so we'll just return the childs version of this api
+          // Non parent controllers will return an empty map, so we'll just return the children version of this api
           storeStatusMap =
               Collections.singletonMap(storeName, String.valueOf(admin.getFutureVersion(clusterName, storeName)));
+        }
+        veniceResponse.setStoreStatusMap(storeStatusMap);
+      }
+    };
+  }
+
+  public Route getBackupVersion(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, BACKUP_VERSION.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        veniceResponse.setCluster(clusterName);
+        Store store = admin.getStore(clusterName, storeName);
+        if (store == null) {
+          throw new VeniceNoStoreException(storeName);
+        }
+        Map<String, String> storeStatusMap = admin.getBackupVersionsForMultiColos(clusterName, storeName);
+        if (storeStatusMap.isEmpty()) {
+          // Non parent controllers will return an empty map, so we'll just return the children version of this api
+          storeStatusMap =
+              Collections.singletonMap(storeName, String.valueOf(admin.getBackupVersion(clusterName, storeName)));
         }
         veniceResponse.setStoreStatusMap(storeStatusMap);
       }
