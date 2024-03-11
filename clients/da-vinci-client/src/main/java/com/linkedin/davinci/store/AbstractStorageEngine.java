@@ -579,7 +579,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    */
   public synchronized void clearPartitionOffset(int partitionId) {
     if (!metadataPartitionCreated()) {
-      throw new StorageInitializationException("Metadata partition not created!");
+      LOGGER.info("Metadata partition not created; there is nothing to clear!");
+      return;
     }
     if (partitionId == METADATA_PARTITION_ID) {
       throw new IllegalArgumentException(
