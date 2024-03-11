@@ -105,7 +105,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           }
           break;
         case HEALTH:
-          statsHandler.setHealthCheck(true);
+          statsHandler.setMetadataRequest(true);
           HealthCheckRequest healthCheckRequest = new HealthCheckRequest();
           ctx.fireChannelRead(healthCheckRequest);
           break;
@@ -120,11 +120,13 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           ctx.fireChannelRead(adminRequest);
           break;
         case METADATA:
+          statsHandler.setMetadataRequest(true);
           MetadataFetchRequest metadataFetchRequest = MetadataFetchRequest.parseGetHttpRequest(req);
           statsHandler.setStoreName(metadataFetchRequest.getStoreName());
           ctx.fireChannelRead(metadataFetchRequest);
           break;
         case CURRENT_VERSION:
+          statsHandler.setMetadataRequest(true);
           CurrentVersionRequest currentVersionRequest = CurrentVersionRequest.parseGetHttpRequest(req);
           statsHandler.setStoreName(currentVersionRequest.getStoreName());
           ctx.fireChannelRead(currentVersionRequest);

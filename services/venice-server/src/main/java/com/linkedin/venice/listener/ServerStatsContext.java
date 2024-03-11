@@ -22,7 +22,7 @@ public class ServerStatsContext {
   private long startTimeInNS;
   private HttpResponseStatus responseStatus;
   private String storeName = null;
-  private boolean isHealthCheck;
+  private boolean isMetadataRequest;
   private double databaseLookupLatency = -1;
   private int multiChunkLargeValueCount = -1;
   private int requestKeyCount = -1;
@@ -138,7 +138,7 @@ public class ServerStatsContext {
     partsInvokeDelayLatency = -1;
     secondPartLatency = -1;
     requestPartCount = 1;
-    isHealthCheck = false;
+    isMetadataRequest = false;
     responseStatus = null;
     statCallbackExecuted = false;
     databaseLookupLatency = -1;
@@ -169,8 +169,8 @@ public class ServerStatsContext {
     this.newRequest = true;
   }
 
-  public boolean isHealthCheck() {
-    return isHealthCheck;
+  public boolean isMetadataRequest() {
+    return isMetadataRequest;
   }
 
   public boolean isStatCallBackExecuted() {
@@ -193,8 +193,8 @@ public class ServerStatsContext {
     this.storeName = name;
   }
 
-  public void setHealthCheck(boolean healthCheck) {
-    this.isHealthCheck = healthCheck;
+  public void setMetadataRequest(boolean metadataRequest) {
+    this.isMetadataRequest = metadataRequest;
   }
 
   public void setRequestTerminatedEarly() {
