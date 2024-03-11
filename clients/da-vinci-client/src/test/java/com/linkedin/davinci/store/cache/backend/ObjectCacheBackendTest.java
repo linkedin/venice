@@ -67,7 +67,7 @@ public class ObjectCacheBackendTest {
     Assert.assertEquals(
         ((VeniceStoreCacheStorageEngine) cachedStorageEngine).getCache().getIfPresent(keyRecord),
         cachedValued);
-    Assert.assertEquals(cachedStorageEngine.getStoreName(), TOPIC_NAME);
+    Assert.assertEquals(cachedStorageEngine.getStoreVersionName(), TOPIC_NAME);
 
     // Make a version push happen that invalidates entries (by triggering the store change event)
     Store mockStore = Mockito.mock(Store.class);

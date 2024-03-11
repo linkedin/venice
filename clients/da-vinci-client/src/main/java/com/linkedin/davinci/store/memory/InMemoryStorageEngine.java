@@ -18,9 +18,9 @@ public class InMemoryStorageEngine extends AbstractStorageEngine<InMemoryStorage
     this(storeDef.getStoreVersionName());
   }
 
-  public InMemoryStorageEngine(String versionName) {
+  public InMemoryStorageEngine(String versionVersionName) {
     super(
-        versionName,
+        versionVersionName,
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     restoreStoragePartitions();

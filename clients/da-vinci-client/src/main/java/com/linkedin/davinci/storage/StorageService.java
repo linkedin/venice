@@ -476,7 +476,7 @@ public class StorageService extends AbstractVeniceService {
     restoreAllStores(configLoader, true, true, s -> true);
     LOGGER.info("Start cleaning up all the stores persisted previously");
     storageEngineRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
-      String storeName = storageEngine.getStoreName();
+      String storeName = storageEngine.getStoreVersionName();
       LOGGER.info("Start deleting store: {}", storeName);
       Set<Integer> partitionIds = storageEngine.getPartitionIds();
       for (Integer partitionId: partitionIds) {
@@ -502,7 +502,7 @@ public class StorageService extends AbstractVeniceService {
         "Storage service has {} storage engines before cleanup.",
         storageEngineRepository.getAllLocalStorageEngines().size());
     for (AbstractStorageEngine storageEngine: storageEngineRepository.getAllLocalStorageEngines()) {
-      closeStorageEngine(storageEngine.getStoreName());
+      closeStorageEngine(storageEngine.getStoreVersionName());
     }
     LOGGER.info(
         "Storage service has {} storage engines after cleanup.",
@@ -520,7 +520,7 @@ public class StorageService extends AbstractVeniceService {
   public Map<String, Set<Integer>> getStoreAndUserPartitionsMapping() {
     Map<String, Set<Integer>> storePartitionMapping = new HashMap<>();
     for (AbstractStorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
-      String storeName = engine.getStoreName();
+      String storeName = engine.getStoreVersionName();
       int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, storeName);
       Set<Integer> partitionIdSet = new HashSet<>();
       /**

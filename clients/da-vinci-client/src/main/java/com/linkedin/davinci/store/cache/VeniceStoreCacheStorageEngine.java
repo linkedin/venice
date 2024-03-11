@@ -23,12 +23,12 @@ public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceS
   private final ReadWriteLock globalRWlock = new ReentrantReadWriteLock();
 
   public VeniceStoreCacheStorageEngine(
-      String storeName,
+      String storeVersionName,
       ObjectCacheConfig config,
       Schema keySchema,
       AsyncCacheLoader asyncCacheLoader) {
     super(
-        storeName,
+        storeVersionName,
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     cacheConfig = config;

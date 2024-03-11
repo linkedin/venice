@@ -99,7 +99,7 @@ public class StorageServiceTest {
     when(mockStorageEngineFactory.getStorageEngine(storeVersionConfig, false)).thenReturn(mockStorageEngine);
     Set<Integer> partitionSet = new HashSet<>(Arrays.asList(1, 2, 3));
     when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitionSet);
-    when(mockStorageEngine.getStoreName()).thenReturn(resourceName);
+    when(mockStorageEngine.getStoreVersionName()).thenReturn(resourceName);
     when(mockStorageEngineFactory.getPersistedStoreNames()).thenReturn(Sets.newSet(resourceName));
     when(mockStorageEngineFactory.getPersistenceType()).thenReturn(PersistenceType.BLACK_HOLE);
 
