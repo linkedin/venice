@@ -351,7 +351,7 @@ public class DaVinciBackend implements Closeable {
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
     for (AbstractStorageEngine storageEngine: storageEngines) {
-      String kafkaTopicName = storageEngine.getStoreName();
+      String kafkaTopicName = storageEngine.getStoreVersionName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
       if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
         // Do not bootstrap meta system store via DaVinci backend initialization since the operation is not supported by

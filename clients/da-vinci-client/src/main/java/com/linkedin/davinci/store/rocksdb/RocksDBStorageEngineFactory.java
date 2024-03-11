@@ -316,7 +316,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   @Override
   public synchronized void removeStorageEngine(AbstractStorageEngine engine) {
     verifyPersistenceType(engine);
-    final String storeName = engine.getStoreName();
+    final String storeName = engine.getStoreVersionName();
     if (storageEngineMap.containsKey(storeName)) {
       LOGGER.info("Started removing RocksDB storage engine for store: {}", storeName);
       storageEngineMap.get(storeName).drop();
@@ -370,7 +370,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   @Override
   public synchronized void closeStorageEngine(AbstractStorageEngine engine) {
     verifyPersistenceType(engine);
-    final String storeName = engine.getStoreName();
+    final String storeName = engine.getStoreVersionName();
     if (storageEngineMap.containsKey(storeName)) {
       LOGGER.info("Started closing RocksDB storage engine for store: {}", storeName);
       storageEngineMap.get(storeName).close();

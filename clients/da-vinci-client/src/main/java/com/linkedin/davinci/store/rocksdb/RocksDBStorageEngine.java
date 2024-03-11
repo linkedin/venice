@@ -71,11 +71,11 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     this.replicationMetadataEnabled = replicationMetadataEnabled;
 
     // Create store folder if it doesn't exist
-    storeDbPath = RocksDBUtils.composeStoreDbDir(this.rocksDbPath, getStoreName());
+    storeDbPath = RocksDBUtils.composeStoreDbDir(this.rocksDbPath, getStoreVersionName());
     File storeDbDir = new File(storeDbPath);
     if (!storeDbDir.exists()) {
       storeDbDir.mkdirs();
-      LOGGER.info("Created RocksDb dir for store: {}", getStoreName());
+      LOGGER.info("Created RocksDb dir for store: {}", getStoreVersionName());
     } else {
       if (storeConfig.isRocksDbStorageEngineConfigCheckEnabled()) {
         // We only validate it when re-opening the storage engine.
@@ -156,11 +156,11 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       // Remove store db dir
       File storeDbDir = new File(storeDbPath);
       if (storeDbDir.exists()) {
-        LOGGER.info("Started removing database dir: {} for store: {}", storeDbPath, getStoreName());
+        LOGGER.info("Started removing database dir: {} for store: {}", storeDbPath, getStoreVersionName());
         if (!storeDbDir.delete()) {
           LOGGER.warn("Failed to remove dir: {}.", storeDbDir);
         } else {
-          LOGGER.info("Finished removing database dir: {} for store {}", storeDbPath, getStoreName());
+          LOGGER.info("Finished removing database dir: {} for store {}", storeDbPath, getStoreVersionName());
         }
       }
     }
@@ -175,7 +175,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       try {
         partition = super.getPartitionOrThrow(i);
       } catch (VeniceException e) {
-        LOGGER.warn("Could not find partition {} for store {}", i, super.getStoreName());
+        LOGGER.warn("Could not find partition {} for store {}", i, super.getStoreVersionName());
         continue;
       }
       diskUsage += partition.getRmdByteUsage();
@@ -244,7 +244,8 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     } else {
       // If no existing config is found, we will by default skip the checking as not enough information is given to
       // enforce the check.
-      LOGGER.warn("RocksDB storage engine config not found for store {} skipping the validation.", getStoreName());
+      LOGGER
+          .warn("RocksDB storage engine config not found for store {} skipping the validation.", getStoreVersionName());
     }
     return false;
   }
@@ -264,7 +265,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   }
 
   private String getRocksDbEngineConfigPath() {
-    return RocksDBUtils.composePartitionDbDir(rocksDbPath, getStoreName(), METADATA_PARTITION_ID) + "/"
+    return RocksDBUtils.composePartitionDbDir(rocksDbPath, getStoreVersionName(), METADATA_PARTITION_ID) + "/"
         + SERVER_CONFIG_FILE_NAME;
   }
 

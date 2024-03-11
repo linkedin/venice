@@ -404,7 +404,7 @@ public class ChunkingUtils {
   }
 
   private static String getExceptionMessageDetails(AbstractStorageEngine store, int partition, Integer chunkIndex) {
-    String message = "store: " + store.getStoreName() + ", partition: " + partition;
+    String message = "store: " + store.getStoreVersionName() + ", partition: " + partition;
     if (chunkIndex != null) {
       message += ", chunk index: " + chunkIndex;
     }

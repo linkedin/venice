@@ -221,7 +221,7 @@ public class ChunkingTest {
     try (StorageEngineBackedCompressorFactory compressorFactory =
         new StorageEngineBackedCompressorFactory(mock(StorageMetadataService.class))) {
       VeniceCompressor compressor =
-          compressorFactory.getCompressor(CompressionStrategy.NO_OP, storageEngine.getStoreName());
+          compressorFactory.getCompressor(CompressionStrategy.NO_OP, storageEngine.getStoreVersionName());
       Object retrievedObject;
       if (getWithSchemaId) {
         retrievedObject = chunkingAdapter.getWithSchemaId(

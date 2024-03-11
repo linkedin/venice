@@ -116,7 +116,7 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
        */
       final Set<String> validResourceSet = new HashSet<>();
       for (AbstractStorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
-        String resourceName = engine.getStoreName();
+        String resourceName = engine.getStoreVersionName();
         validResourceSet.add(resourceName);
         String storeName = Version.parseStoreFromVersionTopic(resourceName);
         int versionNumber = Version.parseVersionFromVersionTopicName(resourceName);
