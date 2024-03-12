@@ -61,12 +61,10 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
       int version,
       long currentTimeMs,
       double producerBrokerLatencyMs,
-      double brokerConsumerLatencyMs,
-      double producerConsumerLatencyMs) {
+      double brokerConsumerLatencyMs) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
       stat.recordProducerSourceBrokerLatencyMs(producerBrokerLatencyMs, currentTimeMs);
       stat.recordSourceBrokerLeaderConsumerLatencyMs(brokerConsumerLatencyMs, currentTimeMs);
-      stat.recordProducerLeaderConsumerLatencyMs(producerConsumerLatencyMs, currentTimeMs);
     });
   }
 
@@ -75,12 +73,10 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
       int version,
       long currentTimeMs,
       double producerBrokerLatencyMs,
-      double brokerConsumerLatencyMs,
-      double producerConsumerLatencyMs) {
+      double brokerConsumerLatencyMs) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
       stat.recordProducerLocalBrokerLatencyMs(producerBrokerLatencyMs, currentTimeMs);
       stat.recordLocalBrokerFollowerConsumerLatencyMs(brokerConsumerLatencyMs, currentTimeMs);
-      stat.recordProducerFollowerConsumerLatencyMs(producerConsumerLatencyMs, currentTimeMs);
     });
   }
 

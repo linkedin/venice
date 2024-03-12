@@ -108,43 +108,24 @@ public class AggVersionedDIVStatsTest {
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.Gauge").value(), 1d);
 
     long consumerTimestampMs = System.currentTimeMillis();
-    double v1ProducerBrokerLatencyMs = 801d;
 
     double v1ProducerToSourceBrokerLatencyMs = 811d;
     double v1SourceBrokerToLeaderConsumerLatencyMs = 211d;
-    double v1ProducerToLeaderConsumerLatencyMs = 1011d;
     stats.recordLeaderLatencies(
         storeName,
         1,
         consumerTimestampMs,
         v1ProducerToSourceBrokerLatencyMs,
-        v1SourceBrokerToLeaderConsumerLatencyMs,
-        v1ProducerToLeaderConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--producer_to_leader_consumer_latency_avg_ms.DIVStatsCounter").value(),
-        v1ProducerToLeaderConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--producer_to_leader_consumer_latency_max_ms.DIVStatsCounter").value(),
-        v1ProducerToLeaderConsumerLatencyMs);
+        v1SourceBrokerToLeaderConsumerLatencyMs);
 
     double v1ProducerToLocalBrokerLatencyMs = 821d;
     double v1LocalBrokerToFollowerConsumerLatencyMs = 221d;
-    double v1ProducerToFollowerConsumerLatencyMs = 1021d;
     stats.recordFollowerLatencies(
         storeName,
         1,
         consumerTimestampMs,
         v1ProducerToLocalBrokerLatencyMs,
-        v1LocalBrokerToFollowerConsumerLatencyMs,
-        v1ProducerToFollowerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--producer_to_follower_consumer_latency_avg_ms.DIVStatsCounter")
-            .value(),
-        v1ProducerToFollowerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--producer_to_follower_consumer_latency_max_ms.DIVStatsCounter")
-            .value(),
-        v1ProducerToFollowerConsumerLatencyMs);
+        v1LocalBrokerToFollowerConsumerLatencyMs);
 
     // v1 becomes the current version and v2 starts pushing
     version.setStatus(VersionStatus.ONLINE);
@@ -153,7 +134,6 @@ public class AggVersionedDIVStatsTest {
     mockStore.addVersion(version2);
 
     stats.recordDuplicateMsg(storeName, 2);
-    double v2BrokerConsumerLatencyMs = 202d;
     stats.handleStoreChanged(mockStore);
 
     // expect to see v1's stats on current reporter and v2's stats on future reporter
@@ -163,14 +143,12 @@ public class AggVersionedDIVStatsTest {
 
     double v2ProducerToSourceBrokerLatencyMs = 812d;
     double v2SourceBrokerToLeaderConsumerLatencyMs = 212d;
-    double v2ProducerToLeaderConsumerLatencyMs = 1012d;
     stats.recordLeaderLatencies(
         storeName,
         2,
         consumerTimestampMs,
         v2ProducerToSourceBrokerLatencyMs,
-        v2SourceBrokerToLeaderConsumerLatencyMs,
-        v2ProducerToLeaderConsumerLatencyMs);
+        v2SourceBrokerToLeaderConsumerLatencyMs);
 
     Assert.assertEquals(
         reporter.query("." + storeName + "_current--producer_to_source_broker_latency_avg_ms.DIVStatsCounter").value(),
@@ -189,14 +167,12 @@ public class AggVersionedDIVStatsTest {
 
     double v2ProducerToLocalBrokerLatencyMs = 822d;
     double v2LocalBrokerToFollowerConsumerLatencyMs = 222d;
-    double v2ProducerToFollowerConsumerLatencyMs = 1022d;
     stats.recordFollowerLatencies(
         storeName,
         2,
         consumerTimestampMs,
         v2ProducerToLocalBrokerLatencyMs,
-        v2LocalBrokerToFollowerConsumerLatencyMs,
-        v2ProducerToFollowerConsumerLatencyMs);
+        v2LocalBrokerToFollowerConsumerLatencyMs);
 
     Assert.assertEquals(
         reporter.query("." + storeName + "_current--producer_to_local_broker_latency_avg_ms.DIVStatsCounter").value(),

@@ -2733,13 +2733,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long producerBrokerLatencyMs =
           Math.max(consumerRecord.getPubSubMessageTime() - kafkaValue.producerMetadata.messageTimestamp, 0);
       long brokerConsumerLatencyMs = Math.max(currentTimeMs - consumerRecord.getPubSubMessageTime(), 0);
-      long producerConsumerLatencyMs = Math.max(currentTimeMs - kafkaValue.producerMetadata.messageTimestamp, 0);
-      recordWriterStats(
-          currentTimeMs,
-          producerBrokerLatencyMs,
-          brokerConsumerLatencyMs,
-          producerConsumerLatencyMs,
-          partitionConsumptionState);
+      recordWriterStats(currentTimeMs, producerBrokerLatencyMs, brokerConsumerLatencyMs, partitionConsumptionState);
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
       /**
        * DIV check will happen for every single message in drainer queues.
@@ -2874,7 +2868,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long consumerTimestampMs,
       long producerBrokerLatencyMs,
       long brokerConsumerLatencyMs,
-      long producerConsumerLatencyMs,
       PartitionConsumptionState partitionConsumptionState) {
 
   }
@@ -3783,6 +3776,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     SKIPPED_MESSAGE
   }
 
+  /**
+   * The method measures the time between receiving the message from the local VT and when the message is committed in
+   * the local db and ready to serve.
+   * For a leader, it's the time when the callback to the version topic write returns.
+   */
   private void recordNearlineLocalBrokerToReadyToServerLatency(
       String storeName,
       int versionNumber,

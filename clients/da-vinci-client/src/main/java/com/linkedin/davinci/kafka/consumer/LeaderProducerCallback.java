@@ -207,7 +207,14 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         produceDeprecatedChunkDeletionToStoreBufferService(oldValueManifest, currentTimeForMetricsMs);
         produceDeprecatedChunkDeletionToStoreBufferService(oldRmdManifest, currentTimeForMetricsMs);
         recordProducerStats(producedRecordSize, producedRecordNum);
-
+        if (!ingestionTask.isUserSystemStore()) {
+          ingestionTask.getVersionIngestionStats()
+              .recordProducerCallBackLatency(
+                  ingestionTask.getStoreName(),
+                  ingestionTask.versionNumber,
+                  LatencyUtils.getLatencyInMS(produceTimeNs),
+                  currentTimeForMetricsMs);
+        }
       } catch (Exception oe) {
         boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
         LOGGER.error(

@@ -1878,7 +1878,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long consumerTimestampMs,
       long producerBrokerLatencyMs,
       long brokerConsumerLatencyMs,
-      long producerConsumerLatencyMs,
       PartitionConsumptionState partitionConsumptionState) {
     if (isUserSystemStore()) {
       return;
@@ -1892,16 +1891,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             versionNumber,
             consumerTimestampMs,
             producerBrokerLatencyMs,
-            brokerConsumerLatencyMs,
-            producerConsumerLatencyMs);
+            brokerConsumerLatencyMs);
       } else {
         versionedDIVStats.recordFollowerLatencies(
             storeName,
             versionNumber,
             consumerTimestampMs,
             producerBrokerLatencyMs,
-            brokerConsumerLatencyMs,
-            producerConsumerLatencyMs);
+            brokerConsumerLatencyMs);
       }
     }
   }
