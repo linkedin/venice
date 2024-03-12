@@ -266,7 +266,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
         if (!pushJobSetting.isIncrementalPush) {
           if (!pushJobSetting.useMapperToBuildDict) {
             /** If dictionary compression is enabled for version, read the records to get training samples */
-            if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+            if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT
+                || pushJobSetting.compressionMetricCollectionEnabled) {
               InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
             }
           } else {
