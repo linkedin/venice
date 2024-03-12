@@ -29,6 +29,7 @@ public class TestUnusedValueSchemaCleanupService {
   private Store mockStore() {
     Store store = mock(Store.class);
     doReturn(Utils.getUniqueString()).when(store).getName();
+    doReturn(true).when(store).isUnusedSchemaDeletionEnabled();
     doReturn(1).when(store).getCurrentVersion();
     List<Version> versionList = new ArrayList<>();
     Version v = mock(Version.class);
