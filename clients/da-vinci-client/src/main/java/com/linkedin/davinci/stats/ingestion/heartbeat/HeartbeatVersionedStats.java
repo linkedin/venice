@@ -25,12 +25,12 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     this.followerMonitors = followerMonitors;
   }
 
-  public void recordLeaderLag(String storeName, int version, String region, long lag) {
-    getStats(storeName, version).recordLeaderLag(region, lag);
+  public void recordLeaderLag(String storeName, int version, String region, long heartbeatTs) {
+    getStats(storeName, version).recordLeaderLag(region, heartbeatTs);
   }
 
-  public void recordFollowerLag(String storeName, int version, String region, long lag) {
-    getStats(storeName, version).recordFollowerLag(region, lag);
+  public void recordFollowerLag(String storeName, int version, String region, long heartbeatTs) {
+    getStats(storeName, version).recordFollowerLag(region, heartbeatTs);
   }
 
   @Override

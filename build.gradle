@@ -717,6 +717,7 @@ ext.createDiffFile = { ->
       // da-vinci-client
       ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
       ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/ingestion/isolated/IsolatedIngestionServer.java',
+      ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/stats/ingestion/heartbeat/HeartbeatStatReporter.java',
 
       // venice-client
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
