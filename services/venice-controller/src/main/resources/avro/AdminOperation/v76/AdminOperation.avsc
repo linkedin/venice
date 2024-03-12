@@ -617,6 +617,12 @@
               "doc": "Store-level version topic max compaction lag",
               "type": "long",
               "default": -1
+            },
+            {
+              "name": "unusedSchemaDeletionEnabled",
+              "doc": "Whether unused schema deletion is enabled or not.",
+              "type": "boolean",
+              "default": false
             }
           ]
         },

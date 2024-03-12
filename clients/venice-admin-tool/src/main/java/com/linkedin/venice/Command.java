@@ -108,6 +108,7 @@ import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
+import static com.linkedin.venice.Arg.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
@@ -234,7 +235,7 @@ public enum Command {
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
-          MAX_COMPACTION_LAG_SECONDS }
+          MAX_COMPACTION_LAG_SECONDS, UNUSED_SCHEMA_DELETION_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },

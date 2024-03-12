@@ -223,5 +223,7 @@ public class ControllerApiConstants {
 
   public static final String MAX_COMPACTION_LAG_SECONDS = "max_compaction_lag_seconds";
 
+  public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
+
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
 }

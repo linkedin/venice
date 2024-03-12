@@ -303,4 +303,8 @@ public interface Store {
   long getMaxCompactionLagSeconds();
 
   void setMaxCompactionLagSeconds(long maxCompactionLagSeconds);
+
+  void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled);
+
+  boolean isUnusedSchemaDeletionEnabled();
 }
