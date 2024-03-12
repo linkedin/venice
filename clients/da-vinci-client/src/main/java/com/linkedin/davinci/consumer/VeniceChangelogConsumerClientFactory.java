@@ -52,12 +52,24 @@ public class VeniceChangelogConsumerClientFactory {
     this.consumer = consumer;
   }
 
+  /**
+   * Default method to create a {@link VeniceChangelogConsumer} given a storeName.
+   */
   public synchronized <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName) {
-    return storeClientMap.computeIfAbsent(storeName, name -> {
+    return getChangelogConsumer(storeName, null);
+  }
+
+  /**
+   * Creates a VeniceChangelogConsumer with consumer id. This is used to create multiple consumers so that
+   * each consumer can only subscribe to certain partitions. Multiple such consumers can work in parallel.
+   */
+  public synchronized <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId) {
+
+    return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
 
       ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-      String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
+      String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
       if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
         return new VeniceChangelogConsumerImpl(
             newStoreChangelogClientConfig,
@@ -71,6 +83,10 @@ public class VeniceChangelogConsumerClientFactory {
               ? consumer
               : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
     });
+  }
+
+  private String suffixConsumerIdToStore(String storeName, String consumerId) {
+    return StringUtils.isEmpty(consumerId) ? storeName : storeName + "-" + consumerId;
   }
 
   public synchronized <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
