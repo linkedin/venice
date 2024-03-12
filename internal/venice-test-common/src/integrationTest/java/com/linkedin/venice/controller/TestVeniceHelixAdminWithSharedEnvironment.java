@@ -1345,10 +1345,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertNotEquals(initialPromotionTimestamp, version1PromotionTimestamp);
 
     futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
-    Assert.assertEquals(futureVersion, Store.NON_EXISTING_VERSION, "Expected future version number of 0!!");
+    Assert.assertEquals(futureVersion, Store.NON_EXISTING_VERSION, "Expected future version number of 0");
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
-    Assert.assertEquals(futureVersion, 2, "Expected future version number of 2!!");
+    Assert.assertEquals(futureVersion, 2, "Expected future version number of 2");
     stateModelFactoryByNodeID.forEach(
         (nodeId, stateModelFactory) -> stateModelFactory
             .makeTransitionCompleted(Version.composeKafkaTopic(storeName, 2), 0));
@@ -1362,7 +1362,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertNotEquals(version1PromotionTimestamp, version2PromotionTimestamp);
 
     futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
-    Assert.assertEquals(futureVersion, Store.NON_EXISTING_VERSION, "Expected future version number of 0!!");
+    Assert.assertEquals(futureVersion, Store.NON_EXISTING_VERSION, "Expected future version number of 0");
+    int backupVersion = veniceAdmin.getBackupVersion(clusterName, storeName);
+    Assert.assertEquals(backupVersion, 1, "Expected future version number of 1");
+
     delayParticipantJobCompletion(false);
   }
 
