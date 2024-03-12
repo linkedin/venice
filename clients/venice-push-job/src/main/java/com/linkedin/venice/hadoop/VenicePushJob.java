@@ -1132,10 +1132,6 @@ public class VenicePushJob implements AutoCloseable {
       return false;
     }
 
-    if (!inputFileHasRecords) {
-      LOGGER.info("No compression dictionary will be generated as there are no records");
-    }
-
     if (pushJobSetting.compressionMetricCollectionEnabled
         || pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       if (!inputFileHasRecords) {
@@ -1186,8 +1182,6 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     if (pushJobSetting.isSourceKafka) {
-      // repush from kafka: This is already checked before calling this function.
-      // This is a defensive check.
       LOGGER.info("No compression related metrics will be generated as the push type is repush");
       return false;
     }
