@@ -92,10 +92,10 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   }
 
   protected void updateStatsVersionInfo(String storeName, List<Version> existingVersions, int newCurrentVersion) {
-    VeniceVersionedStats<STATS, STATS_REPORTER> versionedDIVStats = getVersionedStats(storeName);
+    VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats = getVersionedStats(storeName);
 
-    if (newCurrentVersion != versionedDIVStats.getCurrentVersion()) {
-      versionedDIVStats.setCurrentVersion(newCurrentVersion);
+    if (newCurrentVersion != versionedStats.getCurrentVersion()) {
+      versionedStats.setCurrentVersion(newCurrentVersion);
     }
 
     List<Integer> existingVersionNumbers =
@@ -103,20 +103,18 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
 
     // remove old versions except version 0. Version 0 is the default version when a store is created. Since no one will
     // report to it, it is always "empty". We use it to reset reporters. eg. when a topic goes from in-flight to
-    // current,
-    // we reset in-flight reporter to version 0.
-    versionedDIVStats.getAllVersionNumbers()
+    // current, we reset in-flight reporter to version 0.
+    versionedStats.getAllVersionNumbers()
         .stream()
         .filter(versionNum -> !existingVersionNumbers.contains(versionNum) && versionNum != NON_EXISTING_VERSION)
-        .forEach(versionedDIVStats::removeVersion);
+        .forEach(versionedStats::removeVersion);
 
     int futureVersion = NON_EXISTING_VERSION;
-    int backupVersion = NON_EXISTING_VERSION;
     for (Version version: existingVersions) {
       int versionNum = version.getNumber();
 
       // add this version to stats if it is absent
-      versionedDIVStats.addVersion(versionNum);
+      versionedStats.addVersion(versionNum);
 
       VersionStatus status = version.getStatus();
       if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
@@ -130,20 +128,11 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
         if (futureVersion < versionNum) {
           futureVersion = versionNum;
         }
-      } else {
-        // check past version
-        if (status == VersionStatus.ONLINE && versionNum != newCurrentVersion) {
-          if (backupVersion != 0) {
-            LOGGER.warn("There are more than 1 backup versions. Something might be wrong. Store: {}", storeName);
-          }
-
-          backupVersion = versionNum;
-        }
       }
     }
 
-    if (futureVersion != versionedDIVStats.getFutureVersion()) {
-      versionedDIVStats.setFutureVersion(futureVersion);
+    if (futureVersion != versionedStats.getFutureVersion()) {
+      versionedStats.setFutureVersion(futureVersion);
     }
 
     /**

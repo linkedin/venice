@@ -63,7 +63,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         metricsRepository,
         metadataRepository,
         () -> new HeartbeatStat(new MetricConfig(), regionNames),
-        (aMetricsRepository, s) -> new HeartbeatStatReporter(aMetricsRepository, s, regionNames),
+        (aMetricsRepository, storeName) -> new HeartbeatStatReporter(aMetricsRepository, storeName, regionNames),
         leaderHeartbeatTimeStamps,
         followerHeartbeatTimeStamps);
   }
@@ -162,7 +162,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    */
   public void recordLeaderHeartbeat(String store, int version, int partition, String region, Long timestamp) {
     recordHeartbeat(store, version, partition, region, timestamp, leaderHeartbeatTimeStamps);
-
   }
 
   /**
@@ -224,10 +223,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   protected void record() {
     recordLags(
         leaderHeartbeatTimeStamps,
-        ((storeName, version, region, lag) -> versionStatsReporter.recordLeaderLag(storeName, version, region, lag)));
+        ((storeName, version, region, heartbeatTs) -> versionStatsReporter
+            .recordLeaderLag(storeName, version, region, heartbeatTs)));
     recordLags(
         followerHeartbeatTimeStamps,
-        ((storeName, version, region, lag) -> versionStatsReporter.recordFollowerLag(storeName, version, region, lag)));
+        ((storeName, version, region, heartbeatTs) -> versionStatsReporter
+            .recordFollowerLag(storeName, version, region, heartbeatTs)));
   }
 
   @FunctionalInterface

@@ -1,5 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
+import static com.linkedin.venice.stats.StatsErrorCode.NULL_INGESTION_STATS;
+
 import com.linkedin.davinci.stats.AbstractVeniceStatsReporter;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -15,22 +17,36 @@ public class HeartbeatStatReporter extends AbstractVeniceStatsReporter<Heartbeat
   public HeartbeatStatReporter(MetricsRepository metricsRepository, String storeName, Set<String> regions) {
     super(metricsRepository, storeName);
     for (String region: regions) {
-      registerSensor(
-          new AsyncGauge(
-              (ignored, ignored2) -> getStats().getLeaderLag(region).getMax(),
-              LEADER_METRIC_PREFIX + region + MAX));
-      registerSensor(
-          new AsyncGauge(
-              (ignored, ignored2) -> getStats().getFollowerLag(region).getMax(),
-              FOLLOWER_METRIC_PREFIX + region + MAX));
-      registerSensor(
-          new AsyncGauge(
-              (ignored, ignored2) -> getStats().getLeaderLag(region).getAvg(),
-              LEADER_METRIC_PREFIX + region + AVG));
-      registerSensor(
-          new AsyncGauge(
-              (ignored, ignored2) -> getStats().getFollowerLag(region).getAvg(),
-              FOLLOWER_METRIC_PREFIX + region + AVG));
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        if (getStats() == null) {
+          return NULL_INGESTION_STATS.code;
+        }
+        return getStats().getLeaderLag(region).getMax();
+      }, LEADER_METRIC_PREFIX + region + MAX));
+
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        if (getStats() == null) {
+          return NULL_INGESTION_STATS.code;
+        }
+
+        return getStats().getFollowerLag(region).getMax();
+      }, FOLLOWER_METRIC_PREFIX + region + MAX));
+
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        if (getStats() == null) {
+          return NULL_INGESTION_STATS.code;
+        }
+
+        return getStats().getLeaderLag(region).getAvg();
+      }, LEADER_METRIC_PREFIX + region + AVG));
+
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        if (getStats() == null) {
+          return NULL_INGESTION_STATS.code;
+        }
+
+        return getStats().getFollowerLag(region).getAvg();
+      }, FOLLOWER_METRIC_PREFIX + region + AVG));
     }
   }
 
