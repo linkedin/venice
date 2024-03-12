@@ -163,7 +163,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     Store store = getStoreRepository().getStore(storeName);
     int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
     AtomicReference<SchemaEntry> supersetSchemaEntry = new AtomicReference<>();
-    RetryUtils.executeWithMaxAttempt(() -> {
+    long currentTimestamp = System.currentTimeMillis();
+    List<Class<? extends Throwable>> retriableExceptions =
+        Collections.singletonList(InvalidVeniceSchemaException.class);
+    RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
       try {
         getSchemaLock().writeLock().lock();
         SchemaData schemaData = getSchemaMap().get(storeName);
@@ -176,7 +179,13 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       } finally {
         getSchemaLock().writeLock().unlock();
       }
-    }, 3, Duration.ofMillis(100), Collections.singletonList(InvalidVeniceSchemaException.class));
+    }, 10, Duration.ofSeconds(1), Duration.ofMinutes(1), Duration.ofMinutes(5), retriableExceptions);
+    long timePassed = System.currentTimeMillis() - currentTimestamp;
+    logger.info(
+        "Obtain superset schema id: {} for store {} with time in milliseconds: {}.",
+        supersetSchemaId,
+        storeName,
+        timePassed);
     return supersetSchemaEntry.get();
   }
 
