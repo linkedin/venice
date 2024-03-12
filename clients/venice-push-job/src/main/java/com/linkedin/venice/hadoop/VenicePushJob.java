@@ -203,7 +203,7 @@ public class VenicePushJob implements AutoCloseable {
 
   // Lazy state
   private final Lazy<Properties> sslProperties;
-  private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
+  private final Lazy<ByteBuffer> emptyPushZstdDictionary;
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter;
   /** TODO: refactor to use {@link Lazy} */
 
@@ -290,7 +290,7 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.info("Push job heartbeat is NOT enabled.");
       this.pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
     }
-    emptyPushZSTDDictionary =
+    emptyPushZstdDictionary =
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
   }
 
@@ -663,9 +663,20 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation.NONE;
       }
 
+      // For now, assume input has records
+      pushJobSetting.compressionMetricCollectionEnabled =
+          evaluateCompressionMetricCollectionEnabled(pushJobSetting, true);
+      pushJobSetting.isZstdDictCreationRequired = shouldBuildZstdCompressionDictionary(pushJobSetting, true);
+
       inputDataInfo = getInputDataInfoProvider().validateInputAndGetInfo(pushJobSetting.inputURI);
       pushJobSetting.inputHasRecords = inputDataInfo.hasRecords();
       pushJobSetting.inputFileDataSizeInBytes = inputDataInfo.getInputFileDataSizeInBytes();
+
+      // Now that we know about the input data, we can get the actual value of these configs
+      pushJobSetting.compressionMetricCollectionEnabled =
+          evaluateCompressionMetricCollectionEnabled(pushJobSetting, inputDataInfo.hasRecords());
+      pushJobSetting.isZstdDictCreationRequired =
+          shouldBuildZstdCompressionDictionary(pushJobSetting, inputDataInfo.hasRecords());
 
       /**
        * If the data source is from some existing Kafka topic, no need to validate the input.
@@ -680,10 +691,6 @@ public class VenicePushJob implements AutoCloseable {
         validateKeySchema(pushJobSetting);
         validateValueSchema(controllerClient, pushJobSetting, pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
 
-        pushJobSetting.compressionMetricCollectionEnabled =
-            evaluateCompressionMetricCollectionEnabled(pushJobSetting, inputDataInfo.hasRecords());
-        pushJobSetting.isZstdDictCreationRequired =
-            shouldBuildZstdCompressionDictionary(pushJobSetting, inputDataInfo.hasRecords());
         if (pushJobSetting.useMapperToBuildDict) {
           /**
            * 1. validate whether the remaining file's schema are consistent with the first file
@@ -1120,13 +1127,17 @@ public class VenicePushJob implements AutoCloseable {
       return false;
     }
 
+    if (pushJobSetting.isIncrementalPush) {
+      LOGGER.info("No compression dictionary will be generated as the push type is incremental push");
+      return false;
+    }
+
+    if (!inputFileHasRecords) {
+      LOGGER.info("No compression dictionary will be generated as there are no records");
+    }
+
     if (pushJobSetting.compressionMetricCollectionEnabled
         || pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-      if (pushJobSetting.isIncrementalPush) {
-        LOGGER.info("No compression dictionary will be generated as the push type is incremental push");
-        return false;
-      }
-
       if (!inputFileHasRecords) {
         if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info(
@@ -1528,12 +1539,11 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info(
               "compression strategy is {} with no input records: Generating dictionary from synthetic data",
               pushJobSetting.storeCompressionStrategy);
-          compressionDictionary = emptyPushZSTDDictionary.get();
+          compressionDictionary = emptyPushZstdDictionary.get();
           return Optional.of(compressionDictionary);
         }
 
         if (!pushJobSetting.useMapperToBuildDict) {
-          LOGGER.info("Training Zstd dictionary");
           compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().trainZstdDictionary());
           pushJobSetting.isZstdDictCreationSuccess = true;
         } else {
