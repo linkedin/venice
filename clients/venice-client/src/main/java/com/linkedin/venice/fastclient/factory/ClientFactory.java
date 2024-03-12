@@ -80,7 +80,14 @@ public class ClientFactory {
     if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
         || clientConfig.isLongTailRetryEnabledForCompute()) {
       statsStoreClient = new StatsAvroGenericStoreClient<>(
-          new RetriableAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig),
+          /**
+           * Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} to
+           * reduce the thread usage.
+           */
+          new RetriableAvroGenericStoreClient<>(
+              dispatchingStoreClient,
+              clientConfig,
+              storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor()),
           clientConfig);
     } else {
       statsStoreClient = new StatsAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig);
@@ -104,7 +111,10 @@ public class ClientFactory {
     if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
         || clientConfig.isLongTailRetryEnabledForCompute()) {
       statsStoreClient = new StatsAvroSpecificStoreClient<>(
-          new RetriableAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig),
+          new RetriableAvroSpecificStoreClient<>(
+              dispatchingStoreClient,
+              clientConfig,
+              storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor()),
           clientConfig);
     } else {
       statsStoreClient = new StatsAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig);

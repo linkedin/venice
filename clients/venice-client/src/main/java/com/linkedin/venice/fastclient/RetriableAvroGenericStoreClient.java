@@ -36,10 +36,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final int longTailRetryThresholdForComputeInMicroSeconds;
-  private TimeoutProcessor timeoutProcessor;
+  private final TimeoutProcessor timeoutProcessor;
   private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
 
-  public RetriableAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
+  public RetriableAvroGenericStoreClient(
+      InternalAvroStoreClient<K, V> delegate,
+      ClientConfig clientConfig,
+      TimeoutProcessor timeoutProcessor) {
     super(delegate, clientConfig);
     if (!(clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
         || clientConfig.isLongTailRetryEnabledForCompute())) {
@@ -54,6 +57,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         clientConfig.getLongTailRetryThresholdForBatchGetInMicroSeconds();
     this.longTailRetryThresholdForComputeInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForComputeInMicroSeconds();
+    this.timeoutProcessor = timeoutProcessor;
   }
 
   enum RetryType {
@@ -103,14 +107,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       // if longTailRetry is not enabled for single get, simply return the original future
       return originalRequestFuture;
     }
-
-    if (timeoutProcessor == null) {
-      /**
-       * Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} to
-       * reduce the thread usage.
-       */
-      timeoutProcessor = requestContext.instanceHealthMonitor.getTimeoutProcessor();
-    }
     final CompletableFuture<V> retryFuture = new CompletableFuture<>();
     final CompletableFuture<V> finalFuture = new CompletableFuture<>();
 
@@ -148,10 +144,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           requestContext.retryContext.retryWin = false;
         }
       } else {
-        // Trigger the retry right away when receiving any error
+        // Trigger the retry right away when receiving any error that's not a 429 otherwise try to cancel any scheduled
+        // retry
         if (!timeoutFuture.isDone()) {
           timeoutFuture.cancel();
-          new RetryRunnable(requestContext, RetryType.ERROR_RETRY, retryTask).run();
+          if (!isExceptionCausedByTooManyRequests(throwable)) {
+            new RetryRunnable(requestContext, RetryType.ERROR_RETRY, retryTask).run();
+          }
         }
       }
     });
@@ -234,7 +233,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     R originalRequestContext = requestContextConstructor.construct(keys.size(), requestContext.isPartialSuccessAllowed);
 
     requestContext.retryContext = new MultiKeyRequestContext.RetryContext<K, V>();
-    requestContext.retryContext.originalRequestContext = originalRequestContext;
 
     /** Track the final completion of the request. It will be completed normally if
      1. the original requests calls onCompletion with no exception
@@ -255,29 +253,14 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       pendingKeysFuture.put(key, originalCompletion);
     }
 
-    streamingRequestExecutor.trigger(
-        originalRequestContext,
-        keys,
-        getStreamingCallback(originalRequestContext, finalRequestCompletionFuture, savedException, pendingKeysFuture));
-
-    if (timeoutProcessor == null) {
-      /** Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} of the original request to
-       reduce  thread usage */
-      timeoutProcessor = requestContext.retryContext.originalRequestContext.instanceHealthMonitor.getTimeoutProcessor();
-    }
-
     Runnable retryTask = () -> { // Look at the remaining keys and setup completion
       if (!pendingKeysFuture.isEmpty()) {
         Throwable throwable = savedException.get();
-        if (throwable != null) {
-          // Do not trigger retry and complete the final request completion future if we encountered 429.
-          if (throwable instanceof VeniceClientHttpException) {
-            VeniceClientHttpException clientHttpException = (VeniceClientHttpException) throwable;
-            if (clientHttpException.getHttpStatus() == VeniceClientRateExceededException.HTTP_TOO_MANY_REQUESTS) {
-              finalRequestCompletionFuture.completeExceptionally(throwable);
-              return;
-            }
-          }
+        if (isExceptionCausedByTooManyRequests(throwable)) {
+          // Defensive code, do not trigger retry and complete the final request completion future if we encountered
+          // 429.
+          finalRequestCompletionFuture.completeExceptionally(throwable);
+          return;
         }
         Set<K> pendingKeys = Collections.unmodifiableSet(pendingKeysFuture.keySet());
         R retryRequestContext =
@@ -291,7 +274,12 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         streamingRequestExecutor.trigger(
             retryRequestContext,
             pendingKeys,
-            getStreamingCallback(retryRequestContext, finalRequestCompletionFuture, savedException, pendingKeysFuture));
+            getStreamingCallback(
+                retryRequestContext,
+                finalRequestCompletionFuture,
+                savedException,
+                pendingKeysFuture,
+                null));
       } else {
         /** If there are no keys pending at this point , the onCompletion callback of the original
          request will be triggered. So no need to do anything.*/
@@ -301,6 +289,16 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
     TimeoutProcessor.TimeoutFuture scheduledRetryTask =
         timeoutProcessor.schedule(retryTask, longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
+
+    streamingRequestExecutor.trigger(
+        originalRequestContext,
+        keys,
+        getStreamingCallback(
+            originalRequestContext,
+            finalRequestCompletionFuture,
+            savedException,
+            pendingKeysFuture,
+            scheduledRetryTask));
 
     finalRequestCompletionFuture.whenComplete((ignore, finalException) -> {
       if (!scheduledRetryTask.isDone()) {
@@ -325,7 +323,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       MultiKeyRequestContext<K, V> requestContext,
       CompletableFuture<Void> finalRequestCompletionFuture,
       AtomicReference<Throwable> savedException,
-      VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture) {
+      VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture,
+      TimeoutProcessor.TimeoutFuture scheduledRetryTask) {
     return new StreamingCallback<K, RESPONSE>() {
       @Override
       public void onRecordReceived(K key, RESPONSE value) {
@@ -354,18 +353,38 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           if (!exceptionToSave.isPresent()) {
             finalRequestCompletionFuture.complete(null);
           } else {
+            boolean shouldCompleteRequestFuture = false;
+            if (scheduledRetryTask != null && isExceptionCausedByTooManyRequests(exceptionToSave.get())) {
+              // Check if the exception is 429, if so cancel the retry if the retry task exists
+              if (!scheduledRetryTask.isDone()) {
+                scheduledRetryTask.cancel();
+                shouldCompleteRequestFuture = true;
+              }
+            }
             // If we are able to set an exception, that means the other request did not have exception, so we continue.
             if (!savedException.compareAndSet(null, exceptionToSave.get())) {
               /* We are not able to set the exception , means there is already a saved exception.
                Since there was a saved exception and this request has also returned exception we can conclude that
                the parent request can be marked with exception. We select the original exception. This future is
                internal to this class and is allowed to complete exceptionally even for streaming APIs. */
+              shouldCompleteRequestFuture = true;
+            }
+
+            if (shouldCompleteRequestFuture) {
               finalRequestCompletionFuture.completeExceptionally(exceptionToSave.get());
             }
           }
         }
       }
     };
+  }
+
+  private boolean isExceptionCausedByTooManyRequests(Throwable e) {
+    if (e instanceof VeniceClientHttpException) {
+      VeniceClientHttpException clientHttpException = (VeniceClientHttpException) e;
+      return clientHttpException.getHttpStatus() == VeniceClientRateExceededException.HTTP_TOO_MANY_REQUESTS;
+    }
+    return false;
   }
 
   interface RequestContextConstructor<K, V, R extends MultiKeyRequestContext<K, V>> {

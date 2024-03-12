@@ -215,11 +215,9 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   }
 
   static class RetryContext<K, V> {
-    MultiKeyRequestContext<K, V> originalRequestContext;
     MultiKeyRequestContext<K, V> retryRequestContext;
 
     RetryContext() {
-      originalRequestContext = null;
       retryRequestContext = null;
     }
   }
