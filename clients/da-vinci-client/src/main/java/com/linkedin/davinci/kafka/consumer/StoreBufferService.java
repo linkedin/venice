@@ -83,6 +83,25 @@ public class StoreBufferService extends AbstractStoreBufferService {
         this::getMinMemoryUsagePerDrainer);
   }
 
+  /**
+   * Constructor for testing
+   */
+  public StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      StoreBufferServiceStats stats) {
+    this.drainerNum = drainerNum;
+    this.blockingQueueArr = new ArrayList<>();
+    this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
+    for (int cur = 0; cur < drainerNum; ++cur) {
+      this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
+    }
+    this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
+    this.storeBufferServiceStats = stats;
+  }
+
   protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       int subPartition) {
@@ -309,7 +328,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
             .sorted(comparing(Map.Entry::getValue, reverseOrder()))
             .limit(count)
             .collect(toList());
-        // TODO: break this done so we can let it emit latency metrics too.
         int finalIndex = index;
         slowestEntries.forEach(
             entry -> LOGGER
