@@ -110,8 +110,14 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     final CompletableFuture<V> retryFuture = new CompletableFuture<>();
     final CompletableFuture<V> finalFuture = new CompletableFuture<>();
 
+    AtomicReference<Throwable> savedException = new AtomicReference<>();
     // create a retry task
     Runnable retryTask = () -> {
+      if (savedException.get() != null && isExceptionCausedByTooManyRequests(savedException.get())) {
+        // Defensive code, abort retry if original request failed due to 429
+        retryFuture.completeExceptionally(savedException.get());
+        return;
+      }
       super.get(requestContext, key).whenComplete((value, throwable) -> {
         if (throwable != null) {
           retryFuture.completeExceptionally(throwable);
@@ -146,6 +152,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       } else {
         // Trigger the retry right away when receiving any error that's not a 429 otherwise try to cancel any scheduled
         // retry
+        savedException.set(throwable);
         if (!timeoutFuture.isDone()) {
           timeoutFuture.cancel();
           if (!isExceptionCausedByTooManyRequests(throwable)) {
@@ -290,6 +297,15 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     TimeoutProcessor.TimeoutFuture scheduledRetryTask =
         timeoutProcessor.schedule(retryTask, longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
 
+    /**
+     * Retry for streaming multi-key request is done at the request level. This mean we will perform one retry for the
+     * entire request for both errors and long tail to avoid retry storm. There are two behaviors with retry:
+     * 1. If any of the route returned a too many requests 429 exception we will try our best to cancel all scheduled
+     * retry and complete the final future. This means some routes could still be in progress, so we will assume those
+     * will also soon fail with a 429.
+     * 2. If no 429 exceptions are caught after longTailRetryThresholdInMicroSeconds when the retry task is running then
+     * all incomplete keys whether due to long tail or errors (e.g. mis-routed) are retried.
+     */
     streamingRequestExecutor.trigger(
         originalRequestContext,
         keys,
@@ -353,21 +369,18 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           if (!exceptionToSave.isPresent()) {
             finalRequestCompletionFuture.complete(null);
           } else {
-            boolean shouldCompleteRequestFuture = false;
+            /* If we are able to set an exception, that means the other request did not have exception, so we continue.
+               If we are not able to set the exception , means there is already a saved exception.
+               Since there was a saved exception and this request has also returned exception we can conclude that
+               the parent request can be marked with exception. We select the original exception. This future is
+               internal to this class and is allowed to complete exceptionally even for streaming APIs. */
+            boolean shouldCompleteRequestFuture = !savedException.compareAndSet(null, exceptionToSave.get());
             if (scheduledRetryTask != null && isExceptionCausedByTooManyRequests(exceptionToSave.get())) {
               // Check if the exception is 429, if so cancel the retry if the retry task exists
               if (!scheduledRetryTask.isDone()) {
                 scheduledRetryTask.cancel();
                 shouldCompleteRequestFuture = true;
               }
-            }
-            // If we are able to set an exception, that means the other request did not have exception, so we continue.
-            if (!savedException.compareAndSet(null, exceptionToSave.get())) {
-              /* We are not able to set the exception , means there is already a saved exception.
-               Since there was a saved exception and this request has also returned exception we can conclude that
-               the parent request can be marked with exception. We select the original exception. This future is
-               internal to this class and is allowed to complete exceptionally even for streaming APIs. */
-              shouldCompleteRequestFuture = true;
             }
 
             if (shouldCompleteRequestFuture) {
