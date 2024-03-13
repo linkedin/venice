@@ -3090,6 +3090,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   public int getOnlineFutureVersion(String clusterName, String storeName) {
     Store store = getStoreForReadOnly(clusterName, storeName);
+    if (store.getVersions().isEmpty()) {
+      return NON_EXISTING_VERSION;
+    }
+
     Version version = store.getVersions().stream().max(Comparable::compareTo).get();
     if (version.getNumber() != store.getCurrentVersion() && version.getStatus().equals(ONLINE)) {
       return version.getNumber();
