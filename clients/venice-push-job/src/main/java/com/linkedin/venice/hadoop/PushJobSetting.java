@@ -5,7 +5,6 @@ import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.hadoop.jobs.DataWriterComputeJob;
-import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartitioner;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Version;
@@ -13,7 +12,6 @@ import com.linkedin.venice.schema.vson.VsonSchema;
 import java.io.Serializable;
 import java.util.Map;
 import org.apache.avro.Schema;
-import org.apache.hadoop.mapred.Partitioner;
 
 
 /**
@@ -37,7 +35,6 @@ public class PushJobSetting implements Serializable {
   public String incrementalPushVersion;
   public boolean isDuplicateKeyAllowed;
   public boolean enablePushJobStatusUpload;
-  public boolean enableReducerSpeculativeExecution;
   public int controllerRetries;
   public int controllerStatusPollRetries;
   public long pollJobStatusIntervalMs;
@@ -150,7 +147,4 @@ public class PushJobSetting implements Serializable {
   public transient Version sourceKafkaInputVersionInfo;
   public CompressionStrategy sourceVersionCompressionStrategy;
   public boolean sourceVersionChunkingEnabled;
-
-  // Configs to help with testing
-  public Class<? extends Partitioner> mapReducePartitionerClass = VeniceMRPartitioner.class;
 }
