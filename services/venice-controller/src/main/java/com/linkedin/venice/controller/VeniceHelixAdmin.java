@@ -3079,6 +3079,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
+  public int getBackupVersion(String clusterName, String storeName) {
+    checkControllerLeadershipFor(clusterName);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+      Store store = resources.getStoreMetadataRepository().getStore(storeName);
+      return getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+    }
+  }
+
+  public int getOnlineFutureVersion(String clusterName, String storeName) {
+    Store store = getStoreForReadOnly(clusterName, storeName);
+    if (store.getVersions().isEmpty()) {
+      return NON_EXISTING_VERSION;
+    }
+
+    Version version = store.getVersions().stream().max(Comparable::compareTo).get();
+    if (version.getNumber() != store.getCurrentVersion() && version.getStatus().equals(ONLINE)) {
+      return version.getNumber();
+    }
+    return NON_EXISTING_VERSION;
+  }
+
+  @Override
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
     return null;
   }
@@ -3106,6 +3129,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
+    return Collections.EMPTY_MAP;
+  }
+
+  @Override
+  public Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {
     return Collections.EMPTY_MAP;
   }
 
@@ -3766,15 +3794,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public void rollForwardToFutureVersion(String clusterName, String storeName) {
+  public void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter) {
+    if (!StringUtils.isEmpty(regionFilter)) {
+      Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
+      if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
+        LOGGER.info(
+            "rollForwardToFutureVersion command will be skipped for store: {} in cluster: {}, because the region filter is {}"
+                + " which doesn't include the current region: {}",
+            storeName,
+            clusterName,
+            regionsFilter,
+            multiClusterConfigs.getRegionName());
+        return;
+      }
+    }
+    int futureVersion = getOnlineFutureVersion(clusterName, storeName);
+    if (futureVersion == Store.NON_EXISTING_VERSION) {
+      return;
+    }
     storeMetadataUpdate(clusterName, storeName, store -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
             "Unable to update store:" + storeName + " current version since store does not enable writes");
-      }
-      int futureVersion = getFutureVersion(clusterName, storeName);
-      if (futureVersion == Store.NON_EXISTING_VERSION) {
-        throw new VeniceException("Future version does not exist for store:" + storeName);
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(futureVersion);
@@ -3787,7 +3828,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Set backup version as current version in a child region.
    */
   @Override
-  public void rollbackToBackupVersion(String clusterName, String storeName) {
+  public void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter) {
+    if (!StringUtils.isEmpty(regionFilter)) {
+      Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
+      if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
+        LOGGER.info(
+            "rollbackToBackupVersion command will be skipped for store: {} in cluster: {}, because the region filter is {}"
+                + " which doesn't include the current region: {}",
+            storeName,
+            clusterName,
+            regionsFilter,
+            multiClusterConfigs.getRegionName());
+        return;
+      }
+    }
+
     storeMetadataUpdate(clusterName, storeName, store -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -3795,7 +3850,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int backupVersion = getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
       if (backupVersion == Store.NON_EXISTING_VERSION) {
-        throw new VeniceException("Backup version does not exist for store:" + storeName);
+        return store;
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
@@ -4406,6 +4461,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
+    Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4665,6 +4721,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           return store;
         });
       }
+
+      unusedSchemaDeletionEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setUnusedSchemaDeletionEnabled(aBoolean);
+        return store;
+      }));
 
       storageNodeReadQuotaEnabled
           .ifPresent(aBoolean -> setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));

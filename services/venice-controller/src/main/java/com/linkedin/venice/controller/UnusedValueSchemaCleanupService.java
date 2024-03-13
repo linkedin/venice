@@ -91,7 +91,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
                   clusterName,
                   storeName,
                   schemasToDelete);
-              if (cleanupEnabled) {
+              if (cleanupEnabled && store.isUnusedSchemaDeletionEnabled()) {
                 veniceParentHelixAdmin.deleteValueSchemas(clusterName, store.getName(), schemasToDelete);
               }
             }

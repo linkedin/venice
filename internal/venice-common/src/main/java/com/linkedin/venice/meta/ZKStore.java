@@ -848,6 +848,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.maxCompactionLagSeconds = maxCompactionLagSeconds;
   }
 
+  @Override
+  public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
+    this.storeProperties.unusedSchemaDeletionEnabled = unusedSchemaDeletionEnabled;
+  }
+
+  @Override
+  public boolean isUnusedSchemaDeletionEnabled() {
+    return this.storeProperties.unusedSchemaDeletionEnabled;
+  }
+
   /**
    * Set all of PUSHED version to ONLINE once store is enabled to write.
    */

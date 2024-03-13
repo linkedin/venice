@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VALUE_SCHEMA
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_ADD_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOVE_NODE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
@@ -312,6 +313,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(CLUSTER_HEALTH_STORES.getPath(), storesRoutes.getAllStoresStatuses(admin));
     httpService.get(STORE.getPath(), storesRoutes.getStore(admin));
     httpService.get(FUTURE_VERSION.getPath(), storesRoutes.getFutureVersion(admin));
+    httpService.get(BACKUP_VERSION.getPath(), storesRoutes.getFutureVersion(admin));
     httpService.post(SET_TOPIC_COMPACTION.getPath(), storesRoutes.setTopicCompaction(admin));
 
     httpService.post(UPDATE_CLUSTER_CONFIG.getPath(), clusterRoutes.updateClusterConfig(admin));

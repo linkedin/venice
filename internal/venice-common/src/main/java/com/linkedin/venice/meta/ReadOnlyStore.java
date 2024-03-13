@@ -1324,6 +1324,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isUnusedSchemaDeletionEnabled() {
+    return this.delegate.isUnusedSchemaDeletionEnabled();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }

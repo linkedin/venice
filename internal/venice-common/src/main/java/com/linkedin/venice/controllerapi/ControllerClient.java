@@ -250,6 +250,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.FUTURE_VERSION, params, MultiStoreStatusResponse.class);
   }
 
+  public MultiStoreStatusResponse getBackupVersions(String clusterName, String storeName) {
+    QueryParams params = newParams().add(NAME, storeName).add(CLUSTER, clusterName);
+    return request(ControllerRoute.BACKUP_VERSION, params, MultiStoreStatusResponse.class);
+  }
+
   @Deprecated
   public static StoreResponse getStore(String urlsToFindLeaderController, String clusterName, String storeName) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindLeaderController)) {
@@ -617,14 +622,22 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.SET_VERSION, params, VersionResponse.class);
   }
 
-  public ControllerResponse rollbackToBackupVersion(String storeName) {
-    QueryParams params = newParams().add(NAME, storeName);
+  public ControllerResponse rollbackToBackupVersion(String storeName, String regionFilter) {
+    QueryParams params = newParams().add(NAME, storeName).add(REGIONS_FILTER, regionFilter);
     return request(ControllerRoute.ROLLBACK_TO_BACKUP_VERSION, params, ControllerResponse.class);
   }
 
-  public ControllerResponse rollForwardToFutureVersion(String storeName) {
-    QueryParams params = newParams().add(NAME, storeName);
+  public ControllerResponse rollbackToBackupVersion(String storeName) {
+    return rollbackToBackupVersion(storeName, "");
+  }
+
+  public ControllerResponse rollForwardToFutureVersion(String storeName, String regionFilter) {
+    QueryParams params = newParams().add(NAME, storeName).add(REGIONS_FILTER, regionFilter);
     return request(ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse rollForwardToFutureVersion(String storeName) {
+    return rollForwardToFutureVersion(storeName, "");
   }
 
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {

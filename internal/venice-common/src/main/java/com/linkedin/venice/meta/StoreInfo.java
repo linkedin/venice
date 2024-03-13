@@ -70,6 +70,7 @@ public class StoreInfo {
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
+    storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     return storeInfo;
   }
 
@@ -311,6 +312,8 @@ public class StoreInfo {
   private long minCompactionLagSeconds;
 
   private long maxCompactionLagSeconds;
+
+  private boolean unusedSchemaDeletionEnabled;
 
   public StoreInfo() {
   }
@@ -776,5 +779,13 @@ public class StoreInfo {
 
   public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
     this.maxCompactionLagSeconds = maxCompactionLagSeconds;
+  }
+
+  public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
+    this.unusedSchemaDeletionEnabled = unusedSchemaDeletionEnabled;
+  }
+
+  public boolean isUnusedSchemaDeletionEnabled() {
+    return this.unusedSchemaDeletionEnabled;
   }
 }
