@@ -608,6 +608,66 @@ public class BatchGetAvroStoreClientUnitTest {
         0); // no retries are successful. Not counted regardless
   }
 
+  /**
+   *  same as {@link #testStreamingBatchGetLongTailRetryOriginalRequestErrorBeforeRetry} but with multiple routes
+   *  throwing errors.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingBatchGetLongTailRetryWithMultipleErrors()
+      throws InterruptedException, ExecutionException, TimeoutException {
+
+    int expectedRetryKeyCount = (NUM_KEYS / NUM_PARTITIONS) * 2;
+    TestClientSimulator client = new TestClientSimulator();
+    setupLongTailRetryWithMultiplePartitions(client)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithError(6, 2, 500)
+        .respondToRequestWithError(7, 3, 500)
+        .expectRequestWithKeysForPartitionOnRoute(50, 4, "https://host1.linkedin.com", 2)
+        .expectRequestWithKeysForPartitionOnRoute(51, 5, "https://host0.linkedin.com", 1)
+        .respondToRequestWithKeyValues(55, 4)
+        .respondToRequestWithKeyValues(56, 5)
+        .simulate();
+
+    callStreamingBatchGetAndVerifyResults(
+        client.getFastClient(),
+        client.getRequestedKeyValues(),
+        client.getSimulatorCompleteFuture());
+
+    validateMetrics(client, NUM_KEYS, NUM_KEYS, expectedRetryKeyCount, expectedRetryKeyCount);
+  }
+
+  /**
+   *  same as {@link #testStreamingBatchGetLongTailRetryOriginalRequestErrorBeforeRetry} but request id 3 throws 429 too
+   *  many request error. Long tail retry should be skipped and propagate the quota exceeded exception to the caller.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingBatchGetNoLongTailRetryWithTooManyRequest()
+      throws InterruptedException, ExecutionException, TimeoutException {
+
+    TestClientSimulator client = new TestClientSimulator();
+    setupLongTailRetryWithMultiplePartitions(client)
+        .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host0.linkedin.com", 0)
+        .expectRequestWithKeysForPartitionOnRoute(1, 2, "https://host1.linkedin.com", 1)
+        .expectRequestWithKeysForPartitionOnRoute(1, 3, "https://host2.linkedin.com", 2)
+        .respondToRequestWithKeyValues(5, 1)
+        .respondToRequestWithKeyValues(6, 2)
+        .respondToRequestWithError(7, 3, 429)
+        .simulate();
+
+    callStreamingBatchGetAndVerifyResults(
+        client.getFastClient(),
+        client.getRequestedKeyValues(),
+        client.getSimulatorCompleteFuture(),
+        true);
+
+    // Technically its (NUM_KEYS/3) * 2 for successful keys, but we aren't incrementing successful metrics in case
+    // failed request
+    validateMetrics(client, NUM_KEYS, 0, 0, 0);
+  }
+
   private TestClientSimulator setupLongTailRetryWithMultiplePartitions(TestClientSimulator client) {
     return client.generateKeyValues(0, NUM_KEYS) // generate NUM_KEYS keys
         .partitionKeys(NUM_PARTITIONS) // partition into NUM_PARTITIONS partitions
@@ -662,7 +722,7 @@ public class BatchGetAvroStoreClientUnitTest {
 
       @Override
       public void onCompletion(Optional<Exception> exception) {
-        LOGGER.info("OnCompletion called . Exception: {} isComplete: {} ", exception, isComplete.get());
+        LOGGER.info("OnCompletion called. Exception: {} isComplete: {} ", exception, isComplete.get());
         if (!exception.isPresent()) {
           assertEquals(exception, Optional.empty());
           assertTrue(isComplete.compareAndSet(false, true));
@@ -696,6 +756,10 @@ public class BatchGetAvroStoreClientUnitTest {
     try {
       allCompletionFuture.get(CLIENT_TIME_OUT_IN_SECONDS, TimeUnit.SECONDS);
     } catch (Exception exception) {
+      LOGGER.info(
+          "Record completion future is done: {}, simulator completion future is done: {}",
+          recordCompletionFuture.isDone(),
+          simulatorCompletionFuture.isDone());
       if (expectedError) {
         LOGGER.info("Test completed successfully because was expecting an exception");
       } else
