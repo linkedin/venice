@@ -4,7 +4,6 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Gauge;
-import io.tehuti.metrics.stats.Total;
 
 
 /**
@@ -21,11 +20,11 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
 
   public ServerQuotaUsageStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    requestedQPS = registerSensor("quota_rcu_requested", new Count());
-    requestedKPS = registerSensor("quota_rcu_requested_key", new Total());
-    rejectedQPS = registerSensor("quota_rcu_rejected", new Count());
-    rejectedKPS = registerSensor("quota_rcu_rejected_key", new Total());
-    allowedUnintentionallyKPS = registerSensor("quota_rcu_allowed_unintentionally", new Count());
+    requestedQPS = registerSensor("quota_requested_qps", new Count());
+    requestedKPS = registerSensor("quota_requested_kps", new Count());
+    rejectedQPS = registerSensor("quota_rejected_qps", new Count());
+    rejectedKPS = registerSensor("quota_rejected_kps", new Count());
+    allowedUnintentionallyKPS = registerSensor("quota_unintentionally_allowed_key_count", new Count());
     usageRatioSensor = registerSensor("quota_requested_usage_ratio", new Gauge());
   }
 
@@ -33,7 +32,7 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
    * @param rcu The number of Read Capacity Units that the allowed request cost
    */
   public void recordAllowed(long rcu) {
-    requestedQPS.record(rcu);
+    requestedQPS.record();
     requestedKPS.record(rcu);
   }
 
@@ -42,9 +41,9 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
    * @param rcu The number of Read Capacity Units tha the rejected request would have cost
    */
   public void recordRejected(long rcu) {
-    requestedQPS.record(rcu);
+    requestedQPS.record();
     requestedKPS.record(rcu);
-    rejectedQPS.record(rcu);
+    rejectedQPS.record();
     rejectedKPS.record(rcu);
   }
 

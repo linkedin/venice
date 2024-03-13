@@ -19,6 +19,7 @@ import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -72,9 +73,11 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     }
     String readQuotaStorageNodeTokenBucketRemaining =
         ".venice-storage-node-token-bucket--QuotaRcuTokensRemaining.Gauge";
-    String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
-    String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
-    String readQuotaAllowedUnintentionally = "." + storeName + "--quota_rcu_allowed_unintentionally.Count";
+    String readQuotaRequestedQPSString = "." + storeName + "--quota_requested_qps.Count";
+    String readQuotaRejectedQPSString = "." + storeName + "--quota_rejected_qps.Count";
+    String readQuotaRequestedKPSString = "." + storeName + "--quota_requested_kps.Count";
+    String readQuotaRejectedKPSString = "." + storeName + "--quota_rejected_kps.Count";
+    String readQuotaAllowedUnintentionally = "." + storeName + "--quota_unintentionally_allowed_key_count.Count";
     String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";
     String errorRequestString = ".total--error_request.OccurrenceRate";
     String clientConnectionCountGaugeString = ".server_connection_stats--client_connection_count.Gauge";
@@ -84,8 +87,10 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       for (MetricsRepository serverMetric: serverMetrics) {
         assertNotNull(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining));
-        assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
-        assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
+        assertNotNull(serverMetric.getMetric(readQuotaRequestedQPSString));
+        assertNotNull(serverMetric.getMetric(readQuotaRejectedQPSString));
+        assertNotNull(serverMetric.getMetric(readQuotaRequestedKPSString));
+        assertNotNull(serverMetric.getMetric(readQuotaRejectedKPSString));
         assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
         assertNotNull(serverMetric.getMetric(errorRequestString));
         assertNotNull(serverMetric.getMetric(readQuotaAllowedUnintentionally));
@@ -95,18 +100,22 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         assertNotNull(serverMetric.getMetric(routerConnectionCountRateString));
       }
     });
-    int quotaRequestedSum = 0;
+    int quotaRequestedQPSSum = 0;
+    int quotaRequestedKPSSum = 0;
     int clientConnectionCountRateSum = 0;
     int routerConnectionCountRateSum = 0;
     for (MetricsRepository serverMetric: serverMetrics) {
-      quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
+      quotaRequestedQPSSum += serverMetric.getMetric(readQuotaRequestedQPSString).value();
+      quotaRequestedKPSSum += serverMetric.getMetric(readQuotaRequestedKPSString).value();
       clientConnectionCountRateSum += serverMetric.getMetric(clientConnectionCountRateString).value();
       routerConnectionCountRateSum += serverMetric.getMetric(routerConnectionCountRateString).value();
-      assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
+      assertEquals(serverMetric.getMetric(readQuotaRejectedQPSString).value(), 0d);
+      assertEquals(serverMetric.getMetric(readQuotaRejectedKPSString).value(), 0d);
       assertEquals(serverMetric.getMetric(readQuotaAllowedUnintentionally).value(), 0d);
       assertTrue(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining).value() > 0d);
     }
-    assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
+    assertTrue(quotaRequestedQPSSum >= 500, "Quota requested QPS sum: " + quotaRequestedQPSSum);
+    assertTrue(quotaRequestedKPSSum >= 500, "Quota requested KPS sum: " + quotaRequestedKPSSum);
     assertTrue(clientConnectionCountRateSum > 0, "Servers should have more than 0 client connections");
     assertEquals(routerConnectionCountRateSum, 0, "Servers should have 0 router connections");
 
@@ -133,7 +142,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     boolean errorRequest = false;
 
     for (MetricsRepository serverMetric: serverMetrics) {
-      if (serverMetric.getMetric(readQuotaRejectedString).value() > 0) {
+      if (serverMetric.getMetric(readQuotaRejectedQPSString).value() > 0
+          && serverMetric.getMetric(readQuotaRejectedKPSString).value() > 0) {
         readQuotaRejected = true;
       }
       if (serverMetric.getMetric(errorRequestString).value() > 0) {
@@ -154,13 +164,13 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         assertEquals((int) value.get(VALUE_FIELD_NAME), i);
       }
     }
-    quotaRequestedSum = 0;
+    quotaRequestedQPSSum = 0;
     for (MetricsRepository serverMetric: serverMetrics) {
-      quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
+      quotaRequestedQPSSum += serverMetric.getMetric(readQuotaRequestedQPSString).value();
       assertEquals(serverMetric.getMetric(readQuotaAllowedUnintentionally).value(), 0d);
       assertTrue(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining).value() > 0d);
     }
-    assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
+    assertTrue(quotaRequestedQPSSum >= 500, "Quota requested QPS sum: " + quotaRequestedQPSSum);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -297,25 +307,65 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       String key = keyPrefix + i;
       keys.add(key);
     }
-    int requestCountToTriggerQuotaRejection = 0;
     try {
       for (int i = 0; i < 10; i++) {
-        requestCountToTriggerQuotaRejection = i;
         genericFastClient.batchGet(keys).get();
       }
       fail();
     } catch (ExecutionException exception) {
       assertTrue(exception.getCause() instanceof VeniceClientException);
       assertTrue(exception.getCause().getCause() instanceof VeniceClientRateExceededException);
-      String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
+      String readQuotaRejectedKPSString = "." + storeName + "--quota_rejected_kps.Count";
       String metricPrefix = "." + storeName + "--multiget_streaming_";
-      int quotaRequestedSum = 0;
+      int quotaRejectedKPSSum = 0;
       for (MetricsRepository serverMetric: serverMetrics) {
-        quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
+        quotaRejectedKPSSum += serverMetric.getMetric(readQuotaRejectedKPSString).value();
       }
       // Make sure retry is not triggered after encountering 429
-      assertTrue(quotaRequestedSum <= requestCountToTriggerQuotaRejection * recordCnt + recordCnt);
+      assertTrue(quotaRejectedKPSSum <= recordCnt, "quotaRejectedKPSSum: " + quotaRejectedKPSSum);
       assertTrue(clientMetric.getMetric(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() < 1);
     }
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testStreamingBatchGetServerStats() throws Exception {
+    ArrayList<MetricsRepository> serverMetrics = new ArrayList<>();
+    for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
+      serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
+    }
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setLongTailRetryEnabledForBatchGet(true)
+            .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
+            .setSpeculativeQueryEnabled(false);
+    MetricsRepository clientMetric = new MetricsRepository();
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, clientMetric, StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < recordCnt; ++i) {
+      String key = keyPrefix + i;
+      keys.add(key);
+    }
+    genericFastClient.batchGet(keys).get();
+    /**
+     * Both multi-get and streaming multi-get is emitted under the multi-get request type on server side. See {@link com.linkedin.venice.listener.ServerStatsContext}
+     */
+    String multiGetRequestKeyCountMetric =
+        ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "request_key_count.Rate";
+    String multiGetSuccessRequestKeyCountMetric =
+        ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "success_request_key_count.Rate";
+    boolean nonZeroRequestedKeyCount = false;
+    boolean nonZeroSuccessRequestKeyCount = false;
+    for (MetricsRepository serverMetric: serverMetrics) {
+      if (serverMetric.getMetric(multiGetRequestKeyCountMetric).value() > 0) {
+        nonZeroRequestedKeyCount = true;
+      }
+      if (serverMetric.getMetric(multiGetSuccessRequestKeyCountMetric).value() > 0) {
+        nonZeroSuccessRequestKeyCount = true;
+      }
+    }
+    assertTrue(nonZeroRequestedKeyCount);
+    assertTrue(nonZeroSuccessRequestKeyCount);
   }
 }
