@@ -125,7 +125,7 @@ public interface InputDataInfoProvider extends Closeable {
         ByteUtils.generateHumanReadableByteCountString(fileSampleSize));
   }
 
-  byte[] getZstdDictTrainSamples();
+  byte[] trainZstdDictionary();
 
   Schema extractAvroSubSchema(Schema origin, String fieldName);
 

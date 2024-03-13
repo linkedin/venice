@@ -5,10 +5,11 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FI
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
 
-import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
@@ -86,11 +87,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       throw new RuntimeException("No data found at source path: " + srcPath);
     }
 
-    if (!pushJobSetting.isIncrementalPush && !pushJobSetting.useMapperToBuildDict) {
-      if (this.pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        LOGGER.info("Zstd compression enabled for {}", pushJobSetting.storeName);
-        initZstdConfig(fileStatuses.length);
-      }
+    if (pushJobSetting.isZstdDictCreationRequired && !pushJobSetting.useMapperToBuildDict) {
+      initZstdConfig(fileStatuses.length);
     }
 
     // try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
@@ -119,6 +117,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       if (!pushJobSetting.useMapperToBuildDict) {
         fileAndOutputValueSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
       } else {
+        // ValidateSchemaAndBuildDictMapper will validate all file schemas and build the dictionary
         fileAndOutputValueSchema = getAvroFileHeader(fs, fileStatuses[0].getPath(), false);
       }
 
@@ -137,6 +136,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       if (!pushJobSetting.useMapperToBuildDict) {
         vsonSchema = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
       } else {
+        // ValidateSchemaAndBuildDictMapper will validate all file schemas and build the dictionary
         vsonSchema = getVsonFileHeader(fs, fileStatuses[0].getPath(), false);
       }
 
@@ -195,7 +195,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
                 + fileStatus.getPath().getName());
       }
       inputFileDataSize.addAndGet(fileStatus.getLen());
-      Pair<VsonSchema, VsonSchema> newSchema = getVsonFileHeader(fs, fileStatus.getPath(), true);
+      Pair<VsonSchema, VsonSchema> newSchema =
+          getVsonFileHeader(fs, fileStatus.getPath(), pushJobSetting.isZstdDictCreationRequired);
       if (!vsonSchema.getFirst().equals(newSchema.getFirst())
           || !vsonSchema.getSecond().equals(newSchema.getSecond())) {
         throw new VeniceInconsistentSchemaException(
@@ -259,26 +260,13 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       FileSystem fs,
       Path path,
       boolean isZstdDictCreationRequired) {
-    LOGGER.debug("path:{}", path.toUri().getPath());
     VeniceVsonRecordReader recordReader = getVeniceVsonRecordReader(fs, path);
-    try (VeniceVsonFileIterator fileIterator = new VeniceVsonFileIterator(fs, path, recordReader)) {
-      if (isZstdDictCreationRequired) {
-        if (!pushJobSetting.isIncrementalPush) {
-          if (!pushJobSetting.useMapperToBuildDict) {
-            /** If dictionary compression is enabled for version, read the records to get training samples */
-            if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-              InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
-            }
-          } else {
-            /** If dictionary compression is enabled for version or compression metric collection is enabled,
-             * read the records to get training samples
-             */
-            InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
-          }
-        }
+    if (isZstdDictCreationRequired) {
+      try (VeniceVsonFileIterator fileIterator = new VeniceVsonFileIterator(fs, path, recordReader)) {
+        InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
+      } catch (IOException e) {
+        LOGGER.error(e);
       }
-    } catch (IOException e) {
-      LOGGER.error(e);
     }
     return recordReader.getMetadataMap();
   }
@@ -294,7 +282,18 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   @Override
-  public byte[] getZstdDictTrainSamples() {
+  public byte[] trainZstdDictionary() {
+    int collectedNumberOfSamples = pushJobZstdConfig.getCollectedNumberOfSamples();
+    int minNumberOfSamples = MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
+    if (collectedNumberOfSamples < minNumberOfSamples) {
+      /** check {@link MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY} */
+      LOGGER.warn(
+          "Training ZSTD compression dictionary on store data skipped. The sample size is too small. "
+              + "Collected number of samples: {}, Minimum number of required samples: {}. Will use synthetic data instead.",
+          collectedNumberOfSamples,
+          minNumberOfSamples);
+      return ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
+    }
     return pushJobZstdConfig.getZstdDictTrainer().trainSamples();
   }
 
@@ -336,7 +335,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
                 + fileStatus.getPath().getName());
       }
       inputFileDataSize.addAndGet(fileStatus.getLen());
-      Pair<Schema, Schema> newSchema = getAvroFileHeader(fs, fileStatus.getPath(), true);
+      Pair<Schema, Schema> newSchema =
+          getAvroFileHeader(fs, fileStatus.getPath(), pushJobSetting.isZstdDictCreationRequired);
       if (!avroSchema.equals(newSchema)) {
         throw new VeniceInconsistentSchemaException(
             String.format(
@@ -350,26 +350,13 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   protected Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean isZstdDictCreationRequired) {
-    LOGGER.debug("path:{}", path.toUri().getPath());
     VeniceAvroRecordReader recordReader = getVeniceAvroRecordReader(fs, path);
-    try (VeniceAvroFileIterator fileIterator = new VeniceAvroFileIterator(fs, path, recordReader)) {
-      if (isZstdDictCreationRequired) {
-        if (!pushJobSetting.isIncrementalPush) {
-          if (!pushJobSetting.useMapperToBuildDict) {
-            /** If dictionary compression is enabled for version, read the records to get training samples */
-            if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-              InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
-            }
-          } else {
-            /** If dictionary compression is enabled for version or compression metric collection is enabled,
-             * read the records to get training samples
-             */
-            InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
-          }
-        }
+    if (isZstdDictCreationRequired) {
+      try (VeniceAvroFileIterator fileIterator = new VeniceAvroFileIterator(fs, path, recordReader)) {
+        InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
+      } catch (IOException e) {
+        LOGGER.error(e);
       }
-    } catch (IOException e) {
-      LOGGER.error(e);
     }
     return new Pair<>(recordReader.getDataSchema(), recordReader.getValueSchema());
   }

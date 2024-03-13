@@ -35,7 +35,7 @@ public class KafkaInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   @Override
-  public byte[] getZstdDictTrainSamples() {
+  public byte[] trainZstdDictionary() {
     throw new VeniceUnsupportedOperationException("Zstd for KafkaInputDataInfoProvider");
   }
 

@@ -61,8 +61,6 @@ public final class VenicePushJobConstants {
    *
    *  This config also gets evaluated in {@link VenicePushJob#evaluateCompressionMetricCollectionEnabled}
    *  <br><br>
-   *
-   *  Enabling this feature force enables {@link #USE_MAPPER_TO_BUILD_DICTIONARY}.
    */
   public static final String COMPRESSION_METRIC_COLLECTION_ENABLED = "compression.metric.collection.enabled";
   public static final boolean DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED = false;
@@ -77,11 +75,8 @@ public final class VenicePushJobConstants {
    * in-memory and to help play around with the sample size and also to support future enhancements
    * if needed. <br><br>
    *
-   * Currently, this will be force enabled if {@link #COMPRESSION_METRIC_COLLECTION_ENABLED} is
-   * enabled and the plan is to make this enabled by default and clean up remaining code once
-   * this becomes stable to make the flow similar for all cases. But needs to be discussed further
-   * on "using a mapper when not really needed (if no dictionary needed or the sample size is small)"
-   * vs "having 2 different flows to manage/test".
+   * Currently, the plan is to only have it available for MapReduce compute engine and remove it eventually as we
+   * remove the MapReduce-related codes.
    */
   public static final String USE_MAPPER_TO_BUILD_DICTIONARY = "use.mapper.to.build.dictionary";
   public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = false;
