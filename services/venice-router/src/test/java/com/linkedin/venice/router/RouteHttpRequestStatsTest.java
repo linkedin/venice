@@ -18,8 +18,7 @@ public class RouteHttpRequestStatsTest {
 
   @BeforeSuite
   public void setUp() {
-    MetricsRepository metrics =
-        MetricsRepositoryUtils.createSingleThreadedMetricsRepository("router_test_async_gauge_thread");
+    MetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
 

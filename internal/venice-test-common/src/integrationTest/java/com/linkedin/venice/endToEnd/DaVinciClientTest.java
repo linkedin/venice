@@ -739,8 +739,7 @@ public class DaVinciClientTest {
 
     // Since the previous DaVinci client is closed, the static default Gauge metric measurement thread pool is also
     // shutdown. In order to continue calculating Gauge metrics values in the new client, create a new thread pool
-    MetricsRepository metricsRepository =
-        MetricsRepositoryUtils.createSingleThreadedMetricsRepository("da-vinci_test_async_gauge_thread", 10000, 50);
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository(10000, 50);
     DaVinciTestContext<Integer, Object> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,

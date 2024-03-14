@@ -137,7 +137,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
     if (metricsRepository == null) {
-      metricsRepository = MetricsRepositoryUtils.createMultiThreadedMetricsRepository("client_async_gauge_thread");
+      metricsRepository = MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
     }
     // TODO consider changing the implementation or make it explicit that the config builder can only build once with
     // the same metricsRepository
