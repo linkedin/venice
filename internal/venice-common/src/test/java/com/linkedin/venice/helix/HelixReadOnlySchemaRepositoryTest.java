@@ -135,7 +135,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     // 3 times force refresh still won't get the schema, exception should be thrown.
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(2);
     Assert.assertThrows(InvalidVeniceSchemaException.class, () -> schemaRepository.getSupersetSchema(storeName));
-    verify(schemaRepository, times(7)).forceRefreshSchemaData(any(), any());
+    verify(schemaRepository, times(14)).forceRefreshSchemaData(any(), any());
 
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
     Assert.assertNull(schemaRepository.getSupersetSchema(storeName));
