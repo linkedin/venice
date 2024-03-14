@@ -405,6 +405,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     logAccumulatorValue(accumulatorsForDataWriterJob.outputRecordCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.emptyRecordCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.totalKeySizeCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.uncompressedValueSizeCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.compressedValueSizeCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.gzipCompressedValueSizeCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.zstdCompressedValueSizeCounter);

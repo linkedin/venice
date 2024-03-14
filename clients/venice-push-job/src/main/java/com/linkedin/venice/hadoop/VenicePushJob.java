@@ -47,7 +47,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.MAPPER_OUTPUT_DIRECTORY;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.NON_CRITICAL_EXCEPTION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.NOT_SET;
@@ -58,7 +57,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_JOB_STATUS_
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.REDUCER_SPECULATIVE_EXECUTION_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
@@ -346,8 +344,6 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
-    pushJobSettingToReturn.enableReducerSpeculativeExecution =
-        props.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false);
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
     pushJobSettingToReturn.pollJobStatusIntervalMs =
@@ -472,12 +468,6 @@ public class VenicePushJob implements AutoCloseable {
       Class objectClass = ReflectUtils.loadClass(dataWriterComputeJobClass);
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
       pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
-    }
-
-    // Test related configs
-    if (props.containsKey(MAP_REDUCE_PARTITIONER_CLASS_CONFIG)) {
-      pushJobSettingToReturn.mapReducePartitionerClass =
-          ReflectUtils.loadClass(props.getString(MAP_REDUCE_PARTITIONER_CLASS_CONFIG));
     }
 
     return pushJobSettingToReturn;
