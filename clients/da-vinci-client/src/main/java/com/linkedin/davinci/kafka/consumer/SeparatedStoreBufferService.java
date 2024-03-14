@@ -8,6 +8,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,7 +28,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   private final int unsortedPoolSize;
   private final Map<PubSubTopic, Boolean> topicToSortedIngestionMode = new VeniceConcurrentHashMap<>();
 
-  SeparatedStoreBufferService(VeniceServerConfig serverConfig) {
+  SeparatedStoreBufferService(VeniceServerConfig serverConfig, MetricsRepository metricsRepository) {
     this(
         serverConfig.getDrainerPoolSizeSortedInput(),
         serverConfig.getDrainerPoolSizeUnsortedInput(),
@@ -35,12 +36,14 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
             serverConfig.getDrainerPoolSizeSortedInput(),
             serverConfig.getStoreWriterBufferMemoryCapacity(),
             serverConfig.getStoreWriterBufferNotifyDelta(),
-            serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled()),
+            serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
+            metricsRepository),
         new StoreBufferService(
             serverConfig.getDrainerPoolSizeUnsortedInput(),
             serverConfig.getStoreWriterBufferMemoryCapacity(),
             serverConfig.getStoreWriterBufferNotifyDelta(),
-            serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled()));
+            serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
+            metricsRepository));
     LOGGER.info(
         "Created separated store buffer service with {} sorted drainers and {} unsorted drainers queues with capacity of {}",
         sortedPoolSize,

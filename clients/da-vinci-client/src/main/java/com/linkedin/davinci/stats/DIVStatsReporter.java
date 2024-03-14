@@ -50,11 +50,10 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
     if (!VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
       registerLatencySensor("producer_to_source_broker", DIVStats::getProducerSourceBrokerLatencySensor);
       registerLatencySensor("source_broker_to_leader_consumer", DIVStats::getSourceBrokerLeaderConsumerLatencySensor);
-      registerLatencySensor("producer_to_leader_consumer", DIVStats::getProducerLeaderConsumerLatencySensor);
       registerLatencySensor("producer_to_local_broker", DIVStats::getProducerLocalBrokerLatencySensor);
       registerLatencySensor("local_broker_to_follower_consumer", DIVStats::getLocalBrokerFollowerConsumerLatencySensor);
-      registerLatencySensor("producer_to_follower_consumer", DIVStats::getProducerFollowerConsumerLatencySensor);
       registerLatencySensor("leader_producer_completion", DIVStats::getLeaderProducerCompletionLatencySensor);
+      registerLatencySensor("leader_div_completion", DIVStats::getLeaderDIVCompletionLatencySensor);
     }
   }
 

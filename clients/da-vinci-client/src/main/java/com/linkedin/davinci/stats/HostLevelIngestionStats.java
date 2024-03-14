@@ -77,6 +77,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor checkLongRunningTasksLatencySensor;
   // Measure the latency in putting data into storage engine
   private final Sensor storageEnginePutLatencySensor;
+  // Measure the latency in deleting data from storage engine
+  private final Sensor storageEngineDeleteLatencySensor;
 
   /**
    * Measure the number of times a record was found in {@link PartitionConsumptionState#transientRecordMap} during UPDATE
@@ -344,7 +346,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.checkLongRunningTasksLatencySensor,
         avgAndMax());
 
-    String storageEnginePutLatencySensorName = "storage_engine_put_latency";
+    String storageEnginePutLatencySensorName = "storage_engine_put_latency",
+        storageEngineDeleteLatencySensorName = "storage_engine_delete_latency";
     this.storageEnginePutLatencySensor = registerPerStoreAndTotalSensor(
         storageEnginePutLatencySensorName,
         totalStats,
@@ -352,6 +355,15 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Avg(),
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEnginePutLatencySensorName));
+
+    this.storageEngineDeleteLatencySensor = registerPerStoreAndTotalSensor(
+        storageEngineDeleteLatencySensorName,
+        totalStats,
+        () -> totalStats.storageEngineDeleteLatencySensor,
+        new Avg(),
+        new Max(),
+        TehutiUtils
+            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEngineDeleteLatencySensorName));
 
     this.writeComputeCacheHitCount = registerPerStoreAndTotalSensor(
         "write_compute_cache_hit_count",
@@ -504,6 +516,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordStorageEnginePutLatency(double latency, long currentTimeMs) {
     storageEnginePutLatencySensor.record(latency, currentTimeMs);
+  }
+
+  public void recordStorageEngineDeleteLatency(double latency, long currentTimeMs) {
+    storageEngineDeleteLatencySensor.record(latency, currentTimeMs);
   }
 
   public void recordWriteComputeCacheHitCount() {

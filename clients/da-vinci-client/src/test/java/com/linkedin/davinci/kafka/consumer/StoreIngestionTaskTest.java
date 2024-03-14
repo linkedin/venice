@@ -417,6 +417,7 @@ public abstract class StoreIngestionTaskTest {
   private boolean databaseChecksumVerificationEnabled = false;
   private AggKafkaConsumerServiceStats kafkaConsumerServiceStats = mock(AggKafkaConsumerServiceStats.class);
   private PubSubConsumerAdapterFactory mockFactory = mock(PubSubConsumerAdapterFactory.class);
+  private final MetricsRepository mockMetricRepo = mock(MetricsRepository.class);
 
   private Supplier<StoreVersionState> storeVersionStateSupplier = () -> new StoreVersionState();
 
@@ -444,9 +445,11 @@ public abstract class StoreIngestionTaskTest {
 
   @BeforeClass(alwaysRun = true)
   public void suiteSetUp() throws Exception {
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     taskPollingService = Executors.newFixedThreadPool(1);
-
-    storeBufferService = new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled());
+    storeBufferService =
+        new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled(), mockMetricRepo);
     storeBufferService.start();
   }
 
@@ -933,9 +936,6 @@ public abstract class StoreIngestionTaskTest {
     extraServerProperties = new HashMap<>(extraServerProperties);
     veniceServerConfig = buildVeniceServerConfig(extraServerProperties);
 
-    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
-    final Sensor mockSensor = mock(Sensor.class);
-    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     Properties localKafkaProps = new Properties();
     localKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     localKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
@@ -946,7 +946,7 @@ public abstract class StoreIngestionTaskTest {
         mockBandwidthThrottler,
         mockRecordsThrottler,
         kafkaClusterBasedRecordThrottler,
-        mockMetricsRepository,
+        mockMetricRepo,
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
         1000,
         mock(TopicExistenceChecker.class),
@@ -969,7 +969,7 @@ public abstract class StoreIngestionTaskTest {
         mockBandwidthThrottler,
         mockRecordsThrottler,
         kafkaClusterBasedRecordThrottler,
-        mockMetricsRepository,
+        mockMetricRepo,
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
         1000,
         mock(TopicExistenceChecker.class),

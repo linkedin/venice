@@ -163,8 +163,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs) {
+      long beforeProcessingPerRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
     if (!consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
       /**
        * We don't need to lock the partition here because during VT consumption there is only one consumption source.
@@ -174,8 +174,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestampNs,
-          currentTimeForMetricsMs);
+          beforeProcessingPerRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs);
     } else {
       /**
        * The below flow must be executed in a critical session for the same key:
@@ -197,8 +197,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             subPartition,
             kafkaUrl,
             kafkaClusterId,
-            beforeProcessingRecordTimestampNs,
-            currentTimeForMetricsMs);
+            beforeProcessingPerRecordTimestampNs,
+            beforeProcessingBatchRecordsTimestampMs);
       } finally {
         keyLevelLock.unlock();
         this.keyLevelLocksManager.get().releaseLock(byteArrayKey);
