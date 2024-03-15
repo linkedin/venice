@@ -1127,7 +1127,7 @@ public class VenicePushJob implements AutoCloseable {
       if (!inputFileHasRecords) {
         if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info(
-              "compression strategy is {} with no input records: dictionary will be generated from synthetic data or current version data for hybrid stores",
+              "Compression strategy is {} with no input records. A dictionary will be generated from synthetic data or current version data for hybrid stores",
               pushJobSetting.storeCompressionStrategy);
         } else {
           LOGGER.info("No compression dictionary will be generated as there are no records");
@@ -1425,8 +1425,37 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
-    ByteBuffer compressionDictionary = null;
+    if (!pushJobSetting.isZstdDictCreationRequired) {
+      return Optional.empty();
+    }
 
+    ByteBuffer compressionDictionary;
+    try {
+      compressionDictionary = fetchOrBuildCompressionDictionary();
+    } catch (Exception e) {
+      LOGGER.warn("Failed to fetch or build compression dictionary", e);
+      compressionDictionary = null;
+    }
+
+    if (compressionDictionary != null && compressionDictionary.remaining() > 0) {
+      pushJobSetting.isZstdDictCreationSuccess = true;
+      return Optional.of(compressionDictionary);
+    }
+
+    if (pushJobSetting.storeCompressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
+      LOGGER.info(
+          "No dictionary fetched. But since the compression strategy is not {}, it is not required",
+          CompressionStrategy.ZSTD_WITH_DICT);
+      pushJobSetting.isZstdDictCreationSuccess = false;
+      return Optional.empty();
+    }
+
+    LOGGER.info("No dictionary fetched. Creating a default dictionary since compression strategy is ZSTD_WITH_DICT");
+    pushJobSetting.isZstdDictCreationSuccess = true;
+    return Optional.of(emptyPushZstdDictionary.get());
+  }
+
+  private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
@@ -1438,20 +1467,16 @@ public class VenicePushJob implements AutoCloseable {
         .setDictSampleSize(
             props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
     if (pushJobSetting.isSourceKafka) {
-      /**
-       * Currently KIF repush will always build a dict in Azkaban Job driver if necessary.
-       */
-      boolean rebuildDict = pushJobSetting.kafkaInputBuildNewDictEnabled;
       paramBuilder.setSourceVersionChunkingEnabled(pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled());
-      // Repush
+      // Currently, KIF repush will always build a dict in Azkaban Job driver if necessary.
       if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        if (rebuildDict) {
+        if (pushJobSetting.kafkaInputBuildNewDictEnabled) {
           LOGGER.info("Rebuild a new Zstd dictionary from the input topic: {}", pushJobSetting.kafkaInputTopic);
           paramBuilder.setKafkaInputBroker(pushJobSetting.kafkaInputBrokerUrl)
               .setTopicName(pushJobSetting.kafkaInputTopic)
               .setSourceVersionCompressionStrategy(pushJobSetting.sourceKafkaInputVersionInfo.getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
-          compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
+          return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
           // set up ssl properties and kafka consumer properties
@@ -1460,104 +1485,70 @@ public class VenicePushJob implements AutoCloseable {
             kafkaConsumerProperties.putAll(this.sslProperties.get());
           }
           kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaInputBrokerUrl);
-          compressionDictionary = DictionaryUtils
+          return DictionaryUtils
               .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
         }
       }
-
-      return Optional.ofNullable(compressionDictionary);
-    } else {
-      if (pushJobSetting.isZstdDictCreationRequired) {
-        if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT
-            && !inputDataInfo.hasRecords()) {
-          /**
-           * Special handling for empty push with ZSTD_WITH_DICT: This compression strategy needs a dictionary even if
-           * there is no input data, so we generate a dictionary either based on synthetic data or from the current version.
-           */
-          if (pushJobSetting.hybridStoreConfig != null) {
-            /**
-             * For hybrid store: Push Job will try to train a dict based on the records of the current version, and
-             * it won't work for the very first version, and the following versions will work.
-             */
-            LOGGER.info(
-                "compression strategy is {} for hybrid store with no input records: Attempt to generate dictionary from current version data",
-                pushJobSetting.storeCompressionStrategy);
-            String storeName = getPushJobSetting().storeName;
-            try {
-              // Get the latest version
-              RepushInfoResponse repushInfoResponse = ControllerClient.retryableRequest(
-                  controllerClient,
-                  pushJobSetting.controllerRetries,
-                  c -> c.getRepushInfo(storeName, Optional.empty()));
-              if (repushInfoResponse.isError()) {
-                throw new VeniceException(
-                    "Could not get repush info for store " + storeName + " with error: "
-                        + repushInfoResponse.getError());
-              }
-              int sourceVersion = repushInfoResponse.getRepushInfo().getVersion().getNumber();
-              String sourceTopicName = Version.composeKafkaTopic(storeName, sourceVersion);
-              String sourceKafkaUrl = repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
-              LOGGER.info(
-                  "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
-                  sourceTopicName,
-                  sourceKafkaUrl);
-              paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
-                  .setTopicName(sourceTopicName)
-                  .setSourceVersionCompressionStrategy(
-                      repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
-              KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
-              compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
-
-              return Optional.of(compressionDictionary);
-            } catch (Exception e) {
-              LOGGER.warn(
-                  "Encountered an exception when trying to build a dict from an existing version for an empty push to a hybrid store: "
-                      + storeName + ", so the push job will use a default dict",
-                  e);
-            }
-          }
-
-          /**
-           * For Batch only store or first push to a hybrid store: Build dictionary based on synthetic data
-           */
-          LOGGER.info(
-              "compression strategy is {} with no input records: Generating dictionary from synthetic data",
-              pushJobSetting.storeCompressionStrategy);
-          compressionDictionary = emptyPushZstdDictionary.get();
-          return Optional.of(compressionDictionary);
-        }
-
-        if (!pushJobSetting.useMapperToBuildDict) {
-          compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().trainZstdDictionary());
-          pushJobSetting.isZstdDictCreationSuccess = true;
-        } else {
-          if (pushJobSetting.isZstdDictCreationSuccess) {
-            LOGGER.info(
-                "Retrieving the Zstd dictionary trained by {}",
-                ValidateSchemaAndBuildDictMapper.class.getSimpleName());
-            compressionDictionary = validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
-          } else {
-            if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-              // This should not happen
-              String err = "Dictionary creation failed for the configured ZSTD compression type";
-              LOGGER.error(err);
-              throw new VeniceException(err);
-            } // else case: Dictionary creation failed, but it was not needed for the push job to succeed
-          }
-        }
-      }
-      if (compressionDictionary != null) {
-        LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.limit());
-      } else {
-        LOGGER.info(
-            "No Compression dictionary is generated with the compression strategy {} "
-                + "and compressionMetricCollectionEnabled is {}",
-            pushJobSetting.storeCompressionStrategy,
-            (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
-      }
-
-      return Optional.ofNullable(compressionDictionary);
+      LOGGER.info(
+          "No dictionary will be fetched for repush workloads with compression strategy: {}",
+          CompressionStrategy.ZSTD_WITH_DICT);
+      return null;
     }
+
+    if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !inputDataInfo.hasRecords()) {
+      LOGGER.info("Compression strategy is {} with no input records", pushJobSetting.storeCompressionStrategy);
+
+      if (pushJobSetting.hybridStoreConfig == null) {
+        return null;
+      }
+
+      /**
+       * Special handling for empty push with ZSTD_WITH_DICT. This compression strategy needs a dictionary even if
+       * there is no input data, so we try to generate a dictionary from the current version. Note that it won't work
+       * for the very first version, and the following versions will work.
+       */
+      LOGGER.info("Since this is a hybrid store, attempting to generate dictionary from current version data");
+      String storeName = getPushJobSetting().storeName;
+
+      // Get the latest version
+      RepushInfoResponse repushInfoResponse = ControllerClient.retryableRequest(
+          controllerClient,
+          pushJobSetting.controllerRetries,
+          c -> c.getRepushInfo(storeName, Optional.empty()));
+
+      if (repushInfoResponse.isError()) {
+        LOGGER.warn("Could not get repush info for store {} with error: {}", storeName, repushInfoResponse.getError());
+        return null;
+      }
+
+      int sourceVersion = repushInfoResponse.getRepushInfo().getVersion().getNumber();
+      String sourceTopicName = Version.composeKafkaTopic(storeName, sourceVersion);
+      String sourceKafkaUrl = repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
+      LOGGER.info(
+          "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
+          sourceTopicName,
+          sourceKafkaUrl);
+      paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
+          .setTopicName(sourceTopicName)
+          .setSourceVersionCompressionStrategy(
+              repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
+      KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
+      return ByteBuffer.wrap(dictTrainer.trainDict());
+    }
+
+    if (!pushJobSetting.useMapperToBuildDict) {
+      return ByteBuffer.wrap(getInputDataInfoProvider().trainZstdDictionary());
+    } else {
+      // In case of pushJobSetting.useMapperToBuildDict job, the dictionary will already have been generated
+      if (pushJobSetting.isZstdDictCreationSuccess) {
+        LOGGER.info(
+            "Retrieving the Zstd dictionary trained by {}",
+            ValidateSchemaAndBuildDictMapper.class.getSimpleName());
+        return validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
+      }
+    }
+
+    return null;
   }
 
   private void throwVeniceException(Throwable e) throws VeniceException {
@@ -2153,7 +2144,8 @@ public class VenicePushJob implements AutoCloseable {
 
     Optional<String> dictionary;
     if (askControllerToSendControlMessage) {
-      dictionary = optionalCompressionDictionary.map(ByteBuffer::array).map(EncodingUtils::base64EncodeToString);
+      dictionary =
+          optionalCompressionDictionary.map(ByteUtils::extractByteArray).map(EncodingUtils::base64EncodeToString);
     } else {
       dictionary = Optional.empty();
     }
