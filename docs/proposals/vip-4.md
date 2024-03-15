@@ -74,7 +74,8 @@ This proposal is about full push jobs. Incremental pushes and nearline writes ar
 submitting this proposal, it is undetermined whether this work will apply to stream reprocessing jobs. In terms of 
 priority, we care mostly about supporting full pushes from offline grids, and it may be fine to leave stream 
 reprocessing out of scope, although depending on the design details we choose, we may be able to support stream 
-reprocessing "for free" as well.
+reprocessing "for free" as well (i.e. if the hooks are executed in the controller). Incremental Push is out of scope of
+this proposal.
 
 The goal is for lifecycle hooks to achieve the following use cases:
 
@@ -115,6 +116,14 @@ The proposed API for this functionality is described in code here:
   is the signal returned by some other hooks which need more fine-grained control over the workflow. In addition to 
   proceeding and aborting, this also provides the option to wait, which tells the hooks framework to try invoking the 
   hook again later, and rollback, which tells the framework to rollback to the previous store-version in all regions.
+* [JobStatusQueryResponse](/venice/javadoc/com/linkedin/venice/controllerapi/JobStatusQueryResponse.html), which is the payload
+  returned by the `/job` controller endpoint, is extended to include status update timestamps. This will be populated by
+  the child controller to indicate the time when its own individual status last changed, and the parent controller will
+  aggregate these into a map keyed by region. All hooks which return the `StoreVersionLifecycleEventOutcome` will have
+  access to this payload in their input, so that they can make decisions based on the status of each region. The time
+  when the status was last updated for a given region is useful in order to achieve the use case of a hook which injects
+  a delay between each region swap. The code change to support these extra timestamps is included in this VIP, to 
+  demonstrate feasibility and present the proposed algorithm (see `OfflinePushStatus::getStatusUpdateTimestamp`).
 
 ## Proposed Design
 

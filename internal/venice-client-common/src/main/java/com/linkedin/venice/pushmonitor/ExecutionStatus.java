@@ -56,6 +56,7 @@ public enum ExecutionStatus {
   END_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, true, 8),
 
   /* Task is dropped by the storage node */
+  @Deprecated
   DROPPED(false, true, false, false, 9),
 
   /**
@@ -65,6 +66,7 @@ public enum ExecutionStatus {
   COMPLETED(true, true, false, true, 10),
 
   /** a non-fatal error task meets when processing the data. Often happens after EOP is received. **/
+  @Deprecated
   WARNING(false, true, false, true, 11),
 
   /** Job/task met error when processing the data. */
@@ -77,6 +79,7 @@ public enum ExecutionStatus {
    * Only be used for Job
    * TODO: remove ARCHIVED as it's not been used anymore
    */
+  @Deprecated
   ARCHIVED(true, false, false, true, 14),
 
   /** Job status is unknown when checking, and it could be caused by network issue */

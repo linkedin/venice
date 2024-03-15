@@ -1,8 +1,10 @@
 package com.linkedin.venice.hooks;
 
 import com.linkedin.venice.annotation.Threadsafe;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Map;
 
 
@@ -61,6 +63,9 @@ import java.util.Map;
  * <b>Thread safety</b><br>
  * <br>
  * Hook functions can be invoked concurrently and so hook implementations are expected to be thread-safe.<br>
+ * <br>
+ * However, the hooks framework guarantees to call hooks one at a time for a given store, so even if multiple hooks for
+ * a given store simultaneously become eligible to be called, their invocation will be serialized.<br>
  * @see StoreLifecycleEventOutcome
  * @see StoreVersionLifecycleEventOutcome
  */
@@ -166,6 +171,7 @@ public abstract class StoreLifecycleHooks {
       String storeName,
       int versionNumber,
       String regionName,
+      Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {
     return StoreVersionLifecycleEventOutcome.PROCEED;
   }
@@ -173,7 +179,7 @@ public abstract class StoreLifecycleHooks {
   /**
    * Invoked after creating a store-version in a given region, which means the following actions succeeded:<br>
    * <br>
-   * - All {@link #preStoreVersionCreation(String, String, int, String, VeniceProperties)} hooks.<br>
+   * - All {@link #preStoreVersionCreation(String, String, int, String, Lazy, VeniceProperties)} hooks.<br>
    * - Creation of the store-version's dedicated resources (pub sub topic, Helix resource).<br>
    * - Server replicas have begun ingesting.<br>
    * <br>
@@ -197,6 +203,7 @@ public abstract class StoreLifecycleHooks {
       String storeName,
       int versionNumber,
       String regionName,
+      Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {
     return StoreVersionLifecycleEventOutcome.PROCEED;
   }
@@ -220,6 +227,7 @@ public abstract class StoreLifecycleHooks {
       String storeName,
       int versionNumber,
       String regionName,
+      Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {
     return StoreVersionLifecycleEventOutcome.PROCEED;
   }
@@ -252,6 +260,7 @@ public abstract class StoreLifecycleHooks {
       String storeName,
       int versionNumber,
       String regionName,
+      Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {
     return StoreVersionLifecycleEventOutcome.PROCEED;
   }
@@ -266,6 +275,7 @@ public abstract class StoreLifecycleHooks {
       String storeName,
       int versionNumber,
       String regionName,
+      Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties storeHooksConfigs) {
     return StoreVersionLifecycleEventOutcome.PROCEED;
   }
@@ -279,6 +289,7 @@ public abstract class StoreLifecycleHooks {
   public StoreVersionLifecycleEventOutcome preEndOfPushJob(
       String clusterName,
       String storeName,
+      Lazy<JobStatusQueryResponse> jobStatus,
       VeniceProperties jobProperties,
       VeniceProperties storeHooksConfigs) {
     return StoreVersionLifecycleEventOutcome.PROCEED;
