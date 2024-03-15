@@ -4,6 +4,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Gauge;
+import io.tehuti.metrics.stats.Rate;
 
 
 /**
@@ -20,10 +21,10 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
 
   public ServerQuotaUsageStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    requestedQPS = registerSensor("quota_requested_qps", new Count());
-    requestedKPS = registerSensor("quota_requested_kps", new Count());
-    rejectedQPS = registerSensor("quota_rejected_qps", new Count());
-    rejectedKPS = registerSensor("quota_rejected_kps", new Count());
+    requestedQPS = registerSensor("quota_request", new Rate());
+    requestedKPS = registerSensor("quota_request_key_count", new Rate());
+    rejectedQPS = registerSensor("quota_rejected_request", new Rate());
+    rejectedKPS = registerSensor("quota_rejected_key_count", new Rate());
     allowedUnintentionallyKPS = registerSensor("quota_unintentionally_allowed_key_count", new Count());
     usageRatioSensor = registerSensor("quota_requested_usage_ratio", new Gauge());
   }
