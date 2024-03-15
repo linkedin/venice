@@ -16,8 +16,10 @@ public class JobStatusQueryResponse
   private int version;
   private String status;
   private String statusDetails;
+  private Long statusUpdateTimestamp;
   private Map<String, String> extraInfo;
   private Map<String, String> extraDetails;
+  private Map<String, Long> extraInfoUpdateTimestamp;
 
   private List<UncompletedPartition> uncompletedPartitions;
 
@@ -58,9 +60,23 @@ public class JobStatusQueryResponse
   }
 
   /**
+   * N.B.: Older versions of the controller did not support this timestamp, so this can be null.
+   *
+   * @return the UNIX Epoch timestamp when the value of {@link #getStatus()} was last updated (for child controllers),
+   *         null for parent controllers and for older versions of child controllers.
+   */
+  public Long getStatusUpdateTimestamp() {
+    return this.statusUpdateTimestamp;
+  }
+
+  public void setStatusUpdateTimestamp(long statusUpdateTimestamp) {
+    this.statusUpdateTimestamp = statusUpdateTimestamp;
+  }
+
+  /**
    * N.B.: The values in this map conform to {@link ExecutionStatus} values.
    *
-   * @return A map of datacenter -> status, which can be returned by a parent controller.
+   * @return A map of region name -> status, which can be returned by a parent controller.
    */
   public Map<String, String> getExtraInfo() {
     return extraInfo;
@@ -73,7 +89,7 @@ public class JobStatusQueryResponse
   /**
    * N.B.: Older versions of the controller did not support these details, so the optional can be empty.
    *
-   * @return A map of datacenter -> status details, which can be returned by a parent controller.
+   * @return A map of region name -> status details, which can be returned by a parent controller.
    */
   @JsonIgnore
   public Optional<Map<String, String>> getOptionalExtraDetails() {
@@ -90,6 +106,20 @@ public class JobStatusQueryResponse
 
   public void setExtraDetails(Map<String, String> extraDetails) {
     this.extraDetails = extraDetails;
+  }
+
+  /**
+   * N.B.: Older versions of the controller did not support these timestamps, so this map can be null.
+   *
+   * @return a map of region name -> UNIX Epoch timestamp indicating when the value corresponding to the same key in
+   *         {@link #getExtraInfo()} was last updated, or null if not available.
+   */
+  public Map<String, Long> getExtraInfoUpdateTimestamp() {
+    return this.extraInfoUpdateTimestamp;
+  }
+
+  public void setExtraInfoUpdateTimestamp(Map<String, Long> extraInfoUpdateTimestamp) {
+    this.extraInfoUpdateTimestamp = extraInfoUpdateTimestamp;
   }
 
   public void setUncompletedPartitions(List<UncompletedPartition> uncompletedPartitions) {

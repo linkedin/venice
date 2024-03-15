@@ -199,11 +199,11 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public void refreshAndUpdatePushStatus(
+  public OfflinePushStatus refreshAndUpdatePushStatus(
       String kafkaTopic,
       ExecutionStatus newStatus,
       Optional<String> newStatusDetails) {
-    getPushMonitor(kafkaTopic).refreshAndUpdatePushStatus(kafkaTopic, newStatus, newStatusDetails);
+    return getPushMonitor(kafkaTopic).refreshAndUpdatePushStatus(kafkaTopic, newStatus, newStatusDetails);
   }
 
   @Override

@@ -50,7 +50,7 @@ import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,36 +62,48 @@ public interface Admin extends AutoCloseable, Closeable {
   // Wrapper to include both overall offline push status and other extra useful info
   class OfflinePushStatusInfo {
     private ExecutionStatus executionStatus;
+    private Long statusUpdateTimestamp;
     private Map<String, String> extraInfo;
+    private Map<String, Long> extraInfoUpdateTimestamp;
     private String statusDetails;
     private Map<String, String> extraDetails;
     private List<UncompletedPartition> uncompletedPartitions;
 
     /** N.B.: Test-only constructor ): */
     public OfflinePushStatusInfo(ExecutionStatus executionStatus) {
-      this(executionStatus, new HashMap<>());
+      this(executionStatus, Collections.emptyMap());
     }
 
     /** N.B.: Test-only constructor ): */
     public OfflinePushStatusInfo(ExecutionStatus executionStatus, Map<String, String> extraInfo) {
-      this(executionStatus, extraInfo, null, new HashMap<>());
+      this(executionStatus, null, extraInfo, null, Collections.emptyMap(), Collections.emptyMap());
     }
 
     /** Used by single datacenter (child) controllers, hence, no extra info nor extra details */
-    public OfflinePushStatusInfo(ExecutionStatus executionStatus, String statusDetails) {
-      this(executionStatus, new HashMap<>(), statusDetails, new HashMap<>());
+    public OfflinePushStatusInfo(ExecutionStatus executionStatus, Long statusUpdateTimestamp, String statusDetails) {
+      this(
+          executionStatus,
+          statusUpdateTimestamp,
+          Collections.emptyMap(),
+          statusDetails,
+          Collections.emptyMap(),
+          Collections.emptyMap());
     }
 
     /** Used by the parent controller, hence, there is extra info and details about the child */
     public OfflinePushStatusInfo(
         ExecutionStatus executionStatus,
+        Long statusUpdateTimestamp,
         Map<String, String> extraInfo,
         String statusDetails,
-        Map<String, String> extraDetails) {
+        Map<String, String> extraDetails,
+        Map<String, Long> extraInfoUpdateTimestamp) {
       this.executionStatus = executionStatus;
+      this.statusUpdateTimestamp = statusUpdateTimestamp;
       this.extraInfo = extraInfo;
       this.statusDetails = statusDetails;
       this.extraDetails = extraDetails;
+      this.extraInfoUpdateTimestamp = extraInfoUpdateTimestamp;
     }
 
     public ExecutionStatus getExecutionStatus() {
@@ -116,6 +128,14 @@ public interface Admin extends AutoCloseable, Closeable {
 
     public void setUncompletedPartitions(List<UncompletedPartition> uncompletedPartitions) {
       this.uncompletedPartitions = uncompletedPartitions;
+    }
+
+    public Long getStatusUpdateTimestamp() {
+      return this.statusUpdateTimestamp;
+    }
+
+    public Map<String, Long> getExtraInfoUpdateTimestamp() {
+      return this.extraInfoUpdateTimestamp;
     }
   }
 
