@@ -59,6 +59,7 @@ public class PushStatusCollectorTest {
         4,
         1,
         20,
+        1,
         1);
     pushStatusCollector.start();
 
@@ -192,6 +193,7 @@ public class PushStatusCollectorTest {
         4,
         1,
         20,
+        1,
         1);
     pushStatusCollector.start();
 
@@ -275,6 +277,7 @@ public class PushStatusCollectorTest {
         4,
         0,
         20,
+        1,
         1);
     pushStatusCollector.start();
 

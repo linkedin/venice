@@ -44,6 +44,7 @@ public class PushStatusCollector {
   private final int daVinciPushStatusNoReportRetryMaxAttempts;
   private final int daVinciPushStatusScanMaxOfflineInstanceCount;
   private final double daVinciPushStatusScanMaxOfflineInstanceRatio;
+  private final long daVinciOfflineInstanceWaitTimeInMinutes;
   private ScheduledExecutorService offlinePushCheckScheduler;
   private ExecutorService pushStatusStoreScanExecutor;
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
@@ -60,7 +61,8 @@ public class PushStatusCollector {
       int daVinciPushStatusScanThreadNumber,
       int daVinciPushStatusNoReportRetryMaxAttempts,
       int daVinciPushStatusScanMaxOfflineInstanceCount,
-      double daVinciPushStatusScanMaxOfflineInstanceRatio) {
+      double daVinciPushStatusScanMaxOfflineInstanceRatio,
+      long daVinciOfflineInstanceWaitTimeInMinutes) {
     this.storeRepository = storeRepository;
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.pushCompletedHandler = pushCompletedHandler;
@@ -71,6 +73,20 @@ public class PushStatusCollector {
     this.daVinciPushStatusNoReportRetryMaxAttempts = daVinciPushStatusNoReportRetryMaxAttempts;
     this.daVinciPushStatusScanMaxOfflineInstanceCount = daVinciPushStatusScanMaxOfflineInstanceCount;
     this.daVinciPushStatusScanMaxOfflineInstanceRatio = daVinciPushStatusScanMaxOfflineInstanceRatio;
+    this.daVinciOfflineInstanceWaitTimeInMinutes = daVinciOfflineInstanceWaitTimeInMinutes;
+    LOGGER.info(
+        "Built PushStatusCollector with the following parameters: "
+            + "daVinciPushStatusScanEnabled: {}, daVinciPushStatusScanPeriodInSeconds: {}, "
+            + "daVinciPushStatusScanThreadNumber: {}, daVinciPushStatusNoReportRetryMaxAttempts: {}, "
+            + "daVinciPushStatusScanMaxOfflineInstanceCount: {}, daVinciPushStatusScanMaxOfflineInstanceRatio: {}, "
+            + "daVinciOfflineInstanceWaitTimeInMinutes: {}",
+        daVinciPushStatusScanEnabled,
+        daVinciPushStatusScanPeriodInSeconds,
+        daVinciPushStatusScanThreadNumber,
+        daVinciPushStatusNoReportRetryMaxAttempts,
+        daVinciPushStatusScanMaxOfflineInstanceCount,
+        daVinciPushStatusScanMaxOfflineInstanceRatio,
+        daVinciOfflineInstanceWaitTimeInMinutes);
   }
 
   public void start() {
@@ -135,7 +151,8 @@ public class PushStatusCollector {
               pushStatus.getPartitionCount(),
               Optional.empty(),
               daVinciPushStatusScanMaxOfflineInstanceCount,
-              daVinciPushStatusScanMaxOfflineInstanceRatio);
+              daVinciPushStatusScanMaxOfflineInstanceRatio,
+              daVinciOfflineInstanceWaitTimeInMinutes);
           pushStatus.setDaVinciStatus(statusWithDetails);
           return pushStatus;
         }, pushStatusStoreScanExecutor));

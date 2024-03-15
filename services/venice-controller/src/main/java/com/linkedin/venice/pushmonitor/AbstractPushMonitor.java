@@ -130,7 +130,8 @@ public abstract class AbstractPushMonitor
         controllerConfig.getDaVinciPushStatusScanThreadNumber(),
         controllerConfig.getDaVinciPushStatusScanNoReportRetryMaxAttempt(),
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceCount(),
-        controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio());
+        controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
+        controllerConfig.getDaVinciOfflineInstanceWaitTimeInMinutes());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
     pushStatusCollector.start();
   }

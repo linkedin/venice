@@ -17,8 +17,6 @@ import org.apache.logging.log4j.Logger;
  * This class contains some common util methods for push monitoring purpose.
  */
 public class PushMonitorUtils {
-  private static long daVinciErrorInstanceWaitTime = 5;
-
   private static final Map<String, Long> storeVersionToDVCDeadInstanceTimeMap = new ConcurrentHashMap<>();
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorUtils.class);
 
@@ -33,7 +31,8 @@ public class PushMonitorUtils {
       int partitionCount,
       Optional<String> incrementalPushVersion,
       int maxOfflineInstanceCount,
-      double maxOfflineInstanceRatio) {
+      double maxOfflineInstanceRatio,
+      long offlineInstanceWaitTimeInMinutes) {
     if (reader == null) {
       throw new VeniceException("PushStatusStoreReader is null");
     }
@@ -104,7 +103,7 @@ public class PushMonitorUtils {
     if (offlineReplicaCount > maxOfflineInstanceAllowed) {
       Long lastUpdateTime = storeVersionToDVCDeadInstanceTimeMap.get(topicName);
       if (lastUpdateTime != null) {
-        if (lastUpdateTime + TimeUnit.MINUTES.toMillis(daVinciErrorInstanceWaitTime) < System.currentTimeMillis()) {
+        if (lastUpdateTime + TimeUnit.MINUTES.toMillis(offlineInstanceWaitTimeInMinutes) < System.currentTimeMillis()) {
           storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
           return new ExecutionStatusWithDetails(
               ExecutionStatus.ERROR,
@@ -165,9 +164,5 @@ public class PushMonitorUtils {
       return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail, noDaVinciStatusReported);
     }
     return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail, noDaVinciStatusReported);
-  }
-
-  static void setDaVinciErrorInstanceWaitTime(int time) {
-    daVinciErrorInstanceWaitTime = time;
   }
 }

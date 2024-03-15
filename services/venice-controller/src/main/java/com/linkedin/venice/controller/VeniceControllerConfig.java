@@ -63,6 +63,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLIN
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_OFFLINE_INSTANCE_WAIT_TIME_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
@@ -248,6 +249,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * Used to decide if an instance is stale.
    */
   private final long pushStatusStoreHeartbeatExpirationTimeInSeconds;
+  private final long daVinciOfflineInstanceWaitTimeInMinutes;
   private final long systemStoreAclSynchronizationDelayMs;
 
   /**
@@ -500,6 +502,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds =
         props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
+    this.daVinciOfflineInstanceWaitTimeInMinutes = props.getLong(DA_VINCI_OFFLINE_INSTANCE_WAIT_TIME_IN_MINUTES, 15);
     this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.daVinciPushStatusScanEnabled =
         props.getBoolean(DAVINCI_PUSH_STATUS_SCAN_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
@@ -900,6 +903,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getPushStatusStoreHeartbeatExpirationTimeInSeconds() {
     return pushStatusStoreHeartbeatExpirationTimeInSeconds;
+  }
+
+  public long getDaVinciOfflineInstanceWaitTimeInMinutes() {
+    return daVinciOfflineInstanceWaitTimeInMinutes;
   }
 
   public boolean isDaVinciPushStatusStoreEnabled() {

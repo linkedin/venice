@@ -5819,7 +5819,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             version.getPartitionCount(),
             incrementalPushVersion,
             multiClusterConfigs.getControllerConfig(clusterName).getDaVinciPushStatusScanMaxOfflineInstanceCount(),
-            multiClusterConfigs.getControllerConfig(clusterName).getDaVinciPushStatusScanMaxOfflineInstanceRatio());
+            multiClusterConfigs.getControllerConfig(clusterName).getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
+            multiClusterConfigs.getControllerConfig(clusterName).getDaVinciOfflineInstanceWaitTimeInMinutes());
         ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getStatus();
         String daVinciDetails = daVinciStatusAndDetails.getDetails();
         executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);

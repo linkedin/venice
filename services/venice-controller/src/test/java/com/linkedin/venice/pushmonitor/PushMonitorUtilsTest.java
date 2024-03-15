@@ -18,7 +18,6 @@ import org.testng.annotations.Test;
 public class PushMonitorUtilsTest {
   @Test
   public void testDaVinciPushStatusScan() {
-    PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
     PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
     doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("a"));
     doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("b"));
@@ -82,7 +81,8 @@ public class PushMonitorUtilsTest {
         1,
         Optional.empty(),
         maxOfflineInstanceCount,
-        maxOfflineInstanceRatio);
+        maxOfflineInstanceRatio,
+        0);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.STARTED);
     // Sleep 1ms and try again.
     Utils.sleep(1);
@@ -92,7 +92,8 @@ public class PushMonitorUtilsTest {
         1,
         Optional.empty(),
         maxOfflineInstanceCount,
-        maxOfflineInstanceRatio);
+        maxOfflineInstanceRatio,
+        1);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), expectedStatus);
     if (expectedStatus.equals(ExecutionStatus.ERROR)) {
       Assert.assertEquals(executionStatusWithDetails.getDetails(), expectedErrorDetails);

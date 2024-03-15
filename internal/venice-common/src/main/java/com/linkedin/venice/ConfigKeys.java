@@ -1757,6 +1757,13 @@ public class ConfigKeys {
       "push.status.store.heartbeat.expiration.seconds";
 
   /**
+   * Controller will wait for unresponsive DaVinci instances for this amount of time before announcing the push fails
+   * on DaVinci side.
+   */
+  public static final String DA_VINCI_OFFLINE_INSTANCE_WAIT_TIME_IN_MINUTES =
+      "da.vinci.offline.instance.wait.time.in.minutes";
+
+  /**
    * Derived schemaId for push status store write compute.
    */
   public static final String PUSH_STATUS_STORE_DERIVED_SCHEMA_ID = "push.status.store.derived.schema.id";
