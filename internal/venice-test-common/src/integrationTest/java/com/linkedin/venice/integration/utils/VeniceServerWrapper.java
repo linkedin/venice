@@ -505,7 +505,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     options.addOption(new Option("iaj", "isAutoJoin", false, "automatically join the venice cluster"));
     options.addOption(new Option("vu", "veniceUrl", true, "ZK url for venice d2 service"));
     options.addOption(new Option("dsn", "d2ServiceName", true, "d2 service name"));
-    CommandLineParser parser = new DefaultParser();
+    CommandLineParser parser = new DefaultParser(false);
     CommandLine cmd = parser.parse(options, args);
 
     String clusterName = cmd.getOptionValue("cn");

@@ -599,7 +599,7 @@ public class AdminTool {
 
     options.addOptionGroup(commandGroup);
 
-    CommandLineParser parser = new DefaultParser();
+    CommandLineParser parser = new DefaultParser(false);
     CommandLine cmd = parser.parse(options, args);
 
     if (cmd.hasOption(Arg.HELP.first())) {
@@ -626,7 +626,7 @@ public class AdminTool {
         if (foundCommand == null) {
           foundCommand = c.toString();
         } else {
-          throw new VeniceException("Can only specify one of --" + foundCommand + " and --" + c.toString());
+          throw new VeniceException("Can only specify one of --" + foundCommand + " and --" + c);
         }
       }
     }
