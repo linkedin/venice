@@ -208,9 +208,11 @@ public class ServerStatsContext {
   public void setRequestType(RequestType requestType) {
     switch (requestType) {
       case MULTI_GET:
+      case MULTI_GET_STREAMING:
         currentStats = multiGetStats;
         break;
       case COMPUTE:
+      case COMPUTE_STREAMING:
         currentStats = computeStats;
         break;
       default:
