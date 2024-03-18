@@ -18,9 +18,8 @@ public class TokenBucket {
   private final Clock clock;
   private final AtomicLong tokens;
   private final AtomicLong tokensRequestedSinceLastRefill;
-  private volatile long previousRefillTime = 0;
+  private volatile long previousRefillTime;
   private volatile long nextUpdateTime;
-  private volatile double staleUsageRatio = 0;
 
   /**
    * This constructor should only be used by tests.  Application should not specify it's own instance of Clock
@@ -89,11 +88,6 @@ public class TokenBucket {
               return newTokens;
             }
           });
-          if (previousRefillTime > 0) {
-            long timeSinceLastRefill = TimeUnit.MILLISECONDS.toSeconds(timeNow - previousRefillTime);
-            staleUsageRatio =
-                ((double) tokensRequestedSinceLastRefill.get() / (double) timeSinceLastRefill) / refillPerSecond;
-          }
           previousRefillTime = timeNow;
           tokensRequestedSinceLastRefill.set(0);
           nextUpdateTime = timeNow + refillIntervalMs;
@@ -141,6 +135,7 @@ public class TokenBucket {
   }
 
   public double getStaleUsageRatio() {
-    return staleUsageRatio;
+    long timeSinceLastRefill = TimeUnit.MILLISECONDS.toSeconds(clock.millis() - previousRefillTime);
+    return ((double) tokensRequestedSinceLastRefill.get() / (double) timeSinceLastRefill) / refillPerSecond;
   }
 }

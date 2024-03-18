@@ -208,8 +208,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
      */
     TokenBucket tokenBucket = storeVersionBuckets.get(request.getResourceName());
     if (tokenBucket != null) {
-      // Can always emit the stale usage ratio first because it's using numbers from the previous refill
-      stats.recordReadQuotaUsageRatio(storeName, tokenBucket.getStaleUsageRatio());
       if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
           && handleTooManyRequests(ctx, request, null, store, rcu, false)) {
         // Enforce store version quota for non-retry requests.
@@ -425,6 +423,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         return v;
       }
     });
+    String storeName = Version.parseStoreFromVersionTopic(topic);
+    stats.setStoreTokenBucket(storeName, getBucketForStore(storeName));
   }
 
   private long calculateRefillAmount(long totalRcuPerSecond, double thisBucketProportionOfTotalRcu) {
@@ -513,6 +513,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       }
     }
     removeTopics(toBeRemovedTopics);
+    stats.setStoreTokenBucket(store.getName(), getBucketForStore(store.getName()));
   }
 
   private Set<String> getStoreTopics(String storeName) {
