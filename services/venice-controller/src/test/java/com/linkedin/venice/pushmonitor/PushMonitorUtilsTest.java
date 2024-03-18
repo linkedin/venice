@@ -93,7 +93,7 @@ public class PushMonitorUtilsTest {
         Optional.empty(),
         maxOfflineInstanceCount,
         maxOfflineInstanceRatio,
-        1);
+        0);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), expectedStatus);
     if (expectedStatus.equals(ExecutionStatus.ERROR)) {
       Assert.assertEquals(executionStatusWithDetails.getDetails(), expectedErrorDetails);
