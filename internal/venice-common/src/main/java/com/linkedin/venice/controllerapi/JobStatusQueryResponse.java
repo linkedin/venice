@@ -69,7 +69,7 @@ public class JobStatusQueryResponse
     return this.statusUpdateTimestamp;
   }
 
-  public void setStatusUpdateTimestamp(long statusUpdateTimestamp) {
+  public void setStatusUpdateTimestamp(Long statusUpdateTimestamp) {
     this.statusUpdateTimestamp = statusUpdateTimestamp;
   }
 

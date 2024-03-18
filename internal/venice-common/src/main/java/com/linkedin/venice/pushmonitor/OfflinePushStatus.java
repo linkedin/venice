@@ -472,6 +472,7 @@ public class OfflinePushStatus {
   @JsonIgnore
   public Long getStatusUpdateTimestamp() {
     if (this.statusHistory == null || this.statusHistory.isEmpty() || this.currentStatus == null) {
+      // Defensive code... at the time of writing this function, this should never happen.
       return null;
     }
     Long earliestTimestampForCurrentStatus = Long.MAX_VALUE;
