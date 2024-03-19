@@ -15,12 +15,26 @@ import org.apache.logging.log4j.Logger;
  * Assignments for all of resources. This is NOT a thread-safe class. But in our use case, there is no any concurrent
  * operations to assignments. So here we only use volatile resourceToAssignmentsMap to ensure the reference is up to
  * date.
+ *
+ * N.B.: This class seems to have thread safety issues. The {@link #updateResourceAssignment(ResourceAssignment)}
+ * function swaps the {@link #resourceToAssignmentsMap} to another reference, and the two callers of that function wrap
+ * its invocation within locks. However, there are many other code paths which perform lock-free accesses to the same
+ * map across two functions: {@link #containsResource(String)} and {@link #getPartitionAssignment(String)}. These other
+ * code paths first check if the resource is contained, then if it is, they get it. But there is no guarantee that the
+ * reference to the map is the same, since {@link #updateResourceAssignment(ResourceAssignment)} could have been called
+ * in between. Ideally, we would eliminate this "contains, then get" pattern entirely, and instead rely on a single
+ * invocation to get the resource (which should be allowed to return null, rather than throw when absent); then the
+ * caller can use a null check as the equivalent of today's contains check, which would make the operation atomic and
+ * thus impossible to interleave with {@link #updateResourceAssignment(ResourceAssignment)}. TODO: refactor this.
  */
 public class ResourceAssignment {
   private static final Logger LOGGER = LogManager.getLogger(ResourceAssignment.class);
 
   private volatile Map<String, PartitionAssignment> resourceToAssignmentsMap = new HashMap<>();
 
+  /**
+   * TODO: Rename this "getPartitionAssignmentOrThrow", and create an equivalent which returns null when absent.
+   */
   public PartitionAssignment getPartitionAssignment(String resource) {
     PartitionAssignment partitionAssignment = resourceToAssignmentsMap.get(resource);
     if (partitionAssignment == null) {
@@ -40,6 +54,10 @@ public class ResourceAssignment {
     return getPartitionAssignment(resource).getPartition(partitionId);
   }
 
+  /**
+   * TODO: Delete this function entirely, to avoid the "contains, then get" anti-pattern.
+   */
+  @Deprecated
   public boolean containsResource(String resource) {
     return resourceToAssignmentsMap.containsKey(resource);
   }
