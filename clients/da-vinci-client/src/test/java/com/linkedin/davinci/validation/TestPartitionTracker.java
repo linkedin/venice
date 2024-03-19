@@ -231,7 +231,7 @@ public class TestPartitionTracker {
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset++,
+        offset,
         System.currentTimeMillis(),
         0);
     partitionTracker.validateMessage(firstConsumerRecord, endOfPushReceived, Lazy.FALSE);
