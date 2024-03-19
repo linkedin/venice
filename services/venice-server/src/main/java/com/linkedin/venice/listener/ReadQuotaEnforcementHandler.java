@@ -513,7 +513,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       }
     }
     removeTopics(toBeRemovedTopics);
-    stats.setStoreTokenBucket(store.getName(), getBucketForStore(store.getName()));
   }
 
   private Set<String> getStoreTopics(String storeName) {

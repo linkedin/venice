@@ -278,7 +278,9 @@ public class ReadQuotaEnforcementHandlerTest {
         setUpStoreMock(storeName, currentVersion + 1, Collections.singletonList(nextVersion), newStoreReadQuota, true);
     // The store repository is called to initialize/update the token buckets, we need to make sure it doesn't return the
     // store state with higher quota prior to the test to verify quota change.
-    when(storeRepository.getStore(eq(storeName))).thenReturn(store, store, storeAfterVersionBump, storeAfterQuotaBump);
+    // Get store is also called by getBucketForStore to update stats every time when handleStoreChanged is called.
+    when(storeRepository.getStore(eq(storeName)))
+        .thenReturn(store, store, store, storeAfterVersionBump, storeAfterVersionBump, storeAfterQuotaBump);
 
     quotaEnforcer.handleStoreChanged(store);
     Assert.assertTrue(quotaEnforcer.listTopics().contains(topic));
