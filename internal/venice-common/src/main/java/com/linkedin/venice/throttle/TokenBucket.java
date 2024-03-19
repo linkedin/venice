@@ -136,6 +136,10 @@ public class TokenBucket {
 
   public double getStaleUsageRatio() {
     long timeSinceLastRefill = TimeUnit.MILLISECONDS.toSeconds(clock.millis() - previousRefillTime);
-    return ((double) tokensRequestedSinceLastRefill.get() / (double) timeSinceLastRefill) / refillPerSecond;
+    if (timeSinceLastRefill > 0) {
+      return ((double) tokensRequestedSinceLastRefill.get() / (double) timeSinceLastRefill) / refillPerSecond;
+    } else {
+      return 0d;
+    }
   }
 }
