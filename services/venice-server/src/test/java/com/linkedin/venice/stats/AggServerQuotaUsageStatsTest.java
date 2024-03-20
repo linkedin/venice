@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.utils.Time;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -12,6 +13,9 @@ import org.testng.annotations.Test;
 public class AggServerQuotaUsageStatsTest {
   @Test
   public void testAggServerQuotaUsageStats() {
+    Time mockTime = mock(Time.class);
+    long start = System.currentTimeMillis();
+    doReturn(start).when(mockTime).milliseconds();
     MetricsRepository metricsRepository = new MetricsRepository();
     AggServerQuotaUsageStats aggServerQuotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
     String storeName = "testStore";
@@ -28,6 +32,11 @@ public class AggServerQuotaUsageStatsTest {
     aggServerQuotaUsageStats.recordAllowed(storeName, batchSize);
     aggServerQuotaUsageStats.recordAllowed(storeName2, batchSize2);
 
+    // Rate metric is amortized over a 30s window
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedQPSString).value(), 2d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedQPSString2).value(), 1d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedKPSString).value(), 200d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRequestedKPSString2).value(), 200d / 30d, 0.01);
     double totalQPS = metricsRepository.getMetric(readQuotaRequestedQPSString).value()
         + metricsRepository.getMetric(readQuotaRequestedQPSString2).value();
     double totalKPS = metricsRepository.getMetric(readQuotaRequestedKPSString).value()
@@ -45,6 +54,10 @@ public class AggServerQuotaUsageStatsTest {
     aggServerQuotaUsageStats.recordRejected(storeName2, batchSize2);
     aggServerQuotaUsageStats.recordRejected(storeName2, batchSize2);
 
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedQPSString).value(), 1d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedQPSString2).value(), 2d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedKPSString).value(), 100d / 30d, 0.01);
+    Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedKPSString2).value(), 400d / 30d, 0.01);
     double totalRejectedQPS = metricsRepository.getMetric(readQuotaRejectedQPSString).value()
         + metricsRepository.getMetric(readQuotaRejectedQPSString2).value();
     double totalRejectedKPS = metricsRepository.getMetric(readQuotaRejectedKPSString).value()
