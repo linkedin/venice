@@ -53,6 +53,24 @@ public class PushStatusStoreReader implements Closeable {
     this.heartbeatExpirationTimeInSeconds = heartbeatExpirationTimeInSeconds;
   }
 
+  public Map<CharSequence, Integer> getVersionStatus(String storeName, int version) {
+    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version);
+    try {
+      PushStatusValue pushStatusValue = client.get(pushStatusKey).get();
+      if (pushStatusValue == null) {
+        // Don't return empty map yet, because caller cannot differentiate between DaVinci not migrated to new mode and
+        // DaVinci writing empty map.
+        return null;
+      } else {
+        return pushStatusValue.instances;
+      }
+    } catch (Exception e) {
+      LOGGER.error("Failed to read push status of store:{} version:{}", storeName, version, e);
+      throw new VeniceException(e);
+    }
+  }
+
   public Map<CharSequence, Integer> getPartitionStatus(
       String storeName,
       int version,

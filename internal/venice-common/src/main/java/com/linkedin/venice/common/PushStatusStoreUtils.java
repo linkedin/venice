@@ -2,6 +2,7 @@ package com.linkedin.venice.common;
 
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Optional;
 
 
@@ -25,10 +26,20 @@ public class PushStatusStoreUtils {
     return pushStatusKey;
   }
 
+  public static PushStatusKey getPushKey(int version) {
+    return getFullPushKey(version);
+  }
+
+  /**
+   * @deprecated Use {@link #getPushKey(int)} instead. Inc push status report from DaVinci will be removed.
+   */
   public static PushStatusKey getPushKey(int version, int partitionId, Optional<String> incrementalPushVersion) {
     return getPushKey(version, partitionId, incrementalPushVersion, Optional.empty());
   }
 
+  /**
+   * @deprecated
+   */
   public static PushStatusKey getPushKey(
       int version,
       int partitionId,
@@ -47,6 +58,16 @@ public class PushStatusStoreUtils {
     return getFullPushKey(version, partitionId);
   }
 
+  public static PushStatusKey getFullPushKey(int version) {
+    PushStatusKey pushStatusKey = new PushStatusKey();
+    pushStatusKey.keyStrings = Collections.singletonList(version);
+    pushStatusKey.messageType = PushStatusKeyType.FULL_PUSH.ordinal();
+    return pushStatusKey;
+  }
+
+  /**
+   * @deprecated
+   */
   public static PushStatusKey getFullPushKey(int version, int partitionId) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId);
@@ -54,6 +75,9 @@ public class PushStatusStoreUtils {
     return pushStatusKey;
   }
 
+  /**
+   * @deprecated
+   */
   public static PushStatusKey getIncrementalPushKey(int version, int partitionId, String incrementalPushVersion) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId, incrementalPushVersion);
@@ -61,6 +85,9 @@ public class PushStatusStoreUtils {
     return pushStatusKey;
   }
 
+  /**
+   * @deprecated
+   */
   public static PushStatusKey getServerIncrementalPushKey(
       int version,
       int partitionId,
@@ -74,6 +101,9 @@ public class PushStatusStoreUtils {
     return pushStatusKey;
   }
 
+  /**
+   * @deprecated
+   */
   public static PushStatusKey getOngoingIncrementalPushStatusesKey(int version) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(version, ONGOING_INCREMENTAL_PUSH_STATUSES_KEY);
@@ -81,6 +111,9 @@ public class PushStatusStoreUtils {
     return pushStatusKey;
   }
 
+  /**
+   * @deprecated
+   */
   public static int getPartitionIdFromServerIncrementalPushKey(PushStatusKey key) {
     return (int) key.keyStrings.get(1);
   }
