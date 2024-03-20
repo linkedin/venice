@@ -3940,7 +3940,14 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
 
-      // TODO: Set parent controller's version status (to ERROR, most likely?)
+      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store parentStore = repository.getStore(storeName);
+        int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+        parentStore.updateVersionStatus(version, VersionStatus.KILLED);
+        repository.updateStore(parentStore);
+      }
 
       KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
       killJob.clusterName = clusterName;
