@@ -58,7 +58,7 @@ public class VeniceChangelogConsumerClientFactory {
   /**
    * Default method to create a {@link VeniceChangelogConsumer} given a storeName.
    */
-  public synchronized <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName) {
+  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName) {
     return getChangelogConsumer(storeName, null);
   }
 
@@ -66,10 +66,8 @@ public class VeniceChangelogConsumerClientFactory {
    * Creates a VeniceChangelogConsumer with consumer id. This is used to create multiple consumers so that
    * each consumer can only subscribe to certain partitions. Multiple such consumers can work in parallel.
    */
-  public synchronized <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId) {
-
+  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId) {
     return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
-
       ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
@@ -107,11 +105,8 @@ public class VeniceChangelogConsumerClientFactory {
         .computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
           ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
           String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-          String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
-          if (StringUtils.isNotEmpty(consumerId)) {
-            consumerName += "-" + consumerId;
-          }
-
+          String consumerName =
+              suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
           return new LocalBootstrappingVeniceChangelogConsumer(
               newStoreChangelogClientConfig,
               consumer != null
