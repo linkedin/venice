@@ -7,15 +7,16 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -23,9 +24,9 @@ import org.apache.commons.lang.StringUtils;
 
 
 public class VeniceChangelogConsumerClientFactory {
-  private static final ApacheKafkaConsumerAdapterFactory kafkaConsumerAdapterFactory =
+  private static final PubSubConsumerAdapterFactory kafkaConsumerAdapterFactory =
       new ApacheKafkaConsumerAdapterFactory();
-  private final Map<String, VeniceChangelogConsumer> storeClientMap = new HashMap<>();
+  private final Map<String, VeniceChangelogConsumer> storeClientMap = new VeniceConcurrentHashMap<>();
 
   private final MetricsRepository metricsRepository;
 
@@ -91,8 +92,7 @@ public class VeniceChangelogConsumerClientFactory {
     return StringUtils.isEmpty(consumerId) ? storeName : storeName + "-" + consumerId;
   }
 
-  public synchronized <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
-      String storeName) {
+  public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(String storeName) {
     return getBootstrappingChangelogConsumer(storeName, null);
   }
 
