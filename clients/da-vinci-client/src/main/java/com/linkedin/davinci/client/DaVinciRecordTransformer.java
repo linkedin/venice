@@ -25,7 +25,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   /**
    * Version of the store of when the transformer is initialized.
    */
-  public final int storeVersion;
+  private final int storeVersion;
 
   public DaVinciRecordTransformer(int storeVersion) {
     this.storeVersion = storeVersion;
@@ -91,5 +91,13 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
     newBuffer.put(transformedBytes);
     newBuffer.flip();
     return newBuffer;
+  }
+
+  /**
+   * 
+   * @return the storeVersion
+   */
+  public final int getStoreVersion() {
+    return storeVersion;
   }
 }

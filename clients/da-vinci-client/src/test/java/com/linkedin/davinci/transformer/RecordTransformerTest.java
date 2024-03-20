@@ -14,7 +14,7 @@ public class RecordTransformerTest {
   public void testRecordTransformer() {
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0);
 
-    assertEquals(recordTransformer.storeVersion, 0);
+    assertEquals(recordTransformer.getStoreVersion(), 0);
 
     Schema keyOutputSchema = recordTransformer.getKeyOutputSchema();
     assertEquals(keyOutputSchema.getType(), Schema.Type.INT);

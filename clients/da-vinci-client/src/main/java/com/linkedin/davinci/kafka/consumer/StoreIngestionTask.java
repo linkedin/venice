@@ -3390,10 +3390,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private Object deserializeAvroObjectAndReturn(ByteBuffer input, SchemaEntry schemaEntry) {
-    return new AvroGenericDeserializer<>(schemaEntry.getSchema(), schemaEntry.getSchema()).deserialize(input);
-  }
-
   private void maybeCloseInactiveIngestionTask() {
     LOGGER.warn("{} Has expired due to not being subscribed to any partitions for too long.", ingestionTaskName);
     if (!consumerActionsQueue.isEmpty()) {
