@@ -23,6 +23,8 @@ import org.apache.commons.lang.StringUtils;
 
 
 public class VeniceChangelogConsumerClientFactory {
+  private static final ApacheKafkaConsumerAdapterFactory kafkaConsumerAdapterFactory =
+      new ApacheKafkaConsumerAdapterFactory();
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new HashMap<>();
 
   private final MetricsRepository metricsRepository;
@@ -98,29 +100,25 @@ public class VeniceChangelogConsumerClientFactory {
    * Creates a BootstrappingVeniceChangelogConsumer with consumer id. This is used to create multiple
    * consumers so that each consumer can only subscribe to certain partitions.
    */
-  public synchronized <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
+  public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
       String storeName,
       String consumerId) {
-    String storeClientKey = storeName;
-    if (StringUtils.isNotEmpty(consumerId)) {
-      storeClientKey += "-" + consumerId;
-    }
+    return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap
+        .computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
+          ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
+          String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
+          String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
+          if (StringUtils.isNotEmpty(consumerId)) {
+            consumerName += "-" + consumerId;
+          }
 
-    return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap.computeIfAbsent(storeClientKey, name -> {
-      ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
-      String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-      String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
-      if (StringUtils.isNotEmpty(consumerId)) {
-        consumerName += "-" + consumerId;
-      }
-
-      return new LocalBootstrappingVeniceChangelogConsumer(
-          newStoreChangelogClientConfig,
-          consumer != null
-              ? consumer
-              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
-          consumerId);
-    });
+          return new LocalBootstrappingVeniceChangelogConsumer(
+              newStoreChangelogClientConfig,
+              consumer != null
+                  ? consumer
+                  : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
+              consumerId);
+        });
   }
 
   private ChangelogClientConfig getNewStoreChangelogClientConfig(String storeName) {
@@ -176,7 +174,7 @@ public class VeniceChangelogConsumerClientFactory {
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    return new ApacheKafkaConsumerAdapterFactory()
+    return kafkaConsumerAdapterFactory
         .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, consumerName);
   }
 
