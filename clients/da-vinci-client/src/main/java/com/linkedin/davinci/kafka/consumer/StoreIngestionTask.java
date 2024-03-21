@@ -3815,21 +3815,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaMessageEnvelope kafkaMessageEnvelope,
       LeaderProducedRecordContext leaderProducedRecordContext) {
     /**
-     * Record nearline latency only when it's a hybrid store and the lag has been caught up. Sometimes
-     * the producerTimestamp can be -1 if the leaderProducedRecordContext had an error after callback
-     * Don't record latency for invalid timestamps
+     * Record nearline latency only when it's a hybrid store, the lag has been caught up and ignore
+     * messages that are getting caughtup. Sometimes the producerTimestamp can be -1 if the
+     * leaderProducedRecordContext had an error after callback. Don't record latency for invalid timestamps.
      */
     if (!isUserSystemStore() && isHybridMode() && partitionConsumptionState.hasLagCaughtUp()) {
-      long afterProcessingRecordTimestampMs = System.currentTimeMillis();
       long producerTimestamp = (leaderProducedRecordContext == null)
           ? kafkaMessageEnvelope.producerMetadata.messageTimestamp
           : leaderProducedRecordContext.getProducedTimestampMs();
       if (producerTimestamp > 0) {
-        versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
-            storeName,
-            versionNumber,
-            afterProcessingRecordTimestampMs - producerTimestamp,
-            afterProcessingRecordTimestampMs);
+        if (partitionConsumptionState.isNearlineMetricsRecordingValid(producerTimestamp)) {
+          long afterProcessingRecordTimestampMs = System.currentTimeMillis();
+          versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
+              storeName,
+              versionNumber,
+              afterProcessingRecordTimestampMs - producerTimestamp,
+              afterProcessingRecordTimestampMs);
+        }
       } else if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName, "IllegalTimestamp")) {
         LOGGER.warn(
             "Illegal timestamp for storeName: {}, versionNumber: {}, partition: {}, "
