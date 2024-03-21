@@ -17,6 +17,43 @@ import org.testng.annotations.Test;
 
 public class PushMonitorUtilsTest {
   @Test
+  public void testCompleteStatusCannotBeReportedWithOfflineInstances() {
+    PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
+    PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+    /**
+     * Instance a is offline and its push status is not completed.
+     * Instance b,c,d are online and their push status is completed.
+     * In this case, the overall DaVinci push status shouldn't be reported as COMPLETED, because we want to
+     * wait for all instances to be completed.
+     */
+    doReturn(false).when(reader).isInstanceAlive(eq("store"), eq("a"));
+    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("b"));
+    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("c"));
+    doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("d"));
+
+    Map<CharSequence, Integer> map = new HashMap<>();
+    map.put("a", 2);
+    map.put("b", 10);
+    map.put("c", 10);
+    map.put("d", 10);
+
+    // Test partition level key first
+    doReturn(null).when(reader).getVersionStatus("store", 1);
+    doReturn(map).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
+
+    // With any number of offline instances that haven't reported COMPLETED, the overall DaVinci status cannot be
+    // COMPLETED.
+    validateOfflineReplicaInPushStatus(reader, "store_v1", 2, 0.25, ExecutionStatus.STARTED, null);
+
+    // Test version level key
+    doReturn(map).when(reader).getVersionStatus("store", 1);
+    doReturn(null).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
+    // With any number of offline instances that haven't reported COMPLETED, the overall DaVinci status cannot be
+    // COMPLETED.
+    validateOfflineReplicaInPushStatus(reader, "store_v1", 2, 0.25, ExecutionStatus.STARTED, null);
+  }
+
+  @Test
   public void testDaVinciPushStatusScan() {
     PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
     PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
@@ -30,6 +67,8 @@ public class PushMonitorUtilsTest {
     map.put("b", 3);
     map.put("c", 3);
     map.put("d", 10);
+    doReturn(null).when(reader).getVersionStatus("store", 1);
+    doReturn(null).when(reader).getVersionStatus("store", 2);
     doReturn(map).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
     doReturn(map).when(reader).getPartitionStatus("store", 2, 0, Optional.empty());
 
