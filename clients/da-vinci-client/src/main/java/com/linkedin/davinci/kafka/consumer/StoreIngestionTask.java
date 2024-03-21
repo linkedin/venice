@@ -2412,13 +2412,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopic topic,
       int partition,
       long currentOffset) {
-    if (currentOffset < 0) {
+    return measureLagWithCallToPubSub(pubSubServerName, topic, partition, currentOffset, this::getTopicManager);
+  }
+
+  protected static long measureLagWithCallToPubSub(
+      String pubSubServerName,
+      PubSubTopic topic,
+      int partition,
+      long currentOffset,
+      Function<String, TopicManager> topicManagerProvider) {
+    if (currentOffset < OffsetRecord.LOWEST_OFFSET) {
+      // -1 is a valid offset, which means that nothing was consumed yet, but anything below that is invalid.
       return Long.MAX_VALUE;
     }
-    TopicManager tm = getTopicManager(pubSubServerName);
+    TopicManager tm = topicManagerProvider.apply(pubSubServerName);
     long endOffset = tm.getLatestOffsetCached(topic, partition);
     if (endOffset < 0) {
+      // A negative value means there was a problem in measuring the end offset, and therefore we return "infinite lag"
       return Long.MAX_VALUE;
+    } else if (endOffset == 0) {
+      // The topic is empty and therefore, by definition, there cannot be any lag
+      return 0;
     }
 
     /**
