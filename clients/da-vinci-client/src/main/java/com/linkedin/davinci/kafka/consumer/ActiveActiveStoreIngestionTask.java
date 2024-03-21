@@ -1086,58 +1086,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     PubSubTopic newSourceTopic = pubSubTopicRepository.getTopic(newSourceTopicName);
     Map<String, Long> upstreamStartOffsetByKafkaURL = new HashMap<>(topicSwitch.sourceKafkaServers.size());
 
-    /*
-    // Calculate the start offset based on start timestamp
-    if (!isDaVinciClient) {
-      final int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartitionNumber(newSourceTopic);
-      AtomicInteger numberOfContactedBrokers = new AtomicInteger(0);
-      topicSwitch.sourceKafkaServers.forEach(sourceKafkaURL -> {
-        long rewindStartTimestamp;
-        // calculate the rewind start time here if controller asked to do so by using this sentinel value.
-        if (topicSwitch.rewindStartTimestamp == REWIND_TIME_DECIDED_BY_SERVER) {
-          rewindStartTimestamp = calculateRewindStartTime(partitionConsumptionState);
-          LOGGER.info(
-              "{} leader calculated rewindStartTimestamp {} for topic {} partition {}",
-              ingestionTaskName,
-              rewindStartTimestamp,
-              newSourceTopicName,
-              newSourceTopicPartition);
-        } else {
-          rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
-        }
-        if (rewindStartTimestamp > 0) {
-          long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
-          try {
-            PubSubTopicPartition newSourceTP = new PubSubTopicPartitionImpl(newSourceTopic, newSourceTopicPartition);
-            upstreamStartOffset =
-                getTopicManager(sourceKafkaURL.toString()).getOffsetByTime(newSourceTP, rewindStartTimestamp);
-            numberOfContactedBrokers.getAndIncrement();
-          } catch (Exception e) {
-            // TODO: Catch more specific Exception?
-            LOGGER.error(
-                "Failed to reach broker {} when trying to get partitionOffsetByTime for topic {} partitions {}",
-                sourceKafkaURL.toString(),
-                newSourceTopicName,
-                newSourceTopicPartition);
-          }
-          if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
-            upstreamStartOffset -= 1;
-          }
-          upstreamStartOffsetByKafkaURL.put(sourceKafkaURL.toString(), upstreamStartOffset);
-        } else {
-          upstreamStartOffsetByKafkaURL.put(sourceKafkaURL.toString(), OffsetRecord.LOWEST_OFFSET);
-        }
-      });
-    
-      if (numberOfContactedBrokers.get() == 0) {
-        throw new VeniceException("Failed to query any broker for rewind!  Aborting topic switch processing!");
-      }
-    
-      upstreamStartOffsetByKafkaURL.forEach((sourceKafkaURL, upstreamStartOffset) -> {
-        partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(sourceKafkaURL, upstreamStartOffset);
-      });
-    }
-     */
     /**
      * TopicSwitch needs to be persisted locally for both servers and DaVinci clients so that ready-to-serve check
      * can make the correct decision.
