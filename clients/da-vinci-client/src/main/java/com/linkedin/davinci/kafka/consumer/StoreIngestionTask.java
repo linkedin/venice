@@ -2416,11 +2416,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return Long.MAX_VALUE;
     }
     TopicManager tm = getTopicManager(pubSubServerName);
-    long endOffset = tm.getLatestOffsetCached(topic, partition) - 1;
+    long endOffset = tm.getLatestOffsetCached(topic, partition);
     if (endOffset < 0) {
       return Long.MAX_VALUE;
     }
-    return endOffset - currentOffset;
+
+    /**
+     * An empty topic should have an end offset of zero. A topic with a single message in it will have an end offset of
+     * 1, while that single message will have offset 0. In such single message topic, a consumer which fully scans the
+     * topic would have a current offset of 0, while the topic has an end offset of 1, and therefore we need to subtract
+     * 1 from the end offset in order to arrive at the correct lag of 0.
+     */
+    return endOffset - 1 - currentOffset;
   }
 
   /**
