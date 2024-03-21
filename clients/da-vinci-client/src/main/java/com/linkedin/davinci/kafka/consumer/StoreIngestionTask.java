@@ -2431,13 +2431,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // A negative value means there was a problem in measuring the end offset, and therefore we return "infinite lag"
       return Long.MAX_VALUE;
     } else if (endOffset == 0) {
-      // The topic is empty and therefore, by definition, there cannot be any lag
+      /**
+       * Topics which were never produced to have an end offset of zero. Such topics are empty and therefore, by
+       * definition, there cannot be any lag.
+       *
+       * Note that the reverse is not true: a topic can be currently empty and have an end offset above zero, if it had
+       * messages produced to it before, which have since then disappeared (e.g. due to time-based retention).
+       */
       return 0;
     }
 
     /**
-     * An empty topic should have an end offset of zero. A topic with a single message in it will have an end offset of
-     * 1, while that single message will have offset 0. In such single message topic, a consumer which fully scans the
+     * A topic with an end offset of zero is empty. A topic with a single message in it will have an end offset of 1,
+     * while that single message will have offset 0. In such single message topic, a consumer which fully scans the
      * topic would have a current offset of 0, while the topic has an end offset of 1, and therefore we need to subtract
      * 1 from the end offset in order to arrive at the correct lag of 0.
      */
