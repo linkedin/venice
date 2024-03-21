@@ -71,7 +71,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
@@ -1005,10 +1004,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           upstreamOffsetsByKafkaURLs);
     }
 
+    // Update leader topic.
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-    upstreamOffsetsByKafkaURLs.forEach((upstreamKafkaURL, upstreamStartOffset) -> {
-      partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(upstreamKafkaURL, upstreamStartOffset);
-    });
+    // Sync the upstream offset calculated for each region to OffsetRecord.
+    upstreamOffsetsByKafkaURLs.forEach(
+        (upstreamKafkaURL, upstreamStartOffset) -> partitionConsumptionState.getOffsetRecord()
+            .setLeaderUpstreamOffset(upstreamKafkaURL, upstreamStartOffset));
 
     if (!unreachableBrokerList.isEmpty()) {
       LOGGER.warn(
@@ -1022,6 +1023,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
     }
 
+    // Subscribe new leader topic for all regions.
     upstreamOffsetsByKafkaURLs.forEach((kafkaURL, upstreamStartOffset) -> {
       consumerSubscribe(
           partitionConsumptionState.getSourceTopicPartition(newSourceTopic),
@@ -1080,11 +1082,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
-
-    // Calculate the start offset based on start timestamp
     final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     PubSubTopic newSourceTopic = pubSubTopicRepository.getTopic(newSourceTopicName);
     Map<String, Long> upstreamStartOffsetByKafkaURL = new HashMap<>(topicSwitch.sourceKafkaServers.size());
+
+    /*
+    // Calculate the start offset based on start timestamp
     if (!isDaVinciClient) {
       final int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartitionNumber(newSourceTopic);
       AtomicInteger numberOfContactedBrokers = new AtomicInteger(0);
@@ -1125,15 +1128,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           upstreamStartOffsetByKafkaURL.put(sourceKafkaURL.toString(), OffsetRecord.LOWEST_OFFSET);
         }
       });
-
+    
       if (numberOfContactedBrokers.get() == 0) {
         throw new VeniceException("Failed to query any broker for rewind!  Aborting topic switch processing!");
       }
-
+    
       upstreamStartOffsetByKafkaURL.forEach((sourceKafkaURL, upstreamStartOffset) -> {
         partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(sourceKafkaURL, upstreamStartOffset);
       });
     }
+     */
     /**
      * TopicSwitch needs to be persisted locally for both servers and DaVinci clients so that ready-to-serve check
      * can make the correct decision.

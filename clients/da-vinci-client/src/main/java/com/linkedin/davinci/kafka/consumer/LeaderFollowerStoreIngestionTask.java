@@ -1174,6 +1174,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     PubSubTopic newSourceTopic = pubSubTopicRepository.getTopic(newSourceTopicName);
     long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
+    /*
     // Since DaVinci clients might not have network ACLs to remote RT, they will skip upstream start offset calculation.
     if (!isDaVinciClient && topicSwitch.rewindStartTimestamp > 0) {
       int newSourceTopicPartitionId = partitionConsumptionState.getSourceTopicPartitionNumber(newSourceTopic);
@@ -1185,6 +1186,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         upstreamStartOffset -= 1;
       }
     }
+     */
 
     syncTopicSwitchToIngestionMetadataService(
         topicSwitch,
@@ -1201,15 +1203,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * don't update the consumption state like leader topic until actually switching topic. The leaderTopic field
        * should be used to track the topic that leader is actually consuming.
        */
-      partitionConsumptionState.getOffsetRecord()
-          .setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
+      // partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+      // upstreamStartOffset);
     } else {
       /**
        * For follower, just keep track of what leader is doing now.
        */
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-      partitionConsumptionState.getOffsetRecord()
-          .setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
+      // partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+      // upstreamStartOffset);
       /**
        * We need to measure offset lag after processing TopicSwitch for follower; if real-time topic is empty and never
        * gets any new message, follower replica will never become online.
