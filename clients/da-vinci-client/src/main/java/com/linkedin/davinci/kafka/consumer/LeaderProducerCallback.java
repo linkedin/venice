@@ -55,6 +55,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   protected ChunkedValueManifest oldValueManifest = null;
   protected ChunkedValueManifest oldRmdManifest = null;
 
+  private final boolean syncOffsetsOnlyAfterProducing;
+
   public LeaderProducerCallback(
       LeaderFollowerStoreIngestionTask ingestionTask,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord,
@@ -62,7 +64,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      boolean syncOffsetsOnlyAfterProducing) {
     this.ingestionTask = ingestionTask;
     this.sourceConsumerRecord = sourceConsumerRecord;
     this.partitionConsumptionState = partitionConsumptionState;
@@ -71,6 +74,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     this.leaderProducedRecordContext = leaderProducedRecordContext;
     this.produceTimeNs = ingestionTask.isUserSystemStore() ? 0 : System.nanoTime();
     this.beforeProcessingRecordTimestampNs = beforeProcessingRecordTimestampNs;
+    this.syncOffsetsOnlyAfterProducing = syncOffsetsOnlyAfterProducing;
   }
 
   @Override
@@ -156,7 +160,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
          */
         if (chunkedValueManifest == null) {
           leaderProducedRecordContext.setProducedOffset(produceResult.getOffset());
-          ingestionTask.produceToStoreBufferService(
+          produceToStoreBufferService(
               sourceConsumerRecord,
               leaderProducedRecordContext,
               subPartition,
@@ -194,7 +198,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
               manifestPut,
               leaderProducedRecordContext.getPersistedToDBFuture());
           producedRecordForManifest.setProducedOffset(produceResult.getOffset());
-          ingestionTask.produceToStoreBufferService(
+          produceToStoreBufferService(
               sourceConsumerRecord,
               producedRecordForManifest,
               subPartition,
@@ -314,7 +318,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       LeaderProducedRecordContext producedRecordForChunk =
           LeaderProducedRecordContext.newChunkPutRecord(ByteUtils.extractByteArray(chunkKey), chunkPut);
       producedRecordForChunk.setProducedOffset(-1);
-      ingestionTask.produceToStoreBufferService(
+      produceToStoreBufferService(
           sourceConsumerRecord,
           producedRecordForChunk,
           subPartition,
@@ -340,9 +344,31 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       LeaderProducedRecordContext producedRecordForChunk =
           LeaderProducedRecordContext.newChunkDeleteRecord(ByteUtils.extractByteArray(chunkKey), chunkDelete);
       producedRecordForChunk.setProducedOffset(-1);
-      ingestionTask.produceToStoreBufferService(
+      produceToStoreBufferService(
           sourceConsumerRecord,
           producedRecordForChunk,
+          subPartition,
+          kafkaUrl,
+          beforeProcessingRecordTimestampNs,
+          currentTimeForMetricsMs);
+    }
+  }
+
+  protected void produceToStoreBufferService(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumedRecord,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs) throws InterruptedException {
+    if (this.syncOffsetsOnlyAfterProducing) {
+      // sync offsets
+      ingestionTask
+          .maybeSyncOffsets(consumedRecord, leaderProducedRecordContext, partitionConsumptionState, subPartition);
+    } else {
+      ingestionTask.produceToStoreBufferService(
+          consumedRecord,
+          leaderProducedRecordContext,
           subPartition,
           kafkaUrl,
           beforeProcessingRecordTimestampNs,

@@ -178,7 +178,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           currentTimeForMetricsMs);
     } else {
       /**
-       * The below flow must be executed in a critical session for the same key:
+       * The below flow must be executed in a critical section for the same key:
        * Read existing value/RMD from transient record cache/disk -> perform DCR and decide incoming value wins
        * -> update transient record cache -> produce to VT (just call send, no need to wait for the produce future in the critical session)
        *
@@ -499,7 +499,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           .updateLatestIgnoredUpstreamRTOffset(kafkaClusterIdToUrlMap.get(kafkaClusterId), sourceOffset);
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
-
       // Apply this update to any views for this store
       // TODO: It'd be good to be able to do this in LeaderFollowerStoreIngestionTask instead, however, AA currently is
       // the
@@ -1578,7 +1577,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      boolean syncOffsetsOnlyAfterProducing) {
     return new ActiveActiveProducerCallback(
         this,
         consumerRecord,
@@ -1586,6 +1586,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         leaderProducedRecordContext,
         subPartition,
         kafkaUrl,
-        beforeProcessingRecordTimestampNs);
+        beforeProcessingRecordTimestampNs,
+        syncOffsetsOnlyAfterProducing);
   }
 }

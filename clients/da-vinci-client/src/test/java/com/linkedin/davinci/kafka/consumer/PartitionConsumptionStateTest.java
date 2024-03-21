@@ -24,7 +24,7 @@ import org.testng.annotations.Test;
 public class PartitionConsumptionStateTest {
   @Test
   public void testUpdateChecksum() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false, false);
     pcs.initializeExpectedChecksum();
     byte[] rmdPayload = new byte[] { 127 };
     byte[] key1 = new byte[] { 1 };
@@ -79,7 +79,7 @@ public class PartitionConsumptionStateTest {
    */
   @Test
   public void testTransientRecordMap() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false, false);
 
     byte[] key1 = new byte[] { 65, 66, 67, 68 };
     byte[] key2 = new byte[] { 65, 66, 67, 68 };
@@ -126,7 +126,7 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testIsLeaderCompleted() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false, false);
     // default is LEADER_COMPLETE_STATE_UNKNOWN
     assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN);
     assertFalse(pcs.isLeaderCompleted());
