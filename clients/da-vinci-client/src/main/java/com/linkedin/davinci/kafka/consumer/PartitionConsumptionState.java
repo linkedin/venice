@@ -48,9 +48,11 @@ public class PartitionConsumptionState {
   private boolean deferredWrite;
   private boolean errorReported;
   private boolean lagCaughtUp;
-  // record the time when the lag is caught up to record nearline metrics
-  // for messages produced after this time to ignore the messages that are
-  // getting caught up after a push
+  /**
+   * Save the time when the lag is caught up to record nearline metrics
+   * for messages produced after this time to ignore the old messages that are
+   * getting caught up after a push.
+   */
   private long lagCaughtUpTimeInMs;
   private boolean completionReported;
   private boolean isSubscribed;
