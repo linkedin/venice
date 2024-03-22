@@ -4288,7 +4288,7 @@ public abstract class StoreIngestionTaskTest {
     VenicePartitioner partitioner = getVenicePartitioner(1);
     int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
 
-    runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {}, () -> {
+    runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {
       Schema keySchema = Schema.create(Schema.Type.INT);
       SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
       when(keySchemaEntry.getSchema()).thenReturn(keySchema);
@@ -4303,10 +4303,9 @@ public abstract class StoreIngestionTaskTest {
           targetPartitionPutKeyFoo,
           putKeyFoo,
           ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
-    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
+    }, () -> {
 
-    // verify the shared consumer should be detached when the ingestion task is closed.
-    verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
+    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
   }
 
   // Test to throw type error when performing record transformation with incompatible types
@@ -4331,7 +4330,7 @@ public abstract class StoreIngestionTaskTest {
     VenicePartitioner partitioner = getVenicePartitioner(1);
     int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
 
-    runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {}, () -> {
+    runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {
       Schema keySchema = Schema.create(Schema.Type.INT);
       SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
       when(keySchemaEntry.getSchema()).thenReturn(keySchema);
@@ -4346,14 +4345,11 @@ public abstract class StoreIngestionTaskTest {
           targetPartitionPutKeyFoo,
           putKeyFoo,
           ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
+    }, () -> {
+      // Verify transformer error was recorded
+      verify(mockVersionedStorageIngestionStats)
+          .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
-
-    // verify the shared consumer should be detached when the ingestion task is closed.
-    verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
-
-    // Verify transformer error was recorded
-    verify(mockVersionedStorageIngestionStats)
-        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   @Test
