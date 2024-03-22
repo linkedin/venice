@@ -388,7 +388,7 @@ public class PartitionTracker {
     }
 
     if (incomingSequenceNumber == previousSequenceNumber) {
-      if (!segment.isNewSegment() && incomingSequenceNumber > 0) {
+      if (!segment.isNewSegment()) {
         throw DataFaultType.DUPLICATE.getNewException(segment, consumerRecord);
       }
       segment.setLastRecordProducerTimestamp(consumerRecord.getValue().producerMetadata.messageTimestamp);
