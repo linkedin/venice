@@ -256,7 +256,7 @@ public class TestHybrid {
         assertEquals(jobStatus.getStatus(), "COMPLETED");
       });
       MultiStoreStatusResponse response = controllerClient.getBackupVersions(venice.getClusterName(), storeName);
-      Assert.assertEquals(response.getStoreStatusMap().get("dc-0"), 1);
+      Assert.assertEquals(response.getStoreStatusMap().get("dc-0"), "1");
 
       // And real-time topic should exist now.
       assertTrue(
