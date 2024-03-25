@@ -342,8 +342,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
   private VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
     Properties writerProps = props.toProperties();
-    // Closing segments based on elapsed time should always be disabled in MR to prevent storage nodes consuming out of
-    // order keys when speculative execution is in play.
+    // Closing segments based on elapsed time should always be disabled in data writer compute jobs to prevent storage
+    // nodes from consuming out of order keys when speculative execution is enabled.
     writerProps.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
 
     EngineTaskConfigProvider engineTaskConfigProvider = getEngineTaskConfigProvider();
@@ -378,12 +378,12 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           (System.nanoTime() - lastTimeThroughputWasLoggedInNS) / (double) Time.NS_PER_SECOND;
 
       // Mapping rate measurement
-      long mrFrameworkRate = (long) (telemetryMessageInterval / timeSinceLastMeasurementInSeconds);
+      long writeThroughput = (long) (telemetryMessageInterval / timeSinceLastMeasurementInSeconds);
       LOGGER.info(
-          "MR Framework records processed: {}, total time spent: {}, current throughput: {} rec/s",
+          "DataWriterComputeJob records processed: {}, total time spent: {}, current throughput: {} rec/s",
           messageSent,
           Utils.makeTimePretty(aggregateTimeOfInBetweenReduceInvocationsInNS),
-          Utils.makeLargeNumberPretty(mrFrameworkRate));
+          Utils.makeLargeNumberPretty(writeThroughput));
 
       // Produce rate measurement
       long newMessageCompletedCount = messageCompleted.get();

@@ -17,6 +17,7 @@ import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
+import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.map.AbstractTestVeniceMapper;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.utils.Time;
@@ -77,7 +78,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   public void testValidFilterWhenTTLSpecified() {
     Properties props = new Properties();
     props.put(REPUSH_TTL_ENABLE, true);
-    props.put(REPUSH_TTL_POLICY, 0);
+    props.put(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue());
     props.put(RMD_SCHEMA_DIR, "tmp");
     props.put(VALUE_SCHEMA_DIR, "tmp2");
     props.put(REPUSH_TTL_START_TIMESTAMP, System.currentTimeMillis() - 10L * Time.MS_PER_SECOND);
