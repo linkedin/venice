@@ -95,6 +95,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -358,11 +359,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // kill message
     this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
+    /**
+     * Use the max of the two values to avoid the case where the producer state max age is set to a value that is less
+     * than the rewind time. Otherwise, this would cause the corresponding segments in DIV partitionTracker to be
+     * unnecessarily deleted (then created) during the time period between the rewind time and the producer state max age,
+     * if the rewind time is larger.
+     */
+    long producerStateMaxAgeMs = Math.max(
+        builder.getServerConfig().getDivProducerStateMaxAgeMs(),
+        version.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND);
     // Could be accessed from multiple threads since there are multiple worker threads.
     this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(
         this.kafkaVersionTopic,
         KafkaDataIntegrityValidator.DISABLED,
-        builder.getServerConfig().getDivProducerStateMaxAgeMs());
+        producerStateMaxAgeMs);
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
