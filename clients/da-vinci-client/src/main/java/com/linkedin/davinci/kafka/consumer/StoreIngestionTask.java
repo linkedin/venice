@@ -365,9 +365,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * unnecessarily deleted (then created) during the time period between the rewind time and the producer state max age,
      * if the rewind time is larger.
      */
-    long producerStateMaxAgeMs = Math.max(
-        builder.getServerConfig().getDivProducerStateMaxAgeMs(),
-        version.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND);
+    long producerStateMaxAgeMs = builder.getServerConfig().getDivProducerStateMaxAgeMs();
+    if (version.getHybridStoreConfig() != null) {
+      producerStateMaxAgeMs =
+          Math.max(producerStateMaxAgeMs, version.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND);
+    }
     // Could be accessed from multiple threads since there are multiple worker threads.
     this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(
         this.kafkaVersionTopic,
