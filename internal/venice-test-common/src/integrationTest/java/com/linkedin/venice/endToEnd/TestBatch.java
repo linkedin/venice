@@ -22,6 +22,7 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSIO
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
+import static com.linkedin.venice.utils.TestUtils.*;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITH_NULL_SCHEMA;
@@ -75,6 +76,8 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -639,6 +642,41 @@ public abstract class TestBatch {
             .setNativeReplicationEnabled(true));
     // Re-push with Kafka Input
     testRepush(storeName, validator);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testKafkaInputBatchJobSnapshots() throws Exception {
+
+    VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    };
+
+    String storeName = testBatchStore(
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        properties -> {},
+        validator);
+
+    // Re-push with Kafka Input
+    testRepush(storeName, validator);
+
+    Path folderPath1 = Paths.get(BASE_DATA_PATH_1);
+    Path folderPath2 = Paths.get(BASE_DATA_PATH_2);
+
+    List<String> directories = findFoldersWithFileExtension(folderPath1.toFile(), ".sst");
+    directories.addAll(findFoldersWithFileExtension(folderPath2.toFile(), ".sst"));
+
+    for (String directoryPath: directories) {
+      // the directories containing .sst files should contain the ".snapshot" folder
+      boolean containsSnapshotFolder = directoryContainsFolder(directoryPath, ".snapshot_files");
+      Assert.assertTrue(containsSnapshotFolder);
+
+      // snapshot_files folder should contain the .sst files
+      Path snapshotPath = Paths.get(directoryPath + "/.snapshot_files");
+      List<String> snapshots = findFoldersWithFileExtension(snapshotPath.toFile(), ".sst");
+      Assert.assertTrue(snapshots.size() > 0);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

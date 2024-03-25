@@ -32,6 +32,7 @@ import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileReader;
 import org.rocksdb.SstFileReaderIterator;
 import org.rocksdb.SstFileWriter;
+import org.rocksdb.Checkpoint;
 
 
 public class RocksDBSstFileWriter {
@@ -77,13 +78,19 @@ public class RocksDBSstFileWriter {
   private long recordNumInCurrentSSTFile = 0;
   private long recordNumInAllSSTFiles = 0;
   private String fullPathForTempSSTFileDir;
+  private final String fullPathForPartitionDBSnapshot;
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
   private final String storeName;
   private final int partitionId;
   private final EnvOptions envOptions;
   private final Options options;
   private final boolean isRMD;
+
   private final RocksDBServerConfig rocksDBServerConfig;
+
+  protected Checkpoint makeCheckpoint(RocksDB rocksDB) {
+    return Checkpoint.create(rocksDB);
+  }
 
   // Visible for testing
   public String getLastCheckPointedSSTFileNum() {
@@ -106,6 +113,7 @@ public class RocksDBSstFileWriter {
     this.envOptions = envOptions;
     this.options = options;
     this.fullPathForTempSSTFileDir = fullPathForTempSSTFileDir;
+    this.fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId);
     this.isRMD = isRMD;
     this.lastCheckPointedSSTFileNum = isRMD ? ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO : ROCKSDB_LAST_FINISHED_SST_FILE_NO;
     this.rocksDBServerConfig = rocksDBServerConfig;
@@ -487,6 +495,24 @@ public class RocksDBSstFileWriter {
           sstFilePaths);
     } catch (RocksDBException e) {
       throw new VeniceException("Received exception during RocksDB#ingestExternalFile", e);
+    }
+  }
+
+  public void createSnapshot(RocksDB rocksDB) {
+    try {
+      Checkpoint checkpoint = makeCheckpoint(rocksDB);
+      String checkpointPath = this.fullPathForPartitionDBSnapshot;
+
+      LOGGER.info(
+          "Start creating snapshots in directory: {}",
+          checkpoint);
+      checkpoint.createCheckpoint(checkpointPath);
+
+      LOGGER.info(
+          "Finished creating snapshots in directory: {}",
+          checkpoint);
+    } catch (RocksDBException e) {
+      throw new VeniceException("Received exception during RocksDB's snapshot creation", e);
     }
   }
 

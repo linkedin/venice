@@ -206,6 +206,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
 
     if (deferredWrite) {
       rocksDBSstFileWriter.ingestSSTFiles(rocksDB, getColumnFamilyHandleList());
+      rocksDBSstFileWriter.createSnapshot(rocksDB);
     }
   }
 

@@ -77,11 +77,14 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.metrics.MetricsRepository;
+import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.security.Permission;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -863,5 +866,51 @@ public class TestUtils {
       // But in Avro 1.10+, it throws instead...
       assertEquals(e.getMessage(), "Not a valid schema field: " + fieldName);
     }
+  }
+
+  public static List<String> findFoldersWithFileExtension(File directory, String fileExtension) {
+    List<String> result = new ArrayList<>();
+
+    if (!directory.exists() || !directory.isDirectory()) {
+      return result;
+    }
+    return searchForFileExtension(directory, fileExtension.toLowerCase());
+  }
+
+  public static List<String> searchForFileExtension(File directory, String fileExtension) {
+    List<String> result = new ArrayList<>();
+    if (!directory.canRead()) {
+      System.err.println("Cannot read directory: " + directory.getAbsolutePath());
+      return result;
+    }
+    File[] files = directory.listFiles();
+    if (files == null) {
+      System.err.println("Error reading directory: " + directory.getAbsolutePath());
+      return result;
+    }
+    for (File file : files) {
+      if (file.isDirectory() && !file.isHidden()) {
+        result.addAll(searchForFileExtension(file, fileExtension)); // Recursively search subdirectories
+      } else if (file.isFile() && !file.isHidden() && file.getName().toLowerCase().endsWith(fileExtension)) {
+        result.add(file.getParent()); // Add the parent directory to the result list
+        break; // Stop searching this directory once we find a file with the desired extension
+      }
+    }
+    return result;
+  }
+
+  public static boolean directoryContainsFolder(String directoryPath, String folderName) {
+    File directory = new File(directoryPath);
+    if (directory.exists() && directory.isDirectory()) {
+      File[] files = directory.listFiles();
+      if (files != null) {
+        for (File file : files) {
+          if (file.isDirectory() && file.getName().equals(folderName)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 }

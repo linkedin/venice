@@ -453,6 +453,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * the last SST file written is finished.
      */
     rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
+    rocksDBSstFileWriter.createSnapshot(rocksDB);
   }
 
   private void checkAndThrowMemoryLimitException(RocksDBException e) {
