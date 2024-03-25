@@ -1084,13 +1084,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
     final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     PubSubTopic newSourceTopic = pubSubTopicRepository.getTopic(newSourceTopicName);
-    Map<String, Long> upstreamStartOffsetByKafkaURL = new HashMap<>(topicSwitch.sourceKafkaServers.size());
 
     /**
      * TopicSwitch needs to be persisted locally for both servers and DaVinci clients so that ready-to-serve check
      * can make the correct decision.
      */
-    syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState, upstreamStartOffsetByKafkaURL);
+    syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState);
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
       return true;

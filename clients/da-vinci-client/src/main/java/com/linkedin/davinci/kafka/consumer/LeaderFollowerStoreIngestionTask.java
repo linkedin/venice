@@ -1168,20 +1168,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + kafkaServerUrls);
     }
     statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
-    String sourceKafkaURL = kafkaServerUrls.get(0).toString();
 
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     PubSubTopic newSourceTopic = pubSubTopicRepository.getTopic(newSourceTopicName);
-    long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
 
     /**
      * TopicSwitch needs to be persisted locally for both servers and DaVinci clients so that ready-to-serve check
      * can make the correct decision.
      */
-    syncTopicSwitchToIngestionMetadataService(
-        topicSwitch,
-        partitionConsumptionState,
-        Collections.singletonMap(sourceKafkaURL, upstreamStartOffset));
+    syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState);
     /**
      * Leader shouldn't switch topic here (drainer thread), which would conflict with the ingestion thread which would
      * also access consumer.
@@ -1211,28 +1206,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void syncTopicSwitchToIngestionMetadataService(
       TopicSwitch topicSwitch,
-      PartitionConsumptionState partitionConsumptionState,
-      Map<String, Long> upstreamStartOffsetByKafkaURL) {
+      PartitionConsumptionState partitionConsumptionState) {
     storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
       if (previousStoreVersionState != null) {
         if (previousStoreVersionState.topicSwitch == null) {
           LOGGER.info(
-              "First time receiving a TopicSwitch message (new source topic: {}; "
-                  + "rewind start time: {}; upstream start offset by source Kafka URL: {})",
+              "First time receiving a TopicSwitch message (new source topic: {}; " + "rewind start time: {})",
               topicSwitch.sourceTopicName,
-              topicSwitch.rewindStartTimestamp,
-              upstreamStartOffsetByKafkaURL);
+              topicSwitch.rewindStartTimestamp);
         } else {
           LOGGER.info(
               "Previous TopicSwitch message in metadata store (source topic: {}; rewind start time: {}; "
                   + "source kafka servers {}) will be replaced by the new TopicSwitch message (new source topic: {}; "
-                  + "rewind start time: {}; upstream start offset by source Kafka URL: {})",
+                  + "rewind start time: {})",
               previousStoreVersionState.topicSwitch.sourceTopicName,
               previousStoreVersionState.topicSwitch.rewindStartTimestamp,
               topicSwitch.sourceKafkaServers,
               topicSwitch.sourceTopicName,
-              topicSwitch.rewindStartTimestamp,
-              upstreamStartOffsetByKafkaURL);
+              topicSwitch.rewindStartTimestamp);
         }
         previousStoreVersionState.topicSwitch = topicSwitch;
 
@@ -1250,7 +1241,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             "Unexpected: received some " + ControlMessageType.TOPIC_SWITCH.name()
                 + " control message in a topic where we have not yet received a "
                 + ControlMessageType.START_OF_PUSH.name() + " control message, for partition "
-                + partitionConsumptionState + " and upstreamStartOffsetByKafkaURL: " + upstreamStartOffsetByKafkaURL);
+                + partitionConsumptionState);
       }
     });
   }
