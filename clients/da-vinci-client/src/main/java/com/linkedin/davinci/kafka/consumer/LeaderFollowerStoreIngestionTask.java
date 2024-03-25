@@ -1168,48 +1168,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + kafkaServerUrls);
     }
     statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
-    String sourceKafkaURL = kafkaServerUrls.get(0).toString();
 
-    // Venice servers calculate the start offset based on start timestamp
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     PubSubTopic newSourceTopic = pubSubTopicRepository.getTopic(newSourceTopicName);
-    long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
-    // Since DaVinci clients might not have network ACLs to remote RT, they will skip upstream start offset calculation.
-    if (!isDaVinciClient && topicSwitch.rewindStartTimestamp > 0) {
-      int newSourceTopicPartitionId = partitionConsumptionState.getSourceTopicPartitionNumber(newSourceTopic);
-      PubSubTopicPartition newSourceTopicPartition =
-          new PubSubTopicPartitionImpl(newSourceTopic, newSourceTopicPartitionId);
-      upstreamStartOffset =
-          getTopicManager(sourceKafkaURL).getOffsetByTime(newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
-      if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
-        upstreamStartOffset -= 1;
-      }
-    }
 
-    syncTopicSwitchToIngestionMetadataService(
-        topicSwitch,
-        partitionConsumptionState,
-        Collections.singletonMap(sourceKafkaURL, upstreamStartOffset));
+    /**
+     * TopicSwitch needs to be persisted locally for both servers and DaVinci clients so that ready-to-serve check
+     * can make the correct decision.
+     */
+    syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState);
+    /**
+     * Leader shouldn't switch topic here (drainer thread), which would conflict with the ingestion thread which would
+     * also access consumer.
+     *
+     * Besides, if there is re-balance, leader should finish consuming everything in VT before switching topics;
+     * there could be more than one TopicSwitch message in VT, we should honor the last one during re-balance; so
+     * don't update the consumption state like leader topic until actually switching topic. The leaderTopic field
+     * should be used to track the topic that leader is actually consuming.
+     */
 
-    if (isLeader(partitionConsumptionState)) {
-      /**
-       * Leader shouldn't switch topic here (drainer thread), which would conflict with the ingestion thread which would
-       * also access consumer.
-       *
-       * Besides, if there is re-balance, leader should finish consuming the everything in VT before switching topics;
-       * there could be more than one TopicSwitch message in VT, we should honor the last one during re-balance; so
-       * don't update the consumption state like leader topic until actually switching topic. The leaderTopic field
-       * should be used to track the topic that leader is actually consuming.
-       */
-      partitionConsumptionState.getOffsetRecord()
-          .setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
-    } else {
+    if (!isLeader(partitionConsumptionState)) {
       /**
        * For follower, just keep track of what leader is doing now.
        */
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-      partitionConsumptionState.getOffsetRecord()
-          .setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
       /**
        * We need to measure offset lag after processing TopicSwitch for follower; if real-time topic is empty and never
        * gets any new message, follower replica will never become online.
@@ -1224,28 +1206,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void syncTopicSwitchToIngestionMetadataService(
       TopicSwitch topicSwitch,
-      PartitionConsumptionState partitionConsumptionState,
-      Map<String, Long> upstreamStartOffsetByKafkaURL) {
+      PartitionConsumptionState partitionConsumptionState) {
     storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
       if (previousStoreVersionState != null) {
         if (previousStoreVersionState.topicSwitch == null) {
           LOGGER.info(
-              "First time receiving a TopicSwitch message (new source topic: {}; "
-                  + "rewind start time: {}; upstream start offset by source Kafka URL: {})",
+              "First time receiving a TopicSwitch message (new source topic: {}; " + "rewind start time: {})",
               topicSwitch.sourceTopicName,
-              topicSwitch.rewindStartTimestamp,
-              upstreamStartOffsetByKafkaURL);
+              topicSwitch.rewindStartTimestamp);
         } else {
           LOGGER.info(
               "Previous TopicSwitch message in metadata store (source topic: {}; rewind start time: {}; "
                   + "source kafka servers {}) will be replaced by the new TopicSwitch message (new source topic: {}; "
-                  + "rewind start time: {}; upstream start offset by source Kafka URL: {})",
+                  + "rewind start time: {})",
               previousStoreVersionState.topicSwitch.sourceTopicName,
               previousStoreVersionState.topicSwitch.rewindStartTimestamp,
               topicSwitch.sourceKafkaServers,
               topicSwitch.sourceTopicName,
-              topicSwitch.rewindStartTimestamp,
-              upstreamStartOffsetByKafkaURL);
+              topicSwitch.rewindStartTimestamp);
         }
         previousStoreVersionState.topicSwitch = topicSwitch;
 
@@ -1263,7 +1241,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             "Unexpected: received some " + ControlMessageType.TOPIC_SWITCH.name()
                 + " control message in a topic where we have not yet received a "
                 + ControlMessageType.START_OF_PUSH.name() + " control message, for partition "
-                + partitionConsumptionState + " and upstreamStartOffsetByKafkaURL: " + upstreamStartOffsetByKafkaURL);
+                + partitionConsumptionState);
       }
     });
   }
