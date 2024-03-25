@@ -2087,6 +2087,8 @@ public class VenicePushJob implements AutoCloseable {
           jobSetting.repushTTLStartTimeMs =
               pushJobSetting.jobStartTimeMs - (storeRewindTimeInSeconds * Time.MS_PER_SECOND);
         }
+
+        LOGGER.info("Will evict records older than epoch time: {} ms", jobSetting.repushTTLStartTimeMs);
       }
     }
 
