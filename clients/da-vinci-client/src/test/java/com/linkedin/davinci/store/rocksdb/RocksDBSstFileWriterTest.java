@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.rocksdb;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -12,11 +13,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.io.FileUtils;
+import org.rocksdb.Checkpoint;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.Options;
+import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+import static org.mockito.Mockito.*;
 
 
 public class RocksDBSstFileWriterTest {
@@ -265,6 +269,39 @@ public class RocksDBSstFileWriterTest {
         rocksDBSstFileWriter.close();
       }
       deleteTempDatabaseDir();
+    }
+  }
+
+  @Test
+  public void testCreateSnapshot() throws RocksDBException {
+    RocksDBSstFileWriter rocksDBSstFileWriter = null;
+    try {
+      rocksDBSstFileWriter = spy(new RocksDBSstFileWriter(
+          STORE_NAME,
+          PARTITION_ID,
+          "/db",
+          new EnvOptions(),
+          new Options(),
+          DB_DIR,
+          IS_RMD,
+          ROCKS_DB_SERVER_CONFIG));
+
+      String checkpointPath = RocksDBUtils.composeSnapshotDir("/db", STORE_NAME, PARTITION_ID);
+
+      RocksDB rocksdb = mock(RocksDB.class);
+      Checkpoint checkpoint = mock(Checkpoint.class);
+
+      doReturn(checkpoint).when(rocksDBSstFileWriter).makeCheckpoint(rocksdb);
+      doNothing().when(checkpoint).createCheckpoint(checkpointPath);
+
+      rocksDBSstFileWriter.createSnapshot(rocksdb);
+
+      verify(checkpoint, times(1)).createCheckpoint(checkpointPath);
+
+    } finally {
+      if (rocksDBSstFileWriter != null) {
+        rocksDBSstFileWriter.close();
+      }
     }
   }
 
