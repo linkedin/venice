@@ -458,7 +458,7 @@ public class ClientConfig<T extends SpecificRecord> {
   }
 
   public ClientConfig<T> setSchemaRefreshPeriod(Duration schemaRefreshPeriod) {
-    this.schemaRefreshPeriod = schemaRefreshPeriod;
+    this.schemaRefreshPeriod = schemaRefreshPeriod == null ? DEFAULT_SCHEMA_REFRESH_PERIOD : schemaRefreshPeriod;
     return this;
   }
 

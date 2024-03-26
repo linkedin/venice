@@ -10,12 +10,10 @@ public class OnlineProducerFactory {
       ClientConfig storeClientConfig,
       VeniceProperties producerConfigs,
       ICProvider icProvider) {
-    OnlineVeniceProducer producer = new OnlineVeniceProducer<>(
+    return new OnlineVeniceProducer<>(
         storeClientConfig,
         producerConfigs,
         storeClientConfig.getMetricsRepository(),
         icProvider);
-
-    return producer;
   }
 }
