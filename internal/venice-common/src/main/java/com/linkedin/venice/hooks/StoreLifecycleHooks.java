@@ -114,22 +114,17 @@ public abstract class StoreLifecycleHooks {
   public StoreLifecycleEventOutcome preStartOfPushJob(
       String clusterName,
       String storeName,
-      VeniceProperties jobProperties,
       VeniceProperties storeHooksConfigs) {
     return StoreLifecycleEventOutcome.PROCEED;
   }
 
   /**
-   * Invoked after starting a new job (i.e. if all {@link #preStartOfPushJob(String, String, VeniceProperties, VeniceProperties)}
-   * hooks succeeded).<br>
+   * Invoked after starting a new job (i.e. if all {@link #preStartOfPushJob(String, String, VeniceProperties)} hooks
+   * succeeded).<br>
    * <br>
    * Cardinality: once per push job, assuming no previous failures.
    */
-  public void postStartOfPushJob(
-      String clusterName,
-      String storeName,
-      VeniceProperties jobProperties,
-      VeniceProperties storeHooksConfigs) {
+  public void postStartOfPushJob(String clusterName, String storeName, VeniceProperties storeHooksConfigs) {
   }
 
   /**
@@ -290,7 +285,6 @@ public abstract class StoreLifecycleHooks {
       String clusterName,
       String storeName,
       Lazy<JobStatusQueryResponse> jobStatus,
-      VeniceProperties jobProperties,
       VeniceProperties storeHooksConfigs) {
     return StoreVersionLifecycleEventOutcome.PROCEED;
   }
@@ -304,7 +298,6 @@ public abstract class StoreLifecycleHooks {
   public void postEndOfPushJob(
       String clusterName,
       String storeName,
-      VeniceProperties jobProperties,
       VeniceProperties storeHooksConfigs,
       PushJobDetailsStatus terminalStatus) {
   }
