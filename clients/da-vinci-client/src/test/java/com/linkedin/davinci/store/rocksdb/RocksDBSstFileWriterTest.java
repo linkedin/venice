@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -20,7 +22,6 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-import static org.mockito.Mockito.*;
 
 
 public class RocksDBSstFileWriterTest {
@@ -276,15 +277,16 @@ public class RocksDBSstFileWriterTest {
   public void testCreateSnapshot() throws RocksDBException {
     RocksDBSstFileWriter rocksDBSstFileWriter = null;
     try {
-      rocksDBSstFileWriter = spy(new RocksDBSstFileWriter(
-          STORE_NAME,
-          PARTITION_ID,
-          "/db",
-          new EnvOptions(),
-          new Options(),
-          DB_DIR,
-          IS_RMD,
-          ROCKS_DB_SERVER_CONFIG));
+      rocksDBSstFileWriter = spy(
+          new RocksDBSstFileWriter(
+              STORE_NAME,
+              PARTITION_ID,
+              "/db",
+              new EnvOptions(),
+              new Options(),
+              DB_DIR,
+              IS_RMD,
+              ROCKS_DB_SERVER_CONFIG));
 
       String checkpointPath = RocksDBUtils.composeSnapshotDir("/db", STORE_NAME, PARTITION_ID);
 

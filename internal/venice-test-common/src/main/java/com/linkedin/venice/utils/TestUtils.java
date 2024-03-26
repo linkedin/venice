@@ -888,7 +888,7 @@ public class TestUtils {
       System.err.println("Error reading directory: " + directory.getAbsolutePath());
       return result;
     }
-    for (File file : files) {
+    for (File file: files) {
       if (file.isDirectory() && !file.isHidden()) {
         result.addAll(searchForFileExtension(file, fileExtension)); // Recursively search subdirectories
       } else if (file.isFile() && !file.isHidden() && file.getName().toLowerCase().endsWith(fileExtension)) {
@@ -904,7 +904,7 @@ public class TestUtils {
     if (directory.exists() && directory.isDirectory()) {
       File[] files = directory.listFiles();
       if (files != null) {
-        for (File file : files) {
+        for (File file: files) {
           if (file.isDirectory() && file.getName().equals(folderName)) {
             return true;
           }

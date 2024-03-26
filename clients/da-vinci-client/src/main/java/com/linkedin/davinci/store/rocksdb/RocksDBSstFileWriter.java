@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.Checkpoint;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.IngestExternalFileOptions;
@@ -32,7 +33,6 @@ import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileReader;
 import org.rocksdb.SstFileReaderIterator;
 import org.rocksdb.SstFileWriter;
-import org.rocksdb.Checkpoint;
 
 
 public class RocksDBSstFileWriter {
@@ -503,14 +503,10 @@ public class RocksDBSstFileWriter {
       Checkpoint checkpoint = makeCheckpoint(rocksDB);
       String checkpointPath = this.fullPathForPartitionDBSnapshot;
 
-      LOGGER.info(
-          "Start creating snapshots in directory: {}",
-          checkpoint);
+      LOGGER.info("Start creating snapshots in directory: {}", checkpoint);
       checkpoint.createCheckpoint(checkpointPath);
 
-      LOGGER.info(
-          "Finished creating snapshots in directory: {}",
-          checkpoint);
+      LOGGER.info("Finished creating snapshots in directory: {}", checkpoint);
     } catch (RocksDBException e) {
       throw new VeniceException("Received exception during RocksDB's snapshot creation", e);
     }
