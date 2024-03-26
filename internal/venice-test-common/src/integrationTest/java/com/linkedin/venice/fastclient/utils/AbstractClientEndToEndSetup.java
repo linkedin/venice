@@ -20,6 +20,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableList;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -117,12 +118,12 @@ public abstract class AbstractClientEndToEndSetup {
   protected static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n"
       + "\"name\": \"TestValueSchema\",\n" + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n"
       + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
-  protected static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
+  protected static final Schema VALUE_SCHEMA = AvroCompatibilityHelper.parse(VALUE_SCHEMA_STR);
   protected static final String VALUE_SCHEMA_V2_STR = "{\n" + "\"type\": \"record\",\n"
       + "\"name\": \"TestValueSchema\",\n" + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n"
       + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"},\n" + "{\"name\": \""
       + SECOND_VALUE_FIELD_NAME + "\", \"type\": [\"null\", \"int\"], \"default\": null}]\n" + "}";
-  protected static final Schema VALUE_SCHEMA_V2 = new Schema.Parser().parse(VALUE_SCHEMA_V2_STR);
+  protected static final Schema VALUE_SCHEMA_V2 = AvroCompatibilityHelper.parse(VALUE_SCHEMA_V2_STR);
 
   protected static final String keyPrefix = "key_";
   protected static final int recordCnt = 100;

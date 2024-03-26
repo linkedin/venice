@@ -63,6 +63,7 @@ import com.linkedin.venice.hadoop.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceStats;
@@ -110,8 +111,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-//TODO: write a VPJWrapper that can handle the whole flow
 
 
 @Test(singleThreaded = true)
@@ -452,7 +451,9 @@ public abstract class TestBatch {
             Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
           }
         },
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+        new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
+            .setHybridRewindSeconds(Time.SECONDS_PER_DAY)
+            .setHybridOffsetLagThreshold(1000));
 
     testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema2(inputDir)),
@@ -468,7 +469,7 @@ public abstract class TestBatch {
           }
         },
         storeName,
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+        null);
 
     testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
@@ -480,7 +481,7 @@ public abstract class TestBatch {
           }
         },
         storeName,
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+        null);
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -496,7 +497,7 @@ public abstract class TestBatch {
         },
         getSimpleFileWithUserSchemaValidatorForZstd(),
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
-            .setIncrementalPushEnabled(true)
+            .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
             .setHybridOffsetLagThreshold(10)
             .setHybridRewindSeconds(0));
 
@@ -520,59 +521,6 @@ public abstract class TestBatch {
         },
         storeName,
         null);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
-    double randomNumber = Math.random();
-    String classAndFunctionName = getClass().getSimpleName() + ".testIncrementalPushWritesToRealTimeTopicWithPolicy()";
-    String uniqueTestId = "attempt [" + randomNumber + "] of " + classAndFunctionName;
-    LOGGER.info("Start of {}", uniqueTestId);
-    try {
-      String storeName = testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
-          properties -> {},
-          (avroClient, vsonClient, metricsRepository) -> {
-            for (int i = 1; i <= 100; i++) {
-              Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-            }
-          },
-          new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-              .setChunkingEnabled(true)
-              .setHybridOffsetLagThreshold(10)
-              .setHybridRewindSeconds(0));
-
-      testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema2(inputDir)),
-          properties -> properties.setProperty(INCREMENTAL_PUSH, "true"),
-          (avroClient, vsonClient, metricsRepository) -> {
-            for (int i = 51; i <= 150; i++) {
-              Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
-            }
-          },
-          storeName,
-          null);
-
-      testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
-          properties -> {},
-          (avroClient, vsonClient, metricsRepository) -> {
-            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-              for (int i = 1; i <= 100; i++) {
-                Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-              }
-              for (int i = 101; i <= 150; i++) {
-                Assert.assertNull(avroClient.get(Integer.toString(i)).get());
-              }
-            });
-          },
-          storeName,
-          null);
-      LOGGER.info("Successful end of {}", uniqueTestId);
-    } catch (Throwable e) {
-      LOGGER.error("Caught throwable in {}", uniqueTestId, e);
-      throw e;
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

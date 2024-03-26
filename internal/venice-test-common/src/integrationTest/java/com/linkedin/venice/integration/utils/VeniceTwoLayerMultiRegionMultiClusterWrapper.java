@@ -1,14 +1,9 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
-import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_OTHER_URLS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
@@ -73,51 +68,16 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   }
 
   static ServiceProvider<VeniceTwoLayerMultiRegionMultiClusterWrapper> generateService(
-      int numberOfRegions,
-      int numberOfClustersInEachRegion,
-      int numberOfParentControllers,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      Optional<Properties> parentControllerProperties,
-      Optional<Properties> serverProperties) {
-    return generateService(
-        numberOfRegions,
-        numberOfClustersInEachRegion,
-        numberOfParentControllers,
-        numberOfControllers,
-        numberOfServers,
-        numberOfRouters,
-        replicationFactor,
-        parentControllerProperties,
-        Optional.empty(),
-        serverProperties,
-        false);
-  }
-
-  static ServiceProvider<VeniceTwoLayerMultiRegionMultiClusterWrapper> generateService(
-      int numberOfRegions,
-      int numberOfClustersInEachRegion,
-      int numberOfParentControllers,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      Optional<Properties> parentControllerPropertiesOverride,
-      Optional<Properties> childControllerPropertiesOverride,
-      Optional<Properties> serverProperties,
-      boolean forkServer) {
+      VeniceMultiRegionClusterCreateOptions options) {
     String parentRegionName = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-    final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
-    final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfRegions);
+    final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(options.getNumberOfParentControllers());
+    final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(options.getNumberOfRegions());
 
     /**
      * Enable participant system store by default in a two-layer multi-region set-up
      */
     Properties defaultParentControllerProps = new Properties();
     defaultParentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-    defaultParentControllerProps.setProperty(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, "false");
 
     ZkServerWrapper zkServer = null;
     PubSubBrokerWrapper parentPubSubBrokerWrapper = null;
@@ -133,8 +93,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
       Map<String, String> clusterToD2 = new HashMap<>();
       Map<String, String> clusterToServerD2 = new HashMap<>();
-      String[] clusterNames = new String[numberOfClustersInEachRegion];
-      for (int i = 0; i < numberOfClustersInEachRegion; i++) {
+      String[] clusterNames = new String[options.getNumberOfClusters()];
+      for (int i = 0; i < options.getNumberOfClusters(); i++) {
         String clusterName = "venice-cluster" + i;
         clusterNames[i] = clusterName;
         String routerD2ServiceName = "venice-" + i;
@@ -142,9 +102,9 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         String serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
         clusterToServerD2.put(clusterName, serverD2ServiceName);
       }
-      List<String> childRegionName = new ArrayList<>(numberOfRegions);
+      List<String> childRegionName = new ArrayList<>(options.getNumberOfRegions());
 
-      for (int i = 0; i < numberOfRegions; i++) {
+      for (int i = 0; i < options.getNumberOfRegions(); i++) {
         childRegionName.add(CHILD_REGION_NAME_PREFIX + i);
       }
 
@@ -158,10 +118,6 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       Map<String, ZkServerWrapper> zkServerByRegionName = new HashMap<>(childRegionName.size());
       Map<String, PubSubBrokerWrapper> pubSubBrokerByRegionName = new HashMap<>(childRegionName.size());
 
-      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, true);
-      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, true);
-      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, true);
-      defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, true);
       defaultParentControllerProps
           .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, childRegionName.get(0));
       defaultParentControllerProps
@@ -171,7 +127,10 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
       final Properties finalParentControllerProperties = new Properties();
       finalParentControllerProperties.putAll(defaultParentControllerProps);
-      parentControllerPropertiesOverride.ifPresent(finalParentControllerProperties::putAll);
+      Properties parentControllerPropsOverride = options.getParentControllerProperties();
+      if (parentControllerPropsOverride != null) {
+        finalParentControllerProperties.putAll(parentControllerPropsOverride);
+      }
 
       Properties nativeReplicationRequiredChildControllerProps = new Properties();
       nativeReplicationRequiredChildControllerProps.put(ADMIN_TOPIC_SOURCE_REGION, parentRegionName);
@@ -196,14 +155,18 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       defaultChildControllerProps.putAll(nativeReplicationRequiredChildControllerProps);
       defaultChildControllerProps.putAll(activeActiveRequiredChildControllerProps);
       defaultChildControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-      defaultChildControllerProps.setProperty(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, "true");
 
       final Properties finalChildControllerProperties = new Properties();
       finalChildControllerProperties.putAll(defaultChildControllerProps);
-      childControllerPropertiesOverride.ifPresent(finalChildControllerProperties::putAll);
+      Properties childControllerPropsOverride = options.getChildControllerProperties();
+      if (childControllerPropsOverride != null) {
+        finalChildControllerProperties.putAll(childControllerPropsOverride);
+      }
 
-      Map<String, Map<String, String>> kafkaClusterMap =
-          addKafkaClusterIDMappingToServerConfigs(serverProperties, childRegionName, allPubSubBrokerWrappers);
+      Map<String, Map<String, String>> kafkaClusterMap = addKafkaClusterIDMappingToServerConfigs(
+          Optional.ofNullable(options.getServerProperties()),
+          childRegionName,
+          allPubSubBrokerWrappers);
 
       Map<String, String> pubSubBrokerProps = PubSubBrokerWrapper.getBrokerDetailsForClients(allPubSubBrokerWrappers);
       LOGGER.info("### PubSub broker configs: {}", pubSubBrokerProps);
@@ -211,24 +174,28 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       finalChildControllerProperties.putAll(pubSubBrokerProps); // child controllers
 
       Properties additionalServerProps = new Properties();
-      serverProperties.ifPresent(additionalServerProps::putAll);
+      Properties serverPropsOverride = options.getServerProperties();
+      if (serverPropsOverride != null) {
+        additionalServerProps.putAll(serverPropsOverride);
+      }
       additionalServerProps.putAll(pubSubBrokerProps);
-      serverProperties = Optional.of(additionalServerProps);
 
       VeniceMultiClusterCreateOptions.Builder builder =
-          new VeniceMultiClusterCreateOptions.Builder(numberOfClustersInEachRegion)
-              .numberOfControllers(numberOfControllers)
-              .numberOfServers(numberOfServers)
-              .numberOfRouters(numberOfRouters)
-              .replicationFactor(replicationFactor)
+          new VeniceMultiClusterCreateOptions.Builder().setNumberOfClusters(options.getNumberOfClusters())
+              .numberOfControllers(options.getNumberOfChildControllers())
+              .numberOfServers(options.getNumberOfServers())
+              .numberOfRouters(options.getNumberOfRouters())
+              .replicationFactor(options.getReplicationFactor())
               .randomizeClusterName(false)
-              .multiRegionSetup(true)
+              .multiRegion(true)
               .childControllerProperties(finalChildControllerProperties)
-              .extraProperties(serverProperties.orElse(null))
-              .forkServer(forkServer)
+              .extraProperties(additionalServerProps)
+              .sslToStorageNodes(options.isSslToStorageNodes())
+              .sslToKafka(options.isSslToKafka())
+              .forkServer(options.isForkServer())
               .kafkaClusterMap(kafkaClusterMap);
       // Create multi-clusters
-      for (int i = 0; i < numberOfRegions; i++) {
+      for (int i = 0; i < options.getNumberOfRegions(); i++) {
         String regionName = childRegionName.get(i);
         builder.regionName(regionName)
             .kafkaBrokerWrapper(pubSubBrokerByRegionName.get(regionName))
@@ -249,16 +216,17 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
           VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
       VeniceControllerCreateOptions parentControllerCreateOptions =
-          new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper)
-              .replicationFactor(replicationFactor)
+          new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper).multiRegion(true)
+              .replicationFactor(options.getReplicationFactor())
               .childControllers(childControllers)
               .extraProperties(finalParentControllerProperties)
               .clusterToD2(clusterToD2)
               .clusterToServerD2(clusterToServerD2)
               .regionName(parentRegionName)
+              .authorizerService(options.getParentAuthorizerService())
               .build();
       // Create parentControllers for multi-cluster
-      for (int i = 0; i < numberOfParentControllers; i++) {
+      for (int i = 0; i < options.getNumberOfParentControllers(); i++) {
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(parentControllerCreateOptions);
         parentControllers.add(parentController);
       }

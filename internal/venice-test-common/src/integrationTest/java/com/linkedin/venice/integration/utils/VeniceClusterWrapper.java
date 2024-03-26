@@ -220,6 +220,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
         VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(options.getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
+                .multiRegion(options.isMultiRegion())
                 .replicationFactor(options.getReplicationFactor())
                 .partitionSize(options.getPartitionSize())
                 .numberOfPartitions(options.getNumberOfPartitions())

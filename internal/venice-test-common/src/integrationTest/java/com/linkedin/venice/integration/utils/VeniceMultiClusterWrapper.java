@@ -1,6 +1,5 @@
 package com.linkedin.venice.integration.utils;
 
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 
@@ -87,11 +86,6 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
       // Create controllers for multi-cluster
       Properties controllerProperties = options.getChildControllerProperties();
-      if (options.isMultiRegionSetup()
-          && !controllerProperties.containsKey(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD)) {
-        // In multi-region setup, we don't allow batch push to each individual child region, but just parent region
-        controllerProperties.put(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
-      }
       if (options.getRegionName() != null) {
         controllerProperties.setProperty(LOCAL_REGION_NAME, options.getRegionName());
       }
@@ -112,6 +106,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       pubBrokerDetails.forEach((key, value) -> controllerProperties.putIfAbsent(key, value));
       VeniceControllerCreateOptions controllerCreateOptions =
           new VeniceControllerCreateOptions.Builder(clusterNames, zkServerWrapper, pubSubBrokerWrapper)
+              .multiRegion(options.isMultiRegion())
               .regionName(options.getRegionName())
               .replicationFactor(options.getReplicationFactor())
               .partitionSize(options.getPartitionSize())
@@ -133,7 +128,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       extraProperties.putAll(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       pubBrokerDetails.forEach((key, value) -> extraProperties.putIfAbsent(key, value));
       VeniceClusterCreateOptions.Builder vccBuilder =
-          new VeniceClusterCreateOptions.Builder().regionName(options.getRegionName())
+          new VeniceClusterCreateOptions.Builder().multiRegion(options.isMultiRegion())
+              .regionName(options.getRegionName())
               .standalone(false)
               .zkServerWrapper(zkServerWrapper)
               .kafkaBrokerWrapper(pubSubBrokerWrapper)
@@ -148,6 +144,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .enableAutoJoinAllowlist(options.isEnableAutoJoinAllowlist())
               .rebalanceDelayMs(options.getRebalanceDelayMs())
               .minActiveReplica(options.getMinActiveReplica())
+              .sslToKafka(options.isSslToKafka())
               .sslToStorageNodes(options.isSslToStorageNodes())
               .extraProperties(extraProperties)
               .forkServer(options.isForkServer())

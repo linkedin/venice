@@ -1,16 +1,11 @@
 package com.linkedin.venice.kafka.ssl;
 
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
-import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
-import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -28,36 +23,33 @@ public class AdminChannelWithSSLTest {
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testEnd2EndWithKafkaSSLEnabled() {
     Utils.thisIsLocalhost();
-    String clusterName = "test-cluster";
-    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
-            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
-                .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
-                .build());
-        VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper).replicationFactor(1)
-                .partitionSize(10)
-                .rebalanceDelayMs(0)
-                .minActiveReplica(1)
-                .sslToKafka(true)
-                .regionName(CHILD_REGION_NAME_PREFIX + "0")
-                .build());
-        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
 
-        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, pubSubBrokerWrapper)
-                .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(1)
+                .numberOfRouters(1)
+                .replicationFactor(1)
                 .sslToKafka(true)
                 .build())) {
-      String secureControllerUrl = controllerWrapper.getSecureControllerUrl();
+
+      String clusterName = venice.getClusterNames()[0];
+      VeniceControllerWrapper childControllerWrapper = venice.getChildRegions().get(0).getLeaderController(clusterName);
+
+      String parentSecureControllerUrl = venice.getParentControllers().get(0).getSecureControllerUrl();
       // Adding store
       String storeName = "test_store";
       String owner = "test_owner";
       String keySchemaStr = "\"long\"";
       String valueSchemaStr = "\"string\"";
 
-      try (ControllerClient controllerClient =
-          new ControllerClient(clusterName, secureControllerUrl, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
+      try (ControllerClient controllerClient = new ControllerClient(
+          clusterName,
+          parentSecureControllerUrl,
+          Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
         controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
         TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
           MultiStoreResponse response = controllerClient.queryStoreList(false);

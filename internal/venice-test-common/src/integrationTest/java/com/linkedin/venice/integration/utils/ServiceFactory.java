@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_ATTEMPT;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
@@ -408,18 +407,14 @@ public class ServiceFactory {
       int numberOfControllers,
       int numberOfServers,
       int numberOfRouters) {
-    return getService(
-        VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
-            numberOfRegions,
-            numberOfClustersInEachRegion,
-            numberOfParentControllers,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            DEFAULT_REPLICATION_FACTOR,
-            Optional.empty(),
-            Optional.empty()));
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(numberOfRegions)
+            .numberOfClusters(numberOfClustersInEachRegion)
+            .numberOfParentControllers(numberOfParentControllers)
+            .numberOfChildControllers(numberOfControllers)
+            .numberOfServers(numberOfServers)
+            .numberOfRouters(numberOfRouters);
+    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
   }
 
   public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
@@ -433,20 +428,19 @@ public class ServiceFactory {
       Optional<Properties> parentControllerProps,
       Optional<Properties> childControllerProperties,
       Optional<Properties> serverProps) {
-    return getService(
-        VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
-            numberOfRegions,
-            numberOfClustersInEachRegion,
-            numberOfParentControllers,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            replicationFactor,
-            parentControllerProps,
-            childControllerProperties,
-            serverProps,
-            false));
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(numberOfRegions)
+            .numberOfClusters(numberOfClustersInEachRegion)
+            .numberOfParentControllers(numberOfParentControllers)
+            .numberOfChildControllers(numberOfControllers)
+            .numberOfServers(numberOfServers)
+            .numberOfRouters(numberOfRouters)
+            .replicationFactor(replicationFactor);
+
+    parentControllerProps.ifPresent(optionsBuilder::parentControllerProperties);
+    childControllerProperties.ifPresent(optionsBuilder::childControllerProperties);
+    serverProps.ifPresent(optionsBuilder::serverProperties);
+    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
   }
 
   public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
@@ -461,20 +455,28 @@ public class ServiceFactory {
       Optional<Properties> childControllerProperties,
       Optional<Properties> serverProps,
       boolean forkServer) {
+
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(numberOfRegions)
+            .numberOfClusters(numberOfClustersInEachRegion)
+            .numberOfParentControllers(numberOfParentControllers)
+            .numberOfChildControllers(numberOfControllers)
+            .numberOfServers(numberOfServers)
+            .numberOfRouters(numberOfRouters)
+            .replicationFactor(replicationFactor)
+            .forkServer(forkServer);
+
+    parentControllerProps.ifPresent(optionsBuilder::parentControllerProperties);
+    childControllerProperties.ifPresent(optionsBuilder::childControllerProperties);
+    serverProps.ifPresent(optionsBuilder::serverProperties);
+    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
+  }
+
+  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+      VeniceMultiRegionClusterCreateOptions options) {
     return getService(
         VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
-            numberOfRegions,
-            numberOfClustersInEachRegion,
-            numberOfParentControllers,
-            numberOfControllers,
-            numberOfServers,
-            numberOfRouters,
-            replicationFactor,
-            parentControllerProps,
-            childControllerProperties,
-            serverProps,
-            forkServer));
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(options));
   }
 
   public static HelixAsAServiceWrapper getHelixController(String zkAddress) {

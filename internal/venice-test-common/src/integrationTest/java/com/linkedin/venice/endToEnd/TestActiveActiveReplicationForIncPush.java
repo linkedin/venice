@@ -3,7 +3,6 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
-import static com.linkedin.venice.ConfigKeys.ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED;
@@ -87,7 +86,6 @@ public class TestActiveActiveReplicationForIncPush {
     Properties controllerProps = new Properties();
     controllerProps.put(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
     controllerProps.put(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, true);
-    controllerProps.put(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, true);
 
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
@@ -207,9 +205,12 @@ public class TestActiveActiveReplicationForIncPush {
           dc1ControllerClient,
           dc2ControllerClient);
 
+      // Incremental push is not allowed for NON_AGGREGATE DataReplicationPolicy
+      boolean incrementalPushAllowed = !overrideDataReplicationPolicy;
+
       verifyHybridAndIncPushConfig(
           storeName,
-          true,
+          incrementalPushAllowed,
           true,
           parentControllerClient,
           dc0ControllerClient,
@@ -221,10 +222,18 @@ public class TestActiveActiveReplicationForIncPush {
         job.run();
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
+
       // Run inc push with source fabric preference taking effect.
       try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
         job.run();
+        if (!incrementalPushAllowed) {
+          Assert.fail("Incremental push should throw an exception for NON_AGGREGATE data replication policy");
+        }
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      } catch (Exception e) {
+        if (incrementalPushAllowed) {
+          throw e;
+        }
       }
 
       // Verify
@@ -235,14 +244,27 @@ public class TestActiveActiveReplicationForIncPush {
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
         Assert.assertNotNull(version, "Version 1 is not present for DC: " + dcNames[i]);
       }
-      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
+
+      if (incrementalPushAllowed) {
+        NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
+      }
 
       // Run another inc push with a different source fabric preference taking effect.
       try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-1", propsInc2)) {
         job.run();
+        if (!incrementalPushAllowed) {
+          Assert.fail("Incremental push should throw an exception for NON_AGGREGATE data replication policy");
+        }
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+      } catch (Exception e) {
+        if (incrementalPushAllowed) {
+          throw e;
+        }
       }
-      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
+
+      if (incrementalPushAllowed) {
+        NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
+      }
     }
   }
 

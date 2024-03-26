@@ -1,21 +1,18 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.Utils;
-import java.io.IOException;
-import java.util.Optional;
 import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -23,88 +20,67 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeniceHelixAdmin {
+public class TestClusterLevelConfigForNativeReplication {
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  private ControllerClient parentControllerClient;
+
   @BeforeClass(alwaysRun = true)
-  public void setUp() throws Exception {
-    setupCluster();
+  public void setUp() {
+    Utils.thisIsLocalhost();
+    Properties childControllerProps = new Properties();
+    // enable native replication for batch-only stores through cluster-level config
+    childControllerProps.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "dc-batch");
+    childControllerProps.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "dc-hybrid");
+
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfRouters(1)
+            .numberOfServers(1)
+            .parentControllerProperties(childControllerProps)
+            .build());
+    String clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
+    parentControllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString());
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    cleanupCluster();
-  }
-
-  @Override
-  Properties getControllerProperties(String clusterName) throws IOException {
-    Properties props = super.getControllerProperties(clusterName);
-    // enable native replication for batch-only stores through cluster-level config
-    props.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
-    props.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "dc-batch");
-    props.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "dc-hybrid");
-    return props;
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test
   public void testClusterLevelNativeReplicationConfigForNewStores() {
-    TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
-
-    TopicManager mockedTopicManager = mock(TopicManager.class);
-    TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getLocalTopicManager();
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(anyString());
-    veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = Utils.getUniqueString("test-store");
     String pushJobId1 = "test-push-job-id-1";
-    /**
-     * Do not enable any store-level config for leader/follower mode or native replication feature.
-     */
-    veniceAdmin.createStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+    parentControllerClient.createNewStore(storeName, "test-owner", "\"string\"", "\"string\"");
+    parentControllerClient.emptyPush(storeName, pushJobId1, 1);
 
-    /**
-     * Add a version
-     */
-    veniceAdmin.addVersionAndTopicOnly(
-        clusterName,
-        storeName,
-        pushJobId1,
-        VERSION_ID_UNSET,
-        1,
-        1,
-        false,
-        true,
-        Version.PushType.BATCH,
-        null,
-        null,
-        Optional.empty(),
-        -1,
-        1,
-        Optional.empty(),
-        false);
     // Version 1 should exist.
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
-    // native replication should be enabled by cluster-level config
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).isNativeReplicationEnabled(), true);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "dc-batch");
-    veniceAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(1L));
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "dc-hybrid");
-    veniceAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setHybridRewindSeconds(-1L).setHybridOffsetLagThreshold(-1L));
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "dc-batch");
-    veniceAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-            .setHybridRewindSeconds(1L)
-            .setHybridOffsetLagThreshold(10));
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "dc-hybrid");
+    StoreInfo store = assertCommand(parentControllerClient.getStore(storeName)).getStore();
+    assertEquals(store.getVersions().size(), 1);
 
-    // Set topic original topic manager back
-    veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
+    // native replication should be enabled by cluster-level config
+    assertTrue(store.isNativeReplicationEnabled());
+    Assert.assertEquals(store.getNativeReplicationSourceFabric(), "dc-batch");
+
+    // Convert to hybrid store
+    assertCommand(
+        parentControllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(1000L).setHybridOffsetLagThreshold(1000L)));
+    store = assertCommand(parentControllerClient.getStore(storeName)).getStore();
+    assertTrue(store.isNativeReplicationEnabled());
+    Assert.assertEquals(store.getNativeReplicationSourceFabric(), "dc-hybrid");
+
+    // Reverting hybrid configs reverts NR source region
+    assertCommand(
+        parentControllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1)));
+    store = assertCommand(parentControllerClient.getStore(storeName)).getStore();
+    assertTrue(store.isNativeReplicationEnabled());
+    Assert.assertEquals(store.getNativeReplicationSourceFabric(), "dc-batch");
   }
 }
