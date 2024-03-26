@@ -12,6 +12,8 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -503,11 +505,15 @@ public class RocksDBSstFileWriter {
       Checkpoint checkpoint = makeCheckpoint(rocksDB);
       String checkpointPath = this.fullPathForPartitionDBSnapshot;
 
-      LOGGER.info("Start creating snapshots in directory: {}", checkpoint);
+      if (Files.exists(Paths.get(checkpointPath))) {
+        return;
+      }
+
+      LOGGER.info("Start creating snapshots in directory: {}", checkpointPath);
       checkpoint.createCheckpoint(checkpointPath);
 
-      LOGGER.info("Finished creating snapshots in directory: {}", checkpoint);
-    } catch (RocksDBException e) {
+      LOGGER.info("Finished creating snapshots in directory: {}", checkpointPath);
+    } catch (RocksDBException e) { // | IOException e) {
       throw new VeniceException("Received exception during RocksDB's snapshot creation", e);
     }
   }
