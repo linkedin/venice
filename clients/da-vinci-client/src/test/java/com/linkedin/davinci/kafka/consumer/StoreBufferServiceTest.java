@@ -1,15 +1,19 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -25,8 +29,11 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.nio.ByteBuffer;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -39,10 +46,19 @@ public class StoreBufferServiceTest {
   private final LeaderProducedRecordContext leaderContext =
       LeaderProducedRecordContext.newPutRecord(0, 0, key.getKey(), put);
   private static final int TIMEOUT_IN_MS = 1000;
+  private final MetricsRepository mockMetricRepo = mock(MetricsRepository.class);
+  private StoreBufferServiceStats mockedStats;
+
+  @BeforeMethod
+  public void setUp() {
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
+    mockedStats = mock(StoreBufferServiceStats.class);
+  }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRun(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;
@@ -74,8 +90,12 @@ public class StoreBufferServiceTest {
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, partition2, kafkaUrl, 0L);
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr3, leaderContext, partition3, kafkaUrl, 0L);
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr4, leaderContext, partition4, kafkaUrl, 0L);
-
     bufferService.stop();
+    // We have 4 records in total, 2 of them are leader writes and 2 of them are not
+    // When queueLeaderWrites is true, for leader writes, it'd be also added to the drainer queue for queueing and
+    // processing
+    // otherwise SIT will handle the processing directly.
+    verify(mockedStats, times(queueLeaderWrites ? 4 : 2)).recordInternalProcessingLatency(anyLong());
     Assert.assertThrows(
         VeniceException.class,
         () -> bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1));
@@ -83,7 +103,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRunWhenThrowException(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;
@@ -108,11 +128,12 @@ public class StoreBufferServiceTest {
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, partition2, kafkaUrl, 0L);
     verify(mockTask).setIngestionException(partition1, e);
     bufferService.stop();
+    verify(mockedStats).recordInternalProcessingError();
   }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testDrainBufferedRecordsWhenNotExists(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition = 1;
@@ -133,7 +154,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testDrainBufferedRecordsWhenExists(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition = 1;
@@ -164,7 +185,7 @@ public class StoreBufferServiceTest {
     doReturn(1000l).when(serverConfig).getStoreWriterBufferNotifyDelta();
     doReturn(10000l).when(serverConfig).getStoreWriterBufferMemoryCapacity();
     doReturn(queueLeaderWrites).when(serverConfig).isStoreWriterBufferAfterLeaderLogicEnabled();
-    SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(serverConfig);
+    SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(serverConfig, mockMetricRepo);
     for (int partition = 0; partition < partitionCount; ++partition) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
           new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
@@ -198,7 +219,7 @@ public class StoreBufferServiceTest {
     for (int i = 0; i < drainerNum; ++i) {
       drainerPartitionCount[i] = 0;
     }
-    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites, mockedStats);
     for (int partition = 0; partition < partitionCount; ++partition) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
           new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
@@ -213,7 +234,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRunWhenThrowVeniceCheckSumFailException(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;

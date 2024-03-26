@@ -58,6 +58,7 @@ public class IngestionStats {
       "nearline_local_broker_to_ready_to_serve_latency";
   public static final String TRANSFORMER_LATENCY = "transformer_latency";
   public static final String IDLE_TIME = "idle_time";
+  public static final String PRODUCER_CALLBACK_LATENCY = "producer_callback_latency";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
@@ -81,6 +82,7 @@ public class IngestionStats {
   private final WritePathLatencySensor nearlineProducerToLocalBrokerLatencySensor;
   private final WritePathLatencySensor nearlineLocalBrokerToReadyToServeLatencySensor;
   private WritePathLatencySensor transformerLatencySensor;
+  private final WritePathLatencySensor producerCallBackLatency;
   // Measure the count of ignored updates due to conflict resolution
   private final LongAdderRateGauge conflictResolutionUpdateIgnoredSensor = new LongAdderRateGauge();
   // Measure the total number of incoming conflict resolutions
@@ -163,6 +165,8 @@ public class IngestionStats {
         localMetricRepository,
         METRIC_CONFIG,
         NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY);
+    producerCallBackLatency =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, PRODUCER_CALLBACK_LATENCY);
 
     registerSensor(localMetricRepository, UPDATE_IGNORED_DCR, conflictResolutionUpdateIgnoredSensor);
     registerSensor(localMetricRepository, TOTAL_DCR, totalConflictResolutionCountSensor);
@@ -304,6 +308,14 @@ public class IngestionStats {
 
   public void recordSubscribePrepLatency(double value, long currentTimeMs) {
     subscribePrepLatencySensor.record(value, currentTimeMs);
+  }
+
+  public double getProducerCallBackLatencyMax() {
+    return producerCallBackLatency.getMax();
+  }
+
+  public void recordProducerCallBackLatency(double value, long currentTimeMs) {
+    producerCallBackLatency.record(value, currentTimeMs);
   }
 
   public void recordVersionTopicEndOffsetRewind() {

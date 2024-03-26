@@ -67,4 +67,6 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
       int valueSchemaId,
       String replicationMetadataSchemaStr,
       int replicationMetadataVersionId);
+
+  void removeValueSchema(String storeName, int schemaID);
 }

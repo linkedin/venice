@@ -250,6 +250,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.FUTURE_VERSION, params, MultiStoreStatusResponse.class);
   }
 
+  public MultiStoreStatusResponse getBackupVersions(String clusterName, String storeName) {
+    QueryParams params = newParams().add(NAME, storeName).add(CLUSTER, clusterName);
+    return request(ControllerRoute.BACKUP_VERSION, params, MultiStoreStatusResponse.class);
+  }
+
   @Deprecated
   public static StoreResponse getStore(String urlsToFindLeaderController, String clusterName, String storeName) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindLeaderController)) {
@@ -260,6 +265,17 @@ public class ControllerClient implements Closeable {
   public StorageEngineOverheadRatioResponse getStorageEngineOverheadRatio(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO, params, StorageEngineOverheadRatioResponse.class);
+  }
+
+  public SchemaUsageResponse getInUseSchemaIds(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.GET_INUSE_SCHEMA_IDS, params, SchemaUsageResponse.class);
+  }
+
+  public ControllerResponse deleteValueSchemas(String storeName, List<String> schemaIds) {
+    QueryParams params =
+        newParams().add(NAME, storeName).add(ControllerApiConstants.VALUE_SCHEMA_IDS, String.join(",", schemaIds));
+    return request(ControllerRoute.DELETE_UNUSED_VALUE_SCHEMAS, params, SchemaUsageResponse.class);
   }
 
   public VersionCreationResponse requestTopicForWrites(
@@ -606,14 +622,22 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.SET_VERSION, params, VersionResponse.class);
   }
 
-  public ControllerResponse rollbackToBackupVersion(String storeName) {
-    QueryParams params = newParams().add(NAME, storeName);
+  public ControllerResponse rollbackToBackupVersion(String storeName, String regionFilter) {
+    QueryParams params = newParams().add(NAME, storeName).add(REGIONS_FILTER, regionFilter);
     return request(ControllerRoute.ROLLBACK_TO_BACKUP_VERSION, params, ControllerResponse.class);
   }
 
-  public ControllerResponse rollForwardToFutureVersion(String storeName) {
-    QueryParams params = newParams().add(NAME, storeName);
+  public ControllerResponse rollbackToBackupVersion(String storeName) {
+    return rollbackToBackupVersion(storeName, "");
+  }
+
+  public ControllerResponse rollForwardToFutureVersion(String storeName, String regionFilter) {
+    QueryParams params = newParams().add(NAME, storeName).add(REGIONS_FILTER, regionFilter);
     return request(ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse rollForwardToFutureVersion(String storeName) {
+    return rollForwardToFutureVersion(storeName, "");
   }
 
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {

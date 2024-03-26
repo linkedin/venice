@@ -4,6 +4,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
+import java.util.concurrent.atomic.AtomicLong;
 
 
 public class ServerConnectionStats extends AbstractVeniceStats {
@@ -15,32 +16,34 @@ public class ServerConnectionStats extends AbstractVeniceStats {
   private final Sensor routerConnectionRequestSensor;
   private final Sensor clientConnectionRequestSensor;
 
-  private long routerConnectionCount;
-  private long clientConnectionCount;
+  private final AtomicLong routerConnectionCount = new AtomicLong();
+  private final AtomicLong clientConnectionCount = new AtomicLong();
 
   public ServerConnectionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    registerSensorIfAbsent(new AsyncGauge((ignored, ignored2) -> routerConnectionCount, ROUTER_CONNECTION_COUNT_GAUGE));
+    registerSensorIfAbsent(
+        new AsyncGauge((ignored, ignored2) -> routerConnectionCount.get(), ROUTER_CONNECTION_COUNT_GAUGE));
     routerConnectionRequestSensor = registerSensorIfAbsent(ROUTER_CONNECTION_REQUEST, new OccurrenceRate());
-    registerSensorIfAbsent(new AsyncGauge((ignored, ignored2) -> clientConnectionCount, CLIENT_CONNECTION_COUNT_GAUGE));
+    registerSensorIfAbsent(
+        new AsyncGauge((ignored, ignored2) -> clientConnectionCount.get(), CLIENT_CONNECTION_COUNT_GAUGE));
     clientConnectionRequestSensor = registerSensorIfAbsent(CLIENT_CONNECTION_REQUEST, new OccurrenceRate());
   }
 
   public void incrementRouterConnectionCount() {
-    routerConnectionCount++;
+    routerConnectionCount.incrementAndGet();
     routerConnectionRequestSensor.record(1);
   }
 
   public void decrementRouterConnectionCount() {
-    routerConnectionCount--;
+    routerConnectionCount.decrementAndGet();
   }
 
   public void incrementClientConnectionCount() {
-    clientConnectionCount++;
+    clientConnectionCount.incrementAndGet();
     clientConnectionRequestSensor.record(1);
   }
 
   public void decrementClientConnectionCount() {
-    clientConnectionCount--;
+    clientConnectionCount.decrementAndGet();
   }
 }

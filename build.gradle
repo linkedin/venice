@@ -125,7 +125,7 @@ ext.libraries = [
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.11.3',
+    tehuti: 'io.tehuti:tehuti:0.11.4',
     testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
@@ -717,6 +717,7 @@ ext.createDiffFile = { ->
       // da-vinci-client
       ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
       ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/ingestion/isolated/IsolatedIngestionServer.java',
+      ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/stats/ingestion/heartbeat/HeartbeatStatReporter.java',
 
       // venice-client
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
@@ -748,6 +749,7 @@ ext.createDiffFile = { ->
 
       // venice-server
       ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java',
+      ':!services/venice-server/src/main/java/com/linkedin/venice/listener/StatsHandler.java',
 
       // venice-standalone
       ':!services/venice-standalone/*', // exclude the entire standalone project

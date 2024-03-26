@@ -7,6 +7,8 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -17,6 +19,7 @@ import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -30,6 +33,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -69,10 +73,13 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     }
     String readQuotaStorageNodeTokenBucketRemaining =
         ".venice-storage-node-token-bucket--QuotaRcuTokensRemaining.Gauge";
-    String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
-    String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
-    String readQuotaAllowedUnintentionally = "." + storeName + "--quota_rcu_allowed_unintentionally.Count";
+    String readQuotaRequestedQPSString = "." + storeName + "--quota_request.Rate";
+    String readQuotaRejectedQPSString = "." + storeName + "--quota_rejected_request.Rate";
+    String readQuotaRequestedKPSString = "." + storeName + "--quota_request_key_count.Rate";
+    String readQuotaRejectedKPSString = "." + storeName + "--quota_rejected_key_count.Rate";
+    String readQuotaAllowedUnintentionally = "." + storeName + "--quota_unintentionally_allowed_key_count.Count";
     String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";
+    String errorRequestString = ".total--error_request.OccurrenceRate";
     String clientConnectionCountGaugeString = ".server_connection_stats--client_connection_count.Gauge";
     String routerConnectionCountGaugeString = ".server_connection_stats--router_connection_count.Gauge";
     String clientConnectionCountRateString = ".server_connection_stats--client_connection_request.OccurrenceRate";
@@ -80,9 +87,12 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       for (MetricsRepository serverMetric: serverMetrics) {
         assertNotNull(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining));
-        assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
-        assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
+        assertNotNull(serverMetric.getMetric(readQuotaRequestedQPSString));
+        assertNotNull(serverMetric.getMetric(readQuotaRejectedQPSString));
+        assertNotNull(serverMetric.getMetric(readQuotaRequestedKPSString));
+        assertNotNull(serverMetric.getMetric(readQuotaRejectedKPSString));
         assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
+        assertNotNull(serverMetric.getMetric(errorRequestString));
         assertNotNull(serverMetric.getMetric(readQuotaAllowedUnintentionally));
         assertNotNull(serverMetric.getMetric(clientConnectionCountGaugeString));
         assertNotNull(serverMetric.getMetric(routerConnectionCountGaugeString));
@@ -90,20 +100,35 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         assertNotNull(serverMetric.getMetric(routerConnectionCountRateString));
       }
     });
-    int quotaRequestedSum = 0;
+    int quotaRequestedQPSSum = 0;
+    int quotaRequestedKPSSum = 0;
     int clientConnectionCountRateSum = 0;
     int routerConnectionCountRateSum = 0;
     for (MetricsRepository serverMetric: serverMetrics) {
-      quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
+      quotaRequestedQPSSum += serverMetric.getMetric(readQuotaRequestedQPSString).value();
+      quotaRequestedKPSSum += serverMetric.getMetric(readQuotaRequestedKPSString).value();
       clientConnectionCountRateSum += serverMetric.getMetric(clientConnectionCountRateString).value();
       routerConnectionCountRateSum += serverMetric.getMetric(routerConnectionCountRateString).value();
-      assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
+      assertEquals(serverMetric.getMetric(readQuotaRejectedQPSString).value(), 0d);
+      assertEquals(serverMetric.getMetric(readQuotaRejectedKPSString).value(), 0d);
       assertEquals(serverMetric.getMetric(readQuotaAllowedUnintentionally).value(), 0d);
       assertTrue(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining).value() > 0d);
     }
-    assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
+    assertTrue(quotaRequestedQPSSum >= 0, "Quota request sum: " + quotaRequestedQPSSum);
+    assertTrue(quotaRequestedKPSSum >= 0, "Quota request key count sum: " + quotaRequestedKPSSum);
     assertTrue(clientConnectionCountRateSum > 0, "Servers should have more than 0 client connections");
     assertEquals(routerConnectionCountRateSum, 0, "Servers should have 0 router connections");
+    // At least one server's usage ratio should eventually be a positive decimal
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      double usageRatio = 0;
+      for (MetricsRepository serverMetric: serverMetrics) {
+        usageRatio = serverMetric.getMetric(readQuotaUsageRatio).value();
+        if (usageRatio > 0) {
+          break;
+        }
+      }
+      assertTrue(usageRatio > 0, "Quota usage ratio: " + usageRatio);
+    });
 
     // Update the read quota to 50 and make as many requests needed to trigger quota rejected exception.
     veniceCluster.useControllerClient(controllerClient -> {
@@ -125,11 +150,18 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       assertTrue(clientException.getMessage().contains("VeniceClientRateExceededException"));
     }
     boolean readQuotaRejected = false;
+    boolean errorRequest = false;
+
     for (MetricsRepository serverMetric: serverMetrics) {
-      if (serverMetric.getMetric(readQuotaRejectedString).value() > 0) {
+      if (serverMetric.getMetric(readQuotaRejectedQPSString).value() > 0
+          && serverMetric.getMetric(readQuotaRejectedKPSString).value() > 0) {
         readQuotaRejected = true;
       }
+      if (serverMetric.getMetric(errorRequestString).value() > 0) {
+        errorRequest = true;
+      }
     }
+    assertFalse(errorRequest);
     assertTrue(readQuotaRejected);
     // Restart the servers and quota should still be working
     for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
@@ -143,13 +175,13 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         assertEquals((int) value.get(VALUE_FIELD_NAME), i);
       }
     }
-    quotaRequestedSum = 0;
+    quotaRequestedQPSSum = 0;
     for (MetricsRepository serverMetric: serverMetrics) {
-      quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
+      quotaRequestedQPSSum += serverMetric.getMetric(readQuotaRequestedQPSString).value();
       assertEquals(serverMetric.getMetric(readQuotaAllowedUnintentionally).value(), 0d);
       assertTrue(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining).value() > 0d);
     }
-    assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
+    assertTrue(quotaRequestedQPSSum >= 0, "Quota request sum: " + quotaRequestedQPSSum);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -177,6 +209,14 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
       TestUtils.assertCommand(
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(false)));
     });
+
+    // It takes time for metadata to be propagated for fast client. To make the test deterministic we can create a new
+    // client.
+
+    genericFastClient = getGenericFastClient(
+        clientConfigBuilder,
+        new MetricsRepository(),
+        StoreMetadataFetchMode.SERVER_BASED_METADATA);
 
     try {
       genericFastClient.compute()
@@ -251,5 +291,92 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         assertEquals(result.get(key).get(SECOND_VALUE_FIELD_NAME), i);
       }
     });
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testStreamingBatchGetWithRetryAndQuotaRejection() throws Exception {
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils
+          .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(10)));
+    });
+    ArrayList<MetricsRepository> serverMetrics = new ArrayList<>();
+    for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
+      serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
+    }
+
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setLongTailRetryEnabledForBatchGet(true)
+            .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
+            .setSpeculativeQueryEnabled(false);
+    MetricsRepository clientMetric = new MetricsRepository();
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, clientMetric, StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < recordCnt; ++i) {
+      String key = keyPrefix + i;
+      keys.add(key);
+    }
+    try {
+      for (int i = 0; i < 10; i++) {
+        genericFastClient.batchGet(keys).get();
+      }
+      fail();
+    } catch (ExecutionException exception) {
+      assertTrue(exception.getCause() instanceof VeniceClientException);
+      assertTrue(exception.getCause().getCause() instanceof VeniceClientRateExceededException);
+      String readQuotaRejectedKPSString = "." + storeName + "--quota_rejected_key_count.Rate";
+      String metricPrefix = "." + storeName + "--multiget_streaming_";
+      int quotaRejectedKPSSum = 0;
+      for (MetricsRepository serverMetric: serverMetrics) {
+        quotaRejectedKPSSum += serverMetric.getMetric(readQuotaRejectedKPSString).value();
+      }
+      // Make sure retry is not triggered after encountering 429
+      assertTrue(quotaRejectedKPSSum <= recordCnt, "quota rejected key count: " + quotaRejectedKPSSum);
+      assertTrue(clientMetric.getMetric(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() < 1);
+    }
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testStreamingBatchGetServerStats() throws Exception {
+    ArrayList<MetricsRepository> serverMetrics = new ArrayList<>();
+    for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
+      serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
+    }
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setLongTailRetryEnabledForBatchGet(true)
+            .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
+            .setSpeculativeQueryEnabled(false);
+    MetricsRepository clientMetric = new MetricsRepository();
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, clientMetric, StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < recordCnt; ++i) {
+      String key = keyPrefix + i;
+      keys.add(key);
+    }
+    genericFastClient.batchGet(keys).get();
+    /**
+     * Both multi-get and streaming multi-get is emitted under the multi-get request type on server side. See {@link com.linkedin.venice.listener.ServerStatsContext}
+     */
+    String multiGetRequestKeyCountMetric =
+        ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "request_key_count.Rate";
+    String multiGetSuccessRequestKeyCountMetric =
+        ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "success_request_key_count.Rate";
+    boolean nonZeroRequestedKeyCount = false;
+    boolean nonZeroSuccessRequestKeyCount = false;
+    for (MetricsRepository serverMetric: serverMetrics) {
+      if (serverMetric.getMetric(multiGetRequestKeyCountMetric).value() > 0) {
+        nonZeroRequestedKeyCount = true;
+      }
+      if (serverMetric.getMetric(multiGetSuccessRequestKeyCountMetric).value() > 0) {
+        nonZeroSuccessRequestKeyCount = true;
+      }
+    }
+    assertTrue(nonZeroRequestedKeyCount);
+    assertTrue(nonZeroSuccessRequestKeyCount);
   }
 }

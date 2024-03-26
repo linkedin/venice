@@ -20,6 +20,8 @@ import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.RollForwardCurrentVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.RollbackCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
@@ -48,7 +50,8 @@ public enum AdminMessageType {
   @Deprecated
   CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER(22, true), META_SYSTEM_STORE_AUTO_CREATION_VALIDATION(23, false),
   PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION(24, false), CREATE_STORAGE_PERSONA(25, false),
-  DELETE_STORAGE_PERSONA(26, false), UPDATE_STORAGE_PERSONA(27, false);
+  DELETE_STORAGE_PERSONA(26, false), UPDATE_STORAGE_PERSONA(27, false), DELETE_UNUSED_VALUE_SCHEMA(28, false),
+  ROLLBACK_CURRENT_VERSION(29, false), ROLLFORWARD_CURRENT_VERSION(30, false);
 
   private final int value;
   private final boolean batchUpdate;
@@ -115,6 +118,10 @@ public enum AdminMessageType {
         return new DeleteStoragePersona();
       case UPDATE_STORAGE_PERSONA:
         return new UpdateStoragePersona();
+      case ROLLFORWARD_CURRENT_VERSION:
+        return new RollForwardCurrentVersion();
+      case ROLLBACK_CURRENT_VERSION:
+        return new RollbackCurrentVersion();
       default:
         throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }

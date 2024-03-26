@@ -64,7 +64,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.pollResultNumSensor,
         new Avg(),
-        new Total(),
         new Min());
 
     /**

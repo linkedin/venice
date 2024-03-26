@@ -82,4 +82,9 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
   public PubSubMessageHeaders getPubSubMessageHeaders() {
     return pubSubMessageHeaders;
   }
+
+  @Override
+  public String toString() {
+    return "PubSubMessage{" + topicPartition + ", offset=" + offset + ", timestamp=" + timestamp + '}';
+  }
 }

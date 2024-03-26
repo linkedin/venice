@@ -186,8 +186,11 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -324,6 +327,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
 
+  private static final long UNUSED_SCHEMA_DELETION_TIME_GAP = TimeUnit.DAYS.toMillis(15);
   private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
   private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
@@ -3075,6 +3079,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
+  public int getBackupVersion(String clusterName, String storeName) {
+    checkControllerLeadershipFor(clusterName);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+      Store store = resources.getStoreMetadataRepository().getStore(storeName);
+      return getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+    }
+  }
+
+  public int getOnlineFutureVersion(String clusterName, String storeName) {
+    Store store = getStoreForReadOnly(clusterName, storeName);
+    if (store.getVersions().isEmpty()) {
+      return NON_EXISTING_VERSION;
+    }
+
+    Version version = store.getVersions().stream().max(Comparable::compareTo).get();
+    if (version.getNumber() != store.getCurrentVersion() && version.getStatus().equals(ONLINE)) {
+      return version.getNumber();
+    }
+    return NON_EXISTING_VERSION;
+  }
+
+  @Override
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
     return null;
   }
@@ -3102,6 +3129,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
+    return Collections.EMPTY_MAP;
+  }
+
+  @Override
+  public Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {
     return Collections.EMPTY_MAP;
   }
 
@@ -3718,12 +3750,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber) {
-    storeMetadataUpdate(clusterName, storeName, store -> {
-      if (isParent()) {
-        // Parent colo should not update the current version of a store
-        return store;
-      }
+    this.setStoreCurrentVersion(clusterName, storeName, versionNumber, false);
+  }
 
+  /**
+   * In most cases, parent region should not update the current version. This is only allowed via an update-store call
+   * where the region filter list only contains one region, which is the region of the parent controller
+   */
+  private void setStoreCurrentVersion(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean allowedInParent) {
+    if (isParent() && !allowedInParent) {
+      // Parent colo should not update the current version of a store unless explicitly asked to do so
+      LOGGER.info(
+          "Skipping current version update for store: {} in cluster: {} because it is not allowed in the "
+              + "parent region",
+          storeName,
+          clusterName);
+      return;
+    }
+
+    storeMetadataUpdate(clusterName, storeName, store -> {
       if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
         if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
           throw new VeniceException("Version: " + versionNumber + " does not exist for store:" + storeName);
@@ -3736,21 +3785,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(versionNumber);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+      if (!isParent()) {
+        // Parent controller should not transmit the version swap message
+        realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+      }
       return store;
     });
   }
 
   @Override
-  public void rollForwardToFutureVersion(String clusterName, String storeName) {
+  public void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter) {
+    if (!StringUtils.isEmpty(regionFilter)) {
+      Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
+      if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
+        LOGGER.info(
+            "rollForwardToFutureVersion command will be skipped for store: {} in cluster: {}, because the region filter is {}"
+                + " which doesn't include the current region: {}",
+            storeName,
+            clusterName,
+            regionsFilter,
+            multiClusterConfigs.getRegionName());
+        return;
+      }
+    }
+    int futureVersion = getOnlineFutureVersion(clusterName, storeName);
+    if (futureVersion == Store.NON_EXISTING_VERSION) {
+      return;
+    }
     storeMetadataUpdate(clusterName, storeName, store -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
             "Unable to update store:" + storeName + " current version since store does not enable writes");
-      }
-      int futureVersion = getFutureVersion(clusterName, storeName);
-      if (futureVersion == Store.NON_EXISTING_VERSION) {
-        throw new VeniceException("Future version does not exist for store:" + storeName);
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(futureVersion);
@@ -3763,7 +3828,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Set backup version as current version in a child region.
    */
   @Override
-  public void rollbackToBackupVersion(String clusterName, String storeName) {
+  public void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter) {
+    if (!StringUtils.isEmpty(regionFilter)) {
+      Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
+      if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
+        LOGGER.info(
+            "rollbackToBackupVersion command will be skipped for store: {} in cluster: {}, because the region filter is {}"
+                + " which doesn't include the current region: {}",
+            storeName,
+            clusterName,
+            regionsFilter,
+            multiClusterConfigs.getRegionName());
+        return;
+      }
+    }
+
     storeMetadataUpdate(clusterName, storeName, store -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -3771,7 +3850,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int backupVersion = getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
       if (backupVersion == Store.NON_EXISTING_VERSION) {
-        throw new VeniceException("Backup version does not exist for store:" + storeName);
+        return store;
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
@@ -3962,6 +4041,64 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       store.setAccessControlled(accessControlled);
 
       return store;
+    });
+  }
+
+  @Override
+  public StoreMetaValue getMetaStoreValue(StoreMetaKey metaKey, String storeName) {
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    String d2Service = discoverCluster(storeName).getSecond();
+
+    try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> client = ClientFactory.getAndStartSpecificAvroClient(
+        ClientConfig.defaultSpecificClientConfig(metaStoreName, StoreMetaValue.class)
+            .setD2ServiceName(d2Service)
+            .setD2Client(this.d2Client))) {
+      return client.get(metaKey).get();
+    } catch (Exception e) {
+      LOGGER.warn("Could not fetch meta store value for key " + metaKey, e);
+      return null;
+    }
+  }
+
+  @Override
+  public Set<Integer> getInUseValueSchemaIds(String clusterName, String storeName) {
+    Store store = getStore(clusterName, storeName);
+    Set<Integer> schemaIds = new HashSet<>();
+
+    // Fetch value schema id used by all existing store version
+    for (Version version: store.getVersions()) {
+      Map<String, String> map = new HashMap<>(2);
+      map.put(MetaStoreWriter.KEY_STRING_VERSION_NUMBER, Integer.toString(version.getNumber()));
+      StoreMetaKey key = MetaStoreDataType.VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION.getStoreMetaKey(map);
+      StoreMetaValue metaValue = getMetaStoreValue(key, storeName);
+
+      if (metaValue == null) {
+        String msg = "Could not find in-use value schema for store " + storeName;
+        LOGGER.warn(msg);
+        throw new VeniceException(msg);
+      }
+      // Skip if its recorded recently
+      if (System.currentTimeMillis() < metaValue.timestamp + UNUSED_SCHEMA_DELETION_TIME_GAP) {
+        continue;
+      }
+      schemaIds.addAll(metaValue.storeValueSchemaIdsWrittenPerStoreVersion);
+    }
+    return schemaIds;
+  }
+
+  public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedValueSchemaIds) {
+    Set<Integer> inuseValueSchemaIds = getInUseValueSchemaIds(clusterName, storeName);
+    boolean isCommon = unusedValueSchemaIds.stream().anyMatch(inuseValueSchemaIds::contains);
+    if (isCommon) {
+      String msg = "For store " + storeName + " cannot delete value schema ids they being used. schema ids: "
+          + unusedValueSchemaIds;
+      LOGGER.error(msg);
+      throw new VeniceException(msg);
+    }
+    // delete the unused schemas.
+    unusedValueSchemaIds.forEach(id -> {
+      getHelixVeniceClusterResources(clusterName).getSchemaRepository().removeValueSchema(storeName, id);
+      LOGGER.info("Removed value schema with ID " + id + " for store " + storeName);
     });
   }
 
@@ -4238,10 +4375,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void internalUpdateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
-    /**
-     * Check whether the command affects this region.
-     */
+    // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
+    // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
+    // if the regions filter only specifies one region, which is the parent region.
     boolean onlyParentRegionFilter = false;
+
+    // Check whether the command affects this region.
     if (params.getRegionsFilter().isPresent()) {
       Set<String> regionsFilter = parseRegionsFilterList(params.getRegionsFilter().get());
       if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
@@ -4259,11 +4398,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         onlyParentRegionFilter = true;
       }
     }
-
-    // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
-    // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
-    // only if the regions filter only specifies the parent region.
-    boolean childRegionOnlyConfigUpdateAllowed = !isParent() || onlyParentRegionFilter;
 
     Store originalStore = getStore(clusterName, storeName);
     if (originalStore == null) {
@@ -4327,6 +4461,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
+    Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4393,15 +4528,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (currentVersion.isPresent()) {
-        if (childRegionOnlyConfigUpdateAllowed) {
-          setStoreCurrentVersion(clusterName, storeName, currentVersion.get());
-        } else {
-          LOGGER.info(
-              "Skipping current version update for store: {} in cluster: {} because it is not allowed in the "
-                  + "parent region",
-              storeName,
-              clusterName);
-        }
+        setStoreCurrentVersion(clusterName, storeName, currentVersion.get(), onlyParentRegionFilter);
       }
 
       if (largestUsedVersionNumber.isPresent()) {
@@ -4594,6 +4721,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           return store;
         });
       }
+
+      unusedSchemaDeletionEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setUnusedSchemaDeletionEnabled(aBoolean);
+        return store;
+      }));
 
       storageNodeReadQuotaEnabled
           .ifPresent(aBoolean -> setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));

@@ -109,6 +109,19 @@ public class PubSubConsumerAdapterTest {
   @BeforeMethod(alwaysRun = true)
   public void setUpMethod() {
     String clientId = Utils.getUniqueString("test-consumer-");
+    Properties pubSubProperties = getPubSubProperties();
+    pubSubProperties.putAll(pubSubBrokerWrapper.getAdditionalConfig());
+    pubSubProperties.putAll(pubSubBrokerWrapper.getMergeableConfigs());
+    VeniceProperties veniceProperties = new VeniceProperties(pubSubProperties);
+    pubSubConsumerAdapter = pubSubClientsFactory.getConsumerAdapterFactory()
+        .create(veniceProperties, false, pubSubMessageDeserializer, clientId);
+    pubSubProducerAdapterLazy =
+        Lazy.of(() -> pubSubClientsFactory.getProducerAdapterFactory().create(veniceProperties, clientId, null));
+    pubSubAdminAdapterLazy =
+        Lazy.of(() -> pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository));
+  }
+
+  protected Properties getPubSubProperties() {
     Properties properties = new Properties();
     properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.setProperty(
@@ -117,16 +130,7 @@ public class PubSubConsumerAdapterTest {
     properties.setProperty(PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE, "true");
     properties
         .setProperty(PUBSUB_CONSUMER_POSITION_RESET_STRATEGY, PUBSUB_CONSUMER_POSITION_RESET_STRATEGY_DEFAULT_VALUE);
-    properties.putAll(pubSubBrokerWrapper.getAdditionalConfig());
-    properties.putAll(pubSubBrokerWrapper.getMergeableConfigs());
-    VeniceProperties veniceProperties = new VeniceProperties(properties);
-
-    pubSubConsumerAdapter = pubSubClientsFactory.getConsumerAdapterFactory()
-        .create(veniceProperties, false, pubSubMessageDeserializer, clientId);
-    pubSubProducerAdapterLazy =
-        Lazy.of(() -> pubSubClientsFactory.getProducerAdapterFactory().create(veniceProperties, clientId, null));
-    pubSubAdminAdapterLazy =
-        Lazy.of(() -> pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository));
+    return properties;
   }
 
   @AfterMethod(alwaysRun = true)

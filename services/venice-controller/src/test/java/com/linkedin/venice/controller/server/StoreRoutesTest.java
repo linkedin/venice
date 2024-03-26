@@ -106,6 +106,17 @@ public class StoreRoutesTest {
             MultiStoreStatusResponse.class);
     Assert.assertEquals(multiStoreStatusResponse.getCluster(), TEST_CLUSTER);
     Assert.assertEquals(multiStoreStatusResponse.getStoreStatusMap(), Collections.singletonMap(TEST_STORE_NAME, "1"));
+
+    doCallRealMethod().when(mockAdmin).getBackupVersionsForMultiColos(TEST_CLUSTER, TEST_STORE_NAME);
+    doReturn(2).when(mockAdmin).getBackupVersion(TEST_CLUSTER, TEST_STORE_NAME);
+    Route getBackupVersionRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getBackupVersion(mockAdmin);
+    multiStoreStatusResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            getBackupVersionRoute.handle(request, mock(Response.class)).toString(),
+            MultiStoreStatusResponse.class);
+    Assert.assertEquals(multiStoreStatusResponse.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(multiStoreStatusResponse.getStoreStatusMap(), Collections.singletonMap(TEST_STORE_NAME, "2"));
   }
 
   @Test

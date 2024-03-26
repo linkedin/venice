@@ -20,6 +20,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
@@ -32,6 +34,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -559,5 +562,43 @@ public class VeniceWriterUnitTest {
 
     // Verify that the close(false) method will be called twice.
     verify(mockedProducer, times(2)).close(anyString(), anyInt(), eq(false));
+  }
+
+  /**
+   * This is a regression test for the VeniceWriter issue where the VeniceWriter could run into
+   * infinite recursions and eventually run out of the stack space and throw StackOverflowError.
+   *
+   * The conditions to trigger this issue are:
+   * 1. The VeniceWriter's cached segment is neither started nor ended.
+   * 2. The elapsed time for the segment is greater than MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testVeniceWriterShouldNotCauseStackOverflowError() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+
+    Properties writerProperties = new Properties();
+    writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 1);
+    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder("test").setPartitionCount(1).build();
+
+    try (VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter<>(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer)) {
+      Segment seg = writer.getSegment(0, false);
+      seg.setStarted(false);
+
+      // Verify that segment is neither started nor ended.
+      assertFalse(seg.isStarted());
+      assertFalse(seg.isEnded());
+
+      // Sleep for 0.1 second to make sure the elapsed time for the segment is greater than
+      // MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS.
+      Thread.sleep(100);
+
+      // Send an SOS control message to the topic and it should not cause StackOverflowError.
+      writer.sendStartOfSegment(0, null);
+    } catch (Throwable t) {
+      fail("VeniceWriter.close() should not cause StackOverflowError", t);
+    }
   }
 }

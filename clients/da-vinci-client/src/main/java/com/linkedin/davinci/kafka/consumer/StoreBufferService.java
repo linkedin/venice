@@ -4,6 +4,7 @@ import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
+import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -16,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PartitionUtils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +52,307 @@ import org.apache.logging.log4j.Logger;
  * thread pool to speed up polling from local Kafka brokers.
  */
 public class StoreBufferService extends AbstractStoreBufferService {
+  private static final Logger LOGGER = LogManager.getLogger(StoreBufferService.class);
+  private final int drainerNum;
+  private final ArrayList<MemoryBoundBlockingQueue<QueueNode>> blockingQueueArr;
+  private ExecutorService executorService;
+  private final List<StoreBufferDrainer> drainerList = new ArrayList<>();
+  private final long bufferCapacityPerDrainer;
+
+  private final RecordHandler leaderRecordHandler;
+  private final StoreBufferServiceStats storeBufferServiceStats;
+
+  public StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      MetricsRepository metricsRepository) {
+    this.drainerNum = drainerNum;
+    this.blockingQueueArr = new ArrayList<>();
+    this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
+    for (int cur = 0; cur < drainerNum; ++cur) {
+      this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
+    }
+    this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
+    this.storeBufferServiceStats = new StoreBufferServiceStats(
+        metricsRepository,
+        this::getTotalMemoryUsage,
+        this::getTotalRemainingMemory,
+        this::getMaxMemoryUsagePerDrainer,
+        this::getMinMemoryUsagePerDrainer);
+  }
+
+  /**
+   * Constructor for testing
+   */
+  public StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      StoreBufferServiceStats stats) {
+    this.drainerNum = drainerNum;
+    this.blockingQueueArr = new ArrayList<>();
+    this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
+    for (int cur = 0; cur < drainerNum; ++cur) {
+      this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
+    }
+    this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
+    this.storeBufferServiceStats = stats;
+  }
+
+  protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      int subPartition) {
+    int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, subPartition);
+    return blockingQueueArr.get(drainerIndex);
+  }
+
+  protected int getDrainerIndexForConsumerRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      int subPartition) {
+    /**
+     * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
+     * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
+     * positive for most of time to guarantee even partition assignment.
+     */
+    int topicHash = Math.abs(consumerRecord.getTopicPartition().getPubSubTopic().hashCode() / 2);
+    return Math.abs((topicHash + subPartition) % this.drainerNum);
+  }
+
+  @Override
+  public void putConsumerRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      StoreIngestionTask ingestionTask,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestampNs) throws InterruptedException {
+    if (leaderProducedRecordContext == null) {
+      /**
+       * The last queued record persisted future will only be setup when {@param leaderProducedRecordContext} is 'null',
+       * since {@link LeaderProducedRecordContext#persistedToDBFuture} is a superset of this, which is tracking the
+       * end-to-end completeness when producing to local Kafka is needed.
+       */
+      CompletableFuture<Void> recordFuture = new CompletableFuture<>();
+      getDrainerForConsumerRecord(consumerRecord, subPartition).put(
+          new FollowerQueueNode(
+              consumerRecord,
+              ingestionTask,
+              kafkaUrl,
+              beforeProcessingRecordTimestampNs,
+              recordFuture));
+
+      // Setup the last queued record's future
+      PartitionConsumptionState partitionConsumptionState =
+          ingestionTask.getPartitionConsumptionState(consumerRecord.getTopicPartition().getPartitionNumber());
+      if (partitionConsumptionState != null) {
+        partitionConsumptionState.setLastQueuedRecordPersistedFuture(recordFuture);
+      }
+    } else {
+      leaderRecordHandler.handle(
+          consumerRecord,
+          ingestionTask,
+          leaderProducedRecordContext,
+          subPartition,
+          kafkaUrl,
+          beforeProcessingRecordTimestampNs);
+    }
+  }
+
+  private interface RecordHandler {
+    void handle(
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        StoreIngestionTask ingestionTask,
+        LeaderProducedRecordContext leaderProducedRecordContext,
+        int subPartition,
+        String kafkaUrl,
+        long beforeProcessingRecordTimestamp) throws InterruptedException;
+  }
+
+  private void queueLeaderRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      StoreIngestionTask ingestionTask,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) throws InterruptedException {
+    getDrainerForConsumerRecord(consumerRecord, subPartition).put(
+        new LeaderQueueNode(
+            consumerRecord,
+            ingestionTask,
+            kafkaUrl,
+            beforeProcessingRecordTimestamp,
+            leaderProducedRecordContext));
+  }
+
+  private static void processRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      StoreIngestionTask ingestionTask,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestampNs) {
+    ingestionTask.processConsumerRecord(
+        consumerRecord,
+        leaderProducedRecordContext,
+        subPartition,
+        kafkaUrl,
+        beforeProcessingRecordTimestampNs);
+
+    // complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done here.
+    if (leaderProducedRecordContext != null) {
+      leaderProducedRecordContext.completePersistedToDBFuture(null);
+    }
+  }
+
+  /**
+   * This function is used to drain all the records for the specified topic + partition.
+   * The reason is that we don't want overlap Kafka messages between two different subscriptions,
+   * which could introduce complicate dependencies in {@link StoreIngestionTask}.
+   * @param topicPartition for which to drain buffer
+   * @throws InterruptedException
+   */
+  public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition) throws InterruptedException {
+    int retryNum = 1000;
+    int sleepIntervalInMS = 50;
+    internalDrainBufferedRecordsFromTopicPartition(topicPartition, retryNum, sleepIntervalInMS);
+  }
+
+  protected void internalDrainBufferedRecordsFromTopicPartition(
+      PubSubTopicPartition topicPartition,
+      int retryNum,
+      int sleepIntervalInMS) throws InterruptedException {
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
+    int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber());
+    BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
+    if (!drainerList.get(workerIndex).isRunning.get()) {
+      throw new VeniceException(
+          "Drainer thread " + workerIndex + " has stopped running, cannot drain the topic "
+              + topicPartition.getPubSubTopic().getName());
+    }
+
+    QueueNode fakeNode = new QueueNode(fakeRecord, null, "dummyKafkaUrl", 0);
+
+    int cur = 0;
+    while (cur++ < retryNum) {
+      if (!blockingQueue.contains(fakeNode)) {
+        LOGGER.info(
+            "The blocking queue of store writer thread: {} doesn't contain any record for: {}",
+            workerIndex,
+            topicPartition);
+        return;
+      }
+      Thread.sleep(sleepIntervalInMS);
+    }
+    String errorMessage = "There are still some records left in the blocking queue of store writer thread: "
+        + workerIndex + " for topic: " + topicPartition.getPubSubTopic().getName() + " partition after retry for "
+        + retryNum + " times";
+    LOGGER.error(errorMessage);
+    throw new VeniceException(errorMessage);
+  }
+
+  @Override
+  public boolean startInner() {
+    this.executorService = Executors.newFixedThreadPool(drainerNum, new DaemonThreadFactory("Store-writer"));
+
+    // Submit all the buffer drainers
+    for (int cur = 0; cur < drainerNum; ++cur) {
+      StoreBufferDrainer drainer = new StoreBufferDrainer(this.blockingQueueArr.get(cur), cur, storeBufferServiceStats);
+      this.executorService.submit(drainer);
+      drainerList.add(drainer);
+    }
+    this.executorService.shutdown();
+    return true;
+  }
+
+  @Override
+  public void stopInner() throws Exception {
+    // Graceful shutdown
+    drainerList.forEach(drainer -> drainer.stop());
+    if (this.executorService != null) {
+      this.executorService.shutdownNow();
+      this.executorService.awaitTermination(10, TimeUnit.SECONDS);
+    }
+  }
+
+  @Override
+  public int getDrainerCount() {
+    return blockingQueueArr.size();
+  }
+
+  @Override
+  public long getDrainerQueueMemoryUsage(int index) {
+    return blockingQueueArr.get(index).getMemoryUsage();
+  }
+
+  @Override
+  public long getTotalMemoryUsage() {
+    long totalUsage = 0;
+    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
+      totalUsage += queue.getMemoryUsage();
+    }
+    return totalUsage;
+  }
+
+  @Override
+  public long getTotalRemainingMemory() {
+    long totalRemaining = 0;
+    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
+      totalRemaining += queue.remainingMemoryCapacityInByte();
+    }
+    return totalRemaining;
+  }
+
+  @Override
+  public long getMaxMemoryUsagePerDrainer() {
+    long maxUsage = 0;
+    boolean slowDrainerExists = false;
+
+    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
+      maxUsage = Math.max(maxUsage, queue.getMemoryUsage());
+      if (queue.getMemoryUsage() > 0.8 * bufferCapacityPerDrainer) {
+        slowDrainerExists = true;
+      }
+    }
+
+    for (int index = 0; index < blockingQueueArr.size(); index++) {
+      StoreBufferDrainer drainer = drainerList.get(index);
+      // print drainer info when there is a slow drainer.
+      if (slowDrainerExists) {
+        MemoryBoundBlockingQueue<QueueNode> queue = blockingQueueArr.get(index);
+        int count = queue.getMemoryUsage() > 0.8 * bufferCapacityPerDrainer ? 5 : 1;
+        List<Map.Entry<PubSubTopicPartition, Long>> slowestEntries = drainer.topicToTimeSpent.entrySet()
+            .stream()
+            .sorted(comparing(Map.Entry::getValue, reverseOrder()))
+            .limit(count)
+            .collect(toList());
+        int finalIndex = index;
+        slowestEntries.forEach(
+            entry -> LOGGER
+                .info("In drainer number {}, time spent on {} : {} ms", finalIndex, entry.getKey(), entry.getValue()));
+      }
+      drainer.topicToTimeSpent.clear();
+    }
+
+    return maxUsage;
+  }
+
+  /** Used for testing */
+  Map<PubSubTopicPartition, Long> getTopicToTimeSpentMap(int i) {
+    return drainerList.get(i).topicToTimeSpent;
+  }
+
+  @Override
+  public long getMinMemoryUsagePerDrainer() {
+    long minUsage = Long.MAX_VALUE;
+    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
+      minUsage = Math.min(minUsage, queue.getMemoryUsage());
+    }
+    return minUsage;
+  }
+
   /**
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
@@ -227,10 +530,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final int drainerIndex;
     private final ConcurrentMap<PubSubTopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
+    private final StoreBufferServiceStats stats;
 
-    public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue, int drainerIndex) {
+    public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue, int drainerIndex, StoreBufferServiceStats stats) {
       this.blockingQueue = blockingQueue;
       this.drainerIndex = drainerIndex;
+      this.stats = stats;
     }
 
     public void stop() {
@@ -273,10 +578,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
           if (recordPersistedFuture != null) {
             recordPersistedFuture.complete(null);
           }
-
-          topicToTimeSpent.compute(
-              consumerRecord.getTopicPartition(),
-              (K, V) -> (V == null ? 0 : V) + System.currentTimeMillis() - startTime);
+          long latencyInMS = System.currentTimeMillis() - startTime;
+          this.stats.recordInternalProcessingLatency(latencyInMS);
+          topicToTimeSpent.compute(consumerRecord.getTopicPartition(), (K, V) -> (V == null ? 0 : V) + latencyInMS);
         } catch (Throwable e) {
           if (e instanceof InterruptedException) {
             LOGGER.error("Drainer {} received InterruptedException, will exit", drainerIndex);
@@ -298,6 +602,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
             logBuilder.append(consumerRecordString);
           }
           LOGGER.error(logBuilder.toString(), e);
+          stats.recordInternalProcessingError();
 
           /**
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.
@@ -329,281 +634,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
       }
       LOGGER.info("Current StoreBufferDrainer {} stopped", drainerIndex);
     }
-  }
-
-  private static final Logger LOGGER = LogManager.getLogger(StoreBufferService.class);
-  private final int drainerNum;
-  private final ArrayList<MemoryBoundBlockingQueue<QueueNode>> blockingQueueArr;
-  private ExecutorService executorService;
-  private final List<StoreBufferDrainer> drainerList = new ArrayList<>();
-  private final long bufferCapacityPerDrainer;
-
-  private final RecordHandler leaderRecordHandler;
-
-  public StoreBufferService(
-      int drainerNum,
-      long bufferCapacityPerDrainer,
-      long bufferNotifyDelta,
-      boolean queueLeaderWrites) {
-    this.drainerNum = drainerNum;
-    this.blockingQueueArr = new ArrayList<>();
-    this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
-    for (int cur = 0; cur < drainerNum; ++cur) {
-      this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
-    }
-    this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
-  }
-
-  protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      int subPartition) {
-    int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, subPartition);
-    return blockingQueueArr.get(drainerIndex);
-  }
-
-  protected int getDrainerIndexForConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      int subPartition) {
-    /**
-     * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
-     * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
-     * positive for most of time to guarantee even partition assignment.
-     */
-    int topicHash = Math.abs(consumerRecord.getTopicPartition().getPubSubTopic().hashCode() / 2);
-    return Math.abs((topicHash + subPartition) % this.drainerNum);
-  }
-
-  @Override
-  public void putConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      StoreIngestionTask ingestionTask,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
-      String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) throws InterruptedException {
-    if (leaderProducedRecordContext == null) {
-      /**
-       * The last queued record persisted future will only be setup when {@param leaderProducedRecordContext} is 'null',
-       * since {@link LeaderProducedRecordContext#persistedToDBFuture} is a superset of this, which is tracking the
-       * end-to-end completeness when producing to local Kafka is needed.
-       */
-      CompletableFuture<Void> recordFuture = new CompletableFuture<>();
-      getDrainerForConsumerRecord(consumerRecord, subPartition).put(
-          new FollowerQueueNode(
-              consumerRecord,
-              ingestionTask,
-              kafkaUrl,
-              beforeProcessingRecordTimestampNs,
-              recordFuture));
-
-      // Setup the last queued record's future
-      PartitionConsumptionState partitionConsumptionState =
-          ingestionTask.getPartitionConsumptionState(consumerRecord.getTopicPartition().getPartitionNumber());
-      if (partitionConsumptionState != null) {
-        partitionConsumptionState.setLastQueuedRecordPersistedFuture(recordFuture);
-      }
-    } else {
-      leaderRecordHandler.handle(
-          consumerRecord,
-          ingestionTask,
-          leaderProducedRecordContext,
-          subPartition,
-          kafkaUrl,
-          beforeProcessingRecordTimestampNs);
-    }
-  }
-
-  private interface RecordHandler {
-    void handle(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-        StoreIngestionTask ingestionTask,
-        LeaderProducedRecordContext leaderProducedRecordContext,
-        int subPartition,
-        String kafkaUrl,
-        long beforeProcessingRecordTimestamp) throws InterruptedException;
-  }
-
-  private void queueLeaderRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      StoreIngestionTask ingestionTask,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
-      String kafkaUrl,
-      long beforeProcessingRecordTimestamp) throws InterruptedException {
-    getDrainerForConsumerRecord(consumerRecord, subPartition).put(
-        new LeaderQueueNode(
-            consumerRecord,
-            ingestionTask,
-            kafkaUrl,
-            beforeProcessingRecordTimestamp,
-            leaderProducedRecordContext));
-  }
-
-  private static void processRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      StoreIngestionTask ingestionTask,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
-      String kafkaUrl,
-      long beforeProcessingRecordTimestampNs) {
-    ingestionTask.processConsumerRecord(
-        consumerRecord,
-        leaderProducedRecordContext,
-        subPartition,
-        kafkaUrl,
-        beforeProcessingRecordTimestampNs);
-
-    // complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done here.
-    if (leaderProducedRecordContext != null) {
-      leaderProducedRecordContext.completePersistedToDBFuture(null);
-    }
-  }
-
-  /**
-   * This function is used to drain all the records for the specified topic + partition.
-   * The reason is that we don't want overlap Kafka messages between two different subscriptions,
-   * which could introduce complicate dependencies in {@link StoreIngestionTask}.
-   * @param topicPartition for which to drain buffer
-   * @throws InterruptedException
-   */
-  public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition) throws InterruptedException {
-    int retryNum = 1000;
-    int sleepIntervalInMS = 50;
-    internalDrainBufferedRecordsFromTopicPartition(topicPartition, retryNum, sleepIntervalInMS);
-  }
-
-  protected void internalDrainBufferedRecordsFromTopicPartition(
-      PubSubTopicPartition topicPartition,
-      int retryNum,
-      int sleepIntervalInMS) throws InterruptedException {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
-    int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber());
-    BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
-    if (!drainerList.get(workerIndex).isRunning.get()) {
-      throw new VeniceException(
-          "Drainer thread " + workerIndex + " has stopped running, cannot drain the topic "
-              + topicPartition.getPubSubTopic().getName());
-    }
-
-    QueueNode fakeNode = new QueueNode(fakeRecord, null, "dummyKafkaUrl", 0);
-
-    int cur = 0;
-    while (cur++ < retryNum) {
-      if (!blockingQueue.contains(fakeNode)) {
-        LOGGER.info(
-            "The blocking queue of store writer thread: {} doesn't contain any record for: {}",
-            workerIndex,
-            topicPartition);
-        return;
-      }
-      Thread.sleep(sleepIntervalInMS);
-    }
-    String errorMessage = "There are still some records left in the blocking queue of store writer thread: "
-        + workerIndex + " for topic: " + topicPartition.getPubSubTopic().getName() + " partition after retry for "
-        + retryNum + " times";
-    LOGGER.error(errorMessage);
-    throw new VeniceException(errorMessage);
-  }
-
-  @Override
-  public boolean startInner() {
-    this.executorService = Executors.newFixedThreadPool(drainerNum, new DaemonThreadFactory("Store-writer"));
-
-    // Submit all the buffer drainers
-    for (int cur = 0; cur < drainerNum; ++cur) {
-      StoreBufferDrainer drainer = new StoreBufferDrainer(this.blockingQueueArr.get(cur), cur);
-      this.executorService.submit(drainer);
-      drainerList.add(drainer);
-    }
-    this.executorService.shutdown();
-    return true;
-  }
-
-  @Override
-  public void stopInner() throws Exception {
-    // Graceful shutdown
-    drainerList.forEach(drainer -> drainer.stop());
-    if (this.executorService != null) {
-      this.executorService.shutdownNow();
-      this.executorService.awaitTermination(10, TimeUnit.SECONDS);
-    }
-  }
-
-  @Override
-  public int getDrainerCount() {
-    return blockingQueueArr.size();
-  }
-
-  @Override
-  public long getDrainerQueueMemoryUsage(int index) {
-    return blockingQueueArr.get(index).getMemoryUsage();
-  }
-
-  @Override
-  public long getTotalMemoryUsage() {
-    long totalUsage = 0;
-    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
-      totalUsage += queue.getMemoryUsage();
-    }
-    return totalUsage;
-  }
-
-  @Override
-  public long getTotalRemainingMemory() {
-    long totalRemaining = 0;
-    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
-      totalRemaining += queue.remainingMemoryCapacityInByte();
-    }
-    return totalRemaining;
-  }
-
-  @Override
-  public long getMaxMemoryUsagePerDrainer() {
-    long maxUsage = 0;
-    boolean slowDrainerExists = false;
-
-    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
-      maxUsage = Math.max(maxUsage, queue.getMemoryUsage());
-      if (queue.getMemoryUsage() > 0.8 * bufferCapacityPerDrainer) {
-        slowDrainerExists = true;
-      }
-    }
-
-    for (int index = 0; index < blockingQueueArr.size(); index++) {
-      StoreBufferDrainer drainer = drainerList.get(index);
-      // print drainer info when there is a slow drainer.
-      if (slowDrainerExists) {
-        MemoryBoundBlockingQueue<QueueNode> queue = blockingQueueArr.get(index);
-        int count = queue.getMemoryUsage() > 0.8 * bufferCapacityPerDrainer ? 5 : 1;
-        List<Map.Entry<PubSubTopicPartition, Long>> slowestEntries = drainer.topicToTimeSpent.entrySet()
-            .stream()
-            .sorted(comparing(Map.Entry::getValue, reverseOrder()))
-            .limit(count)
-            .collect(toList());
-
-        int finalIndex = index;
-        slowestEntries.forEach(
-            entry -> LOGGER
-                .info("In drainer number {}, time spent on {} : {} ms", finalIndex, entry.getKey(), entry.getValue()));
-      }
-      drainer.topicToTimeSpent.clear();
-    }
-
-    return maxUsage;
-  }
-
-  /** Used for testing */
-  Map<PubSubTopicPartition, Long> getTopicToTimeSpentMap(int i) {
-    return drainerList.get(i).topicToTimeSpent;
-  }
-
-  @Override
-  public long getMinMemoryUsagePerDrainer() {
-    long minUsage = Long.MAX_VALUE;
-    for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
-      minUsage = Math.min(minUsage, queue.getMemoryUsage());
-    }
-    return minUsage;
   }
 
   private static class FakePubSubMessage implements PubSubMessage {

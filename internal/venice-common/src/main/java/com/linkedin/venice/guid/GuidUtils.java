@@ -1,11 +1,14 @@
 package com.linkedin.venice.guid;
 
-import com.linkedin.venice.ConfigKeys;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
+
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.apache.avro.specific.FixedSize;
 
@@ -31,17 +34,9 @@ public class GuidUtils {
     if (implName.equals(JavaUtilGuidV4Generator.class.getName())) {
       guidGenerator = new JavaUtilGuidV4Generator();
     } else if (implName.equals(DeterministicGuidGenerator.class.getName())) {
-      String jobId = properties.getString(ConfigKeys.PUSH_JOB_COMPUTE_JOB_ID, (String) null);
-      long guidGeneratorPrefix;
-      if (jobId == null) {
-        guidGeneratorPrefix = 0;
-      } else {
-        guidGeneratorPrefix = jobId.hashCode();
-      }
-
       guidGenerator = new DeterministicGuidGenerator(
-          guidGeneratorPrefix,
-          properties.getLong(ConfigKeys.PUSH_JOB_COMPUTE_TASK_ID, 0L));
+          properties.getLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS),
+          properties.getLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
     } else {
       Class<? extends GuidGenerator> implClass = ReflectUtils.loadClass(implName);
       guidGenerator = ReflectUtils.callConstructor(implClass, new Class[0], new Object[0]);
@@ -49,7 +44,7 @@ public class GuidUtils {
     return guidGenerator;
   }
 
-  static final Charset CHARSET = Charset.forName("ISO-8859-1");
+  static final Charset CHARSET = StandardCharsets.ISO_8859_1;
 
   public static GUID getGuidFromCharSequence(CharSequence charSequence) {
     GUID guid = new GUID();

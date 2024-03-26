@@ -65,7 +65,7 @@ import org.testng.Assert;
 
 
 public class TestWriteUtils {
-  public static final Logger LOGGER = LogManager.getLogger(TestWriteUtils.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestWriteUtils.class);
   public static final int DEFAULT_USER_DATA_RECORD_COUNT = 100;
   public static final String DEFAULT_USER_DATA_VALUE_PREFIX = "test_name_";
 
@@ -716,7 +716,7 @@ public class TestWriteUtils {
     return writeAvroFile(
         parentDir,
         fileName,
-        getETLStoreSchemaString(ETL_KEY_SCHEMA.toString(), ETL_VALUE_SCHEMA.toString()),
+        getETLFileSchema(ETL_KEY_SCHEMA, ETL_VALUE_SCHEMA),
         (recordSchema, writer) -> {
           for (int i = 1; i <= 50; ++i) {
             GenericRecord user = new GenericData.Record(recordSchema);
@@ -727,9 +727,6 @@ public class TestWriteUtils {
             key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
             value.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
 
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
             user.put("metadata", new HashMap<>());
 
             user.put("key", key);
@@ -747,9 +744,6 @@ public class TestWriteUtils {
 
             key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
             user.put("metadata", new HashMap<>());
 
             user.put("key", key);
@@ -762,11 +756,54 @@ public class TestWriteUtils {
         });
   }
 
+  public static Schema writeETLFileWithUserSchemaAndNullDefaultValue(File parentDir) throws IOException {
+    String fileName = "simple_etl_user_with_default.avro";
+    Schema schema = getETLFileSchemaWithNullDefaultValue(ETL_KEY_SCHEMA, ETL_VALUE_SCHEMA);
+    AvroCompatibilityHelper.parse(schema.toString());
+    return writeAvroFile(parentDir, fileName, schema, (recordSchema, writer) -> {
+      for (int i = 1; i <= 50; ++i) {
+        GenericRecord user = new GenericData.Record(recordSchema);
+
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+        GenericRecord value = new GenericData.Record(ETL_VALUE_SCHEMA);
+
+        key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        value.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+
+        user.put("metadata", new HashMap<>());
+
+        user.put("key", key);
+        user.put("value", value);
+        user.put("offset", (long) i);
+        user.put("DELETED_TS", null);
+
+        writer.append(user);
+      }
+
+      for (int i = 51; i <= 100; ++i) {
+        GenericRecord user = new GenericData.Record(recordSchema);
+
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+
+        key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+
+        user.put("metadata", new HashMap<>());
+
+        user.put("key", key);
+        user.put("value", null);
+        user.put("offset", (long) i);
+        user.put("DELETED_TS", (long) i);
+
+        writer.append(user);
+      }
+    });
+  }
+
   public static Schema writeETLFileWithUnionWithNullSchema(File parentDir) throws IOException {
     return writeAvroFile(
         parentDir,
         "simple_etl_union_with_null.avro",
-        getETLStoreSchemaString(ETL_KEY_SCHEMA.toString(), ETL_UNION_VALUE_WITH_NULL_SCHEMA.toString()),
+        getETLFileSchema(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITH_NULL_SCHEMA),
         (recordSchema, writer) -> {
           for (int i = 1; i <= 25; ++i) {
             GenericRecord user = new GenericData.Record(recordSchema);
@@ -775,9 +812,6 @@ public class TestWriteUtils {
 
             key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
             user.put("metadata", new HashMap<>());
 
             user.put("key", key);
@@ -795,9 +829,6 @@ public class TestWriteUtils {
 
             key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
             user.put("metadata", new HashMap<>());
 
             user.put("key", key);
@@ -815,9 +846,6 @@ public class TestWriteUtils {
 
             key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
             user.put("metadata", new HashMap<>());
 
             user.put("key", key);
@@ -835,7 +863,7 @@ public class TestWriteUtils {
     return writeAvroFile(
         parentDir,
         "simple_etl_union_without_null.avro",
-        getETLStoreSchemaString(ETL_KEY_SCHEMA.toString(), ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA.toString()),
+        getETLFileSchema(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA),
         (recordSchema, writer) -> {
           for (int i = 1; i <= 25; ++i) {
             GenericRecord user = new GenericData.Record(recordSchema);
@@ -844,9 +872,6 @@ public class TestWriteUtils {
 
             key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
             user.put("metadata", new HashMap<>());
 
             user.put("key", key);
@@ -864,9 +889,6 @@ public class TestWriteUtils {
 
             key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
             user.put("metadata", new HashMap<>());
 
             user.put("key", key);
@@ -884,9 +906,6 @@ public class TestWriteUtils {
 
             key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
             user.put("metadata", new HashMap<>());
 
             user.put("key", key);
@@ -899,31 +918,53 @@ public class TestWriteUtils {
         });
   }
 
-  public static Schema getETLStoreSchemaString(String keySchema, String valueSchema) {
-    String finalValueSchema =
-        ETLUtils.transformValueSchemaForETL(AvroCompatibilityHelper.parse(valueSchema)).toString();
-    String fileSchema = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"storeName_v1\",\n"
-        + "  \"namespace\": \"com.linkedin.gobblin.venice.model\",\n" + "  \"fields\": [\n" + "    {\n"
-        + "      \"name\": \"opalSegmentIdPart\",\n" + "      \"type\": \"int\",\n"
-        + "      \"doc\": \"Opal segment id partition\"\n" + "    },\n" + "    {\n"
-        + "      \"name\": \"opalSegmentIdSeq\",\n" + "      \"type\": \"int\",\n"
-        + "      \"doc\": \"Opal segment id sequence\"\n" + "    },\n" + "    {\n"
-        + "      \"name\": \"opalSegmentOffset\",\n" + "      \"type\": \"long\",\n"
-        + "      \"doc\": \"Opal segment offset\"\n" + "    },\n" + "    {\n" + "      \"name\": \"key\",\n"
-        + "      \"type\":" + keySchema + ",\n" + "      \"doc\": \"Raw bytes of the key\"\n" + "    },\n" + "    {\n"
-        + "      \"name\": \"value\",\n" + "      \"type\":" + finalValueSchema + ",\n"
-        + "      \"doc\": \"Raw bytes of the value\"\n" + "    },\n" + "    {\n" + "      \"name\": \"offset\",\n"
-        + "      \"type\": \"long\",\n" + "      \"doc\": \"The offset of this record in Kafka\"\n" + "    },\n"
-        + "    {\n" + "      \"name\": \"DELETED_TS\",\n" + "      \"type\": [\n" + "        \"null\",\n"
-        + "        \"long\"\n" + "      ],\n"
-        + "      \"doc\": \"If the current record is a PUT, this field will be null; if it's a DELETE, this field will be the offset of the record in Kafka\",\n"
-        + "      \"default\": null\n" + "    },\n" + "    {\n" + "      \"name\": \"metadata\",\n"
-        + "      \"type\": {\n" + "        \"type\": \"map\",\n" + "        \"values\": {\n"
-        + "          \"type\": \"string\",\n" + "          \"avro.java.string\": \"String\"\n" + "        },\n"
-        + "        \"avro.java.string\": \"String\"\n" + "      },\n"
-        + "      \"doc\": \"Metadata of the record; currently it contains the schemaId of the record\",\n"
-        + "      \"default\": {}\n" + "    }\n" + "  ]\n" + "}";
-    return AvroCompatibilityHelper.parse(fileSchema);
+  public static Schema getETLFileSchema(Schema keySchema, Schema valueSchema) {
+    Schema finalValueSchema = ETLUtils.transformValueSchemaForETL(valueSchema);
+    return Schema.createRecord(
+        "storeName_v1",
+        "",
+        "",
+        false,
+        Arrays.asList(
+            AvroCompatibilityHelper.newField(null).setName(DEFAULT_KEY_FIELD_PROP).setSchema(keySchema).build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName(DEFAULT_VALUE_FIELD_PROP)
+                .setSchema(finalValueSchema)
+                .build(),
+            AvroCompatibilityHelper.newField(null).setName("offset").setSchema(Schema.create(Schema.Type.LONG)).build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName("DELETED_TS")
+                .setSchema(Schema.createUnion(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.LONG)))
+                .build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName("metadata")
+                .setSchema(Schema.createMap(Schema.create(Schema.Type.STRING)))
+                .build()));
+  }
+
+  public static Schema getETLFileSchemaWithNullDefaultValue(Schema keySchema, Schema valueSchema) {
+    Schema finalValueSchema = ETLUtils.transformValueSchemaForETL(valueSchema);
+    return Schema.createRecord(
+        "storeName_v1",
+        "",
+        "",
+        false,
+        Arrays.asList(
+            AvroCompatibilityHelper.newField(null).setName(DEFAULT_KEY_FIELD_PROP).setSchema(keySchema).build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName(DEFAULT_VALUE_FIELD_PROP)
+                .setSchema(finalValueSchema)
+                .setDefault(null)
+                .build(),
+            AvroCompatibilityHelper.newField(null).setName("offset").setSchema(Schema.create(Schema.Type.LONG)).build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName("DELETED_TS")
+                .setSchema(Schema.createUnion(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.LONG)))
+                .build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName("metadata")
+                .setSchema(Schema.createMap(Schema.create(Schema.Type.STRING)))
+                .build()));
   }
 
   public static void runPushJob(String jobId, Properties props) {

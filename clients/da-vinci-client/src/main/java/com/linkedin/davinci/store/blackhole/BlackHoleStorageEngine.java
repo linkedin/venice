@@ -9,9 +9,9 @@ import java.util.Set;
 
 
 public class BlackHoleStorageEngine extends AbstractStorageEngine<BlackHoleStorageEnginePartition> {
-  public BlackHoleStorageEngine(String storeName) {
+  public BlackHoleStorageEngine(String storeVersionName) {
     super(
-        storeName,
+        storeVersionName,
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     restoreStoragePartitions();

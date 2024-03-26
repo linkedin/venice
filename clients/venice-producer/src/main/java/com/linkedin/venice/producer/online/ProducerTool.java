@@ -86,7 +86,7 @@ public class ProducerTool {
 
     CommandLine cmd = null;
     try {
-      cmd = new DefaultParser().parse(CLI_OPTIONS, args);
+      cmd = new DefaultParser(false).parse(CLI_OPTIONS, args);
     } catch (ParseException e) {
       System.out.println("[ERROR] " + e.getMessage());
       printHelp();

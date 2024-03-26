@@ -543,7 +543,8 @@ public class RetriableAvroGenericStoreClientTest {
             LONG_TAIL_RETRY_THRESHOLD_IN_MS * 2,
             keyNotFound,
             clientConfig),
-        clientConfig);
+        clientConfig,
+        timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (!batchGet) {
       testSingleGetAndValidateMetrics(false, false, false, false, keyNotFound);
@@ -568,7 +569,8 @@ public class RetriableAvroGenericStoreClientTest {
             LONG_TAIL_RETRY_THRESHOLD_IN_MS * 50,
             false,
             clientConfig),
-        clientConfig);
+        clientConfig,
+        timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (requestType.equals(RequestType.SINGLE_GET)) {
       testSingleGetAndValidateMetrics(false, false, true, false, false);
@@ -599,7 +601,8 @@ public class RetriableAvroGenericStoreClientTest {
             LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
             keyNotFound,
             clientConfig),
-        clientConfig);
+        clientConfig,
+        timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (!batchGet) {
       testSingleGetAndValidateMetrics(false, false, true, true, keyNotFound);
@@ -618,7 +621,8 @@ public class RetriableAvroGenericStoreClientTest {
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(true, 0, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS, false, clientConfig),
-        clientConfig);
+        clientConfig,
+        timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (requestType.equals(RequestType.SINGLE_GET)) {
       testSingleGetAndValidateMetrics(false, true, false, true, false);
@@ -643,7 +647,8 @@ public class RetriableAvroGenericStoreClientTest {
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(false, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, false, clientConfig),
-        clientConfig);
+        clientConfig,
+        timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (requestType.equals(RequestType.SINGLE_GET)) {
       testSingleGetAndValidateMetrics(false, false, true, false, false);
@@ -668,7 +673,8 @@ public class RetriableAvroGenericStoreClientTest {
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(true, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, false, clientConfig),
-        clientConfig);
+        clientConfig,
+        timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     /**
      *  When the request is closed exceptionally (when both original request and the retry throws exception),
@@ -699,7 +705,8 @@ public class RetriableAvroGenericStoreClientTest {
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(true, 0, true, 0, false, clientConfig),
-        clientConfig);
+        clientConfig,
+        timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     /**
      *  When the request is closed exceptionally (when both original request and the retry throws exception),

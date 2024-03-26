@@ -77,6 +77,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor checkLongRunningTasksLatencySensor;
   // Measure the latency in putting data into storage engine
   private final Sensor storageEnginePutLatencySensor;
+  // Measure the latency in deleting data from storage engine
+  private final Sensor storageEngineDeleteLatencySensor;
 
   /**
    * Measure the number of times a record was found in {@link PartitionConsumptionState#transientRecordMap} during UPDATE
@@ -130,16 +132,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    * Measure the count of tombstones created
    */
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
-
-  /**
-   * Measure the number of time request based metadata endpoint was invoked
-   */
-  private final Sensor requestBasedMetadataInvokeCount;
-
-  /**
-   * Measure the number of time request based metadata endpoint failed to respond
-   */
-  private final Sensor requestBasedMetadataFailureCount;
 
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
@@ -354,7 +346,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.checkLongRunningTasksLatencySensor,
         avgAndMax());
 
-    String storageEnginePutLatencySensorName = "storage_engine_put_latency";
+    String storageEnginePutLatencySensorName = "storage_engine_put_latency",
+        storageEngineDeleteLatencySensorName = "storage_engine_delete_latency";
     this.storageEnginePutLatencySensor = registerPerStoreAndTotalSensor(
         storageEnginePutLatencySensorName,
         totalStats,
@@ -362,6 +355,15 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Avg(),
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEnginePutLatencySensorName));
+
+    this.storageEngineDeleteLatencySensor = registerPerStoreAndTotalSensor(
+        storageEngineDeleteLatencySensorName,
+        totalStats,
+        () -> totalStats.storageEngineDeleteLatencySensor,
+        new Avg(),
+        new Max(),
+        TehutiUtils
+            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEngineDeleteLatencySensorName));
 
     this.writeComputeCacheHitCount = registerPerStoreAndTotalSensor(
         "write_compute_cache_hit_count",
@@ -416,18 +418,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.leaderIngestionActiveActiveDeleteLatencySensor,
         avgAndMax());
-
-    this.requestBasedMetadataInvokeCount = registerPerStoreAndTotalSensor(
-        "request_based_metadata_invoke_count",
-        totalStats,
-        () -> totalStats.requestBasedMetadataInvokeCount,
-        new Rate());
-
-    this.requestBasedMetadataFailureCount = registerPerStoreAndTotalSensor(
-        "request_based_metadata_failure_count",
-        totalStats,
-        () -> totalStats.requestBasedMetadataFailureCount,
-        new Rate());
   }
 
   /** Record a host-level byte consumption rate across all store versions */
@@ -528,6 +518,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     storageEnginePutLatencySensor.record(latency, currentTimeMs);
   }
 
+  public void recordStorageEngineDeleteLatency(double latency, long currentTimeMs) {
+    storageEngineDeleteLatencySensor.record(latency, currentTimeMs);
+  }
+
   public void recordWriteComputeCacheHitCount() {
     writeComputeCacheHitCount.record();
   }
@@ -590,13 +584,5 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordOffsetRegressionDCRError() {
     totalOffsetRegressionDCRErrorRate.record();
-  }
-
-  public void recordRequestBasedMetadataInvokeCount() {
-    requestBasedMetadataInvokeCount.record();
-  }
-
-  public void recordRequestBasedMetadataFailureCount() {
-    requestBasedMetadataFailureCount.record();
   }
 }

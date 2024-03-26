@@ -27,7 +27,8 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.IngestionMetadataRetriever;
+import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -149,7 +150,8 @@ public class StorageReadRequestHandlerTest {
   private final StorageEngineBackedCompressorFactory compressorFactory =
       mock(StorageEngineBackedCompressorFactory.class);
   private final DiskHealthCheckService healthCheckService = mock(DiskHealthCheckService.class);
-  private final MetadataRetriever metadataRetriever = mock(MetadataRetriever.class);
+  private final IngestionMetadataRetriever ingestionMetadataRetriever = mock(IngestionMetadataRetriever.class);
+  private final ReadMetadataRetriever readMetadataRetriever = mock(ReadMetadataRetriever.class);
   private final VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
   private final VenicePartitioner partitioner = new SimplePartitioner();
   private static final int amplificationFactor = 3;
@@ -180,7 +182,8 @@ public class StorageReadRequestHandlerTest {
         schemaRepository,
         compressorFactory,
         healthCheckService,
-        metadataRetriever,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
         serverConfig,
         context);
   }
@@ -198,7 +201,8 @@ public class StorageReadRequestHandlerTest {
         storageEngineRepository,
         storeRepository,
         schemaRepository,
-        metadataRetriever,
+        ingestionMetadataRetriever,
+        readMetadataRetriever,
         healthCheckService,
         false,
         parallelBatchGetEnabled,
@@ -380,7 +384,7 @@ public class StorageReadRequestHandlerTest {
         false,
         false);
     expectedAdminResponse.addPartitionConsumptionState(state);
-    doReturn(expectedAdminResponse).when(metadataRetriever).getConsumptionSnapshots(eq(topic), any());
+    doReturn(expectedAdminResponse).when(ingestionMetadataRetriever).getConsumptionSnapshots(eq(topic), any());
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
@@ -414,7 +418,7 @@ public class StorageReadRequestHandlerTest {
         + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
     byte[] expectedTopicPartitionContext = jsonStr.getBytes();
     expectedTopicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(expectedTopicPartitionContext);
-    doReturn(expectedTopicPartitionIngestionContextResponse).when(metadataRetriever)
+    doReturn(expectedTopicPartitionIngestionContextResponse).when(ingestionMetadataRetriever)
         .getTopicPartitionIngestionContext(eq(topic), eq(topic), eq(expectedPartitionId));
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
@@ -455,7 +459,7 @@ public class StorageReadRequestHandlerTest {
     expectedMetadataResponse.setVersionMetadata(versionProperties);
     expectedMetadataResponse.setKeySchema(keySchema);
     expectedMetadataResponse.setValueSchemas(valueSchemas);
-    doReturn(expectedMetadataResponse).when(metadataRetriever).getMetadata(eq(storeName));
+    doReturn(expectedMetadataResponse).when(readMetadataRetriever).getMetadata(eq(storeName));
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, testRequest);

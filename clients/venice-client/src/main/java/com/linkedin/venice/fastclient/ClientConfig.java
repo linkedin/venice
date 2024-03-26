@@ -50,10 +50,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long routingErrorRequestCounterResetDelayMS;
   private final long routingUnavailableRequestCounterResetDelayMS;
   private final int routingPendingRequestCounterInstanceBlockThreshold;
-
-  // Max allowed key count in batch-get request
-  private final int maxAllowedKeyCntInBatchGetReq;
-  protected static final int MAX_ALLOWED_KEY_COUNT_IN_BATCHGET = 150;
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   private final AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
   /**
@@ -108,7 +104,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       long routingErrorRequestCounterResetDelayMS,
       long routingUnavailableRequestCounterResetDelayMS,
       int routingPendingRequestCounterInstanceBlockThreshold,
-      int maxAllowedKeyCntInBatchGetReq,
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
       AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore,
       boolean isMetadataConnWarmupEnabled,
@@ -142,7 +137,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
     if (metricsRepository == null) {
-      metricsRepository = MetricsRepositoryUtils.createMultiThreadedMetricsRepository("client_async_gauge_thread");
+      metricsRepository = MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
     }
     // TODO consider changing the implementation or make it explicit that the config builder can only build once with
     // the same metricsRepository
@@ -191,8 +186,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold > 0
         ? routingPendingRequestCounterInstanceBlockThreshold
         : 50;
-
-    this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
 
     this.daVinciClientForMetaStore = daVinciClientForMetaStore;
     this.thinClientForMetaStore = thinClientForMetaStore;
@@ -317,10 +310,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return routingPendingRequestCounterInstanceBlockThreshold;
   }
 
-  public int getMaxAllowedKeyCntInBatchGetReq() {
-    return maxAllowedKeyCntInBatchGetReq;
-  }
-
   public DaVinciClient<StoreMetaKey, StoreMetaValue> getDaVinciClientForMetaStore() {
     return daVinciClientForMetaStore;
   }
@@ -425,12 +414,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long routingErrorRequestCounterResetDelayMS = -1;
     private long routingUnavailableRequestCounterResetDelayMS = -1;
     private int routingPendingRequestCounterInstanceBlockThreshold = -1;
-    /**
-     * maxAllowedKeyCntInBatchGetReq is set to {@link #MAX_ALLOWED_KEY_COUNT_IN_BATCHGET}
-     * for fast-client and can be overridden by client config.
-     */
-    private int maxAllowedKeyCntInBatchGetReq = MAX_ALLOWED_KEY_COUNT_IN_BATCHGET;
-
     private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
 
     private AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
@@ -570,11 +553,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setMaxAllowedKeyCntInBatchGetReq(int maxAllowedKeyCntInBatchGetReq) {
-      this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
-      return this;
-    }
-
     public ClientConfigBuilder<K, V, T> setLongTailRetryEnabledForSingleGet(boolean longTailRetryEnabledForSingleGet) {
       this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
       return this;
@@ -661,7 +639,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRoutingErrorRequestCounterResetDelayMS(routingErrorRequestCounterResetDelayMS)
           .setRoutingUnavailableRequestCounterResetDelayMS(routingUnavailableRequestCounterResetDelayMS)
           .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
-          .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeyCntInBatchGetReq)
           .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
           .setThinClientForMetaStore(thinClientForMetaStore)
           .setIsMetadataConnWarmupEnabled(isMetadataConnWarmupEnabled)
@@ -700,7 +677,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingErrorRequestCounterResetDelayMS,
           routingUnavailableRequestCounterResetDelayMS,
           routingPendingRequestCounterInstanceBlockThreshold,
-          maxAllowedKeyCntInBatchGetReq,
           daVinciClientForMetaStore,
           thinClientForMetaStore,
           isMetadataConnWarmupEnabled,

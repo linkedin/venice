@@ -507,6 +507,27 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
+  public void removeValueSchema(String storeName, int valueSchemaId) {
+    preCheckStoreCondition(storeName);
+    if (getSupersetOrLatestValueSchema(storeName).getId() == valueSchemaId) {
+      logger.error("Should not remove latest schema id {} for store {}", valueSchemaId, storeName);
+      return;
+    }
+    accessor.removeValueSchema(storeName, valueSchemaId);
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    if (store.isStoreMetaSystemStoreEnabled() && metaStoreWriter.isPresent()) {
+      Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
+      metaStoreWriter.get().writeStoreValueSchemas(storeName, valueSchemas);
+    }
+
+  }
+
+  // test only
+  void forceRemoveValueSchema(String storeName, int valueSchemaId) {
+    accessor.removeValueSchema(storeName, valueSchemaId);
+  }
+
+  @Override
   public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     preCheckStoreCondition(storeName);
 
@@ -553,15 +574,9 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   public void clear() {
   }
 
-  private void preCheckStoreCondition(String storeName) {
+  void preCheckStoreCondition(String storeName) {
     if (!storeRepository.hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
-  }
-
-  // For testing purpose only.
-  void removeValueSchema(String storeName, int schemaId) {
-    preCheckStoreCondition(storeName);
-    accessor.removeValueSchema(storeName, String.valueOf(schemaId));
   }
 }

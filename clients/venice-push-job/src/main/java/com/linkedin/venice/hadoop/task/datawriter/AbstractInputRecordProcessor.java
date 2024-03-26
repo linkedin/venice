@@ -48,7 +48,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   private CompressionStrategy compressionStrategy;
   private boolean compressionMetricCollectionEnabled;
   private CompressorFactory compressorFactory;
-  private VeniceCompressor[] compressor;
+  private VeniceCompressor[] compressors;
 
   protected AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> veniceRecordReader;
   private static final byte[] EMPTY_BYTES = new byte[0];
@@ -121,11 +121,11 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     // Compress and save the details based on the configured compression strategy: This should not fail
     byte[] finalRecordValue;
     try {
-      finalRecordValue = compressor[compressionStrategy.getValue()].compress(recordValue);
+      finalRecordValue = compressors[compressionStrategy.getValue()].compress(recordValue);
     } catch (IOException e) {
       throw new VeniceException(
           "Caught an IO exception while trying to to use compression strategy: "
-              + compressor[compressionStrategy.getValue()].getCompressionStrategy().name(),
+              + compressors[compressionStrategy.getValue()].getCompressionStrategy().name(),
           e);
     }
     // record the final stored value length
@@ -137,13 +137,13 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
       // Compress based on all compression strategies to collect metrics
       byte[] compressedRecordValue;
       for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
-        if (compressionStrategy != NO_OP && compressor[compressionStrategy.getValue()] != null) {
+        if (compressionStrategy != NO_OP && compressors[compressionStrategy.getValue()] != null) {
           if (compressionStrategy == this.compressionStrategy) {
             // Extra check to not redo compression
             compressedRecordValue = finalRecordValue;
           } else {
             try {
-              compressedRecordValue = compressor[compressionStrategy.getValue()].compress(recordValue);
+              compressedRecordValue = compressors[compressionStrategy.getValue()].compress(recordValue);
             } catch (IOException e) {
               LOGGER.warn(
                   "Compression to collect metrics failed for compression strategy: {}",
@@ -187,7 +187,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     }
 
     // init compressor array
-    this.compressor = new VeniceCompressor[CompressionStrategy.getCompressionStrategyTypesArrayLength()];
+    this.compressors = new VeniceCompressor[CompressionStrategy.getCompressionStrategyTypesArrayLength()];
     setupCompression(props);
   }
 
@@ -224,13 +224,13 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
         switch (compressionStrategy) {
           case NO_OP:
           case GZIP:
-            this.compressor[compressionStrategy.getValue()] = compressorFactory.getCompressor(compressionStrategy);
+            this.compressors[compressionStrategy.getValue()] = compressorFactory.getCompressor(compressionStrategy);
             break;
 
           case ZSTD_WITH_DICT:
             if (isZstdDictCreationRequired && isZstdDictCreationSuccess) {
               // case 1a
-              this.compressor[ZSTD_WITH_DICT.getValue()] = getZstdCompressor(props);
+              this.compressors[ZSTD_WITH_DICT.getValue()] = getZstdCompressor(props);
             } // else: case 1b or 1c
             break;
 
@@ -248,11 +248,11 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
       if (compressionStrategy == ZSTD_WITH_DICT) {
         if (isZstdDictCreationRequired && isZstdDictCreationSuccess) {
           // case 2a
-          this.compressor[ZSTD_WITH_DICT.getValue()] = getZstdCompressor(props);
+          this.compressors[ZSTD_WITH_DICT.getValue()] = getZstdCompressor(props);
         } // else: case 2b
       } else {
         // case 2c
-        this.compressor[compressionStrategy.getValue()] = compressorFactory.getCompressor(compressionStrategy);
+        this.compressors[compressionStrategy.getValue()] = compressorFactory.getCompressor(compressionStrategy);
       }
     }
   }
@@ -271,7 +271,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     ByteBuffer compressionDictionary = readDictionaryFromKafka(topicName, props);
     int compressionLevel = props.getInt(ZSTD_COMPRESSION_LEVEL, Zstd.maxCompressionLevel());
 
-    if (compressionDictionary != null && compressionDictionary.limit() > 0) {
+    if (compressionDictionary != null && compressionDictionary.remaining() > 0) {
       return compressorFactory.createVersionSpecificCompressorIfNotExist(
           ZSTD_WITH_DICT,
           topicName,

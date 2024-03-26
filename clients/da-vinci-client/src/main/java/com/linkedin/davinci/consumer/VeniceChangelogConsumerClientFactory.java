@@ -7,22 +7,26 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import org.apache.commons.lang.StringUtils;
 
 
 public class VeniceChangelogConsumerClientFactory {
-  private final Map<String, VeniceChangelogConsumer> storeClientMap = new HashMap<>();
+  private static final PubSubConsumerAdapterFactory kafkaConsumerAdapterFactory =
+      new ApacheKafkaConsumerAdapterFactory();
+  private final Map<String, VeniceChangelogConsumer> storeClientMap = new VeniceConcurrentHashMap<>();
 
   private final MetricsRepository metricsRepository;
 
@@ -51,12 +55,22 @@ public class VeniceChangelogConsumerClientFactory {
     this.consumer = consumer;
   }
 
-  public synchronized <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName) {
-    return storeClientMap.computeIfAbsent(storeName, name -> {
+  /**
+   * Default method to create a {@link VeniceChangelogConsumer} given a storeName.
+   */
+  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName) {
+    return getChangelogConsumer(storeName, null);
+  }
 
+  /**
+   * Creates a VeniceChangelogConsumer with consumer id. This is used to create multiple consumers so that
+   * each consumer can only subscribe to certain partitions. Multiple such consumers can work in parallel.
+   */
+  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId) {
+    return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-      String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
+      String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
       if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
         return new VeniceChangelogConsumerImpl(
             newStoreChangelogClientConfig,
@@ -72,18 +86,34 @@ public class VeniceChangelogConsumerClientFactory {
     });
   }
 
-  public synchronized <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
-      String storeName) {
-    return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap.computeIfAbsent(storeName, name -> {
-      ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
-      String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-      String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
-      return new LocalBootstrappingVeniceChangelogConsumer(
-          newStoreChangelogClientConfig,
-          consumer != null
-              ? consumer
-              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
-    });
+  private String suffixConsumerIdToStore(String storeName, String consumerId) {
+    return StringUtils.isEmpty(consumerId) ? storeName : storeName + "-" + consumerId;
+  }
+
+  public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(String storeName) {
+    return getBootstrappingChangelogConsumer(storeName, null);
+  }
+
+  /**
+   * Creates a BootstrappingVeniceChangelogConsumer with consumer id. This is used to create multiple
+   * consumers so that each consumer can only subscribe to certain partitions.
+   */
+  public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
+      String storeName,
+      String consumerId) {
+    return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap
+        .computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
+          ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
+          String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
+          String consumerName =
+              suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
+          return new LocalBootstrappingVeniceChangelogConsumer(
+              newStoreChangelogClientConfig,
+              consumer != null
+                  ? consumer
+                  : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
+              consumerId);
+        });
   }
 
   private ChangelogClientConfig getNewStoreChangelogClientConfig(String storeName) {
@@ -139,7 +169,7 @@ public class VeniceChangelogConsumerClientFactory {
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    return new ApacheKafkaConsumerAdapterFactory()
+    return kafkaConsumerAdapterFactory
         .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, consumerName);
   }
 

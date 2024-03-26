@@ -58,7 +58,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   // Using a large positive number for metadata partition id instead of -1 can avoid database naming issues.
   public static final int METADATA_PARTITION_ID = 1000_000_000;
 
-  private final String storeName;
+  private final String storeVersionName;
   private final SparseConcurrentList<Partition> partitionList = new SparseConcurrentList<>();
   private Partition metadataPartition;
   private final AtomicReference<StoreVersionState> versionStateCache = new AtomicReference<>();
@@ -81,10 +81,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   private final List<ReadWriteLock> rwLockForStoragePartitionAdjustmentList = new SparseConcurrentList<>();
 
   public AbstractStorageEngine(
-      String storeName,
+      String storeVersionName,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
-    this.storeName = storeName;
+    this.storeVersionName = storeVersionName;
     this.metadataPartition = null;
     this.storeVersionStateSerializer = storeVersionStateSerializer;
     this.partitionStateSerializer = partitionStateSerializer;
@@ -97,18 +97,18 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     ReadWriteLock readWriteLock = rwLockForStoragePartitionAdjustmentList.get(partitionId);
     if (readWriteLock == null) {
       throw new VeniceException(
-          "Failed to get read-write lock for partition: " + partitionId + ", store: " + getStoreName());
+          "Failed to get read-write lock for partition: " + partitionId + ", store: " + getStoreVersionName());
     }
     return readWriteLock;
   }
 
-  public String getStoreName() {
-    return storeName;
+  public String getStoreVersionName() {
+    return storeVersionName;
   }
 
   @Override
   public String toString() {
-    return getStoreName();
+    return getStoreVersionName();
   }
 
   public abstract PersistenceType getType();
@@ -149,7 +149,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
     if (restoreMetadataPartition) {
       LOGGER.info("Metadata partition restore enabled. Restoring metadata partition.");
-      this.metadataPartition = createStoragePartition(new StoragePartitionConfig(storeName, METADATA_PARTITION_ID));
+      this.metadataPartition =
+          createStoragePartition(new StoragePartitionConfig(storeVersionName, METADATA_PARTITION_ID));
     }
 
     if (restoreDataPartitions) {
@@ -172,10 +173,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public synchronized void preparePartitionForReading(int partitionId) {
     if (!containsPartition(partitionId)) {
-      LOGGER.warn("Partition {}_{} was removed before reopening.", storeName, partitionId);
+      LOGGER.warn("Partition {}_{} was removed before reopening.", storeVersionName, partitionId);
       return;
     }
-    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeVersionName, partitionId);
     partitionConfig.setWriteOnlyConfig(false);
 
     adjustStoragePartition(partitionConfig);
@@ -205,7 +206,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   public void addStoragePartition(int partitionId) {
-    addStoragePartition(new StoragePartitionConfig(storeName, partitionId));
+    addStoragePartition(new StoragePartitionConfig(storeVersionName, partitionId));
   }
 
   public synchronized void addStoragePartition(StoragePartitionConfig storagePartitionConfig) {
@@ -220,9 +221,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       LOGGER.error(
           "Failed to add a storage partition for partitionId: {} Store {}. This partition already exists!",
           partitionId,
-          this.getStoreName());
+          this.getStoreVersionName());
       throw new StorageInitializationException(
-          "Partition " + partitionId + " of store " + this.getStoreName() + " already exists.");
+          "Partition " + partitionId + " of store " + this.getStoreVersionName() + " already exists.");
     }
 
     Partition partition = createStoragePartition(storagePartitionConfig);
@@ -242,12 +243,12 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public synchronized void closePartition(int partitionId) {
     AbstractStoragePartition partition = this.partitionList.remove(partitionId);
     if (partition == null) {
-      LOGGER.error("Failed to close a non existing partition: {} Store {}", partitionId, getStoreName());
+      LOGGER.error("Failed to close a non existing partition: {} Store {}", partitionId, getStoreVersionName());
       return;
     }
     partition.close();
     if (getNumberOfPartitions() == 0) {
-      LOGGER.info("All Partitions closed for store {} ", getStoreName());
+      LOGGER.info("All Partitions closed for store {} ", getStoreVersionName());
     }
   }
 
@@ -272,11 +273,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
      *    Else there can be situations where the data is consumed from Kafka and not persisted.
      */
     if (!containsPartition(partitionId)) {
-      LOGGER.error("Failed to remove a non existing partition: {} Store {}", partitionId, getStoreName());
+      LOGGER.error("Failed to remove a non existing partition: {} Store {}", partitionId, getStoreVersionName());
       return;
     }
     if (!suppressLogs) {
-      LOGGER.info("Removing Partition: {} Store {}", partitionId, getStoreName());
+      LOGGER.info("Removing Partition: {} Store {}", partitionId, getStoreVersionName());
     }
 
     /**
@@ -293,7 +294,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
     if (getNumberOfPartitions() == 0) {
       if (!suppressLogs) {
-        LOGGER.info("All Partitions deleted for Store {}", getStoreName());
+        LOGGER.info("All Partitions deleted for Store {}", getStoreVersionName());
       }
       /**
        * The reason to invoke {@link #drop} here is that storage engine might need to do some cleanup
@@ -320,7 +321,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       return;
     }
     if (!suppressLogs) {
-      LOGGER.info("Started dropping store: {}", getStoreName());
+      LOGGER.info("Started dropping store: {}", getStoreVersionName());
     }
 
     // partitionList is implementation of SparseConcurrentList which sets element to null on `remove`. So its fine
@@ -333,7 +334,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
     dropMetadataPartition();
     if (!suppressLogs) {
-      LOGGER.info("Finished dropping store: {}", getStoreName());
+      LOGGER.info("Finished dropping store: {}", getStoreVersionName());
     }
   }
 
@@ -356,7 +357,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     LOGGER.info(
         "Closing {} rockDB partitions of store {} took {} ms",
         tmpList.size(),
-        storeName,
+        storeVersionName,
         LatencyUtils.getElapsedTimeInMs(startTime));
     partitionList.clear();
     closeMetadataPartition();
@@ -412,7 +413,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     adjustStoragePartition(storagePartitionConfig);
 
     if (!partition.validateBatchIngestion()) {
-      throw new VeniceException("Storage temp files not fully ingested for store: " + storeName);
+      throw new VeniceException("Storage temp files not fully ingested for store: " + storeVersionName);
     }
   }
 
@@ -444,7 +445,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public void reopenStoragePartition(int partitionId) {
     executeWithSafeGuard(partitionId, () -> {
       if (!containsPartition(partitionId)) {
-        LOGGER.warn("Partition {}_{} doesn't exist.", storeName, partitionId);
+        LOGGER.warn("Partition {}_{} doesn't exist.", storeVersionName, partitionId);
         return;
       }
       AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
@@ -579,7 +580,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    */
   public synchronized void clearPartitionOffset(int partitionId) {
     if (!metadataPartitionCreated()) {
-      throw new StorageInitializationException("Metadata partition not created!");
+      LOGGER.info(
+          "Metadata partition not created; there is nothing to clear for {} partition {}",
+          storeVersionName,
+          partitionId);
+      return;
     }
     if (partitionId == METADATA_PARTITION_ID) {
       throw new IllegalArgumentException(
@@ -603,7 +608,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       throw new StorageInitializationException("Metadata partition not created!");
     }
     versionStateCache.set(versionState);
-    metadataPartition.put(VERSION_METADATA_KEY, storeVersionStateSerializer.serialize(getStoreName(), versionState));
+    metadataPartition
+        .put(VERSION_METADATA_KEY, storeVersionStateSerializer.serialize(getStoreVersionName(), versionState));
   }
 
   /**
@@ -630,7 +636,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       if (value == null) {
         return null;
       }
-      versionState = storeVersionStateSerializer.deserialize(storeName, value);
+      versionState = storeVersionStateSerializer.deserialize(storeVersionName, value);
       if (versionStateCache.compareAndSet(null, versionState)) {
         return versionState;
       } // else retry the loop...
@@ -695,7 +701,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
     if (partition == null) {
       VeniceException e = new PersistenceFailureException(
-          "Partition: " + partitionId + " of store: " + getStoreName() + " does not exist");
+          "Partition: " + partitionId + " of store: " + getStoreVersionName() + " does not exist");
       LOGGER.error("Failed to get the partition with msg: {}", e.getMessage());
       throw e;
     }
@@ -716,10 +722,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   private void validateStoreName(StoragePartitionConfig storagePartitionConfig) {
-    if (!storagePartitionConfig.getStoreName().equals(getStoreName())) {
+    if (!storagePartitionConfig.getStoreName().equals(getStoreVersionName())) {
       throw new VeniceException(
           "Store name in partition config: " + storagePartitionConfig.getStoreName()
-              + " doesn't match current store engine: " + getStoreName());
+              + " doesn't match current store engine: " + getStoreVersionName());
     }
   }
 

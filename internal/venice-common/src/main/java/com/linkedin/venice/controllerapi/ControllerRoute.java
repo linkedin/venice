@@ -65,6 +65,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STRA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
@@ -128,8 +129,12 @@ public enum ControllerRoute {
       FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
       PERSONA_NAME
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
-  ROLLBACK_TO_BACKUP_VERSION("/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME)),
-  ROLL_FORWARD_TO_FUTURE_VERSION("/roll_forward_to_future_version", HttpMethod.POST, Collections.singletonList(NAME)),
+  ROLLBACK_TO_BACKUP_VERSION(
+      "/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
+  ),
+  ROLL_FORWARD_TO_FUTURE_VERSION(
+      "/roll_forward_to_future_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
+  ),
   // Enable/disable read write for this store. Status is "true" or "false". Operation "read" or "write" or "readwrite".
   ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, OPERATION, STATUS)),
   DELETE_ALL_VERSIONS("/delete_all_versions", HttpMethod.POST, Collections.singletonList(NAME)),
@@ -219,6 +224,8 @@ public enum ControllerRoute {
 
   ADD_VERSION("/add_version", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID, VERSION, PARTITION_COUNT)),
   FUTURE_VERSION("/list_future_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+  BACKUP_VERSION("/list_backup_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+
   SET_TOPIC_COMPACTION("/set_topic_compaction", HttpMethod.POST, Arrays.asList(TOPIC, TOPIC_COMPACTION_POLICY)),
   UPDATE_ACL("/update_acl", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, ACCESS_PERMISSION)),
   GET_ACL("/get_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
@@ -294,7 +301,11 @@ public enum ControllerRoute {
 
   CLEANUP_INSTANCE_CUSTOMIZED_STATES(
       "/cleanup_instance_customized_states", HttpMethod.POST, Collections.singletonList(CLUSTER)
-  ), REMOVE_STORE_FROM_GRAVEYARD("/remove_store_from_graveyard", HttpMethod.POST, Collections.singletonList(NAME));
+  ), REMOVE_STORE_FROM_GRAVEYARD("/remove_store_from_graveyard", HttpMethod.POST, Collections.singletonList(NAME)),
+  DELETE_UNUSED_VALUE_SCHEMAS(
+      "/delete_unused_value_schemas", HttpMethod.POST, Arrays.asList(CLUSTER, NAME),
+      ControllerApiConstants.VALUE_SCHEMA_IDS
+  ), GET_INUSE_SCHEMA_IDS("/get_inuse_schema_ids", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
 
   private final String path;
   private final HttpMethod httpMethod;

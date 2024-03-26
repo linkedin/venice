@@ -1042,14 +1042,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     double elapsedTimeForPuttingIntoQueue = 0;
     int subPartition = PartitionUtils.getSubPartition(topicPartition, amplificationFactor);
     boolean metricsEnabled = emitMetrics.get();
-    long currentTimeForMetricsMs = System.currentTimeMillis();
-
+    long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
     // Loop through all polled messages and process
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
-      long beforeProcessingRecordTimestampNs = System.nanoTime();
+      long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
       if (partitionConsumptionState != null) {
-        partitionConsumptionState.setLatestPolledMessageTimestampInMs(currentTimeForMetricsMs);
+        partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       }
       if (!shouldProcessRecord(record, subPartition)) {
         if (partitionConsumptionState != null) {
@@ -1085,15 +1084,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestampNs,
-          currentTimeForMetricsMs);
+          beforeProcessingPerRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs);
       switch (delegateConsumerRecordResult) {
         case QUEUE_TO_DRAINER:
           long queuePutStartTimeInNS = metricsEnabled ? System.nanoTime() : 0;
 
           // blocking call
           storeBufferService
-              .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingRecordTimestampNs);
+              .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingPerRecordTimestampNs);
 
           if (metricsEnabled) {
             elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
@@ -1119,7 +1118,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       totalBytesRead += record.getPayloadSize();
       // Update the latest message consumed time
       if (partitionConsumptionState != null) {
-        partitionConsumptionState.setLatestMessageConsumedTimestampInMs(currentTimeForMetricsMs);
+        partitionConsumptionState.setLatestMessageConsumedTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       }
     }
 
@@ -1133,12 +1132,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
       }
       if (elapsedTimeForPuttingIntoQueue > 0) {
-        hostLevelIngestionStats
-            .recordConsumerRecordsQueuePutLatency(elapsedTimeForPuttingIntoQueue, currentTimeForMetricsMs);
+        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
+            elapsedTimeForPuttingIntoQueue,
+            beforeProcessingBatchRecordsTimestampMs);
       }
 
-      hostLevelIngestionStats
-          .recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage(), currentTimeForMetricsMs);
+      hostLevelIngestionStats.recordStorageQuotaUsed(
+          storageUtilizationManager.getDiskQuotaUsage(),
+          beforeProcessingBatchRecordsTimestampMs);
     }
   }
 
@@ -2462,15 +2463,42 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopic topic,
       int partition,
       long currentOffset) {
-    if (currentOffset < 0) {
+    return measureLagWithCallToPubSub(pubSubServerName, topic, partition, currentOffset, this::getTopicManager);
+  }
+
+  protected static long measureLagWithCallToPubSub(
+      String pubSubServerName,
+      PubSubTopic topic,
+      int partition,
+      long currentOffset,
+      Function<String, TopicManager> topicManagerProvider) {
+    if (currentOffset < OffsetRecord.LOWEST_OFFSET) {
+      // -1 is a valid offset, which means that nothing was consumed yet, but anything below that is invalid.
       return Long.MAX_VALUE;
     }
-    TopicManager tm = getTopicManager(pubSubServerName);
-    long endOffset = tm.getLatestOffsetCached(topic, partition) - 1;
+    TopicManager tm = topicManagerProvider.apply(pubSubServerName);
+    long endOffset = tm.getLatestOffsetCached(topic, partition);
     if (endOffset < 0) {
+      // A negative value means there was a problem in measuring the end offset, and therefore we return "infinite lag"
       return Long.MAX_VALUE;
+    } else if (endOffset == 0) {
+      /**
+       * Topics which were never produced to have an end offset of zero. Such topics are empty and therefore, by
+       * definition, there cannot be any lag.
+       *
+       * Note that the reverse is not true: a topic can be currently empty and have an end offset above zero, if it had
+       * messages produced to it before, which have since then disappeared (e.g. due to time-based retention).
+       */
+      return 0;
     }
-    return endOffset - currentOffset;
+
+    /**
+     * A topic with an end offset of zero is empty. A topic with a single message in it will have an end offset of 1,
+     * while that single message will have offset 0. In such single message topic, a consumer which fully scans the
+     * topic would have a current offset of 0, while the topic has an end offset of 1, and therefore we need to subtract
+     * 1 from the end offset in order to arrive at the correct lag of 0.
+     */
+    return endOffset - 1 - currentOffset;
   }
 
   /**
@@ -2783,13 +2811,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long producerBrokerLatencyMs =
           Math.max(consumerRecord.getPubSubMessageTime() - kafkaValue.producerMetadata.messageTimestamp, 0);
       long brokerConsumerLatencyMs = Math.max(currentTimeMs - consumerRecord.getPubSubMessageTime(), 0);
-      long producerConsumerLatencyMs = Math.max(currentTimeMs - kafkaValue.producerMetadata.messageTimestamp, 0);
-      recordWriterStats(
-          currentTimeMs,
-          producerBrokerLatencyMs,
-          brokerConsumerLatencyMs,
-          producerConsumerLatencyMs,
-          partitionConsumptionState);
+      recordWriterStats(currentTimeMs, producerBrokerLatencyMs, brokerConsumerLatencyMs, partitionConsumptionState);
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
       /**
        * DIV check will happen for every single message in drainer queues.
@@ -2924,7 +2946,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long consumerTimestampMs,
       long producerBrokerLatencyMs,
       long brokerConsumerLatencyMs,
-      long producerConsumerLatencyMs,
       PartitionConsumptionState partitionConsumptionState) {
 
   }
@@ -3007,12 +3028,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * in order to insert the {@param schemaId} there. This avoids a byte array copy, which can be beneficial in terms
    * of GC.
    */
-  private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put, long currentTimeMs) {
+  private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put) {
     ByteBuffer putValue = put.putValue;
 
     if ((putValue.remaining() == 0) && (put.replicationMetadataPayload.remaining() > 0)) {
       // For RMD chunk, it is already prepended with the schema ID, so we will just put to storage engine.
-      writeToStorageEngine(partition, keyBytes, put, currentTimeMs);
+      writeToStorageEngine(partition, keyBytes, put);
     } else if (putValue.position() < ValueRecord.SCHEMA_HEADER_LENGTH) {
       throw new VeniceException(
           "Start position of 'putValue' ByteBuffer shouldn't be less than " + ValueRecord.SCHEMA_HEADER_LENGTH);
@@ -3029,7 +3050,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
       try {
-        writeToStorageEngine(partition, keyBytes, put, currentTimeMs);
+        writeToStorageEngine(partition, keyBytes, put);
       } finally {
         /* We still want to recover the original position to make this function idempotent. */
         putValue.putInt(backupBytes);
@@ -3037,26 +3058,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void writeToStorageEngine(int partition, byte[] keyBytes, Put put, long currentTimeMs) {
-    boolean metricsEnabled = emitMetrics.get();
-    boolean traceEnabled = LOGGER.isTraceEnabled();
-    long putStartTimeNs = (metricsEnabled || traceEnabled) ? System.nanoTime() : 0;
+  private void writeToStorageEngine(int partition, byte[] keyBytes, Put put) {
     putInStorageEngine(partition, keyBytes, put);
     if (cacheBackend.isPresent()) {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get().getStorageEngine(kafkaVersionTopic).put(partition, keyBytes, put.putValue);
       }
     }
-    if (traceEnabled) {
-      LOGGER.trace(
-          "{} : Completed PUT to Store: {} in {} ns at {}",
-          ingestionTaskName,
-          kafkaVersionTopic,
-          System.nanoTime() - putStartTimeNs,
-          System.currentTimeMillis());
-    }
-    if (metricsEnabled) {
-      hostLevelIngestionStats.recordStorageEnginePutLatency(LatencyUtils.getLatencyInMS(putStartTimeNs), currentTimeMs);
+  }
+
+  private void deleteFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
+    removeFromStorageEngine(partition, keyBytes, delete);
+    if (cacheBackend.isPresent()) {
+      if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
+        cacheBackend.get().getStorageEngine(kafkaVersionTopic).delete(partition, keyBytes);
+      }
     }
   }
 
@@ -3183,6 +3199,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     MessageType messageType = (leaderProducedRecordContext == null
         ? MessageType.valueOf(kafkaValue)
         : leaderProducedRecordContext.getMessageType());
+
+    boolean metricsEnabled = emitMetrics.get();
+    boolean traceEnabled = LOGGER.isTraceEnabled();
+    long startTimeNs = (metricsEnabled || traceEnabled) ? System.nanoTime() : 0;
+
     switch (messageType) {
       case PUT:
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
@@ -3236,22 +3257,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               versionNumber,
               LatencyUtils.getElapsedTimeInMs(recordTransformStartTime),
               currentTimeMs);
-          writeToStorageEngine(producedPartition, keyBytes, put, currentTimeMs);
+          writeToStorageEngine(producedPartition, keyBytes, put);
         } else {
-
           prependHeaderAndWriteToStorageEngine(
               // Leaders might consume from a RT topic and immediately write into StorageEngine,
               // so we need to re-calculate partition.
               // Followers are not affected since they are always consuming from VTs.
               producedPartition,
               keyBytes,
-              put,
-              currentTimeMs);
+              put);
         }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
         if (putSchemaId > 0) {
           valueSchemaId = putSchemaId;
+        }
+        if (metricsEnabled) {
+          hostLevelIngestionStats
+              .recordStorageEnginePutLatency(LatencyUtils.getLatencyInMS(startTimeNs), currentTimeMs);
         }
         break;
 
@@ -3265,11 +3288,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
         keyLen = keyBytes.length;
-        removeFromStorageEngine(producedPartition, keyBytes, delete);
-        if (cacheBackend.isPresent()) {
-          if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
-            cacheBackend.get().getStorageEngine(kafkaVersionTopic).delete(producedPartition, keyBytes);
-          }
+        deleteFromStorageEngine(producedPartition, keyBytes, delete);
+        if (metricsEnabled) {
+          hostLevelIngestionStats
+              .recordStorageEngineDeleteLatency(LatencyUtils.getLatencyInMS(startTimeNs), currentTimeMs);
         }
         break;
 
@@ -3282,6 +3304,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
+    if (traceEnabled) {
+      LOGGER.trace(
+          "{} : Completed {} to Store: {} in {} ns at {}",
+          ingestionTaskName,
+          messageType,
+          kafkaVersionTopic,
+          System.nanoTime() - startTimeNs,
+          System.currentTimeMillis());
+    }
     /*
      * Potentially clean the mapping from transient record map. consumedOffset may be -1 when individual chunks are getting
      * produced to drainer queue from kafka callback thread {@link LeaderFollowerStoreIngestionTask#LeaderProducerMessageCallback}
@@ -3349,7 +3380,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Check whether the given schema id is available for current store.
-   * The function will bypass the check if schema id is -1 (VPJ job is still using it before we finishes t he integration with schema registry).
+   * The function will bypass the check if schema id is -1 (VPJ job is still using it before we finishes the integration with schema registry).
    * Right now, this function is maintaining a local cache for schema id of current store considering that the value schema is immutable;
    * If the schema id is not available, this function will polling until the schema appears or timeout: {@link #SCHEMA_POLLING_TIMEOUT_MS};
    *
@@ -3789,8 +3820,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs);
+      long beforeProcessingPerRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs);
 
   /**
    * This enum represents all potential results after calling {@link #delegateConsumerRecord(PubSubMessage, int, String, int, long, long)}.
@@ -3828,6 +3859,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     END_PROCESSING
   }
 
+  /**
+   * The method measures the time between receiving the message from the local VT and when the message is committed in
+   * the local db and ready to serve.
+   * For a leader, it's the time when the callback to the version topic write returns.
+   */
   private void recordNearlineLocalBrokerToReadyToServerLatency(
       String storeName,
       int versionNumber,
@@ -3835,21 +3871,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaMessageEnvelope kafkaMessageEnvelope,
       LeaderProducedRecordContext leaderProducedRecordContext) {
     /**
-     * Record nearline latency only when it's a hybrid store and the lag has been caught up. Sometimes
-     * the producerTimestamp can be -1 if the leaderProducedRecordContext had an error after callback
-     * Don't record latency for invalid timestamps
+     * Record nearline latency only when it's a hybrid store, the lag has been caught up and ignore
+     * messages that are getting caughtup. Sometimes the producerTimestamp can be -1 if the
+     * leaderProducedRecordContext had an error after callback. Don't record latency for invalid timestamps.
      */
     if (!isUserSystemStore() && isHybridMode() && partitionConsumptionState.hasLagCaughtUp()) {
-      long afterProcessingRecordTimestampMs = System.currentTimeMillis();
       long producerTimestamp = (leaderProducedRecordContext == null)
           ? kafkaMessageEnvelope.producerMetadata.messageTimestamp
           : leaderProducedRecordContext.getProducedTimestampMs();
       if (producerTimestamp > 0) {
-        versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
-            storeName,
-            versionNumber,
-            afterProcessingRecordTimestampMs - producerTimestamp,
-            afterProcessingRecordTimestampMs);
+        if (partitionConsumptionState.isNearlineMetricsRecordingValid(producerTimestamp)) {
+          long afterProcessingRecordTimestampMs = System.currentTimeMillis();
+          versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
+              storeName,
+              versionNumber,
+              afterProcessingRecordTimestampMs - producerTimestamp,
+              afterProcessingRecordTimestampMs);
+        }
       } else if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName, "IllegalTimestamp")) {
         LOGGER.warn(
             "Illegal timestamp for storeName: {}, versionNumber: {}, partition: {}, "

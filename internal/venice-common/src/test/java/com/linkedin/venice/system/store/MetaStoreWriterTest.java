@@ -1,21 +1,24 @@
 package com.linkedin.venice.system.store;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertTrue;
+import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
@@ -41,6 +44,11 @@ public class MetaStoreWriterTest {
   public void testMetaStoreWriterWillRestartUponProduceFailure() {
     MetaStoreWriter metaStoreWriter = mock(MetaStoreWriter.class);
     String metaStoreName = "testStore";
+    HelixReadOnlyZKSharedSchemaRepository schemaRepo = mock(HelixReadOnlyZKSharedSchemaRepository.class);
+    GeneratedSchemaID generatedSchemaID = mock(GeneratedSchemaID.class);
+    doReturn(true).when(generatedSchemaID).isValid();
+    doReturn(generatedSchemaID).when(schemaRepo).getDerivedSchemaId(any(), any());
+    doReturn(schemaRepo).when(metaStoreWriter).getSchemaRepository();
     ReentrantLock reentrantLock = new ReentrantLock();
     when(metaStoreWriter.getOrCreateMetaStoreWriterLock(metaStoreName)).thenReturn(reentrantLock);
     VeniceWriter badWriter = mock(VeniceWriter.class);
@@ -73,7 +81,7 @@ public class MetaStoreWriterTest {
     ArgumentCaptor<StoreMetaValue> valueArgumentCaptor = ArgumentCaptor.forClass(StoreMetaValue.class);
     ArgumentCaptor<Integer> schemaArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(goodWriter).put(keyArgumentCaptor.capture(), valueArgumentCaptor.capture(), schemaArgumentCaptor.capture());
-
+    metaStoreWriter.writeInUseValueSchema(anyString(), anyInt(), anyInt());
     // Assertion
     StoreMetaKey capturedKey = keyArgumentCaptor.getValue();
     Assert.assertEquals(capturedKey.keyStrings, Collections.singletonList(metaStoreName));

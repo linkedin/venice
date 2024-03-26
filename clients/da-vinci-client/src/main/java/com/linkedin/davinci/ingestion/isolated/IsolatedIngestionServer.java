@@ -656,8 +656,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         new ClientConfig().setD2Client(d2Client).setD2ServiceName(clusterDiscoveryD2ServiceName);
 
     // Create MetricsRepository
-    metricsRepository =
-        MetricsRepositoryUtils.createMultiThreadedMetricsRepository("Isolated_server_async_gauge_thread");
+    metricsRepository = MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
 
     // Initialize store/schema repositories.
     VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
@@ -766,8 +765,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         clusterInfoProvider,
         storeRepository,
         schemaRepository,
-        Optional.empty(),
-        Optional.empty(),
         liveConfigRepository,
         metricsRepository,
         Optional.of(kafkaMessageEnvelopeSchemaReader),

@@ -39,6 +39,8 @@ public interface Store {
 
   long DEFAULT_RT_RETENTION_TIME = TimeUnit.DAYS.toMillis(5);
 
+  int DEFAULT_BATCH_GET_LIMIT = 150;
+
   /**
    * Store name rules:
    *  1.  Only letters, numbers, underscore or dash
@@ -301,4 +303,8 @@ public interface Store {
   long getMaxCompactionLagSeconds();
 
   void setMaxCompactionLagSeconds(long maxCompactionLagSeconds);
+
+  void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled);
+
+  boolean isUnusedSchemaDeletionEnabled();
 }

@@ -166,6 +166,7 @@ import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
@@ -417,6 +418,7 @@ public abstract class StoreIngestionTaskTest {
   private boolean databaseChecksumVerificationEnabled = false;
   private AggKafkaConsumerServiceStats kafkaConsumerServiceStats = mock(AggKafkaConsumerServiceStats.class);
   private PubSubConsumerAdapterFactory mockFactory = mock(PubSubConsumerAdapterFactory.class);
+  private final MetricsRepository mockMetricRepo = mock(MetricsRepository.class);
 
   private Supplier<StoreVersionState> storeVersionStateSupplier = () -> new StoreVersionState();
 
@@ -444,9 +446,11 @@ public abstract class StoreIngestionTaskTest {
 
   @BeforeClass(alwaysRun = true)
   public void suiteSetUp() throws Exception {
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     taskPollingService = Executors.newFixedThreadPool(1);
-
-    storeBufferService = new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled());
+    storeBufferService =
+        new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled(), mockMetricRepo);
     storeBufferService.start();
   }
 
@@ -933,9 +937,6 @@ public abstract class StoreIngestionTaskTest {
     extraServerProperties = new HashMap<>(extraServerProperties);
     veniceServerConfig = buildVeniceServerConfig(extraServerProperties);
 
-    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
-    final Sensor mockSensor = mock(Sensor.class);
-    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     Properties localKafkaProps = new Properties();
     localKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     localKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
@@ -946,7 +947,7 @@ public abstract class StoreIngestionTaskTest {
         mockBandwidthThrottler,
         mockRecordsThrottler,
         kafkaClusterBasedRecordThrottler,
-        mockMetricsRepository,
+        mockMetricRepo,
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
         1000,
         mock(TopicExistenceChecker.class),
@@ -969,7 +970,7 @@ public abstract class StoreIngestionTaskTest {
         mockBandwidthThrottler,
         mockRecordsThrottler,
         kafkaClusterBasedRecordThrottler,
-        mockMetricsRepository,
+        mockMetricRepo,
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
         1000,
         mock(TopicExistenceChecker.class),
@@ -3512,8 +3513,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
     storeIngestionTaskUnderTest.getStatusReportAdapter().initializePartitionReportStatus(PARTITION_FOO);
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
-
-    verify(mockTopicManagerRemoteKafka, nodeType == DA_VINCI ? never() : times(1)).getOffsetByTime(any(), anyLong());
+    verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
+    verify(mockOffsetRecord, never()).setLeaderUpstreamOffset(anyString(), anyLong());
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -4358,6 +4359,7 @@ public abstract class StoreIngestionTaskTest {
         10l);
   }
 
+  @Test
   public void testCheckAndHandleUpstreamOffsetRewind() {
     String storeName = "test_store";
     int version = 1;
@@ -4448,6 +4450,73 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(
         exception.getMessage().contains("Failing the job because lossy rewind happens before reporting completed"));
     verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
+  }
+
+  @Test
+  public void testMeasureLagWithCallToPubSub() {
+    final int PARTITION_UNABLE_TO_GET_END_OFFSET = 0;
+    final int EMPTY_PARTITION = 1;
+    final int PARTITION_WITH_SOME_MESSAGES_IN_IT = 2;
+    final long MESSAGE_COUNT = 10;
+    final long INVALID_CURRENT_OFFSET = -2;
+    final long CURRENT_OFFSET_NOTHING_CONSUMED = OffsetRecord.LOWEST_OFFSET;
+    final long CURRENT_OFFSET_SOME_CONSUMED = 3;
+    final String PUB_SUB_SERVER_NAME = "blah";
+    doReturn((long) StatsErrorCode.LAG_MEASUREMENT_FAILURE.code).when(mockTopicManager)
+        .getLatestOffsetCached(pubSubTopic, PARTITION_UNABLE_TO_GET_END_OFFSET);
+    doReturn(0L).when(mockTopicManager).getLatestOffsetCached(pubSubTopic, EMPTY_PARTITION);
+    doReturn(MESSAGE_COUNT).when(mockTopicManager)
+        .getLatestOffsetCached(pubSubTopic, PARTITION_WITH_SOME_MESSAGES_IN_IT);
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            PARTITION_UNABLE_TO_GET_END_OFFSET,
+            CURRENT_OFFSET_NOTHING_CONSUMED,
+            s -> mockTopicManager),
+        Long.MAX_VALUE,
+        "If unable to get the end offset, we expect Long.MAX_VALUE (infinite lag).");
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            EMPTY_PARTITION,
+            INVALID_CURRENT_OFFSET,
+            s -> mockTopicManager),
+        Long.MAX_VALUE,
+        "If the current offset is invalid (less than -1), we expect Long.MAX_VALUE (infinite lag).");
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            EMPTY_PARTITION,
+            CURRENT_OFFSET_NOTHING_CONSUMED,
+            s -> mockTopicManager),
+        0,
+        "If the partition is empty, we expect no lag.");
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            PARTITION_WITH_SOME_MESSAGES_IN_IT,
+            CURRENT_OFFSET_NOTHING_CONSUMED,
+            s -> mockTopicManager),
+        MESSAGE_COUNT,
+        "If the partition has messages in it, but we consumed nothing, we expect lag to equal the message count.");
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            PARTITION_WITH_SOME_MESSAGES_IN_IT,
+            CURRENT_OFFSET_SOME_CONSUMED,
+            s -> mockTopicManager),
+        MESSAGE_COUNT - 1 - CURRENT_OFFSET_SOME_CONSUMED,
+        "If the partition has messages in it, and we consumed some of them, we expect lag to equal the unconsumed message count.");
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

@@ -155,7 +155,8 @@ public class RequestBasedMetadataTestUtils {
         Collections.singletonMap("1", storeValueSchema.toString()),
         1,
         routeMap,
-        helixGroupMap);
+        helixGroupMap,
+        150);
 
     byte[] metadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);

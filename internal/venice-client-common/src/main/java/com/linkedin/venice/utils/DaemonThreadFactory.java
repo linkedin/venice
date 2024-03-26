@@ -13,7 +13,7 @@ public class DaemonThreadFactory implements ThreadFactory {
   private final String namePrefix;
 
   public DaemonThreadFactory(String threadNamePrefix) {
-    this.threadNumber = new AtomicInteger(1);
+    this.threadNumber = new AtomicInteger(0);
     this.namePrefix = threadNamePrefix;
   }
 

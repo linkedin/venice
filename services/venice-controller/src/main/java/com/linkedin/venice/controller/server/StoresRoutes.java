@@ -25,6 +25,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COM
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ABORT_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
@@ -37,6 +38,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
@@ -72,6 +74,7 @@ import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
+import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
@@ -104,6 +107,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
@@ -264,6 +268,21 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
+  public Route getInUseSchemaIds(Admin admin) {
+    return new VeniceRouteHandler<SchemaUsageResponse>(SchemaUsageResponse.class) {
+      @Override
+      public void internalHandle(Request request, SchemaUsageResponse response) {
+        AdminSparkServer.validateParams(request, GET_INUSE_SCHEMA_IDS.getParams(), admin);
+
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        Set<Integer> schemaIds = admin.getInUseValueSchemaIds(clusterName, storeName);
+        response.setInUseValueSchemaIds(schemaIds);
+
+      }
+    };
+  }
+
   /**
    * @see Admin#getRepushInfo(String, String, Optional)
    */
@@ -317,9 +336,6 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
-  /**
-   * @see Admin#getFutureVersion(String, String)
-   */
   public Route getFutureVersion(Admin admin) {
     return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
       @Override
@@ -334,9 +350,32 @@ public class StoresRoutes extends AbstractRoute {
         }
         Map<String, String> storeStatusMap = admin.getFutureVersionsForMultiColos(clusterName, storeName);
         if (storeStatusMap.isEmpty()) {
-          // Non parent controllers will return an empty map, so we'll just return the childs version of this api
+          // Non parent controllers will return an empty map, so we'll just return the children version of this api
           storeStatusMap =
               Collections.singletonMap(storeName, String.valueOf(admin.getFutureVersion(clusterName, storeName)));
+        }
+        veniceResponse.setStoreStatusMap(storeStatusMap);
+      }
+    };
+  }
+
+  public Route getBackupVersion(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, BACKUP_VERSION.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        veniceResponse.setCluster(clusterName);
+        Store store = admin.getStore(clusterName, storeName);
+        if (store == null) {
+          throw new VeniceNoStoreException(storeName);
+        }
+        Map<String, String> storeStatusMap = admin.getBackupVersionsForMultiColos(clusterName, storeName);
+        if (storeStatusMap.isEmpty()) {
+          // Non parent controllers will return an empty map, so we'll just return the children version of this api
+          storeStatusMap =
+              Collections.singletonMap(storeName, String.valueOf(admin.getBackupVersion(clusterName, storeName)));
         }
         veniceResponse.setStoreStatusMap(storeStatusMap);
       }
@@ -600,7 +639,8 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, ROLLBACK_TO_BACKUP_VERSION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        admin.rollbackToBackupVersion(clusterName, storeName);
+        String regionFilter = request.queryParamOrDefault(REGIONS_FILTER, "");
+        admin.rollbackToBackupVersion(clusterName, storeName, regionFilter);
 
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
@@ -619,7 +659,8 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, ROLL_FORWARD_TO_FUTURE_VERSION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        admin.rollForwardToFutureVersion(clusterName, storeName);
+        String regionFilter = request.queryParamOrDefault(REGIONS_FILTER, "");
+        admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
 
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);

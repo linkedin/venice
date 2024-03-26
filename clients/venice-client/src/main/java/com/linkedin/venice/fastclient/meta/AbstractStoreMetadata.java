@@ -6,6 +6,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.io.IOException;
@@ -91,6 +92,11 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   @Override
   public InstanceHealthMonitor getInstanceHealthMonitor() {
     return instanceHealthMonitor;
+  }
+
+  @Override
+  public int getBatchGetLimit() {
+    return Store.DEFAULT_BATCH_GET_LIMIT;
   }
 
   @Override

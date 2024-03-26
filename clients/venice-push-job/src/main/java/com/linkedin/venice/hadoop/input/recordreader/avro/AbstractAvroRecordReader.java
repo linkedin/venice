@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.input.recordreader.avro;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroSchemaUtil;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -60,7 +61,21 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
         if (fileField.name().equals(valueFieldStr)) {
           fieldSchema = ETLUtils.getValueSchemaFromETLValueSchema(fieldSchema, etlValueSchemaTransformation);
         }
-        outputSchemaFields.add(AvroCompatibilityHelper.newField(fileField).setSchema(fieldSchema).build());
+        // Since we are stripping the schema of the value field of the "null" type, we need to handle the case where the
+        // default value of the schema is null and the schema is not nullable. In this case, we create a schema without
+        // the "null" default type.
+        if (fileField.hasDefaultValue() && AvroCompatibilityHelper.getGenericDefaultValue(fileField) == null
+            && !AvroSchemaUtil.isNullAValidDefaultForSchema(fieldSchema)) {
+          outputSchemaFields.add(
+              AvroCompatibilityHelper.newField(null)
+                  .setName(fileField.name())
+                  .setSchema(fieldSchema)
+                  .setDoc(fileField.doc())
+                  .setOrder(fileField.order())
+                  .build());
+        } else {
+          outputSchemaFields.add(AvroCompatibilityHelper.newField(fileField).setSchema(fieldSchema).build());
+        }
       }
 
       outputSchema = Schema

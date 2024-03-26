@@ -31,9 +31,9 @@ public class StorageEngineRepository {
   }
 
   public synchronized void addLocalStorageEngine(AbstractStorageEngine engine) {
-    AbstractStorageEngine found = localStorageEngines.putIfAbsent(engine.getStoreName(), engine);
+    AbstractStorageEngine found = localStorageEngines.putIfAbsent(engine.getStoreVersionName(), engine);
     if (found != null) {
-      String errorMessage = "Storage Engine '" + engine.getStoreName() + "' has already been initialized.";
+      String errorMessage = "Storage Engine '" + engine.getStoreVersionName() + "' has already been initialized.";
       LOGGER.error(errorMessage);
       throw new VeniceException(errorMessage);
     }
@@ -46,7 +46,7 @@ public class StorageEngineRepository {
   public void close() {
     VeniceException lastException = null;
     for (AbstractStorageEngine store: localStorageEngines.values()) {
-      String storeName = store.getStoreName();
+      String storeName = store.getStoreVersionName();
       LOGGER.info("Closing storage engine for store: {}", storeName);
       try {
         store.close();

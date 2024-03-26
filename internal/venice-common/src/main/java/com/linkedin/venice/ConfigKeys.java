@@ -460,6 +460,18 @@ public class ConfigKeys {
    */
   public static final String ROUTER_ENABLE_SSL = "router.enable.ssl";
 
+  /**
+   * Enable automatic removal of old unused schemas. Do not enable unless its baked enough,
+   * use admin command to delete old schemas.
+   */
+  public static final String CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED =
+      "controller.unused.value.schema.cleanup.enabled";
+
+  public static final String CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS =
+      "controller.unused.schema.cleanup.interval.mins";
+
+  public static final String CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP = "controller.min.schema.count.keep";
+
   public static final String SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS =
       "server.remote.ingestion.repair.sleep.interval.seconds";
   /**
@@ -1365,14 +1377,14 @@ public class ConfigKeys {
   public static final String PUSH_JOB_STATUS_STORE_CLUSTER_NAME = "controller.push.job.status.store.cluster.name";
 
   /**
-   * The job tracker identifier as part of a map reduce job id.
+   * The most-significant-bits of the producer GUID used by {@code VenicePushJob} encoded as a {@code long}.
    */
-  public static final String PUSH_JOB_COMPUTE_JOB_ID = "push.job.compute.job.id";
+  public static final String PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS = "push.job.guid.most.significant.bits";
 
   /**
-   * The job identifier as part of a map reduce job id.
+   * The least-significant-bits of the producer GUID used by {@code VenicePushJob} encoded as a {@code long}.
    */
-  public static final String PUSH_JOB_COMPUTE_TASK_ID = "push.job.compute.task.id";
+  public static final String PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS = "push.job.guid.least.significant.bits";
 
   /**
    * Flag to indicate whether to perform add version and start of ingestion via the admin protocol.

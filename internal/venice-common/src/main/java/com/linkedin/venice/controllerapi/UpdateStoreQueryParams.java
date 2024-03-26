@@ -55,6 +55,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
@@ -661,6 +662,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Long> getMaxCompactionLagSeconds() {
     return getLong(MAX_COMPACTION_LAG_SECONDS);
+  }
+
+  public UpdateStoreQueryParams setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
+    return putBoolean(UNUSED_SCHEMA_DELETION_ENABLED, unusedSchemaDeletionEnabled);
+  }
+
+  public Optional<Boolean> getUnusedSchemaDeletionEnabled() {
+    return getBoolean(UNUSED_SCHEMA_DELETION_ENABLED);
   }
 
   // ***************** above this line are getters and setters *****************

@@ -50,26 +50,19 @@ public class ETLUtils {
   public static Schema getValueSchemaFromETLValueSchema(
       Schema etlValueSchema,
       ETLValueSchemaTransformation transformation) {
-    Schema pushValueSchema;
-
     switch (transformation) {
       case UNIONIZE_WITH_NULL:
-        pushValueSchema = VsonAvroSchemaAdapter.stripFromUnion(etlValueSchema);
-        break;
+        return VsonAvroSchemaAdapter.stripFromUnion(etlValueSchema);
       case ADD_NULL_TO_UNION:
         List<Schema> schemasInUnion = etlValueSchema.getTypes();
         List<Schema> nullStrippedUnionSchema = schemasInUnion.stream()
             .filter(schema -> !schema.getType().equals(Schema.Type.NULL))
             .collect(Collectors.toList());
-        pushValueSchema = Schema.createUnion(nullStrippedUnionSchema);
-        break;
+        return Schema.createUnion(nullStrippedUnionSchema);
       case NONE:
-        pushValueSchema = etlValueSchema;
-        break;
+        return etlValueSchema;
       default:
         throw new VeniceException("Invalid ETL Value schema transformation: " + transformation);
     }
-
-    return pushValueSchema;
   }
 }

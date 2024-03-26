@@ -16,6 +16,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.grpc.GrpcErrorCodes;
@@ -34,7 +35,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.routerapi.ReplicaState;
+import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -275,7 +278,9 @@ public class ReadQuotaEnforcementHandlerTest {
         setUpStoreMock(storeName, currentVersion + 1, Collections.singletonList(nextVersion), newStoreReadQuota, true);
     // The store repository is called to initialize/update the token buckets, we need to make sure it doesn't return the
     // store state with higher quota prior to the test to verify quota change.
-    when(storeRepository.getStore(eq(storeName))).thenReturn(store, store, storeAfterVersionBump, storeAfterQuotaBump);
+    // Get store is also called by getBucketForStore to update stats every time when handleStoreChanged is called.
+    when(storeRepository.getStore(eq(storeName)))
+        .thenReturn(store, store, store, storeAfterVersionBump, storeAfterVersionBump, storeAfterQuotaBump);
 
     quotaEnforcer.handleStoreChanged(store);
     Assert.assertTrue(quotaEnforcer.listTopics().contains(topic));
@@ -458,6 +463,38 @@ public class ReadQuotaEnforcementHandlerTest {
     // Store that have storage node read quota disabled should not be blocked
     assertEquals(allowed.get(), capacity * 2);
     assertEquals(blocked.get(), 0);
+  }
+
+  @Test
+  public void testGetBucketForStore() {
+    String storeName = "testStore";
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    Version version = mock(Version.class);
+    doReturn(topic).when(version).kafkaTopicName();
+    Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 100, true);
+    doReturn(store).when(storeRepository).getStore(storeName);
+    doReturn(Collections.singletonList(store)).when(storeRepository).getAllStores();
+
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
+    doReturn(0).when(partition).getId();
+
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+
+    quotaEnforcer.onCustomizedViewChange(pa);
+    TokenBucket bucketForStore = quotaEnforcer.getBucketForStore(storeName);
+    // Actual stale buckets = quota (100) * enforcementCapacityMultiple (5) * enforcementInterval (10)
+    assertEquals(bucketForStore.getStaleTokenCount(), 100 * 5 * 10);
+
+    // Total buckets = node capacity (10) * enforcementCapacityMultiple (5) * enforcementInterval (10)
+    TokenBucket totalBuckets = quotaEnforcer.getBucketForStore(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT);
+    assertEquals(totalBuckets.getStaleTokenCount(), nodeCapacity * 5 * 10);
+
+    // Non-existent store should return "null" TokenBucket object
+    TokenBucket bucketForInvalidStore = quotaEnforcer.getBucketForStore("incorrect_store");
+    assertNull(bucketForInvalidStore);
   }
 
   /**

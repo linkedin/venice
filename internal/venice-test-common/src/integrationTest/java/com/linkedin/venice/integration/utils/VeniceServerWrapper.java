@@ -317,8 +317,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
         VeniceServerContext.Builder serverContextBuilder =
             new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
-                .setMetricsRepository(
-                    MetricsRepositoryUtils.createSingleThreadedMetricsRepository("server_wrapper_async_gauge_thread"))
+                .setMetricsRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository())
                 .setSslFactory(sslFactory)
                 .setClientConfigForConsumer(consumerClientConfig)
                 .setServiceDiscoveryAnnouncers(d2Servers);
@@ -465,8 +464,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
     this.veniceServer = new TestVeniceServer(
         new VeniceServerContext.Builder().setVeniceConfigLoader(config)
-            .setMetricsRepository(
-                MetricsRepositoryUtils.createSingleThreadedMetricsRepository("server_wrapper_async_gauge_thread"))
+            .setMetricsRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository())
             .setSslFactory(sslFactory)
             .setClientConfigForConsumer(consumerClientConfig)
             .setServiceDiscoveryAnnouncers(d2Servers)
@@ -507,7 +505,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     options.addOption(new Option("iaj", "isAutoJoin", false, "automatically join the venice cluster"));
     options.addOption(new Option("vu", "veniceUrl", true, "ZK url for venice d2 service"));
     options.addOption(new Option("dsn", "d2ServiceName", true, "d2 service name"));
-    CommandLineParser parser = new DefaultParser();
+    CommandLineParser parser = new DefaultParser(false);
     CommandLine cmd = parser.parse(options, args);
 
     String clusterName = cmd.getOptionValue("cn");
@@ -540,8 +538,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     }
 
     VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
-        .setMetricsRepository(
-            MetricsRepositoryUtils.createSingleThreadedMetricsRepository("server_wrapper_async_gauge_thread"))
+        .setMetricsRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository())
         .setSslFactory(ssl ? SslUtils.getVeniceLocalSslFactory() : null)
         .setClientConfigForConsumer(consumerClientConfig)
         .build();

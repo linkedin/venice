@@ -41,6 +41,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
@@ -52,6 +53,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_ENABLED;
@@ -319,6 +322,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
 
   private final boolean isKMERegistrationFromMessageHeaderEnabled;
+  private final boolean unusedValueSchemaCleanupServiceEnabled;
+
+  private final int unusedSchemaCleanupIntervalMinutes;
+
+  private final int minSchemaCountToKeep;
 
   private final PubSubClientsFactory pubSubClientsFactory;
 
@@ -553,6 +561,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
     this.enableDisabledReplicaEnabled = props.getBoolean(CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED, false);
 
+    this.unusedValueSchemaCleanupServiceEnabled =
+        props.getBoolean(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, false);
+    this.unusedSchemaCleanupIntervalMinutes = props.getInt(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS, 600);
+    this.minSchemaCountToKeep = props.getInt(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 20);
+
     try {
       String producerFactoryClassName =
           props.getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
@@ -683,6 +696,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getClusterDiscoveryD2ServiceName() {
     return clusterDiscoveryD2ServiceName;
+  }
+
+  public boolean isUnusedValueSchemaCleanupServiceEnabled() {
+    return unusedValueSchemaCleanupServiceEnabled;
+  }
+
+  public int getUnusedSchemaCleanupIntervalMinutes() {
+    return unusedSchemaCleanupIntervalMinutes;
+  }
+
+  public int getMinSchemaCountToKeep() {
+    return minSchemaCountToKeep;
   }
 
   public Map<String, String> getChildDataCenterControllerD2Map() {

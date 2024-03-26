@@ -300,10 +300,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             // this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
-    if (batchGet || compute) {
-      clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(recordCnt);
-    }
-
     if (enableGrpc) {
       setUpGrpcFastClient(clientConfigBuilder);
     }
@@ -450,10 +446,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
-
-    if (batchGet || compute) {
-      clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(recordCnt);
-    }
 
     Consumer<MetricsRepository> fastClientStatsValidation;
     if (batchGet) {

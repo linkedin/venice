@@ -42,7 +42,7 @@ public class BackupVersionOptimizationServiceTest {
     for (int version: versions) {
       String resourceName = Version.composeKafkaTopic(storeName, version);
       AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
-      doReturn(resourceName).when(storageEngine).getStoreName();
+      doReturn(resourceName).when(storageEngine).getStoreVersionName();
       doReturn(partitionIdSet).when(storageEngine).getPartitionIds();
       engineList.add(storageEngine);
       doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(resourceName);

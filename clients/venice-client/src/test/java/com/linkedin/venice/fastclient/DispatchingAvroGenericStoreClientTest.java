@@ -32,6 +32,7 @@ import com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
@@ -621,17 +622,23 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceKeyCountLimitException.class)
-  public void testBatchGetWithMoreKeysThanMaxSize() throws ExecutionException, InterruptedException, IOException {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchGetWithMoreKeysThanMaxSize() throws InterruptedException, IOException {
     try {
       setUpClient();
-      int numKeysInRequest = ClientConfig.MAX_ALLOWED_KEY_COUNT_IN_BATCHGET + 1;
+      int numKeysInRequest = Store.DEFAULT_BATCH_GET_LIMIT + 1;
       Set<String> keys = new HashSet<>(numKeysInRequest);
       for (int i = 0; i < numKeysInRequest; ++i) {
         keys.add("testKey" + i);
       }
       BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(numKeysInRequest, false);
-      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, keys).get();
+      CompletableFuture future = statsAvroGenericStoreClient.batchGet(batchGetRequestContext, keys);
+      try {
+        future.get();
+        fail(VeniceKeyCountLimitException.class.getSimpleName() + " should be thrown");
+      } catch (Exception e) {
+        assertEquals(VeniceKeyCountLimitException.class, e.getCause().getClass());
+      }
     } finally {
       tearDown();
     }
@@ -1140,20 +1147,26 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, expectedExceptions = VeniceKeyCountLimitException.class)
-  public void testComputeWithMoreKeysThanMaxSize(boolean streamingCompute)
-      throws ExecutionException, InterruptedException, IOException {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testComputeWithMoreKeysThanMaxSize(boolean streamingCompute) throws InterruptedException, IOException {
     try {
       setUpClient();
       Set<String> keys = new HashSet<>();
-      for (int i = 0; i < ClientConfig.MAX_ALLOWED_KEY_COUNT_IN_BATCHGET + 1; ++i) {
+      for (int i = 0; i < Store.DEFAULT_BATCH_GET_LIMIT + 1; ++i) {
         keys.add("testKey" + i);
       }
       ComputeRequestBuilder requestBuilder = statsAvroGenericStoreClient.compute().project("name");
+      CompletableFuture future;
       if (streamingCompute) {
-        requestBuilder.streamingExecute(keys).get();
+        future = requestBuilder.streamingExecute(keys);
       } else {
-        requestBuilder.execute(keys).get();
+        future = requestBuilder.execute(keys);
+      }
+      try {
+        future.get();
+        fail(VeniceKeyCountLimitException.class.getSimpleName() + " should be thrown");
+      } catch (Exception e) {
+        assertEquals(VeniceKeyCountLimitException.class, e.getCause().getClass());
       }
     } finally {
       tearDown();

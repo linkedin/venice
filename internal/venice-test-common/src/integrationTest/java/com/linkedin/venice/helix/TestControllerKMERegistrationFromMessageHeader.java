@@ -95,7 +95,7 @@ public class TestControllerKMERegistrationFromMessageHeader {
 
     // Remove the latest schema from child controller's local value serializer and remove it from child colo's schema
     // repository (ZK).
-    repo.removeValueSchema(
+    repo.forceRemoveValueSchema(
         AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
         AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
     valueSerializer.removeAllSchemas();

@@ -32,7 +32,7 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   private final AbstractStorageEngine delegate;
 
   public DeepCopyStorageEngine(AbstractStorageEngine delegate) {
-    super(delegate.getStoreName(), storeVersionStateSerializer, partitionStateSerializer);
+    super(delegate.getStoreVersionName(), storeVersionStateSerializer, partitionStateSerializer);
     this.delegate = delegate;
     restoreStoragePartitions();
   }
@@ -79,8 +79,8 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   @Override
-  public String getStoreName() {
-    return this.delegate.getStoreName();
+  public String getStoreVersionName() {
+    return this.delegate.getStoreVersionName();
   }
 
   @Override

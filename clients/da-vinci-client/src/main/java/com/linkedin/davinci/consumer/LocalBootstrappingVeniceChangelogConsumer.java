@@ -15,7 +15,8 @@ public class LocalBootstrappingVeniceChangelogConsumer<K, V>
     extends InternalLocalBootstrappingVeniceChangelogConsumer<K, V> {
   public LocalBootstrappingVeniceChangelogConsumer(
       ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter pubSubConsumer) {
-    super(changelogClientConfig, pubSubConsumer);
+      PubSubConsumerAdapter pubSubConsumer,
+      String consumerId) {
+    super(changelogClientConfig, pubSubConsumer, consumerId);
   }
 }

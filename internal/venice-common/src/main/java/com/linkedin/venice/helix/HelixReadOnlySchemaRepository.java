@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -162,7 +163,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     Store store = getStoreRepository().getStore(storeName);
     int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
     AtomicReference<SchemaEntry> supersetSchemaEntry = new AtomicReference<>();
-    RetryUtils.executeWithMaxAttempt(() -> {
+    long currentTimestamp = System.currentTimeMillis();
+    List<Class<? extends Throwable>> retriableExceptions =
+        Collections.singletonList(InvalidVeniceSchemaException.class);
+    RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
       try {
         getSchemaLock().writeLock().lock();
         SchemaData schemaData = getSchemaMap().get(storeName);
@@ -175,7 +179,13 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       } finally {
         getSchemaLock().writeLock().unlock();
       }
-    }, 3, Duration.ofMillis(100), Collections.singletonList(InvalidVeniceSchemaException.class));
+    }, 10, Duration.ofSeconds(1), Duration.ofMinutes(1), Duration.ofMinutes(5), retriableExceptions);
+    long timePassed = System.currentTimeMillis() - currentTimestamp;
+    logger.info(
+        "Obtain superset schema id: {} for store {} with time in milliseconds: {}.",
+        supersetSchemaId,
+        storeName,
+        timePassed);
     return supersetSchemaEntry.get();
   }
 
@@ -527,16 +537,33 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  private class ValueSchemaChildListener extends SchemaChildListener {
+  class ValueSchemaChildListener extends SchemaChildListener {
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = getSchemaMap().get(storeName);
+      Set<Integer> schemaSet = new HashSet<>();
 
       for (String id: currentChildren) {
+        int schemaId = Integer.parseInt(id);
+
         if (schemaData.getValueSchema(Integer.parseInt(id)) == null) {
-          schemaData.addValueSchema(accessor.getValueSchema(storeName, id));
+          schemaData.addValueSchema(getSchemaAccessor().getValueSchema(storeName, id));
+        }
+        schemaSet.add(schemaId);
+      }
+      for (SchemaEntry schemaEntry: schemaData.getValueSchemas()) {
+        if (!schemaSet.contains(schemaEntry.getId())) {
+          schemaData.deleteValueSchema(schemaEntry);
         }
       }
+    }
+
+    Map<String, SchemaData> getSchemaMap() {
+      return schemaMap;
+    }
+
+    HelixSchemaAccessor getSchemaAccessor() {
+      return accessor;
     }
   }
 

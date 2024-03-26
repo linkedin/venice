@@ -40,6 +40,8 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -275,12 +277,11 @@ public interface Admin extends AutoCloseable, Closeable {
 
   Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName);
 
-  /**
-   * The difference between this api and getBootStrappingStores is subtle.  getBootStrappingStores will retrieve all those
-   * store versions which are undergoing a bootstrap for any reason (be it an offline push or a rebalance).  This api
-   * will only return those stores which are currently undergoing a push.
-   */
   Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName);
+
+  Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName);
+
+  int getBackupVersion(String clusterName, String storeName);
 
   int getFutureVersion(String clusterName, String storeName);
 
@@ -370,6 +371,15 @@ public interface Admin extends AutoCloseable, Closeable {
 
   DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, String derivedSchemaStr);
 
+  Set<Integer> getInUseValueSchemaIds(String clusterName, String storeName);
+
+  /**
+   * Deletes a store's values schema with ids `except` the ids passed in the argument inuseValueSchemaIds
+   */
+  void deleteValueSchemas(String clusterName, String storeName, Set<Integer> inuseValueSchemaIds);
+
+  StoreMetaValue getMetaStoreValue(StoreMetaKey storeMetaKey, String storeName);
+
   /**
    * This method skips most precondition checks and is intended for only internal use.
    */
@@ -408,9 +418,9 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber);
 
-  void rollForwardToFutureVersion(String clusterName, String storeName);
+  void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter);
 
-  void rollbackToBackupVersion(String clusterName, String storeName);
+  void rollbackToBackupVersion(String clusterName, String storeName, String regionFilter);
 
   void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);
 

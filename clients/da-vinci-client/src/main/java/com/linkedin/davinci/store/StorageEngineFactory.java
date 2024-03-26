@@ -86,7 +86,7 @@ public abstract class StorageEngineFactory {
   public void verifyPersistenceType(AbstractStorageEngine engine) {
     if (!engine.getType().equals(getPersistenceType())) {
       throw new VeniceException(
-          "Required store persistence type: " + engine.getType() + " of store: " + engine.getStoreName()
+          "Required store persistence type: " + engine.getType() + " of store: " + engine.getStoreVersionName()
               + " isn't supported in current factory: " + getClass().getName() + " with type: " + getPersistenceType());
     }
   }

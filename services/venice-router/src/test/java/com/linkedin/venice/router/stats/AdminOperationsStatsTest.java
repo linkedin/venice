@@ -13,8 +13,7 @@ import org.testng.annotations.Test;
 public class AdminOperationsStatsTest {
   @Test
   public void testAdminOperationsStats() {
-    MetricsRepository metrics =
-        MetricsRepositoryUtils.createSingleThreadedMetricsRepository("admin_test_async_gauge_thread");
+    MetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
     VeniceRouterConfig mockConfig = mock(VeniceRouterConfig.class);

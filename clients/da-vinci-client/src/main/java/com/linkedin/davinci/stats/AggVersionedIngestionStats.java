@@ -128,6 +128,10 @@ public class AggVersionedIngestionStats
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordSubscribePrepLatency(value, currentTimeMs));
   }
 
+  public void recordProducerCallBackLatency(String storeName, int version, double value, long currentTimeMs) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordProducerCallBackLatency(value, currentTimeMs));
+  }
+
   public void recordConsumedRecordEndToEndProcessingLatency(
       String storeName,
       int version,

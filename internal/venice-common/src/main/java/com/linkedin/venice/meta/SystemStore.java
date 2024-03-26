@@ -620,6 +620,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
+    throwUnsupportedOperationException("setUnusedSchemaDeletionEnabled");
+  }
+
+  @Override
+  public boolean isUnusedSchemaDeletionEnabled() {
+    return zkSharedStore.isUnusedSchemaDeletionEnabled();
+  }
+
+  @Override
   public long getMaxCompactionLagSeconds() {
     return zkSharedStore.getMaxCompactionLagSeconds();
   }

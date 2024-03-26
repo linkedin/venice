@@ -47,6 +47,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -153,7 +154,6 @@ public class TestHybrid {
   private static final Logger LOGGER = LogManager.getLogger(TestHybrid.class);
   public static final int STREAMING_RECORD_SIZE = 1024;
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
-  private static final long MAX_COMPACTION_LAG = 2 * MIN_COMPACTION_LAG;
 
   /**
    * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #cleanUp()} function
@@ -246,6 +246,17 @@ public class TestHybrid {
         Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
         assertEquals(jobStatus.getStatus(), "COMPLETED");
       });
+      vcr = controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push1"), 1L);
+      VersionCreationResponse finalVcr = vcr;
+      TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
+        // Now the store should have version 2
+        JobStatusQueryResponse jobStatus =
+            controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, finalVcr.getVersion()));
+        Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
+        assertEquals(jobStatus.getStatus(), "COMPLETED");
+      });
+      MultiStoreStatusResponse response = controllerClient.getBackupVersions(venice.getClusterName(), storeName);
+      Assert.assertEquals(response.getStoreStatusMap().get("dc-0"), "1");
 
       // And real-time topic should exist now.
       assertTrue(

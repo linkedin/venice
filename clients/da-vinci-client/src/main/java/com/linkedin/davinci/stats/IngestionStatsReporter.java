@@ -22,6 +22,7 @@ import static com.linkedin.davinci.stats.IngestionStats.LEADER_STALLED_HYBRID_IN
 import static com.linkedin.davinci.stats.IngestionStats.NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.OFFSET_REGRESSION_DCR_ERROR;
+import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_CALLBACK_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.SUBSCRIBE_ACTION_PREP_LATENCY;
@@ -181,6 +182,12 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               0,
               CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY + "_max"));
       registerSensor(new IngestionStatsGauge(this, () -> getStats().getIdleTime(), 0, IDLE_TIME + "_max"));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getProducerCallBackLatencyMax(),
+              0,
+              PRODUCER_CALLBACK_LATENCY + "_max"));
     }
   }
 

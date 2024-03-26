@@ -599,7 +599,7 @@ public class AdminTool {
 
     options.addOptionGroup(commandGroup);
 
-    CommandLineParser parser = new DefaultParser();
+    CommandLineParser parser = new DefaultParser(false);
     CommandLine cmd = parser.parse(options, args);
 
     if (cmd.hasOption(Arg.HELP.first())) {
@@ -626,7 +626,7 @@ public class AdminTool {
         if (foundCommand == null) {
           foundCommand = c.toString();
         } else {
-          throw new VeniceException("Can only specify one of --" + foundCommand + " and --" + c.toString());
+          throw new VeniceException("Can only specify one of --" + foundCommand + " and --" + c);
         }
       }
     }
@@ -1137,6 +1137,7 @@ public class AdminTool {
     integerParam(cmd, Arg.LATEST_SUPERSET_SCHEMA_ID, p -> params.setLatestSupersetSchemaId(p), argSet);
     longParam(cmd, Arg.MIN_COMPACTION_LAG_SECONDS, p -> params.setMinCompactionLagSeconds(p), argSet);
     longParam(cmd, Arg.MAX_COMPACTION_LAG_SECONDS, p -> params.setMaxCompactionLagSeconds(p), argSet);
+    booleanParam(cmd, Arg.UNUSED_SCHEMA_DELETION_ENABLED, p -> params.setUnusedSchemaDeletionEnabled(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
