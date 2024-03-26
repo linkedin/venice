@@ -787,17 +787,6 @@ public class ConfigKeys {
       "freeze.ingestion.if.ready.to.serve.or.local.data.exists";
 
   /**
-   * Whether to enable shared kafka producer in storage node.
-   */
-  public static final String SERVER_SHARED_KAFKA_PRODUCER_ENABLED = "server.shared.kafka.producer.enabled";
-
-  /**
-   * Shared kafka producer pool size per Kafka cluster.
-   */
-  public static final String SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER =
-      "server.kafka.producer.pool.size.per.kafka.cluster";
-
-  /**
    * a comma seperated list of kafka producer metrics that will be reported.
    * For ex. "outgoing-byte-rate,record-send-rate,batch-size-max,batch-size-avg,buffer-available-bytes,buffer-exhausted-rate"
    */
