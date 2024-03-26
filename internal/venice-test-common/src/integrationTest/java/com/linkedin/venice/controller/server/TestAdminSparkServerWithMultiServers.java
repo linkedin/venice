@@ -85,15 +85,12 @@ public class TestAdminSparkServerWithMultiServers {
         .updateStore(nativeReplicationEnabledStore, new UpdateStoreQueryParams().setNativeReplicationEnabled(true));
     Assert.assertFalse(updateStoreResponse.isError());
 
-    // Add a store with incremental push enabled
-    String incrementalPushEnabledStore = Utils.getUniqueString("incremental-push-store");
-    newStoreResponse = controllerClient.createNewStore(incrementalPushEnabledStore, "test", "\"string\"", "\"string\"");
+    // Add a store with chunking enabled
+    String chunkingEnabledStore = Utils.getUniqueString("chunking-store");
+    newStoreResponse = controllerClient.createNewStore(chunkingEnabledStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
-    updateStoreResponse = controllerClient.updateStore(
-        incrementalPushEnabledStore,
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-            .setHybridOffsetLagThreshold(10L)
-            .setHybridRewindSeconds(1L));
+    updateStoreResponse =
+        controllerClient.updateStore(chunkingEnabledStore, new UpdateStoreQueryParams().setChunkingEnabled(true));
     Assert.assertFalse(updateStoreResponse.isError());
 
     // List stores that have native replication enabled
@@ -103,12 +100,11 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertEquals(multiStoreResponse.getStores().length, 1);
     Assert.assertEquals(multiStoreResponse.getStores()[0], nativeReplicationEnabledStore);
 
-    // List stores that have incremental push enabled
-    multiStoreResponse =
-        controllerClient.queryStoreList(false, Optional.of("incrementalPushEnabled"), Optional.of("true"));
+    // List stores that have chunking enabled
+    multiStoreResponse = controllerClient.queryStoreList(false, Optional.of("chunkingEnabled"), Optional.of("true"));
     Assert.assertFalse(multiStoreResponse.isError());
     Assert.assertEquals(multiStoreResponse.getStores().length, 1);
-    Assert.assertEquals(multiStoreResponse.getStores()[0], incrementalPushEnabledStore);
+    Assert.assertEquals(multiStoreResponse.getStores()[0], chunkingEnabledStore);
 
     // Add a store with hybrid config enabled and the DataReplicationPolicy is non-aggregate
     String hybridNonAggregateStore = Utils.getUniqueString("hybrid-non-aggregate");
@@ -140,7 +136,7 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertTrue(hybridStoresSet.contains(hybridAggregateStore));
     Assert.assertTrue(hybridStoresSet.contains(hybridNonAggregateStore));
     Assert.assertFalse(hybridStoresSet.contains(nativeReplicationEnabledStore));
-    Assert.assertTrue(hybridStoresSet.contains(incrementalPushEnabledStore));
+    Assert.assertFalse(hybridStoresSet.contains(chunkingEnabledStore));
 
     // List hybrid stores that are on non-aggregate mode
     multiStoreResponse =
@@ -151,7 +147,7 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertFalse(nonAggHybridStoresSet.contains(hybridAggregateStore));
     Assert.assertTrue(nonAggHybridStoresSet.contains(hybridNonAggregateStore));
     Assert.assertFalse(nonAggHybridStoresSet.contains(nativeReplicationEnabledStore));
-    Assert.assertTrue(nonAggHybridStoresSet.contains(incrementalPushEnabledStore));
+    Assert.assertFalse(nonAggHybridStoresSet.contains(chunkingEnabledStore));
 
     // List hybrid stores that are on aggregate mode
     multiStoreResponse =
@@ -162,7 +158,7 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertTrue(aggHybridStoresSet.contains(hybridAggregateStore));
     Assert.assertFalse(aggHybridStoresSet.contains(hybridNonAggregateStore));
     Assert.assertFalse(aggHybridStoresSet.contains(nativeReplicationEnabledStore));
-    Assert.assertFalse(aggHybridStoresSet.contains(incrementalPushEnabledStore));
+    Assert.assertFalse(aggHybridStoresSet.contains(chunkingEnabledStore));
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -220,7 +220,7 @@ public class PushJobDetailsTest {
         recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString(),
         recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
     // hadoop job client cannot fetch counters properly and should fail the job
-    parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
+    parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(1));
     Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {

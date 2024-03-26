@@ -155,7 +155,7 @@ public class IngestionHeartBeatTest {
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
-              .setIncrementalPushEnabled(isIncrementalPushEnabled)
+              .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
               .setHybridRewindSeconds(500L)
               .setHybridOffsetLagThreshold(10L)
               .setPartitionCount(2)

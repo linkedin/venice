@@ -9,7 +9,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_DETAIL_ENABLED;
@@ -30,7 +29,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_S
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ALL_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
@@ -782,40 +780,6 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#configureNativeReplication(String, VeniceUserStoreType, Optional, boolean, Optional, Optional)
-   */
-  public Route enableNativeReplicationForCluster(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-      @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-
-        AdminSparkServer.validateParams(request, CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getParams(), admin);
-
-        VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(request.queryParams(STORE_TYPE).toUpperCase());
-
-        String cluster = request.queryParams(CLUSTER);
-        boolean enableNativeReplicationForCluster = Utils.parseBooleanFromString(request.queryParams(STATUS), STATUS);
-        String sourceRegionParams = request.queryParamOrDefault(NATIVE_REPLICATION_SOURCE_FABRIC, null);
-        String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
-
-        admin.configureNativeReplication(
-            cluster,
-            storeType,
-            Optional.empty(),
-            enableNativeReplicationForCluster,
-            Optional.ofNullable(sourceRegionParams),
-            Optional.ofNullable(regionsFilterParams));
-
-        veniceResponse.setCluster(cluster);
-      }
-    };
-  }
-
-  /**
    * @see Admin#configureActiveActiveReplication(String, VeniceUserStoreType, Optional, boolean, Optional)
    */
   public Route enableActiveActiveReplicationForCluster(Admin admin) {
@@ -830,6 +794,17 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getParams(), admin);
 
         VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(request.queryParams(STORE_TYPE).toUpperCase());
+
+        if (storeType == VeniceUserStoreType.INCREMENTAL_PUSH) {
+          veniceResponse.setError(
+              "Cannot set cluster-level active-active replication for incremental push stores. Please set for hybrid store instead");
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
+          return;
+        }
+
+        if (storeType == VeniceUserStoreType.HYBRID_ONLY) {
+          storeType = VeniceUserStoreType.HYBRID_OR_INCREMENTAL;
+        }
 
         String cluster = request.queryParams(CLUSTER);
         boolean enableActiveActiveReplicationForCluster =

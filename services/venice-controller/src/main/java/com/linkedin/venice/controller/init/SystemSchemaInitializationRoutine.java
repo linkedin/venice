@@ -5,14 +5,13 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NA
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.util.PrimaryControllerConfigUpdateUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
-import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
@@ -34,13 +33,12 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
   private final VeniceHelixAdmin admin;
   private final Optional<Schema> keySchema;
   private final Optional<UpdateStoreQueryParams> storeMetadataUpdate;
-  private final boolean autoRegisterDerivedComputeSchema;
 
   public SystemSchemaInitializationRoutine(
       AvroProtocolDefinition protocolDefinition,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       VeniceHelixAdmin admin) {
-    this(protocolDefinition, multiClusterConfigs, admin, Optional.empty(), Optional.empty(), false);
+    this(protocolDefinition, multiClusterConfigs, admin, Optional.empty(), Optional.empty());
   }
 
   public SystemSchemaInitializationRoutine(
@@ -48,14 +46,12 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       VeniceHelixAdmin admin,
       Optional<Schema> keySchema,
-      Optional<UpdateStoreQueryParams> storeMetadataUpdate,
-      boolean autoRegisterDerivedComputeSchema) {
+      Optional<UpdateStoreQueryParams> storeMetadataUpdate) {
     this.protocolDefinition = protocolDefinition;
     this.multiClusterConfigs = multiClusterConfigs;
     this.admin = admin;
     this.keySchema = keySchema;
     this.storeMetadataUpdate = storeMetadataUpdate;
-    this.autoRegisterDerivedComputeSchema = autoRegisterDerivedComputeSchema;
   }
 
   /**
@@ -194,31 +190,13 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
                 schemaInLocalResources.toString(true));
           }
         }
-        if (autoRegisterDerivedComputeSchema) {
-          // Check and register Write Compute schema
-          String writeComputeSchema =
-              WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(schemaInLocalResources).toString();
-          GeneratedSchemaID derivedSchemaInfo =
-              admin.getDerivedSchemaId(clusterToInit, systemStoreName, writeComputeSchema);
-          if (!derivedSchemaInfo.isValid()) {
-            /**
-             * The derived schema doesn't exist right now, try to register it.
-             */
-            try {
-              admin.addDerivedSchema(clusterToInit, systemStoreName, valueSchemaVersion, writeComputeSchema);
-            } catch (Exception e) {
-              LOGGER.error(
-                  "Caught Exception when attempting to register the derived compute schema for '{}' schema version '{}'. Will bubble up.",
-                  protocolDefinition.name(),
-                  valueSchemaVersion,
-                  e);
-              throw e;
-            }
-            LOGGER.info(
-                "Added the derived compute schema for the new schema v{} to system store '{}'.",
-                valueSchemaVersion,
-                systemStoreName);
-          }
+
+        boolean writeComputationEnabled =
+            storeMetadataUpdate.map(params -> params.getWriteComputationEnabled().orElse(false)).orElse(false);
+
+        if (writeComputationEnabled) {
+          // Register partial update schemas (aka derived schemas)
+          PrimaryControllerConfigUpdateUtils.addUpdateSchemaForStore(admin, clusterToInit, systemStoreName, false);
         }
       }
     }

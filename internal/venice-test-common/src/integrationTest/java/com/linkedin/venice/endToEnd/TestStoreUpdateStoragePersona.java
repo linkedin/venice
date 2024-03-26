@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -7,10 +8,8 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.utils.TestStoragePersonaUtils;
@@ -18,7 +17,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashSet;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -29,27 +27,25 @@ import org.testng.annotations.Test;
 
 public class TestStoreUpdateStoragePersona {
   private VeniceClusterWrapper venice;
-  private ZkServerWrapper parentZk;
-  private VeniceControllerWrapper parentController;
   private ControllerClient controllerClient;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
-    Properties extraProperties = new Properties();
-    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 1000000, false, false, extraProperties);
-    parentZk = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), parentZk, venice.getPubSubBrokerWrapper())
-            .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+    venice = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .partitionSize(1000000)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
             .build());
-    controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+    controllerClient = new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs());
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(controllerClient);
-    Utils.closeQuietlyWithErrorLogged(parentController);
-    Utils.closeQuietlyWithErrorLogged(parentZk);
     Utils.closeQuietlyWithErrorLogged(venice);
   }
 
@@ -134,12 +130,13 @@ public class TestStoreUpdateStoragePersona {
     Set<String> expectedStores = new HashSet<>();
     Store testStore = TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", 100);
     expectedStores.add(testStore.getName());
-    controllerClient.createNewStoreWithParameters(
-        testStore.getName(),
-        testStore.getOwner(),
-        STRING_SCHEMA.toString(),
-        STRING_SCHEMA.toString(),
-        new UpdateStoreQueryParams().setStoragePersona(persona.getName()).setStorageQuotaInByte(quota));
+    assertCommand(
+        controllerClient.createNewStoreWithParameters(
+            testStore.getName(),
+            testStore.getOwner(),
+            STRING_SCHEMA.toString(),
+            STRING_SCHEMA.toString(),
+            new UpdateStoreQueryParams().setStoragePersona(persona.getName()).setStorageQuotaInByte(quota)));
     ControllerResponse response = controllerClient
         .updateStore(testStore.getName(), new UpdateStoreQueryParams().setStoragePersona(persona2.getName()));
     Assert.assertTrue(response.isError());

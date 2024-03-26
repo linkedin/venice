@@ -68,7 +68,9 @@ public class PartitionUtils {
         partitionCount,
         storageQuota,
         storeName);
-    return (int) partitionCount;
+
+    // At least 1 partition
+    return partitionCount <= 0 ? 1 : (int) partitionCount;
   }
 
   public static VenicePartitioner getVenicePartitioner(PartitionerConfig config) {

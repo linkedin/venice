@@ -22,6 +22,7 @@ public class VeniceControllerCreateOptions {
   private final boolean isParent;
   private final boolean sslToKafka;
   private final boolean d2Enabled;
+  private final boolean multiRegion;
   private final int replicationFactor;
   private final int partitionSize;
   private final int numberOfPartitions;
@@ -41,6 +42,7 @@ public class VeniceControllerCreateOptions {
   private VeniceControllerCreateOptions(Builder builder) {
     sslToKafka = builder.sslToKafka;
     d2Enabled = builder.d2Enabled;
+    multiRegion = builder.multiRegion;
     replicationFactor = builder.replicationFactor;
     partitionSize = builder.partitionSize;
     numberOfPartitions = builder.numberOfPartitions;
@@ -136,6 +138,10 @@ public class VeniceControllerCreateOptions {
     return d2Enabled;
   }
 
+  public boolean isMultiRegion() {
+    return multiRegion;
+  }
+
   public int getReplicationFactor() {
     return replicationFactor;
   }
@@ -202,6 +208,7 @@ public class VeniceControllerCreateOptions {
     private final PubSubBrokerWrapper kafkaBroker;
     private boolean sslToKafka = false;
     private boolean d2Enabled = false;
+    private boolean multiRegion = false;
     private boolean isMinActiveReplicaSet = false;
     private int replicationFactor = DEFAULT_REPLICATION_FACTOR;
     private int partitionSize = DEFAULT_PARTITION_SIZE_BYTES;
@@ -234,6 +241,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder d2Enabled(boolean d2Enabled) {
       this.d2Enabled = d2Enabled;
+      return this;
+    }
+
+    public Builder multiRegion(boolean multiRegion) {
+      this.multiRegion = multiRegion;
       return this;
     }
 

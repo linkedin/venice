@@ -64,14 +64,17 @@ public class SystemStoreInitializationHelperTest {
     int partitionCount = 10;
     int replicationFactor = 3;
     doReturn(1).when(firstVersion).getNumber();
+    doReturn(partitionCount).when(firstVersion).getPartitionCount();
 
     Store storeForTest = mock(Store.class);
 
     Store storeForTestAfterUpdateStore = mock(Store.class);
     doReturn(true).when(storeForTestAfterUpdateStore).isHybrid();
+    doReturn(partitionCount).when(storeForTestAfterUpdateStore).getPartitionCount();
 
     Store storeForTestAfterCreatingVersion = mock(Store.class);
     doReturn(true).when(storeForTestAfterCreatingVersion).isHybrid();
+    doReturn(partitionCount).when(storeForTestAfterUpdateStore).getPartitionCount();
     doReturn(versionNumber).when(storeForTestAfterCreatingVersion).getCurrentVersion();
     doReturn(firstVersion).when(storeForTestAfterCreatingVersion).getVersion(versionNumber);
     doReturn(Collections.singletonList(firstVersion)).when(storeForTestAfterCreatingVersion).getVersions();

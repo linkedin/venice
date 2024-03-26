@@ -90,6 +90,7 @@ public class VeniceControllerService extends AbstractVeniceService {
         sslConfig,
         accessController,
         icProvider,
+        externalSupersetSchemaGenerator,
         pubSubTopicRepository,
         pubSubClientsFactory,
         Arrays.asList(initRoutineForPushJobDetailsSystemStore, initRoutineForHeartbeatSystemStore));
@@ -172,15 +173,19 @@ public class VeniceControllerService extends AbstractVeniceService {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     for (String cluster: multiClusterConfigs.getClusters()) {
-      AdminConsumerService adminConsumerService = new AdminConsumerService(
-          internalAdmin,
-          multiClusterConfigs.getControllerConfig(cluster),
-          metricsRepository,
-          pubSubTopicRepository,
-          pubSubMessageDeserializer);
-      this.consumerServicesByClusters.put(cluster, adminConsumerService);
+      VeniceControllerConfig clusterConfig = multiClusterConfigs.getControllerConfig(cluster);
+      if (clusterConfig.isMultiRegion()) {
+        // Enable admin channel consumption only for multi-region setups
+        AdminConsumerService adminConsumerService = new AdminConsumerService(
+            internalAdmin,
+            clusterConfig,
+            metricsRepository,
+            pubSubTopicRepository,
+            pubSubMessageDeserializer);
+        this.consumerServicesByClusters.put(cluster, adminConsumerService);
 
-      this.admin.setAdminConsumerService(cluster, adminConsumerService);
+        this.admin.setAdminConsumerService(cluster, adminConsumerService);
+      }
     }
 
   }
@@ -209,7 +214,9 @@ public class VeniceControllerService extends AbstractVeniceService {
   public boolean startInner() {
     for (String clusterName: multiClusterConfigs.getClusters()) {
       admin.initStorageCluster(clusterName);
-      consumerServicesByClusters.get(clusterName).start();
+      if (multiClusterConfigs.isMultiRegion()) {
+        consumerServicesByClusters.get(clusterName).start();
+      }
       LOGGER.info("started cluster: {}", clusterName);
     }
     LOGGER.info("Started Venice controller.");
@@ -227,7 +234,9 @@ public class VeniceControllerService extends AbstractVeniceService {
       // prevent the partial updates.
       admin.stop(clusterName);
       try {
-        consumerServicesByClusters.get(clusterName).stop();
+        if (multiClusterConfigs.isMultiRegion()) {
+          consumerServicesByClusters.get(clusterName).stop();
+        }
       } catch (Exception e) {
         LOGGER.error("Got exception when stop AdminConsumerService", e);
       }

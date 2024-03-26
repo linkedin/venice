@@ -4,7 +4,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
@@ -23,7 +22,6 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -88,7 +86,6 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(topicName));
 
     internalAdmin = mock(VeniceHelixAdmin.class);
-    when(internalAdmin.isHybrid((HybridStoreConfig) any())).thenCallRealMethod();
     doReturn(topicManager).when(internalAdmin).getTopicManager();
     SchemaEntry mockEntry = new SchemaEntry(0, TEST_SCHEMA);
     doReturn(mockEntry).when(internalAdmin).getKeySchema(anyString(), anyString());
@@ -127,6 +124,8 @@ public class AbstractTestVeniceParentHelixAdmin {
         .put(regionName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
 
+    doReturn(true).when(internalAdmin).isPrimary();
+
     resources = mockResources(config, clusterName);
     doReturn(storeRepository).when(resources).getStoreMetadataRepository();
     ZkRoutersClusterManager manager = mock(ZkRoutersClusterManager.class);
@@ -139,6 +138,8 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(10).when(manager).getLiveRoutersCount();
     clusterLockManager = mock(ClusterLockManager.class);
     doReturn(clusterLockManager).when(resources).getClusterLockManager();
+
+    doReturn(1000).when(config).getDefaultReadQuotaPerRouter();
 
     adminStats = mock(VeniceAdminStats.class);
     doReturn(adminStats).when(resources).getVeniceAdminStats();
@@ -204,6 +205,10 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
     doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartitions();
     doReturn(DefaultIdentityParser.class.getName()).when(config).getIdentityParserClassName();
+    doReturn(true).when(config).isMultiRegion();
+    doReturn(10L).when(config).getPartitionSize();
+    doReturn("dc-batch-nr").when(config).getNativeReplicationSourceFabricAsDefaultForHybrid();
+    doReturn("dc-hybrid-nr").when(config).getNativeReplicationSourceFabricAsDefaultForHybrid();
     return config;
   }
 

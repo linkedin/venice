@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -182,5 +183,16 @@ public class UtilsTest {
   @Test
   public void testSanitizingStringForLogger() {
     Assert.assertEquals(Utils.getSanitizedStringForLogger(".abc.123."), "_abc_123_");
+  }
+
+  @Test
+  public void testParseCommaSeparatedStringToSet() {
+    Assert.assertTrue(Utils.parseCommaSeparatedStringToSet(null).isEmpty());
+    Assert.assertTrue(Utils.parseCommaSeparatedStringToSet("").isEmpty());
+    Set<String> set = Utils.parseCommaSeparatedStringToSet("a,b,c");
+    Assert.assertEquals(set.size(), 3);
+    Assert.assertTrue(set.contains("a"));
+    Assert.assertTrue(set.contains("b"));
+    Assert.assertTrue(set.contains("c"));
   }
 }

@@ -21,6 +21,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -31,6 +32,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -194,7 +196,9 @@ public class TestParentControllerWithMultiDataCenter {
           incPushStoreName,
           parentControllerClient,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setIncrementalPushEnabled(true));
+              .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
+              .setHybridRewindSeconds(Time.SECONDS_PER_DAY)
+              .setHybridOffsetLagThreshold(1000));
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         for (ControllerClient controllerClient: controllerClients) {
           StoreResponse storeResponse = controllerClient.getStore(incPushStoreName);

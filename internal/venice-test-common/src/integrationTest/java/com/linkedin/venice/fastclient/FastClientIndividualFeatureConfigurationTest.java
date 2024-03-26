@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -59,7 +60,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
   @BeforeMethod
   public void enableStoreReadQuota() {
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils.assertCommand(
+      assertCommand(
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
     });
   }
@@ -76,7 +77,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         StoreMetadataFetchMode.SERVER_BASED_METADATA);
     // Update the read quota to 1000 and make 500 requests, all requests should be allowed.
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils.assertCommand(
+      assertCommand(
           controllerClient.updateStore(
               storeName,
               new UpdateStoreQueryParams().setReadQuotaInCU(1000).setStorageNodeReadQuotaEnabled(true)));
@@ -153,8 +154,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
 
     // Update the read quota to 50 and make as many requests needed to trigger quota rejected exception.
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils
-          .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(50)));
+      assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(50)));
     });
     try {
       // Keep making requests until it gets rejected by read quota, it may take some time for the quota update to be
@@ -227,7 +227,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     assertTrue(responseMap.isFullResponse());
 
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils.assertCommand(
+      assertCommand(
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(false)));
     });
 
@@ -259,7 +259,9 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
 
   @Test(timeOut = TIME_OUT)
   public void testStreamingBatchGetWithMultiValueSchemaVersions() throws Exception {
-    veniceCluster.useControllerClient(client -> client.addValueSchema(storeName, VALUE_SCHEMA_V2_STR));
+    veniceCluster.useControllerClient(client -> {
+      assertCommand(client.addValueSchema(storeName, VALUE_SCHEMA_V2_STR));
+    });
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -317,8 +319,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
   @Test(timeOut = TIME_OUT)
   public void testStreamingBatchGetWithRetryAndQuotaRejection() throws Exception {
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils
-          .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(10)));
+      assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(10)));
     });
     ArrayList<MetricsRepository> serverMetrics = new ArrayList<>();
     for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
@@ -450,7 +451,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             .setSpeculativeQueryEnabled(false);
     // Update store to disable storage node read quota
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils.assertCommand(
+      assertCommand(
           controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(false)));
     });
     Assert.assertThrows(

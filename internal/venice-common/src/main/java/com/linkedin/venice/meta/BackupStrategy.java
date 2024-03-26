@@ -24,7 +24,7 @@ public enum BackupStrategy {
   // KEEP_IN_KAFKA_ONLY,
   /** Keep in user-specified store eg HDD, other DB */
   // KEEP_IN_USER_STORE;
-  private int value;
+  private final int value;
 
   BackupStrategy(int v) {
     this.value = v;
@@ -33,6 +33,10 @@ public enum BackupStrategy {
   private static final Map<Integer, BackupStrategy> idMapping = new HashMap<>();
   static {
     Arrays.stream(values()).forEach(s -> idMapping.put(s.value, s));
+  }
+
+  public int getValue() {
+    return value;
   }
 
   public static BackupStrategy fromInt(int i) {

@@ -31,7 +31,7 @@ cd ~/src/venice
 ```shell
   java -jar bin/venice-admin-tool-all.jar --new-store --url http://venice-controller:5555 --cluster venice-cluster0 --store t1_n1_s1 --key-schema-file /tmp/key.asvc --value-schema-file /tmp/value.asvc
 
-  java -jar bin/venice-admin-tool-all.jar --update-store --url http://venice-controller:5555 --cluster venice-cluster0 --store t1_n1_s1 --storage-quota -1 --incremental-push-enabled true
+  java -jar bin/venice-admin-tool-all.jar --update-store --url http://venice-controller:5555 --cluster venice-cluster0 --store t1_n1_s1 --storage-quota -1 --hybrid-rewind-seconds 86400 --hybrid-offset-lag 1000 --hybrid-data-replication-policy NONE
   java -jar bin/venice-admin-tool-all.jar --update-store --url http://venice-controller:5555 --cluster venice-cluster0 --store t1_n1_s1 --read-quota 1000000
 
   java -jar bin/venice-admin-tool-all.jar --empty-push --url http://venice-controller:5555 --cluster venice-cluster0 --store t1_n1_s1 --push-id init --store-size 1000

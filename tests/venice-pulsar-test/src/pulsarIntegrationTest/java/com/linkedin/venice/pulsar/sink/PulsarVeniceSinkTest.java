@@ -262,7 +262,8 @@ public class PulsarVeniceSinkTest {
         "bash",
         "-c",
         "java -jar " + jar + " --update-store --url " + veniceControllerUrl + " --cluster " + clusterName + " --store "
-            + storeName + " --storage-quota -1 --incremental-push-enabled true");
+            + storeName
+            + " --storage-quota -1 --hybrid-rewind-seconds 86400 --hybrid-offset-lag 1000 --hybrid-data-replication-policy NONE");
 
     execByServiceAsssertNoStdErr(
         "venice-client",
