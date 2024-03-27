@@ -1695,6 +1695,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     AvroSchemaUtils.validateAvroSchemaStr(keySchema);
     AvroSchemaUtils.validateAvroSchemaStr(valueSchema);
+    AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchema);
     checkControllerLeadershipFor(clusterName);
     checkStoreNameConflict(storeName, allowSystemStore);
     // Before creating store, check the global stores configs at first.
@@ -5385,6 +5386,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     AvroSchemaUtils.validateAvroSchemaStr(valueSchemaStr);
+    AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr);
     validateValueSchemaUsingRandomGenerator(valueSchemaStr, clusterName, storeName);
     checkControllerLeadershipFor(clusterName);
     return getHelixVeniceClusterResources(clusterName).getSchemaRepository()
