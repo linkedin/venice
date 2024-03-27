@@ -1,12 +1,15 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.TransformedRecord;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 
 
-public class TestRecordTransformer implements DaVinciRecordTransformer<Integer, Integer, TransformedRecord> {
+public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, Integer> {
+  public TestRecordTransformer(int storeVersion) {
+    super(storeVersion);
+  }
+
   Schema originalSchema;
 
   public Schema getKeyOutputSchema() {
@@ -21,11 +24,8 @@ public class TestRecordTransformer implements DaVinciRecordTransformer<Integer, 
     this.originalSchema = schema;
   }
 
-  public TransformedRecord put(Lazy<Integer> key, Lazy<Integer> value) {
-    TransformedRecord transformedRecord = new TransformedRecord<Integer, Integer>();
-    transformedRecord.setValue(value.get() * 100);
-
-    return transformedRecord;
+  public Integer put(Lazy<Integer> value) {
+    return value.get() * 100;
   }
 
 }

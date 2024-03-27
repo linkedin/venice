@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
 
 public class StoreIngestionTaskFactory {
@@ -50,7 +51,7 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformer recordTransformer) {
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
           builder,
@@ -62,7 +63,7 @@ public class StoreIngestionTaskFactory {
           partitionId,
           isIsolatedIngestion,
           cacheBackend,
-          recordTransformer);
+          getRecordTransformer);
     }
     return new LeaderFollowerStoreIngestionTask(
         builder,
@@ -74,7 +75,7 @@ public class StoreIngestionTaskFactory {
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformer);
+        getRecordTransformer);
   }
 
   /**

@@ -169,6 +169,10 @@ public class AggVersionedIngestionStats
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerLatency(value, timestamp));
   }
 
+  public void recordTransformerError(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerError(value, timestamp));
+  }
+
   public void recordMaxIdleTime(String storeName, int version, long idleTimeMs) {
     getStats(storeName, version).recordIdleTime(idleTimeMs);
   }
@@ -176,5 +180,10 @@ public class AggVersionedIngestionStats
   public void registerTransformerLatencySensor(String storeName, int version) {
     getStats(storeName, version).registerTransformerLatencySensor();
     getTotalStats(storeName).registerTransformerLatencySensor();
+  }
+
+  public void registerTransformerErrorSensor(String storeName, int version) {
+    getStats(storeName, version).registerTransformerErrorSensor();
+    getTotalStats(storeName).registerTransformerErrorSensor();
   }
 }

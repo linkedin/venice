@@ -5,8 +5,8 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 
 
-public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  public TestStringRecordTransformer(int storeVersion) {
+public class TestAvroRecordTransformer extends DaVinciRecordTransformer<Integer, Object, Object> {
+  public TestAvroRecordTransformer(int storeVersion) {
     super(storeVersion);
   }
 
@@ -18,7 +18,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     return Schema.create(Schema.Type.STRING);
   }
 
-  public String put(Lazy<String> value) {
+  public Object put(Lazy<Object> value) {
     return value.get() + "Transformed";
   }
 }
