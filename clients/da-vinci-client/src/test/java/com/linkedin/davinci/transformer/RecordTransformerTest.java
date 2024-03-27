@@ -12,6 +12,7 @@ import org.testng.annotations.Test;
 public class RecordTransformerTest {
   @Test
   public void testRecordTransformer() {
+    // Object type used instead of String to accommodate Strings in Avro UTF-8 format during tests
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0);
 
     assertEquals(recordTransformer.getStoreVersion(), 0);

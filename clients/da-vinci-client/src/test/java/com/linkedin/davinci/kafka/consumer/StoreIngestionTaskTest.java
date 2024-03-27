@@ -98,6 +98,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.transformer.TestAvroRecordTransformer;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -618,6 +619,35 @@ public abstract class StoreIngestionTaskTest {
 
   private void runTest(Set<Integer> partitions, Runnable assertions, AAConfig aaConfig) throws Exception {
     runTest(partitions, () -> {}, assertions, aaConfig);
+  }
+
+  private void runTest(
+      Set<Integer> partitions,
+      Runnable assertions,
+      AAConfig aaConfig,
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+    runTest(partitions, () -> {}, assertions, aaConfig, getRecordTransformer);
+  }
+
+  private void runTest(
+      Set<Integer> partitions,
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      AAConfig aaConfig,
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+    runTest(
+        new RandomPollStrategy(),
+        partitions,
+        beforeStartingConsumption,
+        assertions,
+        this.hybridStoreConfig,
+        false,
+        Optional.empty(),
+        aaConfig,
+        1,
+        Collections.emptyMap(),
+        storeVersionConfigOverride -> {},
+        getRecordTransformer);
   }
 
   private void runTest(
@@ -4270,86 +4300,121 @@ public abstract class StoreIngestionTaskTest {
 
   @Test(dataProvider = "aaConfigProvider")
   public void testStoreIngestionRecordTransformer(AAConfig aaConfig) throws Exception {
-    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
-    PubSubProduceResult putMetadata = (PubSubProduceResult) localVeniceWriter
-        .put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null)
-        .get();
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, putKeyFoo);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
+    Put put = new Put();
 
-    Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
-    pollStrategies.add(new RandomPollStrategy());
+    put.putValue = ByteBuffer.wrap(putValue);
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
+    kafkaMessageEnvelope.payloadUnion = put;
+    kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+        0,
+        0,
+        0);
 
-    // We re-deliver the old put out of order, so we can make sure it's ignored.
-    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
-    pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata));
-    pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
+    LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+    when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+    when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+    when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
 
-    PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
-    VenicePartitioner partitioner = getVenicePartitioner(1);
-    int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
 
-    runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {
-      Schema keySchema = Schema.create(Schema.Type.INT);
-      SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-      when(keySchemaEntry.getSchema()).thenReturn(keySchema);
-      when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
 
-      Schema valueSchema = Schema.create(Schema.Type.STRING);
-      SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-      when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
-      when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
-
-      mockAbstractStorageEngine.put(
-          targetPartitionPutKeyFoo,
-          putKeyFoo,
-          ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
-    }, () -> {
-
-    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
+      try {
+        storeIngestionTaskUnderTest.produceToStoreBufferService(
+            pubSubMessage,
+            leaderProducedRecordContext,
+            PARTITION_FOO,
+            localKafkaConsumerService.kafkaUrl,
+            System.nanoTime(),
+            System.currentTimeMillis());
+      } catch (InterruptedException e) {
+        throw new VeniceException(e);
+      }
+    }, aaConfig, (storeVersion) -> new TestAvroRecordTransformer(storeVersion));
   }
 
   // Test to throw type error when performing record transformation with incompatible types
+  // @Test(dataProvider = "aaConfigProvider", expectedExceptions = { VeniceException.class, VeniceMessageException.class
+  // })
   @Test(dataProvider = "aaConfigProvider")
   public void testStoreIngestionRecordTransformerError(AAConfig aaConfig) throws Exception {
-    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
-    byte[] putValue = ByteBuffer.allocate(Double.BYTES).putDouble(1.0).array();
-    PubSubProduceResult putMetadata = (PubSubProduceResult) localVeniceWriter
-        .put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null)
-        .get();
+    byte[] keyBytes = new byte[1];
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
+    Put put = new Put();
+    put.putValue = ByteBuffer.allocate(10);
+    put.putValue.position(4);
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
+    kafkaMessageEnvelope.payloadUnion = put;
+    kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+        0,
+        0,
+        0);
 
-    Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
-    pollStrategies.add(new RandomPollStrategy());
+    LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+    when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+    when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+    when(leaderProducedRecordContext.getKeyBytes()).thenReturn(keyBytes);
 
-    // We re-deliver the old put out of order, so we can make sure it's ignored.
-    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
-    pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata));
-    pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
-    PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
+    Schema valueSchema = Schema.create(Schema.Type.INT);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
 
-    VenicePartitioner partitioner = getVenicePartitioner(1);
-    int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
 
-    runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {
-      Schema keySchema = Schema.create(Schema.Type.INT);
-      SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-      when(keySchemaEntry.getSchema()).thenReturn(keySchema);
-      when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
-
-      Schema valueSchema = Schema.create(Schema.Type.DOUBLE);
-      SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-      when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
-      when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
-
-      mockAbstractStorageEngine.put(
-          targetPartitionPutKeyFoo,
-          putKeyFoo,
-          ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
-    }, () -> {
-      // Verify transformer error was recorded
-      verify(mockVersionedStorageIngestionStats)
-          .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+      try {
+        storeIngestionTaskUnderTest.produceToStoreBufferService(
+            pubSubMessage,
+            leaderProducedRecordContext,
+            PARTITION_FOO,
+            localKafkaConsumerService.kafkaUrl,
+            System.nanoTime(),
+            System.currentTimeMillis());
+      } catch (Exception e) {
+        e.printStackTrace();
+        // Verify transformer error was recorded
+        verify(mockVersionedStorageIngestionStats)
+            .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+      }
     }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
+
+    // Verify transformer error was recorded
+    verify(mockVersionedStorageIngestionStats)
+        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   @Test
