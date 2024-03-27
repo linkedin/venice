@@ -139,6 +139,26 @@ public class PushMonitorUtils {
       }
       String statusDetail = statusDetailStringBuilder.toString();
       if (allInstancesCompleted) {
+        // In case Da Vinci instances are partially upgraded to the release that produces version level status key,
+        // we should always try to query the partition level status key for the old instances.
+        ExecutionStatusWithDetails partitionLevelStatus = getDaVinciPartitionLevelPushStatusAndDetails(
+            reader,
+            topicName,
+            partitionCount,
+            incrementalPushVersion,
+            maxOfflineInstanceCount,
+            maxOfflineInstanceRatio);
+        if (partitionLevelStatus.getStatus() != ExecutionStatus.COMPLETED) {
+          // Do not report COMPLETED, instead, report status from the partition level status key.
+          statusDetailStringBuilder.append(
+              ". However, some instances are still reporting partition level status keys and they are not completed yet. ")
+              .append(partitionLevelStatus.getDetails());
+          return new ExecutionStatusWithDetails(
+              partitionLevelStatus.getStatus(),
+              statusDetailStringBuilder.toString(),
+              false);
+        }
+        // TODO: Remove the above block after all Da Vinci instances are upgraded.
         storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
         return new ExecutionStatusWithDetails(completeStatus, statusDetail, noDaVinciStatusReported);
       }
