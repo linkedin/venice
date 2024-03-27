@@ -597,7 +597,7 @@ public class VeniceParentHelixAdminTest {
           isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
           ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
-
+        testBadDefaultSchemaValidation(parentControllerClient);
         testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
         testLatestSupersetSchemaIdUpdate(parentControllerClient, childControllerClient);
         testSuperSetSchemaGen(parentControllerClient);
@@ -652,6 +652,30 @@ public class VeniceParentHelixAdminTest {
           backupVersionRetentionMs);
       Assert.assertEquals(storeResponseFromChildController.getStore().getReadQuotaInCU(), 10000);
     });
+  }
+
+  private void testBadDefaultSchemaValidation(ControllerClient parentControllerClient) {
+    String storeName = Utils.getUniqueString("test_store_");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String valueSchemaStr =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"}]}";
+    String valueSchemaStrWithBadDefault =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"salary\",\"type\":\"float\",\"default\":123}]}";
+
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStrWithBadDefault);
+    Assert.assertTrue(newStoreResponse.isError());
+    Assert.assertTrue(
+        newStoreResponse.getError()
+            .contains("Invalid default for field KeyRecord.salary: 123 (a IntNode) not a \"float\""));
+    newStoreResponse = parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
+    Assert.assertFalse(newStoreResponse.isError());
+    SchemaResponse addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaStrWithBadDefault);
+    Assert.assertTrue(addSchemaResponse.isError());
+    Assert.assertTrue(
+        addSchemaResponse.getError()
+            .contains("Invalid default for field KeyRecord.salary: 123 (a IntNode) not a \"float\""));
   }
 
   private void testLatestSupersetSchemaIdUpdate(
