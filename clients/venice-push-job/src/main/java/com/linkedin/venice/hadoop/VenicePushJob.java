@@ -869,6 +869,8 @@ public class VenicePushJob implements AutoCloseable {
         sendPushJobDetailsToController();
         closeVeniceWriter();
       } catch (Exception ex) {
+        sendPushJobDetailsToController();
+        closeVeniceWriter();
         LOGGER.error(
             "Error before killing the failed push job; still issue the kill job command to clean up states in backend",
             ex);
@@ -2068,8 +2070,10 @@ public class VenicePushJob implements AutoCloseable {
       // use source grid fabric as target region to reduce data hop, else use default NR source
       if (!StringUtils.isEmpty(jobSetting.sourceGridFabric)) {
         jobSetting.targetedRegions = jobSetting.sourceGridFabric;
+        LOGGER.info("Setting target region to {} from source grid.", jobSetting.targetedRegions);
       } else {
         jobSetting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
+        LOGGER.info("Setting target region to {} from NR source.", jobSetting.targetedRegions);
       }
       if (StringUtils.isEmpty(jobSetting.targetedRegions)) {
         throw new VeniceException(
@@ -2181,6 +2185,9 @@ public class VenicePushJob implements AutoCloseable {
 
     // If WriteCompute is enabled, request for intermediate topic
     final boolean finalWriteComputeEnabled = writeComputeEnabled;
+    if (setting.isTargetedRegionPushEnabled) {
+      LOGGER.info("Creating topic in target region {}", setting.targetedRegions);
+    }
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(
         controllerClient,
         setting.controllerRetries,
@@ -2429,12 +2436,11 @@ public class VenicePushJob implements AutoCloseable {
           // but if the majority of datacenters have completed, we give up on the unreachable datacenter
           // and start truncating the data topic.
           // 2) For targeted region push, not all targeted regions have completed.
-
           StringBuilder errorMsg = new StringBuilder().append("Push job error reported by controller: ")
               .append(pushJobSetting.veniceControllerUrl)
               .append("\ncontroller response: ")
               .append(response);
-
+          sendPushJobDetailsToController();
           throw new VeniceException(errorMsg.toString());
         }
 
@@ -2468,8 +2474,6 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException(
             "After waiting for " + timeoutMinutes + " minutes; push job is still in unknown state.");
       }
-
-      // Only send the push job details after all error checks have passed and job is not completed yet.
       sendPushJobDetailsToController();
     }
   }
