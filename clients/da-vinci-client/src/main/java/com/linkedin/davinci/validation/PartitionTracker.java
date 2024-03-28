@@ -385,9 +385,11 @@ public class PartitionTracker {
       segment.start();
       segment.setLastRecordProducerTimestamp(consumerRecord.getValue().producerMetadata.messageTimestamp);
       return;
-    } else if (segment.isNewSegment() && incomingSequenceNumber == previousSequenceNumber) {
-      if (segment.getSequenceNumber() > 0 && !tolerateMissingMsgs.get()) {
-        throw DataFaultType.MISSING.getNewException(segment, consumerRecord);
+    }
+
+    if (incomingSequenceNumber == previousSequenceNumber) {
+      if (!segment.isNewSegment()) {
+        throw DataFaultType.DUPLICATE.getNewException(segment, consumerRecord);
       }
       segment.setLastRecordProducerTimestamp(consumerRecord.getValue().producerMetadata.messageTimestamp);
       /**
@@ -402,7 +404,10 @@ public class PartitionTracker {
       // Expected case, in steady state
       segment.getAndIncrementSequenceNumber();
       segment.setLastRecordProducerTimestamp(consumerRecord.getValue().producerMetadata.messageTimestamp);
-    } else if (incomingSequenceNumber <= previousSequenceNumber) {
+      return;
+    }
+
+    if (incomingSequenceNumber <= previousSequenceNumber) {
       if (!hasPreviousSegment) {
         // When hasPrevSegment is false, SN meets a producer for the first time. For hybrid + L/F case, a follower may
         // never
@@ -418,7 +423,9 @@ public class PartitionTracker {
       // 2. The upstream caller can choose to avoid writing duplicate data, as an optimization.
       // 3. We don't want to re-calculate checksum for duplicated msgs. It's an incorrect behavior.
       throw DataFaultType.DUPLICATE.getNewException(segment, consumerRecord);
-    } else if (incomingSequenceNumber > previousSequenceNumber + 1) {
+    }
+
+    if (incomingSequenceNumber > previousSequenceNumber + 1) {
       // There is a gap in the sequence, so we are missing some data!
 
       DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, consumerRecord);
@@ -435,13 +442,14 @@ public class PartitionTracker {
           */
         segment.setSequenceNumber(incomingSequenceNumber);
         segment.setLastRecordProducerTimestamp(consumerRecord.getValue().producerMetadata.messageTimestamp);
-      } else {
-        throw dataMissingException;
+        return;
       }
-    } else {
-      // Defensive coding, to prevent regressions in the above code from causing silent failures
-      throw new IllegalStateException("Unreachable code!");
+
+      throw dataMissingException;
     }
+
+    // Defensive coding, to prevent regressions in the above code from causing silent failures
+    throw new IllegalStateException("Unreachable code!");
   }
 
   /**

@@ -20,7 +20,9 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -206,6 +208,33 @@ public class TestPartitionTracker {
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(fourthConsumerRecord, false, Lazy.TRUE);
+  }
+
+  // This test is verity that no fault is thrown for receiving a new message from an unknown guid for the first time.
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10
+      * Time.MS_PER_SECOND)
+  public void testNewSegmentWithSeqNumberAfterEOP(boolean zeroSegmentNum, boolean zeroSequenceNum) {
+    int segmentNum = zeroSegmentNum ? 0 : 5;
+    int sequenceNum = zeroSequenceNum ? 0 : 10;
+    int offset = 10;
+    boolean endOfPushReceived = true;
+
+    Segment segment = new Segment(partitionId, segmentNum, CheckSumType.NONE);
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
+
+    Put firstPut = getPutMessage("first_message".getBytes());
+    KafkaMessageEnvelope firstMessage =
+        getKafkaMessageEnvelope(MessageType.PUT, guid, segment, Optional.of(sequenceNum), firstPut);
+    KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
+        firstMessageKey,
+        firstMessage,
+        pubSubTopicPartition,
+        offset,
+        System.currentTimeMillis(),
+        0);
+    partitionTracker.validateMessage(firstConsumerRecord, endOfPushReceived, Lazy.FALSE);
   }
 
   @Test
