@@ -16,6 +16,8 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
@@ -72,6 +74,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
 import java.util.HashMap;
@@ -120,7 +123,7 @@ public class VenicePushJobTest {
       + "    ]\n" + "  }";
 
   @Test
-  public void testVPJcheckInputUpdateSchema() {
+  public void testVPJCheckInputUpdateSchema() {
     VenicePushJob vpj = mock(VenicePushJob.class);
     when(vpj.isUpdateSchema(anyString())).thenCallRealMethod();
     Assert.assertTrue(vpj.isUpdateSchema(NAME_RECORD_V1_UPDATE_SCHEMA.toString()));
@@ -138,7 +141,7 @@ public class VenicePushJobTest {
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush TTL is only supported for real-time only store.*")
   public void testRepushTTLJobWithBatchStore() {
-    Properties repushProps = getRepushReadyProps();
+    Properties repushProps = getRepushWithTTLProps();
 
     ControllerClient client = getClient(storeInfo -> {
       storeInfo.setColoToCurrentVersions(new HashMap<String, Integer>() {
@@ -151,6 +154,60 @@ public class VenicePushJobTest {
     });
     try (VenicePushJob pushJob = getSpyVenicePushJob(repushProps, client)) {
       pushJob.run();
+    }
+  }
+
+  @Test
+  public void testRepushTTLJobConfig() {
+    // Test with default configs
+    Properties repushProps1 = getRepushWithTTLProps();
+    try (VenicePushJob pushJob = getSpyVenicePushJob(repushProps1, null)) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      Assert.assertTrue(pushJobSetting.repushTTLEnabled);
+      Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
+    }
+
+    // Test with explicit TTL start timestamp
+    Properties repushProps2 = getRepushWithTTLProps();
+    repushProps2.setProperty(REPUSH_TTL_ENABLE, "true");
+    repushProps2.setProperty(REPUSH_TTL_START_TIMESTAMP, "100");
+    try (VenicePushJob pushJob = getSpyVenicePushJob(repushProps2, null)) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      Assert.assertTrue(pushJobSetting.repushTTLEnabled);
+      Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, 100);
+    }
+
+    // Test with explicit TTL age
+    Properties repushProps3 = getRepushWithTTLProps();
+    repushProps3.setProperty(REPUSH_TTL_ENABLE, "true");
+    repushProps3.setProperty(REPUSH_TTL_SECONDS, "100");
+    try (VenicePushJob pushJob = getSpyVenicePushJob(repushProps3, null)) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      Assert.assertTrue(pushJobSetting.repushTTLEnabled);
+      Assert.assertTrue(
+          pushJobSetting.repushTTLStartTimeMs > 0
+              && pushJobSetting.repushTTLStartTimeMs <= System.currentTimeMillis() - 100 * Time.MS_PER_SECOND);
+    }
+
+    // Test with both explicit TTL age and TTL start timestamp - Not allowed
+    Properties repushProps4 = getRepushWithTTLProps();
+    repushProps4.setProperty(REPUSH_TTL_ENABLE, "true");
+    repushProps4.setProperty(REPUSH_TTL_START_TIMESTAMP, "100");
+    repushProps4.setProperty(REPUSH_TTL_SECONDS, "100");
+    VeniceException exception =
+        Assert.expectThrows(VeniceException.class, () -> getSpyVenicePushJob(repushProps4, null));
+    Assert.assertTrue(exception.getMessage().endsWith("Please set only one."));
+
+    // Test with TTL disabled.
+    Properties repushProps5 = getRepushWithTTLProps();
+    repushProps5.setProperty(REPUSH_TTL_ENABLE, "false");
+    // Doesn't matter if these are set, they should be ignored.
+    repushProps5.setProperty(REPUSH_TTL_START_TIMESTAMP, "100");
+    repushProps5.setProperty(REPUSH_TTL_SECONDS, "100");
+    try (VenicePushJob pushJob = getSpyVenicePushJob(repushProps5, null)) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      Assert.assertFalse(pushJobSetting.repushTTLEnabled);
+      Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
     }
   }
 
@@ -220,7 +277,7 @@ public class VenicePushJobTest {
     }
   }
 
-  private Properties getRepushReadyProps() {
+  private Properties getRepushWithTTLProps() {
     Properties repushProps = new Properties();
     repushProps.setProperty(REPUSH_TTL_ENABLE, "true");
     repushProps.setProperty(SOURCE_KAFKA, "true");

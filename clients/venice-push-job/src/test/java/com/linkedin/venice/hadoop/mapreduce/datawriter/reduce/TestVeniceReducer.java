@@ -4,6 +4,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME;
 import static org.mockito.Mockito.any;
@@ -70,6 +71,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     TaskAttemptID taskAttemptID = new TaskAttemptID("200707121733", 3, TaskType.REDUCE, TASK_ID, 0);
     conf.set(MapReduceEngineTaskConfigProvider.MAPRED_TASK_ID_PROP_NAME, taskAttemptID.toString());
     conf.set(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
+    conf.setLong(TELEMETRY_MESSAGE_INTERVAL, 2);
     return conf;
   }
 
@@ -345,10 +347,16 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   @Test
   public void testCloseReducerAfterReduce() throws IOException {
     // One key and one value
-    byte[] keyBytes = new VeniceAvroKafkaSerializer("\"string\"").serialize("test_topic", "test_key");
-    BytesWritable keyWritable = new BytesWritable(keyBytes);
-    ArrayList<BytesWritable> values = new ArrayList<>();
-    values.add(new BytesWritable("test_value".getBytes()));
+    byte[] key1Bytes = new VeniceAvroKafkaSerializer("\"string\"").serialize("test_topic", "test_key_1");
+    BytesWritable keyWritable1 = new BytesWritable(key1Bytes);
+    ArrayList<BytesWritable> values1 = new ArrayList<>();
+    values1.add(new BytesWritable("test_value".getBytes()));
+
+    byte[] key2Bytes = new VeniceAvroKafkaSerializer("\"string\"").serialize("test_topic", "test_key_2");
+    BytesWritable keyWritable2 = new BytesWritable(key2Bytes);
+    ArrayList<BytesWritable> values2 = new ArrayList<>();
+    values2.add(new BytesWritable("test_value_2".getBytes()));
+
     Reporter mockReporter = createZeroCountReporterMock();
 
     OutputCollector mockCollector = mock(OutputCollector.class);
@@ -357,10 +365,14 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     reducer.setVeniceWriter(mockVeniceWriter);
     reducer.configure(setupJobConf(100));
 
-    reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
-    PubSubProduceResult produceResult = new SimplePubSubProduceResultImpl("topic-name", TASK_ID, 1, 1);
+    reducer.reduce(keyWritable1, values1.iterator(), mockCollector, mockReporter);
+    PubSubProduceResult produceResult1 = new SimplePubSubProduceResultImpl("topic-name", TASK_ID, 1, 1);
+    reducer.getCallback().onCompletion(produceResult1, null);
 
-    reducer.getCallback().onCompletion(produceResult, null);
+    reducer.reduce(keyWritable2, values2.iterator(), mockCollector, mockReporter);
+    PubSubProduceResult produceResult2 = new SimplePubSubProduceResultImpl("topic-name", TASK_ID, 2, 1);
+    reducer.getCallback().onCompletion(produceResult2, null);
+
     reducer.close();
 
     // Expect the counter to record the reducer close count

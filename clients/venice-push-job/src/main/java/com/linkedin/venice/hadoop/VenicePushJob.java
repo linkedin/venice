@@ -58,6 +58,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_STATUS_RETR
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
@@ -144,6 +145,7 @@ import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -221,7 +223,6 @@ public class VenicePushJob implements AutoCloseable {
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private InputDataInfoProvider.InputDataInfo inputDataInfo;
 
-  private long jobStartTimeMs;
   private Properties veniceWriterProperties;
   private JobClientWrapper jobClientWrapper;
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
@@ -328,6 +329,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private PushJobSetting getPushJobSetting(VeniceProperties props) {
     PushJobSetting pushJobSettingToReturn = new PushJobSetting();
+    pushJobSettingToReturn.jobStartTimeMs = System.currentTimeMillis();
     pushJobSettingToReturn.jobId = jobId;
     pushJobSettingToReturn.jobExecutionId = props.getString(JOB_EXEC_ID, "unknown_exec_id");
     pushJobSettingToReturn.jobServerName = props.getString(JOB_SERVER_NAME, "unknown_job_server");
@@ -360,6 +362,30 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
+
+    if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
+      throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
+    }
+
+    pushJobSettingToReturn.repushTTLStartTimeMs = -1;
+    if (pushJobSettingToReturn.repushTTLEnabled) {
+      long repushTtlSeconds = props.getLong(REPUSH_TTL_SECONDS, -1);
+      long repushTtlStartTimestamp = props.getLong(REPUSH_TTL_START_TIMESTAMP, -1);
+
+      if (repushTtlSeconds >= 0 && repushTtlStartTimestamp >= 0) {
+        String message =
+            "Both " + REPUSH_TTL_SECONDS + " and " + REPUSH_TTL_START_TIMESTAMP + " are set. Please set only one.";
+        throw new VeniceException(message);
+      }
+
+      if (repushTtlSeconds >= 0) {
+        pushJobSettingToReturn.repushTTLStartTimeMs =
+            pushJobSettingToReturn.jobStartTimeMs - (repushTtlSeconds * Time.MS_PER_SECOND);
+      } else if (repushTtlStartTimestamp >= 0) {
+        pushJobSettingToReturn.repushTTLStartTimeMs = repushTtlStartTimestamp;
+      }
+    }
+
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.postValidationConsumption = props.getBoolean(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
@@ -372,10 +398,6 @@ public class VenicePushJob implements AutoCloseable {
       } else {
         throw new VeniceException("Targeted region push list is only supported when targeted region push is enabled");
       }
-    }
-
-    if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
-      throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
     }
 
     final String D2_PREFIX = "d2://";
@@ -426,7 +448,7 @@ public class VenicePushJob implements AutoCloseable {
       // But we did specify a rewind time epoch timestamp
       long rewindTimestamp = props.getLong(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, NOT_SET);
       if (rewindTimestamp != NOT_SET) {
-        long nowInSeconds = System.currentTimeMillis() / 1000;
+        long nowInSeconds = pushJobSettingToReturn.jobStartTimeMs / 1000;
         // So long as that rewind time isn't in the future
         if (rewindTimestamp > nowInSeconds) {
           throw new VeniceException(
@@ -635,7 +657,6 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       initPushJobDetails();
-      jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
       sendPushJobDetailsToController();
       validateKafkaMessageEnvelopeSchema(pushJobSetting);
@@ -698,8 +719,8 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
-      long pushStartTimeMs = System.currentTimeMillis();
-      String pushId = pushStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
+      String pushId =
+          pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
       if (pushJobSetting.isSourceKafka) {
         pushId = Version.generateRePushId(pushId);
         if (pushJobSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
@@ -718,8 +739,9 @@ public class VenicePushJob implements AutoCloseable {
 
           // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
           // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
-          String rmdSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/rmd_" + System.currentTimeMillis();
-          String valueSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/value_" + System.currentTimeMillis();
+          String rmdSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/rmd_" + pushJobSetting.jobStartTimeMs;
+          String valueSchemaDir =
+              TEMP_DIR_PREFIX + pushJobSetting.storeName + "/value_" + pushJobSetting.jobStartTimeMs;
           try (HDFSSchemaSource schemaSource =
               new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
             schemaSource.saveSchemasOnDisk(controllerClient);
@@ -759,7 +781,7 @@ public class VenicePushJob implements AutoCloseable {
          * to completely stop using the {@link VeniceWriter} from this class.
          */
         pushJobSetting.incrementalPushVersion =
-            System.currentTimeMillis() + "_" + pushJobSetting.jobServerName + "_" + pushJobSetting.jobExecutionId;
+            pushJobSetting.jobStartTimeMs + "_" + pushJobSetting.jobServerName + "_" + pushJobSetting.jobExecutionId;
         LOGGER.info("Incremental Push Version: {}", pushJobSetting.incrementalPushVersion);
         getVeniceWriter(pushJobSetting)
             .broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion, new HashMap<>());
@@ -813,7 +835,7 @@ public class VenicePushJob implements AutoCloseable {
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
-      pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
+      pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
       updatePushJobDetailsWithConfigs();
       updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
       sendPushJobDetailsToController();
@@ -841,7 +863,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
-        pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
+        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
         updatePushJobDetailsWithConfigs();
         updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
@@ -1605,7 +1627,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void updatePushJobDetailsWithDataWriterTracker() {
     if (dataWriterComputeJob == null) {
-      LOGGER.info("No running job to update push job details with MR counters");
+      LOGGER.info("No running job found. Skip updating push job details.");
       return;
     }
     DataWriterTaskTracker taskTracker = dataWriterComputeJob.getTaskTracker();
@@ -1626,24 +1648,28 @@ public class VenicePushJob implements AutoCloseable {
       // size of the Zstd with Dict compressed data
       pushJobDetails.totalZstdWithDictCompressedValueBytes = taskTracker.getTotalZstdCompressedValueSize();
       LOGGER.info(
-          "Data writer job summary: " + "\n\tTotal number of records: {} " + "\n\tSize of keys: {} "
-              + "\n\tsize of uncompressed value: {} " + "\n\tConfigured value Compression Strategy: {} "
-              + "\n\tFinal data size stored in Venice based on this compression strategy: {} "
-              + "\n\tCompression Metrics collection is: {} ",
+          "Data writer job summary: " + "\n\tTotal number of records: {}" + "\n\tSize of keys: {}"
+              + "\n\tSize of uncompressed values: {}" + "\n\tConfigured value compression strategy: {}"
+              + "\n\tSize of compressed values: {}" + "\n\tFinal data size stored in Venice: {}"
+              + "\n\tCompression Metrics collection: {}",
           pushJobDetails.totalNumberOfRecords,
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
-          CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
+          pushJobSetting.topicCompressionStrategy,
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
+          ByteUtils.generateHumanReadableByteCountString(
+              pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes),
           pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled");
       if (pushJobSetting.compressionMetricCollectionEnabled) {
         LOGGER.info(
-            "\tData size if compressed using Gzip: {} ",
-            ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalGzipCompressedValueBytes));
+            "\tData size if compressed using Gzip: {}",
+            ByteUtils.generateHumanReadableByteCountString(
+                pushJobDetails.totalKeyBytes + pushJobDetails.totalGzipCompressedValueBytes));
         if (pushJobSetting.isZstdDictCreationSuccess) {
           LOGGER.info(
-              "\tData size if compressed using Zstd with Dictionary: {} ",
-              ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalZstdWithDictCompressedValueBytes));
+              "\tData size if compressed using Zstd with Dictionary: {}",
+              ByteUtils.generateHumanReadableByteCountString(
+                  pushJobDetails.totalKeyBytes + pushJobDetails.totalZstdWithDictCompressedValueBytes));
         } else {
           LOGGER.info("\tZstd Dictionary creation Failed");
         }
@@ -1784,7 +1810,7 @@ public class VenicePushJob implements AutoCloseable {
     }
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
-      int version = pushJobSetting == null ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
+      int version = pushJobSetting.version <= 0 ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
       ControllerResponse response = controllerClient.sendPushJobDetails(
           pushJobSetting.storeName,
           version,
@@ -2056,17 +2082,14 @@ public class VenicePushJob implements AutoCloseable {
       if (hybridStoreConfig == null) {
         throw new VeniceException("Repush TTL is only supported for real-time only store.");
       } else {
-        if (props.containsKey(REPUSH_TTL_START_TIMESTAMP)) {
-          jobSetting.repushTTLStartTimeMs = props.getLong(REPUSH_TTL_START_TIMESTAMP);
-        } else {
+        if (jobSetting.repushTTLStartTimeMs <= 0) {
           long storeRewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
           jobSetting.repushTTLStartTimeMs =
-              System.currentTimeMillis() - (storeRewindTimeInSeconds * Time.MS_PER_SECOND);
+              pushJobSetting.jobStartTimeMs - (storeRewindTimeInSeconds * Time.MS_PER_SECOND);
         }
+
+        LOGGER.info("Will evict records older than epoch time: {} ms", jobSetting.repushTTLStartTimeMs);
       }
-    } else {
-      jobSetting.repushTTLStartTimeMs =
-          System.currentTimeMillis() - DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE * Time.MS_PER_SECOND;
     }
 
     if (jobSetting.enableWriteCompute && !jobSetting.isStoreWriteComputeEnabled) {
@@ -2425,7 +2448,7 @@ public class VenicePushJob implements AutoCloseable {
       }
       long bootstrapToOnlineTimeoutInHours =
           VenicePushJob.this.pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
-      long durationMs = System.currentTimeMillis() - pollStartTimeMs;
+      long durationMs = LatencyUtils.getElapsedTimeInMs(pollStartTimeMs);
       if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
         throw new VeniceException(
             "Failing push-job for store " + VenicePushJob.this.pushJobSetting.storeResponse.getName()
@@ -2435,9 +2458,10 @@ public class VenicePushJob implements AutoCloseable {
         unknownStateStartTimeMs = 0;
       } else if (unknownStateStartTimeMs == 0) {
         unknownStateStartTimeMs = System.currentTimeMillis();
-      } else if (System.currentTimeMillis() < unknownStateStartTimeMs
-          + pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
-        double elapsedMinutes = (double) (System.currentTimeMillis() - unknownStateStartTimeMs) / Time.MS_PER_MINUTE;
+      } else if (LatencyUtils
+          .getElapsedTimeInMs(unknownStateStartTimeMs) < pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
+        double elapsedMinutes =
+            ((double) LatencyUtils.getElapsedTimeInMs(unknownStateStartTimeMs)) / Time.MS_PER_MINUTE;
         LOGGER.warn("Some data centers are still in unknown state after waiting for {} minutes", elapsedMinutes);
       } else {
         long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
@@ -2701,12 +2725,12 @@ public class VenicePushJob implements AutoCloseable {
    */
   public void cancel() {
     killJob(pushJobSetting, controllerClient);
-    if (pushJobSetting != null && StringUtils.isEmpty(pushJobSetting.topic)) {
+    if (StringUtils.isEmpty(pushJobSetting.topic)) {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
     } else {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
     }
-    pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
+    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
     updatePushJobDetailsWithConfigs();
     sendPushJobDetailsToController();
   }
