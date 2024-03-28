@@ -51,7 +51,7 @@ public class StorageUtilizationManagerTest {
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs = new PartitionConsumptionState(i, 1, mock(OffsetRecord.class), true);
+      PartitionConsumptionState pcs = new PartitionConsumptionState(i, 1, mock(OffsetRecord.class), true, false);
       partitionConsumptionStateMap.put(i, pcs);
     }
 

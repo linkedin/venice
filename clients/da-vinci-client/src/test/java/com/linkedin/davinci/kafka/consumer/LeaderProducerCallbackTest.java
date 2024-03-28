@@ -73,7 +73,8 @@ public class LeaderProducerCallbackTest {
           leaderProducedRecordContextMock,
           subPartition,
           kafkaUrl,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestamp,
+          false);
 
       int cbInvocations = 6; // (T1:1), (T2:21), (T1:1), (T2:22), (T1:1), (T2:22)
       String exMessage = "Producer is closed forcefully";
@@ -116,7 +117,8 @@ public class LeaderProducerCallbackTest {
         leaderProducedRecordContext,
         0,
         "url",
-        0);
+        0,
+        false);
 
     ChunkedValueManifest manifest = new ChunkedValueManifest();
     manifest.keysWithChunkIdSuffix = new ArrayList<>();

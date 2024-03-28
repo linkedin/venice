@@ -113,7 +113,8 @@ public class TestMergePut extends TestMergeBase {
         0);
     Assert.assertTrue(result.isUpdateIgnored());
 
-    // Case2: Apply PUT operation with same TS but less colo ID
+    // Case2: Apply PUT operation with same TS but less colo ID. The result of this should be a non updated
+    // record, but the result is NOT ignored.
     result = mergeConflictResolver.put(
         Lazy.of(() -> serializeValueRecord(oldValueRecord)),
         new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
@@ -123,7 +124,9 @@ public class TestMergePut extends TestMergeBase {
         1L,
         0,
         -2);
-    Assert.assertTrue(result.isUpdateIgnored());
+    GenericRecord foo = deserializeValueRecord(result.getNewValue());
+    Assert.assertFalse(result.isUpdateIgnored());
+    Assert.assertEquals(foo, oldValueRecord);
   }
 
   /**

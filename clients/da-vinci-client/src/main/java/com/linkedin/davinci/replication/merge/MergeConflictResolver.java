@@ -3,9 +3,6 @@ package com.linkedin.davinci.replication.merge;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.RmdTimestampType.PER_FIELD_TIMESTAMP;
-import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_POS;
-import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_POS;
-import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_POS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.getFieldOperationType;
 
@@ -20,6 +17,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
+import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -246,7 +244,7 @@ public class MergeConflictResolver {
         supersetValueSchemaEntry.getId(),
         incomingUpdateProtocolVersion,
         updateBytes);
-    if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaId)) {
+    if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaId, newValueColoID)) {
       return MergeConflictResult.getIgnoredResult();
     }
     ValueAndRmd<GenericRecord> oldValueAndRmd =
@@ -318,7 +316,12 @@ public class MergeConflictResolver {
               + storeName);
     }
     final GenericRecord oldValueFieldTimestampsRecord = (GenericRecord) oldTimestampObject;
-    if (ignoreNewPut(oldValueSchemaID, oldValueFieldTimestampsRecord, newValueSchemaID, putOperationTimestamp)) {
+    if (ignoreNewPut(
+        oldValueSchemaID,
+        oldValueFieldTimestampsRecord,
+        newValueSchemaID,
+        putOperationTimestamp,
+        newValueColoID)) {
       return MergeConflictResult.getIgnoredResult();
     }
     final SchemaEntry mergeResultValueSchemaEntry =
@@ -385,7 +388,7 @@ public class MergeConflictResolver {
       long deleteOperationTimestamp,
       long deleteOperationSourceOffset,
       int deleteOperationSourceBrokerID) {
-    if (ignoreNewDelete(oldValueFieldTimestampsRecord, deleteOperationTimestamp)) {
+    if (ignoreNewDelete(oldValueFieldTimestampsRecord, deleteOperationTimestamp, deleteOperationColoID)) {
       return MergeConflictResult.getIgnoredResult();
     }
     // In this case, the writer and reader schemas are the same because deletion does not introduce any new schema.
@@ -469,13 +472,18 @@ public class MergeConflictResolver {
       final int oldValueSchemaID,
       GenericRecord oldValueFieldTimestampsRecord,
       final int newValueSchemaID,
-      final long putOperationTimestamp) {
+      final long putOperationTimestamp,
+      final int newValueColoId) {
     final Schema oldValueSchema = getValueSchema(oldValueSchemaID);
     List<Schema.Field> oldValueFields = oldValueSchema.getFields();
 
     if (oldValueSchemaID == newValueSchemaID) {
       for (Schema.Field field: oldValueFields) {
-        if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, field.name(), putOperationTimestamp, false)) {
+        if (isRmdFieldTimestampSmaller(
+            oldValueFieldTimestampsRecord,
+            field.name(),
+            putOperationTimestamp,
+            newValueColoId)) {
           return false;
         }
       }
@@ -491,7 +499,11 @@ public class MergeConflictResolver {
       if (oldFieldNames.containsAll(newFieldNames)) {
         // New value fields set is a subset of existing/old value fields set.
         for (String newFieldName: newFieldNames) {
-          if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, newFieldName, putOperationTimestamp, false)) {
+          if (isRmdFieldTimestampSmaller(
+              oldValueFieldTimestampsRecord,
+              newFieldName,
+              putOperationTimestamp,
+              newValueColoId)) {
             return false;
           }
         }
@@ -506,9 +518,16 @@ public class MergeConflictResolver {
     }
   }
 
-  private boolean ignoreNewDelete(GenericRecord oldValueFieldTimestampsRecord, final long deleteOperationTimestamp) {
+  private boolean ignoreNewDelete(
+      GenericRecord oldValueFieldTimestampsRecord,
+      final long deleteOperationTimestamp,
+      int deleteOperationColoID) {
     for (Schema.Field field: oldValueFieldTimestampsRecord.getSchema().getFields()) {
-      if (isRmdFieldTimestampSmaller(oldValueFieldTimestampsRecord, field.name(), deleteOperationTimestamp, false)) {
+      if (isRmdFieldTimestampSmaller(
+          oldValueFieldTimestampsRecord,
+          field.name(),
+          deleteOperationTimestamp,
+          deleteOperationColoID)) {
         return false;
       }
     }
@@ -527,19 +546,27 @@ public class MergeConflictResolver {
       GenericRecord oldValueFieldTimestampsRecord,
       String fieldName,
       final long newTimestamp,
-      final boolean strictlySmaller) {
+      final int newValueColoId) {
     final Object fieldTimestampObj = oldValueFieldTimestampsRecord.get(fieldName);
     final long oldFieldTimestamp;
     if (fieldTimestampObj instanceof Long) {
       oldFieldTimestamp = (Long) fieldTimestampObj;
     } else if (fieldTimestampObj instanceof GenericRecord) {
-      oldFieldTimestamp = (Long) ((GenericRecord) fieldTimestampObj).get(TOP_LEVEL_TS_FIELD_POS);
+      oldFieldTimestamp = (Long) ((GenericRecord) fieldTimestampObj).get(CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_POS);
     } else {
       throw new VeniceException(
           "Replication metadata field timestamp is expected to be either a long or a GenericRecord. " + "Got: "
               + fieldTimestampObj);
     }
-    return strictlySmaller ? (oldFieldTimestamp < newTimestamp) : (oldFieldTimestamp <= newTimestamp);
+    if (oldFieldTimestamp == newTimestamp) {
+      // break ties based on coloId if it's available
+      if (fieldTimestampObj instanceof GenericRecord) {
+        int oldColoId =
+            (int) ((GenericRecord) fieldTimestampObj).get(CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_NAME);
+        return oldColoId <= newValueColoId;
+      }
+    }
+    return (oldFieldTimestamp <= newTimestamp);
   }
 
   private MergeConflictResult putWithoutRmd(
@@ -684,11 +711,12 @@ public class MergeConflictResolver {
         case RECORD:
           GenericRecord collectionFieldTimestampRecord = AvroSchemaUtils.createGenericRecord(field.schema());
           // Only need to set the top-level field timestamp on collection timestamp record.
-          collectionFieldTimestampRecord.put(TOP_LEVEL_TS_FIELD_POS, fieldTimestamp);
+          collectionFieldTimestampRecord.put(CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_POS, fieldTimestamp);
           // When a collection field metadata is created, its top-level colo ID is always -1.
-          collectionFieldTimestampRecord.put(TOP_LEVEL_COLO_ID_FIELD_POS, -1);
-          collectionFieldTimestampRecord
-              .put(PUT_ONLY_PART_LENGTH_FIELD_POS, getCollectionFieldLen(oldValueRecord, field.name()));
+          collectionFieldTimestampRecord.put(CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_POS, -1);
+          collectionFieldTimestampRecord.put(
+              CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_POS,
+              getCollectionFieldLen(oldValueRecord, field.name()));
           perFieldTimestampRecord.put(field.pos(), collectionFieldTimestampRecord);
           continue;
 
@@ -722,7 +750,8 @@ public class MergeConflictResolver {
   private boolean ignoreNewUpdate(
       final long updateOperationTimestamp,
       GenericRecord writeComputeRecord,
-      RmdWithValueSchemaId rmdWithValueSchemaId) {
+      RmdWithValueSchemaId rmdWithValueSchemaId,
+      final int newValueColoID) {
     if (rmdWithValueSchemaId == null) {
       return false;
     }
@@ -757,7 +786,7 @@ public class MergeConflictResolver {
               && timestampRecord.get(field.name()) == null) {
             return false; // Write Compute tries to update a non-existing field.
           }
-          if (isRmdFieldTimestampSmaller(timestampRecord, field.name(), updateOperationTimestamp, false)) {
+          if (isRmdFieldTimestampSmaller(timestampRecord, field.name(), updateOperationTimestamp, newValueColoID)) {
             return false; // One existing field must be updated.
           }
         }

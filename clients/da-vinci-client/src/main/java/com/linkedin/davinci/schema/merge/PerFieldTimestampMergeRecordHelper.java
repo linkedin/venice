@@ -27,14 +27,11 @@ abstract class PerFieldTimestampMergeRecordHelper implements MergeRecordHelper {
     } else if (oldTimestamp == newPutTimestamp) {
       Object oldFieldValue = oldRecord.get(oldRecordField.pos());
       newFieldValue = compareAndReturn(oldFieldValue, newFieldValue, oldRecordField.schema());
-      final boolean newFieldCompletelyReplaceOldField = newFieldValue != oldFieldValue;
-      if (newFieldCompletelyReplaceOldField) {
+
+      if (newFieldValue != oldFieldValue) {
         oldRecord.put(oldRecordField.pos(), newFieldValue);
       }
-      return newFieldCompletelyReplaceOldField
-          ? UpdateResultStatus.COMPLETELY_UPDATED
-          : UpdateResultStatus.NOT_UPDATED_AT_ALL;
-
+      return UpdateResultStatus.COMPLETELY_UPDATED;
     } else {
       // New field value wins.
       oldRecord.put(oldRecordField.pos(), newFieldValue);
