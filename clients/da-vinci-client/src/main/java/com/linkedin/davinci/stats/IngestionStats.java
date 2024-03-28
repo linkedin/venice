@@ -53,6 +53,7 @@ public class IngestionStats {
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
   protected static final String READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME = "ready_to_serve_with_rt_lag";
   public static final String VERSION_TOPIC_END_OFFSET_REWIND_COUNT = "version_topic_end_offset_rewind_count";
+  protected static final String TRANSFORMER_ERROR_COUNT = "transformer_error_count";
   public static final String NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY = "nearline_producer_to_local_broker_latency";
   public static final String NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY =
       "nearline_local_broker_to_ready_to_serve_latency";
@@ -98,6 +99,9 @@ public class IngestionStats {
 
   // Measure the max idle time among partitions for a given the store on this host
   private final LongAdderRateGauge idleTimeSensor = new LongAdderRateGauge();
+
+  private Count transformerErrorCount = new Count();
+  private Sensor transformerErrorSensor;
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -508,6 +512,25 @@ public class IngestionStats {
 
   public void recordNearlineLocalBrokerToReadyToServeLatency(double value, long currentTimeMs) {
     nearlineLocalBrokerToReadyToServeLatencySensor.record(value, currentTimeMs);
+  }
+
+  public void recordTransformerError(double value, long currentTimeMs) {
+    transformerErrorSensor.record(value, currentTimeMs);
+  }
+
+  public void registerTransformerErrorSensor() {
+    // Check to make sure there isn't already a registered transformerErrorSensor
+    if (transformerErrorSensor == null) {
+      transformerErrorSensor = localMetricRepository.sensor(TRANSFORMER_ERROR_COUNT);
+      transformerErrorSensor.add(TRANSFORMER_ERROR_COUNT, transformerErrorCount);
+    }
+  }
+
+  public double getTransformerErrorCount() {
+    if (transformerErrorCount != null) {
+      return transformerErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+    return 0;
   }
 
   public void recordTransformerLatency(double value, long currentTimeMs) {

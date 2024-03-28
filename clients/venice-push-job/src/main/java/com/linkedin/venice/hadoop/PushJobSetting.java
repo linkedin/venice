@@ -21,6 +21,7 @@ public class PushJobSetting implements Serializable {
   private static final long serialVersionUID = 1;
 
   // Job-setting inferred from job props
+  public long jobStartTimeMs;
   public String jobId;
   public String jobExecutionId;
   public String jobServerName;
@@ -147,4 +148,9 @@ public class PushJobSetting implements Serializable {
   public transient Version sourceKafkaInputVersionInfo;
   public CompressionStrategy sourceVersionCompressionStrategy;
   public boolean sourceVersionChunkingEnabled;
+
+  public PushJobSetting() {
+    // Default for preserving backward compatibility
+    this.jobStartTimeMs = System.currentTimeMillis();
+  }
 }

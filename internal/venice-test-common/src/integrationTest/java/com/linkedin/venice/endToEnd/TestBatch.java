@@ -6,7 +6,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METR
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
@@ -205,16 +204,13 @@ public abstract class TestBatch {
         (avroClient, vsonClient, metricsRepository) -> {});
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testDataPushWithSchemaWithAWrongDefault(boolean extendedSchemaValidationCheckEnabled) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDataPushWithSchemaWithAWrongDefault() {
     final int recordCnt = 100;
-    Exception pushJobException = null;
     try {
       testBatchStore(
           inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithASchemaWithAWrongDefaultValue(inputDir, recordCnt)),
-          properties -> properties.setProperty(
-              EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED,
-              Boolean.toString(extendedSchemaValidationCheckEnabled)),
+          properties -> {},
           (avroClient, vsonClient, metricsRepository) -> {
             for (int i = 0; i < recordCnt; i++) {
               Object valueObject = avroClient.get(Integer.toString(i)).get();
@@ -227,12 +223,7 @@ public abstract class TestBatch {
             }
           });
     } catch (Exception e) {
-      pushJobException = e;
-    }
-    if (extendedSchemaValidationCheckEnabled) {
-      Assert.assertTrue(pushJobException != null && pushJobException.getMessage().contains("Invalid default"));
-    } else {
-      Assert.assertNull(pushJobException);
+      Assert.assertTrue(e.getMessage().contains("Could not create store"));
     }
   }
 

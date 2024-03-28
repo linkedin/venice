@@ -313,7 +313,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(CLUSTER_HEALTH_STORES.getPath(), storesRoutes.getAllStoresStatuses(admin));
     httpService.get(STORE.getPath(), storesRoutes.getStore(admin));
     httpService.get(FUTURE_VERSION.getPath(), storesRoutes.getFutureVersion(admin));
-    httpService.get(BACKUP_VERSION.getPath(), storesRoutes.getFutureVersion(admin));
+    httpService.get(BACKUP_VERSION.getPath(), storesRoutes.getBackupVersion(admin));
     httpService.post(SET_TOPIC_COMPACTION.getPath(), storesRoutes.setTopicCompaction(admin));
 
     httpService.post(UPDATE_CLUSTER_CONFIG.getPath(), clusterRoutes.updateClusterConfig(admin));

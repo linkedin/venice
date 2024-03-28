@@ -48,6 +48,12 @@ public class PartitionConsumptionState {
   private boolean deferredWrite;
   private boolean errorReported;
   private boolean lagCaughtUp;
+  /**
+   * Save the time when the lag is caught up to record nearline metrics
+   * for messages produced after this time to ignore the old messages that are
+   * getting caught up after a push.
+   */
+  private long lagCaughtUpTimeInMs;
   private boolean completionReported;
   private boolean isSubscribed;
   private boolean isDataRecoveryCompleted;
@@ -225,6 +231,7 @@ public class PartitionConsumptionState {
     this.offsetRecord = offsetRecord;
     this.errorReported = false;
     this.lagCaughtUp = false;
+    this.lagCaughtUpTimeInMs = 0;
     this.completionReported = false;
     this.isSubscribed = true;
     this.processedRecordSizeSinceLastSync = 0;
@@ -313,11 +320,23 @@ public class PartitionConsumptionState {
   }
 
   public void lagHasCaughtUp() {
-    this.lagCaughtUp = true;
+    if (!this.lagCaughtUp) {
+      this.lagCaughtUp = true;
+      this.lagCaughtUpTimeInMs = System.currentTimeMillis();
+    }
   }
 
   public boolean hasLagCaughtUp() {
     return lagCaughtUp;
+  }
+
+  /**
+   * check to ignore calculating latency from pubsub broker to ready to serve for
+   * messages that are getting caught up from previous pushes.
+   * @param producerTimeStampInMs timestamp of the message
+   */
+  public boolean isNearlineMetricsRecordingValid(long producerTimeStampInMs) {
+    return (lagCaughtUp && lagCaughtUpTimeInMs > 0 && producerTimeStampInMs > lagCaughtUpTimeInMs);
   }
 
   public boolean isCompletionReported() {

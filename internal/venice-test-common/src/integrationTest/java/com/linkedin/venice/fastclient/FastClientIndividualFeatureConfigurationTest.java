@@ -118,6 +118,17 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     assertTrue(quotaRequestedKPSSum >= 0, "Quota request key count sum: " + quotaRequestedKPSSum);
     assertTrue(clientConnectionCountRateSum > 0, "Servers should have more than 0 client connections");
     assertEquals(routerConnectionCountRateSum, 0, "Servers should have 0 router connections");
+    // At least one server's usage ratio should eventually be a positive decimal
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      double usageRatio = 0;
+      for (MetricsRepository serverMetric: serverMetrics) {
+        usageRatio = serverMetric.getMetric(readQuotaUsageRatio).value();
+        if (usageRatio > 0) {
+          break;
+        }
+      }
+      assertTrue(usageRatio > 0, "Quota usage ratio: " + usageRatio);
+    });
 
     // Update the read quota to 50 and make as many requests needed to trigger quota rejected exception.
     veniceCluster.useControllerClient(controllerClient -> {

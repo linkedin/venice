@@ -58,6 +58,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_STATUS_RETR
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
@@ -144,6 +145,7 @@ import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -221,7 +223,6 @@ public class VenicePushJob implements AutoCloseable {
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private InputDataInfoProvider.InputDataInfo inputDataInfo;
 
-  private long jobStartTimeMs;
   private Properties veniceWriterProperties;
   private JobClientWrapper jobClientWrapper;
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
@@ -328,6 +329,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private PushJobSetting getPushJobSetting(VeniceProperties props) {
     PushJobSetting pushJobSettingToReturn = new PushJobSetting();
+    pushJobSettingToReturn.jobStartTimeMs = System.currentTimeMillis();
     pushJobSettingToReturn.jobId = jobId;
     pushJobSettingToReturn.jobExecutionId = props.getString(JOB_EXEC_ID, "unknown_exec_id");
     pushJobSettingToReturn.jobServerName = props.getString(JOB_SERVER_NAME, "unknown_job_server");
@@ -360,6 +362,30 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
+
+    if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
+      throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
+    }
+
+    pushJobSettingToReturn.repushTTLStartTimeMs = -1;
+    if (pushJobSettingToReturn.repushTTLEnabled) {
+      long repushTtlSeconds = props.getLong(REPUSH_TTL_SECONDS, -1);
+      long repushTtlStartTimestamp = props.getLong(REPUSH_TTL_START_TIMESTAMP, -1);
+
+      if (repushTtlSeconds >= 0 && repushTtlStartTimestamp >= 0) {
+        String message =
+            "Both " + REPUSH_TTL_SECONDS + " and " + REPUSH_TTL_START_TIMESTAMP + " are set. Please set only one.";
+        throw new VeniceException(message);
+      }
+
+      if (repushTtlSeconds >= 0) {
+        pushJobSettingToReturn.repushTTLStartTimeMs =
+            pushJobSettingToReturn.jobStartTimeMs - (repushTtlSeconds * Time.MS_PER_SECOND);
+      } else if (repushTtlStartTimestamp >= 0) {
+        pushJobSettingToReturn.repushTTLStartTimeMs = repushTtlStartTimestamp;
+      }
+    }
+
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.postValidationConsumption = props.getBoolean(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
@@ -372,10 +398,6 @@ public class VenicePushJob implements AutoCloseable {
       } else {
         throw new VeniceException("Targeted region push list is only supported when targeted region push is enabled");
       }
-    }
-
-    if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
-      throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
     }
 
     final String D2_PREFIX = "d2://";
@@ -426,7 +448,7 @@ public class VenicePushJob implements AutoCloseable {
       // But we did specify a rewind time epoch timestamp
       long rewindTimestamp = props.getLong(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, NOT_SET);
       if (rewindTimestamp != NOT_SET) {
-        long nowInSeconds = System.currentTimeMillis() / 1000;
+        long nowInSeconds = pushJobSettingToReturn.jobStartTimeMs / 1000;
         // So long as that rewind time isn't in the future
         if (rewindTimestamp > nowInSeconds) {
           throw new VeniceException(
@@ -635,7 +657,6 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       initPushJobDetails();
-      jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
       sendPushJobDetailsToController();
       validateKafkaMessageEnvelopeSchema(pushJobSetting);
@@ -698,8 +719,8 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
-      long pushStartTimeMs = System.currentTimeMillis();
-      String pushId = pushStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
+      String pushId =
+          pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
       if (pushJobSetting.isSourceKafka) {
         pushId = Version.generateRePushId(pushId);
         if (pushJobSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
@@ -718,8 +739,9 @@ public class VenicePushJob implements AutoCloseable {
 
           // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
           // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
-          String rmdSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/rmd_" + System.currentTimeMillis();
-          String valueSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/value_" + System.currentTimeMillis();
+          String rmdSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/rmd_" + pushJobSetting.jobStartTimeMs;
+          String valueSchemaDir =
+              TEMP_DIR_PREFIX + pushJobSetting.storeName + "/value_" + pushJobSetting.jobStartTimeMs;
           try (HDFSSchemaSource schemaSource =
               new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
             schemaSource.saveSchemasOnDisk(controllerClient);
@@ -759,7 +781,7 @@ public class VenicePushJob implements AutoCloseable {
          * to completely stop using the {@link VeniceWriter} from this class.
          */
         pushJobSetting.incrementalPushVersion =
-            System.currentTimeMillis() + "_" + pushJobSetting.jobServerName + "_" + pushJobSetting.jobExecutionId;
+            pushJobSetting.jobStartTimeMs + "_" + pushJobSetting.jobServerName + "_" + pushJobSetting.jobExecutionId;
         LOGGER.info("Incremental Push Version: {}", pushJobSetting.incrementalPushVersion);
         getVeniceWriter(pushJobSetting)
             .broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion, new HashMap<>());
@@ -813,7 +835,7 @@ public class VenicePushJob implements AutoCloseable {
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
-      pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
+      pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
       updatePushJobDetailsWithConfigs();
       updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
       sendPushJobDetailsToController();
@@ -841,7 +863,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
-        pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
+        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
         updatePushJobDetailsWithConfigs();
         updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
@@ -1127,7 +1149,7 @@ public class VenicePushJob implements AutoCloseable {
       if (!inputFileHasRecords) {
         if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info(
-              "compression strategy is {} with no input records: dictionary will be generated from synthetic data or current version data for hybrid stores",
+              "Compression strategy is {} with no input records. A dictionary will be generated from synthetic data or current version data for hybrid stores",
               pushJobSetting.storeCompressionStrategy);
         } else {
           LOGGER.info("No compression dictionary will be generated as there are no records");
@@ -1425,8 +1447,37 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
-    ByteBuffer compressionDictionary = null;
+    if (!pushJobSetting.isZstdDictCreationRequired) {
+      return Optional.empty();
+    }
 
+    ByteBuffer compressionDictionary;
+    try {
+      compressionDictionary = fetchOrBuildCompressionDictionary();
+    } catch (Exception e) {
+      LOGGER.warn("Failed to fetch or build compression dictionary", e);
+      compressionDictionary = null;
+    }
+
+    if (compressionDictionary != null && compressionDictionary.remaining() > 0) {
+      pushJobSetting.isZstdDictCreationSuccess = true;
+      return Optional.of(compressionDictionary);
+    }
+
+    if (pushJobSetting.storeCompressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
+      LOGGER.info(
+          "No dictionary fetched. But since the compression strategy is not {}, it is not required",
+          CompressionStrategy.ZSTD_WITH_DICT);
+      pushJobSetting.isZstdDictCreationSuccess = false;
+      return Optional.empty();
+    }
+
+    LOGGER.info("No dictionary fetched. Creating a default dictionary since compression strategy is ZSTD_WITH_DICT");
+    pushJobSetting.isZstdDictCreationSuccess = true;
+    return Optional.of(emptyPushZstdDictionary.get());
+  }
+
+  private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
@@ -1438,20 +1489,16 @@ public class VenicePushJob implements AutoCloseable {
         .setDictSampleSize(
             props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
     if (pushJobSetting.isSourceKafka) {
-      /**
-       * Currently KIF repush will always build a dict in Azkaban Job driver if necessary.
-       */
-      boolean rebuildDict = pushJobSetting.kafkaInputBuildNewDictEnabled;
       paramBuilder.setSourceVersionChunkingEnabled(pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled());
-      // Repush
+      // Currently, KIF repush will always build a dict in Azkaban Job driver if necessary.
       if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        if (rebuildDict) {
+        if (pushJobSetting.kafkaInputBuildNewDictEnabled) {
           LOGGER.info("Rebuild a new Zstd dictionary from the input topic: {}", pushJobSetting.kafkaInputTopic);
           paramBuilder.setKafkaInputBroker(pushJobSetting.kafkaInputBrokerUrl)
               .setTopicName(pushJobSetting.kafkaInputTopic)
               .setSourceVersionCompressionStrategy(pushJobSetting.sourceKafkaInputVersionInfo.getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
-          compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
+          return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
           // set up ssl properties and kafka consumer properties
@@ -1460,104 +1507,70 @@ public class VenicePushJob implements AutoCloseable {
             kafkaConsumerProperties.putAll(this.sslProperties.get());
           }
           kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaInputBrokerUrl);
-          compressionDictionary = DictionaryUtils
+          return DictionaryUtils
               .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
         }
       }
-
-      return Optional.ofNullable(compressionDictionary);
-    } else {
-      if (pushJobSetting.isZstdDictCreationRequired) {
-        if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT
-            && !inputDataInfo.hasRecords()) {
-          /**
-           * Special handling for empty push with ZSTD_WITH_DICT: This compression strategy needs a dictionary even if
-           * there is no input data, so we generate a dictionary either based on synthetic data or from the current version.
-           */
-          if (pushJobSetting.hybridStoreConfig != null) {
-            /**
-             * For hybrid store: Push Job will try to train a dict based on the records of the current version, and
-             * it won't work for the very first version, and the following versions will work.
-             */
-            LOGGER.info(
-                "compression strategy is {} for hybrid store with no input records: Attempt to generate dictionary from current version data",
-                pushJobSetting.storeCompressionStrategy);
-            String storeName = getPushJobSetting().storeName;
-            try {
-              // Get the latest version
-              RepushInfoResponse repushInfoResponse = ControllerClient.retryableRequest(
-                  controllerClient,
-                  pushJobSetting.controllerRetries,
-                  c -> c.getRepushInfo(storeName, Optional.empty()));
-              if (repushInfoResponse.isError()) {
-                throw new VeniceException(
-                    "Could not get repush info for store " + storeName + " with error: "
-                        + repushInfoResponse.getError());
-              }
-              int sourceVersion = repushInfoResponse.getRepushInfo().getVersion().getNumber();
-              String sourceTopicName = Version.composeKafkaTopic(storeName, sourceVersion);
-              String sourceKafkaUrl = repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
-              LOGGER.info(
-                  "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
-                  sourceTopicName,
-                  sourceKafkaUrl);
-              paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
-                  .setTopicName(sourceTopicName)
-                  .setSourceVersionCompressionStrategy(
-                      repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
-              KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
-              compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
-
-              return Optional.of(compressionDictionary);
-            } catch (Exception e) {
-              LOGGER.warn(
-                  "Encountered an exception when trying to build a dict from an existing version for an empty push to a hybrid store: "
-                      + storeName + ", so the push job will use a default dict",
-                  e);
-            }
-          }
-
-          /**
-           * For Batch only store or first push to a hybrid store: Build dictionary based on synthetic data
-           */
-          LOGGER.info(
-              "compression strategy is {} with no input records: Generating dictionary from synthetic data",
-              pushJobSetting.storeCompressionStrategy);
-          compressionDictionary = emptyPushZstdDictionary.get();
-          return Optional.of(compressionDictionary);
-        }
-
-        if (!pushJobSetting.useMapperToBuildDict) {
-          compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().trainZstdDictionary());
-          pushJobSetting.isZstdDictCreationSuccess = true;
-        } else {
-          if (pushJobSetting.isZstdDictCreationSuccess) {
-            LOGGER.info(
-                "Retrieving the Zstd dictionary trained by {}",
-                ValidateSchemaAndBuildDictMapper.class.getSimpleName());
-            compressionDictionary = validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
-          } else {
-            if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-              // This should not happen
-              String err = "Dictionary creation failed for the configured ZSTD compression type";
-              LOGGER.error(err);
-              throw new VeniceException(err);
-            } // else case: Dictionary creation failed, but it was not needed for the push job to succeed
-          }
-        }
-      }
-      if (compressionDictionary != null) {
-        LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.limit());
-      } else {
-        LOGGER.info(
-            "No Compression dictionary is generated with the compression strategy {} "
-                + "and compressionMetricCollectionEnabled is {}",
-            pushJobSetting.storeCompressionStrategy,
-            (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
-      }
-
-      return Optional.ofNullable(compressionDictionary);
+      LOGGER.info(
+          "No dictionary will be fetched for repush workloads with compression strategy: {}",
+          CompressionStrategy.ZSTD_WITH_DICT);
+      return null;
     }
+
+    if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !inputDataInfo.hasRecords()) {
+      LOGGER.info("Compression strategy is {} with no input records", pushJobSetting.storeCompressionStrategy);
+
+      if (pushJobSetting.hybridStoreConfig == null) {
+        return null;
+      }
+
+      /**
+       * Special handling for empty push with ZSTD_WITH_DICT. This compression strategy needs a dictionary even if
+       * there is no input data, so we try to generate a dictionary from the current version. Note that it won't work
+       * for the very first version, and the following versions will work.
+       */
+      LOGGER.info("Since this is a hybrid store, attempting to generate dictionary from current version data");
+      String storeName = getPushJobSetting().storeName;
+
+      // Get the latest version
+      RepushInfoResponse repushInfoResponse = ControllerClient.retryableRequest(
+          controllerClient,
+          pushJobSetting.controllerRetries,
+          c -> c.getRepushInfo(storeName, Optional.empty()));
+
+      if (repushInfoResponse.isError()) {
+        LOGGER.warn("Could not get repush info for store {} with error: {}", storeName, repushInfoResponse.getError());
+        return null;
+      }
+
+      int sourceVersion = repushInfoResponse.getRepushInfo().getVersion().getNumber();
+      String sourceTopicName = Version.composeKafkaTopic(storeName, sourceVersion);
+      String sourceKafkaUrl = repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
+      LOGGER.info(
+          "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
+          sourceTopicName,
+          sourceKafkaUrl);
+      paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
+          .setTopicName(sourceTopicName)
+          .setSourceVersionCompressionStrategy(
+              repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
+      KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
+      return ByteBuffer.wrap(dictTrainer.trainDict());
+    }
+
+    if (!pushJobSetting.useMapperToBuildDict) {
+      return ByteBuffer.wrap(getInputDataInfoProvider().trainZstdDictionary());
+    } else {
+      // In case of pushJobSetting.useMapperToBuildDict job, the dictionary will already have been generated
+      if (pushJobSetting.isZstdDictCreationSuccess) {
+        LOGGER.info(
+            "Retrieving the Zstd dictionary trained by {}",
+            ValidateSchemaAndBuildDictMapper.class.getSimpleName());
+        return validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
+      }
+    }
+
+    return null;
   }
 
   private void throwVeniceException(Throwable e) throws VeniceException {
@@ -1614,7 +1627,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void updatePushJobDetailsWithDataWriterTracker() {
     if (dataWriterComputeJob == null) {
-      LOGGER.info("No running job to update push job details with MR counters");
+      LOGGER.info("No running job found. Skip updating push job details.");
       return;
     }
     DataWriterTaskTracker taskTracker = dataWriterComputeJob.getTaskTracker();
@@ -1635,24 +1648,28 @@ public class VenicePushJob implements AutoCloseable {
       // size of the Zstd with Dict compressed data
       pushJobDetails.totalZstdWithDictCompressedValueBytes = taskTracker.getTotalZstdCompressedValueSize();
       LOGGER.info(
-          "Data writer job summary: " + "\n\tTotal number of records: {} " + "\n\tSize of keys: {} "
-              + "\n\tsize of uncompressed value: {} " + "\n\tConfigured value Compression Strategy: {} "
-              + "\n\tFinal data size stored in Venice based on this compression strategy: {} "
-              + "\n\tCompression Metrics collection is: {} ",
+          "Data writer job summary: " + "\n\tTotal number of records: {}" + "\n\tSize of keys: {}"
+              + "\n\tSize of uncompressed values: {}" + "\n\tConfigured value compression strategy: {}"
+              + "\n\tSize of compressed values: {}" + "\n\tFinal data size stored in Venice: {}"
+              + "\n\tCompression Metrics collection: {}",
           pushJobDetails.totalNumberOfRecords,
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
-          CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
+          pushJobSetting.topicCompressionStrategy,
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
+          ByteUtils.generateHumanReadableByteCountString(
+              pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes),
           pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled");
       if (pushJobSetting.compressionMetricCollectionEnabled) {
         LOGGER.info(
-            "\tData size if compressed using Gzip: {} ",
-            ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalGzipCompressedValueBytes));
+            "\tData size if compressed using Gzip: {}",
+            ByteUtils.generateHumanReadableByteCountString(
+                pushJobDetails.totalKeyBytes + pushJobDetails.totalGzipCompressedValueBytes));
         if (pushJobSetting.isZstdDictCreationSuccess) {
           LOGGER.info(
-              "\tData size if compressed using Zstd with Dictionary: {} ",
-              ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalZstdWithDictCompressedValueBytes));
+              "\tData size if compressed using Zstd with Dictionary: {}",
+              ByteUtils.generateHumanReadableByteCountString(
+                  pushJobDetails.totalKeyBytes + pushJobDetails.totalZstdWithDictCompressedValueBytes));
         } else {
           LOGGER.info("\tZstd Dictionary creation Failed");
         }
@@ -1793,7 +1810,7 @@ public class VenicePushJob implements AutoCloseable {
     }
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
-      int version = pushJobSetting == null ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
+      int version = pushJobSetting.version <= 0 ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
       ControllerResponse response = controllerClient.sendPushJobDetails(
           pushJobSetting.storeName,
           version,
@@ -2065,17 +2082,14 @@ public class VenicePushJob implements AutoCloseable {
       if (hybridStoreConfig == null) {
         throw new VeniceException("Repush TTL is only supported for real-time only store.");
       } else {
-        if (props.containsKey(REPUSH_TTL_START_TIMESTAMP)) {
-          jobSetting.repushTTLStartTimeMs = props.getLong(REPUSH_TTL_START_TIMESTAMP);
-        } else {
+        if (jobSetting.repushTTLStartTimeMs <= 0) {
           long storeRewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
           jobSetting.repushTTLStartTimeMs =
-              System.currentTimeMillis() - (storeRewindTimeInSeconds * Time.MS_PER_SECOND);
+              pushJobSetting.jobStartTimeMs - (storeRewindTimeInSeconds * Time.MS_PER_SECOND);
         }
+
+        LOGGER.info("Will evict records older than epoch time: {} ms", jobSetting.repushTTLStartTimeMs);
       }
-    } else {
-      jobSetting.repushTTLStartTimeMs =
-          System.currentTimeMillis() - DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE * Time.MS_PER_SECOND;
     }
 
     if (jobSetting.enableWriteCompute && !jobSetting.isStoreWriteComputeEnabled) {
@@ -2153,7 +2167,8 @@ public class VenicePushJob implements AutoCloseable {
 
     Optional<String> dictionary;
     if (askControllerToSendControlMessage) {
-      dictionary = optionalCompressionDictionary.map(ByteBuffer::array).map(EncodingUtils::base64EncodeToString);
+      dictionary =
+          optionalCompressionDictionary.map(ByteUtils::extractByteArray).map(EncodingUtils::base64EncodeToString);
     } else {
       dictionary = Optional.empty();
     }
@@ -2433,7 +2448,7 @@ public class VenicePushJob implements AutoCloseable {
       }
       long bootstrapToOnlineTimeoutInHours =
           VenicePushJob.this.pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
-      long durationMs = System.currentTimeMillis() - pollStartTimeMs;
+      long durationMs = LatencyUtils.getElapsedTimeInMs(pollStartTimeMs);
       if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
         throw new VeniceException(
             "Failing push-job for store " + VenicePushJob.this.pushJobSetting.storeResponse.getName()
@@ -2443,9 +2458,10 @@ public class VenicePushJob implements AutoCloseable {
         unknownStateStartTimeMs = 0;
       } else if (unknownStateStartTimeMs == 0) {
         unknownStateStartTimeMs = System.currentTimeMillis();
-      } else if (System.currentTimeMillis() < unknownStateStartTimeMs
-          + pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
-        double elapsedMinutes = (double) (System.currentTimeMillis() - unknownStateStartTimeMs) / Time.MS_PER_MINUTE;
+      } else if (LatencyUtils
+          .getElapsedTimeInMs(unknownStateStartTimeMs) < pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
+        double elapsedMinutes =
+            ((double) LatencyUtils.getElapsedTimeInMs(unknownStateStartTimeMs)) / Time.MS_PER_MINUTE;
         LOGGER.warn("Some data centers are still in unknown state after waiting for {} minutes", elapsedMinutes);
       } else {
         long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
@@ -2709,12 +2725,12 @@ public class VenicePushJob implements AutoCloseable {
    */
   public void cancel() {
     killJob(pushJobSetting, controllerClient);
-    if (pushJobSetting != null && StringUtils.isEmpty(pushJobSetting.topic)) {
+    if (StringUtils.isEmpty(pushJobSetting.topic)) {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
     } else {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
     }
-    pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
+    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
     updatePushJobDetailsWithConfigs();
     sendPushJobDetailsToController();
   }

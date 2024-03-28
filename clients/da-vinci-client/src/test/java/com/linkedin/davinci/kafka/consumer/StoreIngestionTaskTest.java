@@ -98,6 +98,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.transformer.TestAvroRecordTransformer;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -166,6 +167,7 @@ import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
@@ -628,6 +630,35 @@ public abstract class StoreIngestionTaskTest {
 
   private void runTest(
       Set<Integer> partitions,
+      Runnable assertions,
+      AAConfig aaConfig,
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+    runTest(partitions, () -> {}, assertions, aaConfig, getRecordTransformer);
+  }
+
+  private void runTest(
+      Set<Integer> partitions,
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      AAConfig aaConfig,
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
+    runTest(
+        new RandomPollStrategy(),
+        partitions,
+        beforeStartingConsumption,
+        assertions,
+        this.hybridStoreConfig,
+        false,
+        Optional.empty(),
+        aaConfig,
+        1,
+        Collections.emptyMap(),
+        storeVersionConfigOverride -> {},
+        getRecordTransformer);
+  }
+
+  private void runTest(
+      Set<Integer> partitions,
       Runnable beforeStartingConsumption,
       Runnable assertions,
       AAConfig aaConfig) throws Exception {
@@ -673,7 +704,7 @@ public abstract class StoreIngestionTaskTest {
       Runnable beforeStartingConsumption,
       Runnable assertions,
       AAConfig aaConfig,
-      DaVinciRecordTransformer recordTransformer) throws Exception {
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
     runTest(
         pollStrategy,
         partitions,
@@ -686,7 +717,7 @@ public abstract class StoreIngestionTaskTest {
         1,
         Collections.emptyMap(),
         storeVersionConfigOverride -> {},
-        recordTransformer);
+        getRecordTransformer);
   }
 
   private void runTest(
@@ -745,7 +776,7 @@ public abstract class StoreIngestionTaskTest {
       int amplificationFactor,
       Map<String, Object> extraServerProperties,
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride,
-      DaVinciRecordTransformer recordTransformer) throws Exception {
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) throws Exception {
 
     int partitionCount = PARTITION_COUNT / amplificationFactor;
     VenicePartitioner partitioner = getVenicePartitioner(1); // Only get base venice partitioner
@@ -786,7 +817,7 @@ public abstract class StoreIngestionTaskTest {
         leaderSubPartition,
         false,
         Optional.empty(),
-        recordTransformer);
+        getRecordTransformer);
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -3512,8 +3543,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
     storeIngestionTaskUnderTest.getStatusReportAdapter().initializePartitionReportStatus(PARTITION_FOO);
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
-
-    verify(mockTopicManagerRemoteKafka, nodeType == DA_VINCI ? never() : times(1)).getOffsetByTime(any(), anyLong());
+    verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
+    verify(mockOffsetRecord, never()).setLeaderUpstreamOffset(anyString(), anyLong());
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -4266,45 +4297,121 @@ public abstract class StoreIngestionTaskTest {
 
   @Test(dataProvider = "aaConfigProvider")
   public void testStoreIngestionRecordTransformer(AAConfig aaConfig) throws Exception {
-    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
-    PubSubProduceResult putMetadata = (PubSubProduceResult) localVeniceWriter
-        .put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null)
-        .get();
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, putKeyFoo);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
+    Put put = new Put();
 
-    Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
-    pollStrategies.add(new RandomPollStrategy());
+    put.putValue = ByteBuffer.wrap(putValue);
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
+    kafkaMessageEnvelope.payloadUnion = put;
+    kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+        0,
+        0,
+        0);
 
-    // We re-deliver the old put out of order, so we can make sure it's ignored.
-    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
-    pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata));
-    pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
+    LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+    when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+    when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+    when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
 
-    PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
-    TestStringRecordTransformer recordTransformer = new TestStringRecordTransformer();
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
 
-    VenicePartitioner partitioner = getVenicePartitioner(1);
-    int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
 
-    runTest(pollStrategy, Utils.setOf(PARTITION_FOO), () -> {}, () -> {
-      Schema keySchema = Schema.create(Schema.Type.INT);
-      SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-      when(keySchemaEntry.getSchema()).thenReturn(keySchema);
-      when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+      try {
+        storeIngestionTaskUnderTest.produceToStoreBufferService(
+            pubSubMessage,
+            leaderProducedRecordContext,
+            PARTITION_FOO,
+            localKafkaConsumerService.kafkaUrl,
+            System.nanoTime(),
+            System.currentTimeMillis());
+      } catch (InterruptedException e) {
+        throw new VeniceException(e);
+      }
+    }, aaConfig, (storeVersion) -> new TestAvroRecordTransformer(storeVersion));
+  }
 
-      Schema valueSchema = Schema.create(Schema.Type.STRING);
-      SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-      when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
-      when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+  // Test to throw type error when performing record transformation with incompatible types
+  // @Test(dataProvider = "aaConfigProvider", expectedExceptions = { VeniceException.class, VeniceMessageException.class
+  // })
+  @Test(dataProvider = "aaConfigProvider")
+  public void testStoreIngestionRecordTransformerError(AAConfig aaConfig) throws Exception {
+    byte[] keyBytes = new byte[1];
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
+    Put put = new Put();
+    put.putValue = ByteBuffer.allocate(10);
+    put.putValue.position(4);
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
+    kafkaMessageEnvelope.payloadUnion = put;
+    kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+        0,
+        0,
+        0);
 
-      mockAbstractStorageEngine.put(
-          targetPartitionPutKeyFoo,
-          putKeyFoo,
-          ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
-    }, aaConfig, recordTransformer);
+    LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+    when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+    when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+    when(leaderProducedRecordContext.getKeyBytes()).thenReturn(keyBytes);
 
-    // verify the shared consumer should be detached when the ingestion task is closed.
-    verify(aggKafkaConsumerService).unsubscribeAll(pubSubTopic);
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema valueSchema = Schema.create(Schema.Type.INT);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      try {
+        storeIngestionTaskUnderTest.produceToStoreBufferService(
+            pubSubMessage,
+            leaderProducedRecordContext,
+            PARTITION_FOO,
+            localKafkaConsumerService.kafkaUrl,
+            System.nanoTime(),
+            System.currentTimeMillis());
+      } catch (Exception e) {
+        e.printStackTrace();
+        // Verify transformer error was recorded
+        verify(mockVersionedStorageIngestionStats)
+            .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+      }
+    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
+
+    // Verify transformer error was recorded
+    verify(mockVersionedStorageIngestionStats)
+        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   @Test
@@ -4356,6 +4463,7 @@ public abstract class StoreIngestionTaskTest {
         10l);
   }
 
+  @Test
   public void testCheckAndHandleUpstreamOffsetRewind() {
     String storeName = "test_store";
     int version = 1;
@@ -4446,6 +4554,73 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(
         exception.getMessage().contains("Failing the job because lossy rewind happens before reporting completed"));
     verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
+  }
+
+  @Test
+  public void testMeasureLagWithCallToPubSub() {
+    final int PARTITION_UNABLE_TO_GET_END_OFFSET = 0;
+    final int EMPTY_PARTITION = 1;
+    final int PARTITION_WITH_SOME_MESSAGES_IN_IT = 2;
+    final long MESSAGE_COUNT = 10;
+    final long INVALID_CURRENT_OFFSET = -2;
+    final long CURRENT_OFFSET_NOTHING_CONSUMED = OffsetRecord.LOWEST_OFFSET;
+    final long CURRENT_OFFSET_SOME_CONSUMED = 3;
+    final String PUB_SUB_SERVER_NAME = "blah";
+    doReturn((long) StatsErrorCode.LAG_MEASUREMENT_FAILURE.code).when(mockTopicManager)
+        .getLatestOffsetCached(pubSubTopic, PARTITION_UNABLE_TO_GET_END_OFFSET);
+    doReturn(0L).when(mockTopicManager).getLatestOffsetCached(pubSubTopic, EMPTY_PARTITION);
+    doReturn(MESSAGE_COUNT).when(mockTopicManager)
+        .getLatestOffsetCached(pubSubTopic, PARTITION_WITH_SOME_MESSAGES_IN_IT);
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            PARTITION_UNABLE_TO_GET_END_OFFSET,
+            CURRENT_OFFSET_NOTHING_CONSUMED,
+            s -> mockTopicManager),
+        Long.MAX_VALUE,
+        "If unable to get the end offset, we expect Long.MAX_VALUE (infinite lag).");
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            EMPTY_PARTITION,
+            INVALID_CURRENT_OFFSET,
+            s -> mockTopicManager),
+        Long.MAX_VALUE,
+        "If the current offset is invalid (less than -1), we expect Long.MAX_VALUE (infinite lag).");
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            EMPTY_PARTITION,
+            CURRENT_OFFSET_NOTHING_CONSUMED,
+            s -> mockTopicManager),
+        0,
+        "If the partition is empty, we expect no lag.");
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            PARTITION_WITH_SOME_MESSAGES_IN_IT,
+            CURRENT_OFFSET_NOTHING_CONSUMED,
+            s -> mockTopicManager),
+        MESSAGE_COUNT,
+        "If the partition has messages in it, but we consumed nothing, we expect lag to equal the message count.");
+
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            pubSubTopic,
+            PARTITION_WITH_SOME_MESSAGES_IN_IT,
+            CURRENT_OFFSET_SOME_CONSUMED,
+            s -> mockTopicManager),
+        MESSAGE_COUNT - 1 - CURRENT_OFFSET_SOME_CONSUMED,
+        "If the partition has messages in it, and we consumed some of them, we expect lag to equal the unconsumed message count.");
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

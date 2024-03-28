@@ -14,7 +14,6 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.TransformedRecord;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -334,7 +333,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformer recordTransformer,
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
       Queue<VeniceNotifier> notifiers) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -443,9 +442,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
-    this.recordTransformer = recordTransformer;
+    this.recordTransformer =
+        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
     if (recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
+      versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
     }
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
@@ -2424,15 +2425,42 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopic topic,
       int partition,
       long currentOffset) {
-    if (currentOffset < 0) {
+    return measureLagWithCallToPubSub(pubSubServerName, topic, partition, currentOffset, this::getTopicManager);
+  }
+
+  protected static long measureLagWithCallToPubSub(
+      String pubSubServerName,
+      PubSubTopic topic,
+      int partition,
+      long currentOffset,
+      Function<String, TopicManager> topicManagerProvider) {
+    if (currentOffset < OffsetRecord.LOWEST_OFFSET) {
+      // -1 is a valid offset, which means that nothing was consumed yet, but anything below that is invalid.
       return Long.MAX_VALUE;
     }
-    TopicManager tm = getTopicManager(pubSubServerName);
-    long endOffset = tm.getLatestOffsetCached(topic, partition) - 1;
+    TopicManager tm = topicManagerProvider.apply(pubSubServerName);
+    long endOffset = tm.getLatestOffsetCached(topic, partition);
     if (endOffset < 0) {
+      // A negative value means there was a problem in measuring the end offset, and therefore we return "infinite lag"
       return Long.MAX_VALUE;
+    } else if (endOffset == 0) {
+      /**
+       * Topics which were never produced to have an end offset of zero. Such topics are empty and therefore, by
+       * definition, there cannot be any lag.
+       *
+       * Note that the reverse is not true: a topic can be currently empty and have an end offset above zero, if it had
+       * messages produced to it before, which have since then disappeared (e.g. due to time-based retention).
+       */
+      return 0;
     }
-    return endOffset - currentOffset;
+
+    /**
+     * A topic with an end offset of zero is empty. A topic with a single message in it will have an end offset of 1,
+     * while that single message will have offset 0. In such single message topic, a consumer which fully scans the
+     * topic would have a current offset of 0, while the topic has an end offset of 1, and therefore we need to subtract
+     * 1 from the end offset in order to arrive at the correct lag of 0.
+     */
+    return endOffset - 1 - currentOffset;
   }
 
   /**
@@ -3172,18 +3200,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               consumerRecord.getOffset(),
               Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
               putSchemaId,
-              compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+              compressor.get());
 
           // Current record is a chunk. We only write to the storage engine for fully assembled records
           if (assembledObject == null) {
             return 0;
           }
 
-          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
           Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
-          TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
-          ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
+
+          Object transformedRecord = null;
+          try {
+            transformedRecord = recordTransformer.put(lazyValue);
+          } catch (Exception e) {
+            versionedIngestionStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
+            String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
+
+            throw new VeniceMessageException(errorMessage, e);
+          }
+          ByteBuffer transformedBytes =
+              recordTransformer.getValueBytes(recordTransformer.getValueOutputSchema(), transformedRecord);
 
           put.putValue = transformedBytes;
           versionedIngestionStats.recordTransformerLatency(
@@ -3430,10 +3466,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Value deserialization succeeded with schema id {} for: {}", schemaId, record.getTopicPartition());
       deserializedSchemaIds.set(schemaId, new Object());
     }
-  }
-
-  private Object deserializeAvroObjectAndReturn(ByteBuffer input, SchemaEntry schemaEntry) {
-    return new AvroGenericDeserializer<>(schemaEntry.getSchema(), schemaEntry.getSchema()).deserialize(input);
   }
 
   private void maybeCloseInactiveIngestionTask() {
@@ -3800,21 +3832,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaMessageEnvelope kafkaMessageEnvelope,
       LeaderProducedRecordContext leaderProducedRecordContext) {
     /**
-     * Record nearline latency only when it's a hybrid store and the lag has been caught up. Sometimes
-     * the producerTimestamp can be -1 if the leaderProducedRecordContext had an error after callback
-     * Don't record latency for invalid timestamps
+     * Record nearline latency only when it's a hybrid store, the lag has been caught up and ignore
+     * messages that are getting caughtup. Sometimes the producerTimestamp can be -1 if the
+     * leaderProducedRecordContext had an error after callback. Don't record latency for invalid timestamps.
      */
     if (!isUserSystemStore() && isHybridMode() && partitionConsumptionState.hasLagCaughtUp()) {
-      long afterProcessingRecordTimestampMs = System.currentTimeMillis();
       long producerTimestamp = (leaderProducedRecordContext == null)
           ? kafkaMessageEnvelope.producerMetadata.messageTimestamp
           : leaderProducedRecordContext.getProducedTimestampMs();
       if (producerTimestamp > 0) {
-        versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
-            storeName,
-            versionNumber,
-            afterProcessingRecordTimestampMs - producerTimestamp,
-            afterProcessingRecordTimestampMs);
+        if (partitionConsumptionState.isNearlineMetricsRecordingValid(producerTimestamp)) {
+          long afterProcessingRecordTimestampMs = System.currentTimeMillis();
+          versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
+              storeName,
+              versionNumber,
+              afterProcessingRecordTimestampMs - producerTimestamp,
+              afterProcessingRecordTimestampMs);
+        }
       } else if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName, "IllegalTimestamp")) {
         LOGGER.warn(
             "Illegal timestamp for storeName: {}, versionNumber: {}, partition: {}, "

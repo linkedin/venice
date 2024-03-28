@@ -55,7 +55,7 @@ public class VeniceClusterInitializer implements Closeable {
       + "         { \"name\": \"name\", \"type\": \"string\", \"default\": \"default_name\"},           "
       + "         { \"name\": \"boolean_field\", \"type\": \"boolean\", \"default\": false},           "
       + "         { \"name\": \"int_field\", \"type\": \"int\", \"default\": 0},           "
-      + "         { \"name\": \"float_field\", \"type\": \"float\", \"default\": 0},           "
+      + "         { \"name\": \"float_field\", \"type\": \"float\", \"default\": 0.0},           "
       + "         { \"name\": \"namemap\", \"type\":  {\"type\" : \"map\", \"values\" : \"int\" }},           "
       + "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" }, \"default\": []},"
       + "         { \"name\": \"ZookeeperAddress\", \"type\": \"string\"}" + "  ]       " + " }       ";
