@@ -12,6 +12,8 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -21,6 +23,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.Checkpoint;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.IngestExternalFileOptions;
@@ -77,13 +80,19 @@ public class RocksDBSstFileWriter {
   private long recordNumInCurrentSSTFile = 0;
   private long recordNumInAllSSTFiles = 0;
   private String fullPathForTempSSTFileDir;
+  private final String fullPathForPartitionDBSnapshot;
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
   private final String storeName;
   private final int partitionId;
   private final EnvOptions envOptions;
   private final Options options;
   private final boolean isRMD;
+
   private final RocksDBServerConfig rocksDBServerConfig;
+
+  protected Checkpoint makeCheckpoint(RocksDB rocksDB) {
+    return Checkpoint.create(rocksDB);
+  }
 
   // Visible for testing
   public String getLastCheckPointedSSTFileNum() {
@@ -106,6 +115,7 @@ public class RocksDBSstFileWriter {
     this.envOptions = envOptions;
     this.options = options;
     this.fullPathForTempSSTFileDir = fullPathForTempSSTFileDir;
+    this.fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId);
     this.isRMD = isRMD;
     this.lastCheckPointedSSTFileNum = isRMD ? ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO : ROCKSDB_LAST_FINISHED_SST_FILE_NO;
     this.rocksDBServerConfig = rocksDBServerConfig;
@@ -487,6 +497,24 @@ public class RocksDBSstFileWriter {
           sstFilePaths);
     } catch (RocksDBException e) {
       throw new VeniceException("Received exception during RocksDB#ingestExternalFile", e);
+    }
+  }
+
+  public void createSnapshot(RocksDB rocksDB) {
+    try {
+      Checkpoint checkpoint = makeCheckpoint(rocksDB);
+      String checkpointPath = this.fullPathForPartitionDBSnapshot;
+
+      if (Files.exists(Paths.get(checkpointPath))) {
+        return;
+      }
+
+      LOGGER.info("Start creating snapshots in directory: {}", checkpointPath);
+      checkpoint.createCheckpoint(checkpointPath);
+
+      LOGGER.info("Finished creating snapshots in directory: {}", checkpointPath);
+    } catch (RocksDBException e) { // | IOException e) {
+      throw new VeniceException("Received exception during RocksDB's snapshot creation", e);
     }
   }
 

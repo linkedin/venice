@@ -75,6 +75,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   protected final WriteOptions writeOptions;
   private final String fullPathForTempSSTFileDir;
+  private final String fullPathForTempSnapshotFileDir;
 
   private final EnvOptions envOptions;
 
@@ -194,6 +195,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.expectedChecksumSupplier = Optional.empty();
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
+    this.fullPathForTempSnapshotFileDir = RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId);
     if (deferredWrite) {
       this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
           storeName,
@@ -453,6 +455,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * the last SST file written is finished.
      */
     rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
+    rocksDBSstFileWriter.createSnapshot(rocksDB);
   }
 
   private void checkAndThrowMemoryLimitException(RocksDBException e) {
@@ -796,6 +799,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      */
     // Remove extra SST files first
     deleteFilesInDirectory(fullPathForTempSSTFileDir);
+    // remove snapshots files
+    deleteFilesInDirectory(fullPathForTempSnapshotFileDir);
     // Remove partition directory
     deleteDirectory(fullPathForPartitionDB);
     LOGGER.info("RocksDB for store: {}, partition: {} was dropped.", storeName, partitionId);
