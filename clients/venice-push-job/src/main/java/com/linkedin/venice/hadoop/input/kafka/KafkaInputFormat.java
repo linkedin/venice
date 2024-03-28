@@ -12,11 +12,15 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.time.Duration;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -58,7 +62,12 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
     try (TopicManager topicManager =
         new TopicManagerRepository(topicManagerContext, config.get(KAFKA_INPUT_BROKER_URL)).getLocalTopicManager()) {
       String topic = config.get(KAFKA_INPUT_TOPIC);
-      Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(pubSubTopicRepository.getTopic(topic));
+
+      Map<Integer, Long> latestOffsets = RetryUtils.executeWithMaxAttempt(
+          () -> topicManager.getTopicLatestOffsets(pubSubTopicRepository.getTopic(topic)),
+          10,
+          Duration.ofMinutes(1),
+          Arrays.asList(PubSubOpTimeoutException.class));
       Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
       latestOffsets.forEach(
           (partitionId, latestOffset) -> partitionOffsetMap.put(new TopicPartition(topic, partitionId), latestOffset));
