@@ -18,6 +18,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -462,6 +463,40 @@ public class OfflinePushStatus {
 
   public void setPushProperties(Map<String, String> pushProperties) {
     this.pushProperties = pushProperties;
+  }
+
+  /**
+   * @return the UNIX Epoch time corresponding to the earliest time in which {@link #getStatusHistory()} contained an
+   *         {@link ExecutionStatus} equal to the {@link #getCurrentStatus()}, or null if not available.
+   */
+  @JsonIgnore
+  public Long getStatusUpdateTimestamp() {
+    if (this.statusHistory == null || this.statusHistory.isEmpty() || this.currentStatus == null) {
+      // Defensive code... at the time of writing this function, this should never happen.
+      return null;
+    }
+    Long earliestTimestampForCurrentStatus = Long.MAX_VALUE;
+    for (StatusSnapshot statusSnapshot: statusHistory) {
+      if (statusSnapshot.getStatus() == this.currentStatus && statusSnapshot.getTime() != null) {
+        try {
+          LocalDateTime statusDateTime = LocalDateTime.parse(statusSnapshot.getTime());
+          Long statusTime = statusDateTime.toEpochSecond(ZoneOffset.UTC);
+          if (statusTime < earliestTimestampForCurrentStatus) {
+            earliestTimestampForCurrentStatus = statusTime;
+          }
+        } catch (Exception e) {
+          // The time parsing is in theory brittle. There are no known cases where this should fail, but in case
+          // future maintenance breaks this assumption, then this catch will swallow such edge cases...
+          LOGGER.info("Could not parse the time field of a status snapshot: {}", statusSnapshot.getTime(), e);
+        }
+      }
+    }
+
+    if (earliestTimestampForCurrentStatus == Long.MAX_VALUE) {
+      return null;
+    }
+
+    return earliestTimestampForCurrentStatus;
   }
 
   @Override
