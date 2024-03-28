@@ -12,6 +12,8 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntFunction;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -24,6 +26,7 @@ import java.util.function.IntFunction;
  * 4. Whether producers have produced duplicate messages, which is fine and expected due to producer retries (DUPLICATE).
  */
 public class KafkaDataIntegrityValidator {
+  private static final Logger LOGGER = LogManager.getLogger(KafkaDataIntegrityValidator.class);
   public static final long DISABLED = -1;
   private final long kafkaLogCompactionDelayInMs;
   private final long maxAgeInMs;
@@ -48,6 +51,11 @@ public class KafkaDataIntegrityValidator {
     this.kafkaLogCompactionDelayInMs = kafkaLogCompactionDelayInMs;
     this.maxAgeInMs = maxAgeInMs;
     this.partitionTrackerCreator = p -> new PartitionTracker(topicName, p);
+    LOGGER.info(
+        "Initialized KafkaDataIntegrityValidator with topicName: {}, maxAgeInMs: {}, kafkaLogCompactionDelayInMs: {}",
+        topicName,
+        maxAgeInMs,
+        kafkaLogCompactionDelayInMs);
   }
 
   /** N.B.: Package-private for test purposes */
