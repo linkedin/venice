@@ -357,6 +357,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
     try {
       String storeName = Utils.getUniqueString("test_store");
+      veniceAdmin.createStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
       asyncExecutor.submit(() -> {
         // A time-consuming store operation that holds cluster-level read lock and store-level write lock.
         HelixVeniceClusterResources resources = veniceAdmin.getHelixVeniceClusterResources(clusterName);
