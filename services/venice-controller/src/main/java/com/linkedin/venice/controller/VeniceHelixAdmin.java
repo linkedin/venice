@@ -3064,6 +3064,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * @return One future version number of all the ongoing pushes or {@linkplain Store#NON_EXISTING_VERSION} if none exists.
+   * If the push finished successfully it will return the highest store ONLINE version, else returns NON_EXISTING_VERSION
    */
   @Override
   public int getFutureVersion(String clusterName, String storeName) {
@@ -3076,7 +3077,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (offlinePush.isPresent()) {
       return Version.parseVersionFromKafkaTopicName(offlinePush.get());
     }
-    return Store.NON_EXISTING_VERSION;
+    return getOnlineFutureVersion(clusterName, storeName);
   }
 
   @Override
