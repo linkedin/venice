@@ -356,7 +356,6 @@ public class HelixParticipationService extends AbstractVeniceService
         helixReadOnlyStoreRepository,
         instance.getNodeId());
 
-    ingestionBackend.addPushStatusNotifier(pushMonitorNotifier);
     /**
      * The accessor can only get created successfully after helix manager is created.
      */
@@ -392,6 +391,7 @@ public class HelixParticipationService extends AbstractVeniceService
        * the notifier is added.
        */
       partitionPushStatusAccessorFuture.complete(partitionPushStatusAccessor);
+      ingestionBackend.addPushStatusNotifier(pushMonitorNotifier);
       LOGGER.info("Successfully started Helix partition status accessor.");
 
       serviceState.set(ServiceState.STARTED);
