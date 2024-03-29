@@ -67,28 +67,22 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     implements BootstrappingVeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(InternalLocalBootstrappingVeniceChangelogConsumer.class);
   private static final String CHANGE_CAPTURE_COORDINATE = "ChangeCaptureCoordinatePosition";
-  // This is the name of a non-existent topic. We use it as a handle when interfacing with local storage so we can
+  // This is the name of a non-existent topic. We use it as a handle when interfacing with local storage, so we can
   // make decisions about easily about weather or not to clear out the local state data or not across version for a
-  // store
-  // (we'll keep the local data in the event of a repush, but clear out if a user push comes through)
+  // store (we'll keep the local data in the event of a repush, but clear out if a user push comes through)
   private static final String LOCAL_STATE_TOPIC_SUFFIX = "_Bootstrap_v1";
 
-  private StorageService storageService;
-  private StorageMetadataService storageMetadataService;
-
   private final MetricsRepository metricsRepository;
-
   private final String localStateTopicName;
   private final VeniceConcurrentHashMap<Integer, BootstrapState> bootstrapStateMap;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
-
   private final VeniceConfigLoader configLoader;
-
-  boolean isStarted = false;
-
-  private int bootstrapCompletedCount = 0;
-
   private final long syncBytesInterval;
+
+  private StorageService storageService;
+  private StorageMetadataService storageMetadataService;
+  private boolean isStarted = false;
+  private int bootstrapCompletedCount = 0;
 
   public InternalLocalBootstrappingVeniceChangelogConsumer(
       ChangelogClientConfig changelogClientConfig,
@@ -127,7 +121,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     storageService = new StorageService(
         configLoader,
         storageEngineStats,
-        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats-" + consumerId, false),
+        metricsRepository == null
+            ? null
+            : new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats-" + consumerId, false),
         storeVersionStateSerializer,
         partitionStateSerializer,
         storeRepository,
