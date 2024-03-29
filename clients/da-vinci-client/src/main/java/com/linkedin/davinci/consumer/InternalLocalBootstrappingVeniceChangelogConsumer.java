@@ -1,5 +1,6 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER;
@@ -14,6 +15,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -42,6 +44,7 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.ChangeCaptureView;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -63,27 +66,29 @@ import org.apache.logging.log4j.Logger;
 class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChangelogConsumerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(InternalLocalBootstrappingVeniceChangelogConsumer.class);
-  private StorageService storageService;
-  private StorageMetadataService storageMetadataService;
-
   private static final String CHANGE_CAPTURE_COORDINATE = "ChangeCaptureCoordinatePosition";
-
   // This is the name of a non-existent topic. We use it as a handle when interfacing with local storage so we can
   // make decisions about easily about weather or not to clear out the local state data or not across version for a
   // store
   // (we'll keep the local data in the event of a repush, but clear out if a user push comes through)
   private static final String LOCAL_STATE_TOPIC_SUFFIX = "_Bootstrap_v1";
+
+  private StorageService storageService;
+  private StorageMetadataService storageMetadataService;
+
+  private final MetricsRepository metricsRepository;
+
   private final String localStateTopicName;
   private final VeniceConcurrentHashMap<Integer, BootstrapState> bootstrapStateMap;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
-  private VeniceConfigLoader configLoader;
+  private final VeniceConfigLoader configLoader;
 
   boolean isStarted = false;
 
   private int bootstrapCompletedCount = 0;
 
-  private long syncBytesInterval;
+  private final long syncBytesInterval;
 
   public InternalLocalBootstrappingVeniceChangelogConsumer(
       ChangelogClientConfig changelogClientConfig,
@@ -92,6 +97,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     super(changelogClientConfig, pubSubConsumer);
     bootstrapStateMap = new VeniceConcurrentHashMap<>();
     syncBytesInterval = changelogClientConfig.getDatabaseSyncBytesInterval();
+    metricsRepository = changelogClientConfig.getInnerClientConfig().getMetricsRepository();
     String localStateTopicNameTemp = changelogClientConfig.getStoreName() + LOCAL_STATE_TOPIC_SUFFIX;
     String bootstrapFileSystemPath = changelogClientConfig.getBootstrapFileSystemPath();
     if (StringUtils.isNotEmpty(consumerId)) {
@@ -101,10 +107,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
     localStateTopicName = localStateTopicNameTemp;
     configLoader = buildVeniceConfig(bootstrapFileSystemPath);
-    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
-        changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
-        this.storeRepository,
-        true);
+    AggVersionedStorageEngineStats storageEngineStats =
+        new AggVersionedStorageEngineStats(metricsRepository, storeRepository, true);
     SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(changelogClientConfig.getInnerClientConfig())
             .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()),
@@ -123,10 +127,10 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     storageService = new StorageService(
         configLoader,
         storageEngineStats,
-        null,
+        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats-" + consumerId, false),
         storeVersionStateSerializer,
         partitionStateSerializer,
-        this.storeRepository,
+        storeRepository,
         true,
         true,
         functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
@@ -137,10 +141,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
   private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
     return storageEngineName -> {
       // This function needs to determine if the local files need to be cleared out or not. The way it should do
-      // that
-      // is by reading the local storagemetadata bootstrap coordinate, and see if the internal client is able to
+      // that is by reading the local storage metadata bootstrap coordinate, and see if the internal client is able to
       // subscribe to that position. If it's not able to, that means that the local state is off Venice retention,
-      // and therefore should be completely rebootstrapped.
+      // and therefore should be completely re-bootstrapped.
       for (Integer partition: bootstrapStateMap.keySet()) {
         OffsetRecord offsetRecord = storageMetadataService.getLastOffset(localStateTopicName, partition);
         if (offsetRecord == null) {
@@ -205,6 +208,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 40)
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 60)
         .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 80)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, changelogClientConfig.getRocksDBBlockCacheSizeInBytes())
         .put(changelogClientConfig.getConsumerProperties())
         .put(DATA_BASE_PATH, bootstrapFileSystemPath)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false)
