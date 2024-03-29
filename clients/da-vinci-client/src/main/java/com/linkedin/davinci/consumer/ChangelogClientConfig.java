@@ -28,9 +28,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private long databaseSyncBytesInterval = 32 * 1024 * 1024L;
 
   /**
-   * RocksDB block cache size per BootstrappingVeniceChangelogConsumer. Default is 16 GB.
+   * RocksDB block cache size per BootstrappingVeniceChangelogConsumer. Default is 1 GB.
    */
-  private long rocksDBBlockCacheSizeInBytes = 16 * 1024 * 1024 * 1024L;
+  private long rocksDBBlockCacheSizeInBytes = 1024 * 1024 * 1024L;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
