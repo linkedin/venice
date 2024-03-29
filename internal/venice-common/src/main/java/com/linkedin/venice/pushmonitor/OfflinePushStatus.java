@@ -3,6 +3,8 @@ package com.linkedin.venice.pushmonitor;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ARCHIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DATA_RECOVERY_COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
@@ -144,7 +146,8 @@ public class OfflinePushStatus {
         isValid = Utils.verifyTransition(newStatus, ARCHIVED);
         break;
       case END_OF_PUSH_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, COMPLETED, ERROR);
+        isValid = Utils
+            .verifyTransition(newStatus, COMPLETED, ERROR, DVC_INGESTION_ERROR_DISK_FULL, DVC_INGESTION_ERROR_OTHER);
         break;
       default:
         isValid = false;

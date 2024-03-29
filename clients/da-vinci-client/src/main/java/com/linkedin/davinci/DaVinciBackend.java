@@ -1,6 +1,9 @@
 package com.linkedin.davinci;
 
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
@@ -650,13 +653,27 @@ public class DaVinciBackend implements Closeable {
 
     @Override
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
+      error(false, kafkaTopic, partitionId, message, e);
+    }
+
+    public void error(boolean isDaVinciClient, String kafkaTopic, int partitionId, String message, Exception e) {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
           /**
            * Report push status needs to be executed before deleting the {@link VersionBackend}.
            */
-          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
+          ExecutionStatus status;
+          if (isDaVinciClient) {
+            if (e instanceof VeniceException && message.startsWith("Disk is full")) {
+              status = DVC_INGESTION_ERROR_DISK_FULL;
+            } else {
+              status = DVC_INGESTION_ERROR_OTHER;
+            }
+          } else {
+            status = ERROR;
+          }
+          reportPushStatus(kafkaTopic, partitionId, status);
 
           versionBackend.completePartitionExceptionally(partitionId, e);
           versionBackend.tryStopHeartbeat();

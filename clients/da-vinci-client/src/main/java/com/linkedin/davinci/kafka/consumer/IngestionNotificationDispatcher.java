@@ -289,10 +289,14 @@ class IngestionNotificationDispatcher {
     LOGGER.info("Reported {} to {} notifiers for partition: {}", ExecutionStatus.ERROR, notifiers.size(), partition);
   }
 
-  void reportError(Collection<PartitionConsumptionState> pcsList, String message, Exception consumerEx) {
+  void reportError(
+      boolean isDaVinciClient,
+      Collection<PartitionConsumptionState> pcsList,
+      String message,
+      Exception consumerEx) {
     for (PartitionConsumptionState pcs: pcsList) {
       report(pcs, ExecutionStatus.ERROR, notifier -> {
-        notifier.error(topic, pcs.getUserPartition(), message, consumerEx);
+        notifier.error(isDaVinciClient, topic, pcs.getUserPartition(), message, consumerEx);
         pcs.errorReported();
       }, () -> {
         StringBuilder logMessage = new StringBuilder();

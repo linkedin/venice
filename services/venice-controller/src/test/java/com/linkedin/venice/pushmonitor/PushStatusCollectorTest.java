@@ -48,7 +48,7 @@ public class PushStatusCollectorTest {
     AtomicInteger pushErrorCount = new AtomicInteger();
 
     Consumer<String> pushCompleteConsumer = x -> pushCompletedCount.getAndIncrement();
-    BiConsumer<String, String> pushErrorConsumer = (x, y) -> pushErrorCount.getAndIncrement();
+    BiConsumer<String, ExecutionStatusWithDetails> pushErrorConsumer = (x, y) -> pushErrorCount.getAndIncrement();
     PushStatusCollector pushStatusCollector = new PushStatusCollector(
         storeRepository,
         pushStatusStoreReader,
@@ -181,7 +181,7 @@ public class PushStatusCollectorTest {
     AtomicInteger pushErrorCount = new AtomicInteger();
 
     Consumer<String> pushCompleteConsumer = x -> pushCompletedCount.getAndIncrement();
-    BiConsumer<String, String> pushErrorConsumer = (x, y) -> pushErrorCount.getAndIncrement();
+    BiConsumer<String, ExecutionStatusWithDetails> pushErrorConsumer = (x, y) -> pushErrorCount.getAndIncrement();
     PushStatusCollector pushStatusCollector = new PushStatusCollector(
         storeRepository,
         pushStatusStoreReader,
@@ -264,7 +264,7 @@ public class PushStatusCollectorTest {
     AtomicInteger pushErrorCount = new AtomicInteger();
 
     Consumer<String> pushCompleteConsumer = x -> pushCompletedCount.getAndIncrement();
-    BiConsumer<String, String> pushErrorConsumer = (x, y) -> pushErrorCount.getAndIncrement();
+    BiConsumer<String, ExecutionStatusWithDetails> pushErrorConsumer = (x, y) -> pushErrorCount.getAndIncrement();
     PushStatusCollector pushStatusCollector = new PushStatusCollector(
         storeRepository,
         pushStatusStoreReader,

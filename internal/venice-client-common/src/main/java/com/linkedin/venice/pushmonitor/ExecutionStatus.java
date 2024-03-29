@@ -85,7 +85,19 @@ public enum ExecutionStatus {
   /** Job/Task is created but ingestion haven't started yet */
   NOT_STARTED(false, true, false, false, 16),
 
-  DATA_RECOVERY_COMPLETED(false, true, false, false, 17);
+  DATA_RECOVERY_COMPLETED(false, true, false, false, 17),
+
+  DVC_INGESTION_ERROR_DISK_FULL(true, false, false, true, 18),
+
+  DVC_INGESTION_ERROR_OTHER(true, false, false, true, 19);
+
+  public boolean isDVCIngestionError() {
+    return (this == DVC_INGESTION_ERROR_DISK_FULL || this == DVC_INGESTION_ERROR_OTHER);
+  }
+
+  public boolean isIngestionError() {
+    return (this == ERROR || this == DVC_INGESTION_ERROR_DISK_FULL || this == DVC_INGESTION_ERROR_OTHER);
+  }
 
   final boolean isJobStatus;
   final boolean isTaskStatus;

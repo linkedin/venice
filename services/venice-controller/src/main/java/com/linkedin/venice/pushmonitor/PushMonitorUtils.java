@@ -22,6 +22,14 @@ public class PushMonitorUtils {
   private static final Map<String, Long> storeVersionToDVCDeadInstanceTimeMap = new ConcurrentHashMap<>();
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorUtils.class);
 
+  private static String getDVCIngestionErrorReason(ExecutionStatus errorReplicaStatus) {
+    if (errorReplicaStatus == ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL) {
+      return " due to disk being full";
+    } else {
+      return "";
+    }
+  }
+
   /**
    * This method checks Da Vinci client push status of all partitions from push status store and compute a final status.
    * Inside each partition, this method will compute status based on all active Da Vinci instances.
@@ -47,6 +55,7 @@ public class PushMonitorUtils {
         : ExecutionStatus.END_OF_PUSH_RECEIVED;
     Optional<String> erroredReplica = Optional.empty();
     int erroredPartitionId = 0;
+    ExecutionStatus errorReplicaStatus = ExecutionStatus.ERROR;
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     int version = Version.parseVersionFromVersionTopicName(topicName);
     int completedPartitions = 0;
@@ -84,9 +93,10 @@ public class PushMonitorUtils {
         }
         allInstancesCompleted = false;
         allMiddleStatusReceived = false;
-        if (status == ExecutionStatus.ERROR) {
+        if (status.isIngestionError()) {
           erroredReplica = Optional.of(entry.getKey().toString());
           erroredPartitionId = partitionId;
+          errorReplicaStatus = status;
           break;
         }
       }
@@ -129,7 +139,9 @@ public class PushMonitorUtils {
           .append(" Da Vinci replicas.");
     }
     if (erroredReplica.isPresent()) {
-      statusDetailStringBuilder.append("Found a failed partition replica in Da Vinci. ")
+      statusDetailStringBuilder.append("Found a failed partition replica in Da Vinci")
+          .append(getDVCIngestionErrorReason(errorReplicaStatus))
+          .append(". ")
           .append("Partition: ")
           .append(erroredPartitionId)
           .append(" Replica: ")
@@ -162,7 +174,7 @@ public class PushMonitorUtils {
     }
     if (erroredReplica.isPresent()) {
       storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
-      return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail, noDaVinciStatusReported);
+      return new ExecutionStatusWithDetails(errorReplicaStatus, statusDetail, noDaVinciStatusReported);
     }
     return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail, noDaVinciStatusReported);
   }

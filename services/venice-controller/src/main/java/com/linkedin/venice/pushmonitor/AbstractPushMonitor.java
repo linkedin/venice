@@ -991,7 +991,9 @@ public abstract class AbstractPushMonitor
     LOGGER.info("Offline push for topic: {} is completed.", pushStatus.getKafkaTopic());
   }
 
-  protected void handleErrorPush(String topic, String statusDetails) {
+  protected void handleErrorPush(String topic, ExecutionStatusWithDetails executionStatusWithDetails) {
+    ExecutionStatus executionStatus = executionStatusWithDetails.getStatus();
+    String statusDetails = executionStatusWithDetails.getDetails();
     routingDataRepository.unSubscribeRoutingDataChange(topic, this);
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null) {
@@ -1002,9 +1004,9 @@ public abstract class AbstractPushMonitor
         "Updating offline push status, push for: {} is now {}, new status: {}, statusDetails: {}",
         topic,
         pushStatus.getCurrentStatus(),
-        ExecutionStatus.ERROR,
+        executionStatus,
         statusDetails);
-    updatePushStatus(pushStatus, ExecutionStatus.ERROR, Optional.of(statusDetails));
+    updatePushStatus(pushStatus, executionStatus, Optional.of(statusDetails));
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     try {

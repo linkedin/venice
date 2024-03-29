@@ -3709,7 +3709,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         pcsList.add(partitionConsumptionStateMap.get(subPartition));
       }
     }
-    statusReportAdapter.reportError(pcsList, message, e);
+    statusReportAdapter.reportError(isDaVinciClient, pcsList, message, e);
   }
 
   public int getAmplificationFactor() {

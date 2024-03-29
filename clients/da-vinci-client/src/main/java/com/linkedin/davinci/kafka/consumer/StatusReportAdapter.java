@@ -57,7 +57,15 @@ public class StatusReportAdapter {
   }
 
   public void reportError(Collection<PartitionConsumptionState> pcsList, String message, Exception consumerEx) {
-    dispatcher.reportError(amplificationFactorAdapter.getLeaderPcsList(pcsList), message, consumerEx);
+    dispatcher.reportError(false, amplificationFactorAdapter.getLeaderPcsList(pcsList), message, consumerEx);
+  }
+
+  public void reportError(
+      boolean isDaVinciClient,
+      Collection<PartitionConsumptionState> pcsList,
+      String message,
+      Exception consumerEx) {
+    dispatcher.reportError(isDaVinciClient, amplificationFactorAdapter.getLeaderPcsList(pcsList), message, consumerEx);
   }
 
   public void reportKilled(Collection<PartitionConsumptionState> pcsList, VeniceIngestionTaskKilledException ke) {
