@@ -106,6 +106,8 @@ public interface PushMonitor {
    */
   List<String> getTopicsOfOngoingOfflinePushes();
 
+  List<OfflinePushStatus> getOfflinePushStatusForStore(String storeName);
+
   /**
    * Mark a push to be as error. This is usually called when push is killed.
    */

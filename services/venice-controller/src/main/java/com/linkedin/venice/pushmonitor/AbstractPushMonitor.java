@@ -571,6 +571,17 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
+  public List<OfflinePushStatus> getOfflinePushStatusForStore(String storeName) {
+    List<OfflinePushStatus> result = new ArrayList<>();
+    result.addAll(
+        topicToPushMap.values()
+            .stream()
+            .filter(status -> Version.parseStoreFromKafkaTopicName(status.getKafkaTopic()).equals(storeName))
+            .collect(Collectors.toList()));
+    return result;
+  }
+
+  @Override
   public List<UncompletedPartition> getUncompletedPartitions(String topic) {
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null || pushStatus.getCurrentStatus().equals(COMPLETED)) {

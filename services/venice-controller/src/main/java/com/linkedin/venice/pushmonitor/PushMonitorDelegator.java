@@ -189,6 +189,11 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
+  public List<OfflinePushStatus> getOfflinePushStatusForStore(String storeName) {
+    return partitionStatusBasedPushStatusMonitor.getOfflinePushStatusForStore(storeName);
+  }
+
+  @Override
   public void markOfflinePushAsError(String topic, String statusDetails) {
     getPushMonitor(topic).markOfflinePushAsError(topic, statusDetails);
   }
