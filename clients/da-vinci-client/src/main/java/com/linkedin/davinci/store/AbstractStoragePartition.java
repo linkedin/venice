@@ -103,6 +103,8 @@ public abstract class AbstractStoragePartition {
    */
   public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
 
+  public abstract void createSnapshot();
+
   /**
    * checks whether the current state of the database is valid
    * during the start of ingestion.

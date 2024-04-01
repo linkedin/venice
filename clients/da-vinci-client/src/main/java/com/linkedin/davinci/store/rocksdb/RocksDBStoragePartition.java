@@ -455,6 +455,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * the last SST file written is finished.
      */
     rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
+    createSnapshot();
+  }
+
+  @Override
+  public synchronized void createSnapshot() {
     rocksDBSstFileWriter.createSnapshot(rocksDB);
   }
 

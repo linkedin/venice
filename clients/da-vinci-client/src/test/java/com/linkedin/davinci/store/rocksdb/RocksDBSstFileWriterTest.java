@@ -1,7 +1,9 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -14,6 +16,7 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import org.apache.commons.io.FileUtils;
 import org.rocksdb.Checkpoint;
 import org.rocksdb.EnvOptions;
@@ -274,7 +277,7 @@ public class RocksDBSstFileWriterTest {
   }
 
   @Test
-  public void testCreateSnapshot() throws RocksDBException {
+  public void testCreateSnapshotWithBlobTransferDisabled() throws RocksDBException {
     RocksDBSstFileWriter rocksDBSstFileWriter = null;
     try {
       rocksDBSstFileWriter = spy(
@@ -289,15 +292,51 @@ public class RocksDBSstFileWriterTest {
               ROCKS_DB_SERVER_CONFIG));
 
       String checkpointPath = RocksDBUtils.composeSnapshotDir("/db", STORE_NAME, PARTITION_ID);
-
       RocksDB rocksdb = mock(RocksDB.class);
       Checkpoint checkpoint = mock(Checkpoint.class);
 
-      doReturn(checkpoint).when(rocksDBSstFileWriter).makeCheckpoint(rocksdb);
+      doReturn(checkpoint).when(rocksDBSstFileWriter).createCheckpoint(rocksdb);
       doNothing().when(checkpoint).createCheckpoint(checkpointPath);
 
+      // if blob transfer is disabled in configurations, should not create snapshots
       rocksDBSstFileWriter.createSnapshot(rocksdb);
+      verify(checkpoint, times(0)).createCheckpoint(checkpointPath);
 
+    } finally {
+      if (rocksDBSstFileWriter != null) {
+        rocksDBSstFileWriter.close();
+      }
+    }
+  }
+
+  @Test
+  public void testCreateSnapshotWithBlobTransferEnabled() throws RocksDBException {
+    RocksDBSstFileWriter rocksDBSstFileWriter = null;
+
+    Properties props = new Properties();
+    props.put(ConfigKeys.ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE, true);
+
+    try {
+      rocksDBSstFileWriter = spy(
+          new RocksDBSstFileWriter(
+              STORE_NAME,
+              PARTITION_ID,
+              "/db",
+              new EnvOptions(),
+              new Options(),
+              DB_DIR,
+              IS_RMD,
+              new RocksDBServerConfig(new VeniceProperties(props))));
+
+      String checkpointPath = RocksDBUtils.composeSnapshotDir("/db", STORE_NAME, PARTITION_ID);
+      RocksDB rocksdb = mock(RocksDB.class);
+      Checkpoint checkpoint = mock(Checkpoint.class);
+
+      doReturn(checkpoint).when(rocksDBSstFileWriter).createCheckpoint(rocksdb);
+      doNothing().when(checkpoint).createCheckpoint(checkpointPath);
+
+      // if blob transfer is enabled in configurations, should create snapshots
+      rocksDBSstFileWriter.createSnapshot(rocksdb);
       verify(checkpoint, times(1)).createCheckpoint(checkpointPath);
 
     } finally {
@@ -305,6 +344,41 @@ public class RocksDBSstFileWriterTest {
         rocksDBSstFileWriter.close();
       }
     }
+  }
+
+  @Test
+  public void testCreateSnapshotThrowsVeniceExceptionOnRocksDBException() throws RocksDBException {
+    RocksDBSstFileWriter rocksDBSstFileWriter = null;
+    Properties props = new Properties();
+    props.put(ConfigKeys.ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE, true);
+
+    try {
+      rocksDBSstFileWriter = spy(
+          new RocksDBSstFileWriter(
+              STORE_NAME,
+              PARTITION_ID,
+              "/db",
+              new EnvOptions(),
+              new Options(),
+              DB_DIR,
+              IS_RMD,
+              new RocksDBServerConfig(new VeniceProperties(props))));
+
+      String checkpointPath = RocksDBUtils.composeSnapshotDir("/db", STORE_NAME, PARTITION_ID);
+      RocksDB rocksdb = mock(RocksDB.class);
+      Checkpoint checkpoint = mock(Checkpoint.class);
+
+      doReturn(checkpoint).when(rocksDBSstFileWriter).createCheckpoint(rocksdb);
+      doThrow(new RocksDBException("Test exception")).when(checkpoint).createCheckpoint(checkpointPath);
+
+      RocksDBSstFileWriter finalRocksDBSstFileWriter = rocksDBSstFileWriter;
+      assertThrows(VeniceException.class, () -> finalRocksDBSstFileWriter.createSnapshot(rocksdb));
+    } finally {
+      if (rocksDBSstFileWriter != null) {
+        rocksDBSstFileWriter.close();
+      }
+    }
+
   }
 
   @Test

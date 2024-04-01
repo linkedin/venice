@@ -880,12 +880,12 @@ public class TestUtils {
   public static List<String> searchForFileExtension(File directory, String fileExtension) {
     List<String> result = new ArrayList<>();
     if (!directory.canRead()) {
-      System.err.println("Cannot read directory: " + directory.getAbsolutePath());
+      LOGGER.error("Cannot read directory: ", directory.getAbsolutePath());
       return result;
     }
     File[] files = directory.listFiles();
     if (files == null) {
-      System.err.println("Error reading directory: " + directory.getAbsolutePath());
+      LOGGER.error("Error reading directory ", directory.getAbsolutePath());
       return result;
     }
     for (File file: files) {
@@ -901,7 +901,7 @@ public class TestUtils {
 
   public static boolean directoryContainsFolder(String directoryPath, String folderName) {
     File directory = new File(directoryPath);
-    if (directory.exists() && directory.isDirectory()) {
+    if (directory.isDirectory()) {
       File[] files = directory.listFiles();
       if (files != null) {
         for (File file: files) {

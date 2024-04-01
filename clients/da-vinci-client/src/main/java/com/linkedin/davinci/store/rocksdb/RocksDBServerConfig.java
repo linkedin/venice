@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
@@ -265,6 +267,7 @@ public class RocksDBServerConfig {
   private final int level0StopWritesTriggerWriteOnlyVersion;
   private final boolean putReuseByteBufferEnabled;
   private final boolean atomicFlushEnabled;
+  private final boolean blobTransferBatchOnlyEnabled;
   private final boolean separateRMDCacheEnabled;
   private int blockBaseFormatVersion;
   private final int maxLogFileNum;
@@ -374,6 +377,8 @@ public class RocksDBServerConfig {
     this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
     this.atomicFlushEnabled = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, true);
     this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, false);
+
+    this.blobTransferBatchOnlyEnabled = props.getBoolean(ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE, false);
 
     this.blockBaseFormatVersion = props.getInt(ROCKSDB_BLOCK_BASE_FORMAT_VERSION, 2);
 
@@ -546,6 +551,10 @@ public class RocksDBServerConfig {
 
   public boolean isAtomicFlushEnabled() {
     return atomicFlushEnabled;
+  }
+
+  public boolean isBlobTransferBatchOnlyEnabled() {
+    return blobTransferBatchOnlyEnabled;
   }
 
   public boolean isUseSeparateRMDCacheEnabled() {

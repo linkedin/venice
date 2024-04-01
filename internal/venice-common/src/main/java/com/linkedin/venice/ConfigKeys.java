@@ -184,6 +184,11 @@ public class ConfigKeys {
       "enable.active.active.replication.as.default.for.hybrid.store";
 
   /**
+   * Store-level config to enable blob transfers (feature flag)
+   */
+  public static final String ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE = "enable.blob.transfer.for.batch.only.store";
+
+  /**
    * Sets the default for whether or not do schema validation for all stores
    */
   public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";

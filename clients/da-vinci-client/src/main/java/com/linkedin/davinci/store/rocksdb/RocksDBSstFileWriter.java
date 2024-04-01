@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.extractTempSSTFileNo;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.isTempSSTFile;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -87,14 +88,15 @@ public class RocksDBSstFileWriter {
   private final EnvOptions envOptions;
   private final Options options;
   private final boolean isRMD;
-
+  private final boolean blobTransferBatchOnlyEnabled;
   private final RocksDBServerConfig rocksDBServerConfig;
 
-  protected Checkpoint makeCheckpoint(RocksDB rocksDB) {
+  @VisibleForTesting
+  protected Checkpoint createCheckpoint(RocksDB rocksDB) {
     return Checkpoint.create(rocksDB);
   }
 
-  // Visible for testing
+  @VisibleForTesting
   public String getLastCheckPointedSSTFileNum() {
     return lastCheckPointedSSTFileNum;
   }
@@ -119,6 +121,7 @@ public class RocksDBSstFileWriter {
     this.isRMD = isRMD;
     this.lastCheckPointedSSTFileNum = isRMD ? ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO : ROCKSDB_LAST_FINISHED_SST_FILE_NO;
     this.rocksDBServerConfig = rocksDBServerConfig;
+    this.blobTransferBatchOnlyEnabled = rocksDBServerConfig.isBlobTransferBatchOnlyEnabled();
   }
 
   public void put(byte[] key, ByteBuffer valueBuffer) throws RocksDBException {
@@ -501,20 +504,25 @@ public class RocksDBSstFileWriter {
   }
 
   public void createSnapshot(RocksDB rocksDB) {
-    try {
-      Checkpoint checkpoint = makeCheckpoint(rocksDB);
-      String checkpointPath = this.fullPathForPartitionDBSnapshot;
+    if (!blobTransferBatchOnlyEnabled) {
+      return;
+    }
 
-      if (Files.exists(Paths.get(checkpointPath))) {
+    try {
+      Checkpoint checkpoint = createCheckpoint(rocksDB);
+
+      if (Files.exists(Paths.get(this.fullPathForPartitionDBSnapshot))) {
         return;
       }
 
-      LOGGER.info("Start creating snapshots in directory: {}", checkpointPath);
-      checkpoint.createCheckpoint(checkpointPath);
+      LOGGER.info("Start creating snapshots in directory: {}", this.fullPathForPartitionDBSnapshot);
+      checkpoint.createCheckpoint(this.fullPathForPartitionDBSnapshot);
 
-      LOGGER.info("Finished creating snapshots in directory: {}", checkpointPath);
-    } catch (RocksDBException e) { // | IOException e) {
-      throw new VeniceException("Received exception during RocksDB's snapshot creation", e);
+      LOGGER.info("Finished creating snapshots in directory: {}", this.fullPathForPartitionDBSnapshot);
+    } catch (RocksDBException e) {
+      throw new VeniceException(
+          "Received exception during RocksDB's snapshot creation in directory " + this.fullPathForPartitionDBSnapshot,
+          e);
     }
   }
 
