@@ -25,7 +25,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * This will be used in BootstrappingVeniceChangelogConsumer to determine when to sync updates with the underlying
    * storage engine, e.g. flushes entity and offset data to disk. Default is 32 MB.
    */
-  private long databaseSyncBytesInterval = 33554432;
+  private long databaseSyncBytesInterval = 32 * 1024 * 1024L;
+
+  /**
+   * RocksDB block cache size per BootstrappingVeniceChangelogConsumer. Default is 1 MB.
+   */
+  private long rocksDBBlockCacheSizeInBytes = 1024 * 1024L;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -162,6 +167,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public long getRocksDBBlockCacheSizeInBytes() {
+    return rocksDBBlockCacheSizeInBytes;
+  }
+
+  public ChangelogClientConfig setRocksDBBlockCacheSizeInBytes(long rocksDBBlockCacheSizeInBytes) {
+    this.rocksDBBlockCacheSizeInBytes = rocksDBBlockCacheSizeInBytes;
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -175,6 +189,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setControllerRequestRetryCount(config.getControllerRequestRetryCount())
         .setBootstrapFileSystemPath(config.getBootstrapFileSystemPath())
         .setVersionSwapDetectionIntervalTimeInMs(config.getVersionSwapDetectionIntervalTimeInMs())
+        .setRocksDBBlockCacheSizeInBytes(config.getRocksDBBlockCacheSizeInBytes())
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval());
     return newConfig;
   }

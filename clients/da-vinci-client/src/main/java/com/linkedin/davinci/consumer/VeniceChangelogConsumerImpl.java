@@ -848,4 +848,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected PubSubConsumerAdapter getPubSubConsumer() {
     return pubSubConsumer;
   }
+
+  protected ChangelogClientConfig getChangelogClientConfig() {
+    return changelogClientConfig;
+  }
 }
