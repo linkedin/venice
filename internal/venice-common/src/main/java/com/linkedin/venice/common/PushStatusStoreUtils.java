@@ -58,7 +58,7 @@ public class PushStatusStoreUtils {
     return getFullPushKey(version, partitionId);
   }
 
-  public static PushStatusKey getFullPushKey(int version) {
+  private static PushStatusKey getFullPushKey(int version) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Collections.singletonList(version);
     pushStatusKey.messageType = PushStatusKeyType.FULL_PUSH.ordinal();
@@ -68,7 +68,7 @@ public class PushStatusStoreUtils {
   /**
    * @deprecated
    */
-  public static PushStatusKey getFullPushKey(int version, int partitionId) {
+  private static PushStatusKey getFullPushKey(int version, int partitionId) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId);
     pushStatusKey.messageType = PushStatusKeyType.FULL_PUSH.ordinal();
@@ -78,7 +78,7 @@ public class PushStatusStoreUtils {
   /**
    * @deprecated
    */
-  public static PushStatusKey getIncrementalPushKey(int version, int partitionId, String incrementalPushVersion) {
+  private static PushStatusKey getIncrementalPushKey(int version, int partitionId, String incrementalPushVersion) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId, incrementalPushVersion);
     pushStatusKey.messageType = PushStatusKeyType.INCREMENTAL_PUSH.ordinal();
