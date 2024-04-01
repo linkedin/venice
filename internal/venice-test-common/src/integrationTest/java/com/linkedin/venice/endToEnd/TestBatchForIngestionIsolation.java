@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
@@ -28,10 +29,12 @@ public class TestBatchForIngestionIsolation extends TestBatch {
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    serverProperties.setProperty(ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE, "true");
     TestUtils.addIngestionIsolationToProperties(serverProperties);
     serverProperties.setProperty(DATA_BASE_PATH, BASE_DATA_PATH_1);
     veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
     serverProperties.setProperty(DATA_BASE_PATH, BASE_DATA_PATH_2);
+    serverProperties.setProperty(ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE, "false");
     veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
 
     Properties routerProperties = new Properties();

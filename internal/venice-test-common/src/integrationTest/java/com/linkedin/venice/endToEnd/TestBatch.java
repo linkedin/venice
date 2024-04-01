@@ -264,8 +264,7 @@ public abstract class TestBatch {
         validator,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
 
-    // Re-push with Kafka Input
-    testRepush(storeName, validator);
+    testRepushWithKafkaInput(storeName, validator);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -392,7 +391,7 @@ public abstract class TestBatch {
     VeniceProperties veniceProperties = new VeniceProperties(props);
     ByteBuffer sourceDict = DictionaryUtils.readDictionaryFromKafka(sourceTopic, veniceProperties);
 
-    testRepush(storeName, validator);
+    testRepushWithKafkaInput(storeName, validator);
 
     /**
      * Verify that the dictionary in the repushed version should be different from the source version.
@@ -620,8 +619,8 @@ public abstract class TestBatch {
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         validator);
-    // Re-push with Kafka Input
-    testRepush(storeName, validator);
+
+    testRepushWithKafkaInput(storeName, validator);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -640,12 +639,12 @@ public abstract class TestBatch {
             .setHybridRewindSeconds(5)
             .setHybridOffsetLagThreshold(2)
             .setNativeReplicationEnabled(true));
-    // Re-push with Kafka Input
-    testRepush(storeName, validator);
+
+    testRepushWithKafkaInput(storeName, validator);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testKafkaInputBatchJobSnapshots() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBatchJobSnapshots(Boolean isKakfaPush) throws Exception {
 
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 1; i <= 100; i++) {
@@ -658,9 +657,23 @@ public abstract class TestBatch {
         properties -> {},
         validator);
 
-    // Re-push with Kafka Input
-    testRepush(storeName, validator);
+    verifySnapshotFolders();
 
+    if (isKakfaPush) {
+      testRepushWithKafkaInput(storeName, validator);
+    } else {
+      testBatchStore(
+          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+          properties -> {},
+          validator,
+          storeName,
+          new UpdateStoreQueryParams());
+    }
+
+    verifySnapshotFolders();
+  }
+
+  private void verifySnapshotFolders() {
     Path folderPath1 = Paths.get(BASE_DATA_PATH_1);
     Path folderPath2 = Paths.get(BASE_DATA_PATH_2);
 
@@ -670,6 +683,13 @@ public abstract class TestBatch {
     for (String directoryPath: directories) {
       // the directories containing .sst files should contain the ".snapshot" folder
       boolean containsSnapshotFolder = directoryContainsFolder(directoryPath, ".snapshot_files");
+
+      // base path 2's blob transfer is disabled, and we shouldn't find a snapshot file
+      if (directoryPath.startsWith(BASE_DATA_PATH_2)) {
+        Assert.assertFalse(containsSnapshotFolder);
+        continue;
+      }
+
       Assert.assertTrue(containsSnapshotFolder);
 
       // snapshot_files folder should contain the .sst files
@@ -834,7 +854,7 @@ public abstract class TestBatch {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true);
   }
 
-  private void testRepush(String storeName, VPJValidator dataValidator) throws Exception {
+  private void testRepushWithKafkaInput(String storeName, VPJValidator dataValidator) throws Exception {
     for (String combiner: new String[] { "true", "false" }) {
       testBatchStore(
           inputDir -> new KeyAndValueSchemas(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),

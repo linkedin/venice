@@ -13,8 +13,6 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.io.File;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -510,10 +508,6 @@ public class RocksDBSstFileWriter {
 
     try {
       Checkpoint checkpoint = createCheckpoint(rocksDB);
-
-      if (Files.exists(Paths.get(this.fullPathForPartitionDBSnapshot))) {
-        return;
-      }
 
       LOGGER.info("Start creating snapshots in directory: {}", this.fullPathForPartitionDBSnapshot);
       checkpoint.createCheckpoint(this.fullPathForPartitionDBSnapshot);
