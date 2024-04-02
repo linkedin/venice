@@ -2083,7 +2083,7 @@ public class TestHybrid {
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testHybridWith() throws Exception {
+  public void testLeaderShouldCalculateRewindDuringPromotion() throws Exception {
     final Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(20L));
     final int partitionCount = 1;
