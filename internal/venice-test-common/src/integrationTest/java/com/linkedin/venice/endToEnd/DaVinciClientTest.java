@@ -36,7 +36,6 @@ import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.NonLocalAccessException;
-import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -85,10 +84,12 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -176,10 +177,10 @@ public class DaVinciClientTest {
       assertThrows(NullPointerException.class, AvroGenericDaVinciClient::getBackend);
     }
 
-    // Verify that multiple isolated clients with non-local access enabled to the same store can be started
+    // Verify that multiple isolated clients to the same store can be started
     // successfully.
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE).setIsolated(true);
+    daVinciConfig.setIsolated(true);
     MetricsRepository metricsRepository = new MetricsRepository();
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
@@ -827,29 +828,20 @@ public class DaVinciClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testNonLocalAccessPolicy(DaVinciConfig daVinciConfig) throws Exception {
+  public void testPartialSubscription(DaVinciConfig daVinciConfig) throws Exception {
     String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
     VeniceProperties backendConfig = new PropertyBuilder().build();
 
-    Map<Integer, Integer> keyValueMap = new HashMap<>();
-    daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE);
-    try (DaVinciClient<Integer, Object> client =
-        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
-      client.subscribe(Collections.singleton(0)).get();
-      // With QUERY_VENICE enabled, all key-value pairs should be found.
-      for (int k = 0; k < KEY_COUNT; ++k) {
-        assertEquals(client.get(k).get(), 1);
-        keyValueMap.put(k, 1);
-      }
-      assertEquals(client.batchGet(keyValueMap.keySet()).get(), keyValueMap);
+    Set<Integer> keySet = new HashSet<>();
+    for (int i = 0; i < KEY_COUNT; ++i) {
+      keySet.add(i);
     }
 
-    daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.FAIL_FAST);
     try (DaVinciClient<Integer, Object> client =
         ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       // We only subscribe to 1/3 of the partitions so some data will not be present locally.
       client.subscribe(Collections.singleton(0)).get();
-      assertThrows(() -> client.batchGet(keyValueMap.keySet()).get());
+      assertThrows(() -> client.batchGet(keySet).get());
     }
 
     // Update the store to use non-default partitioner
@@ -861,12 +853,11 @@ public class DaVinciClientTest {
                     .setPartitionerParams(
                         Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(2))))));
     cluster.createVersion(storeName, KEY_COUNT);
-    daVinciConfig.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE);
     try (DaVinciClient<Integer, Object> client =
         ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
+      // Only subscribe a subset of the partitions
       client.subscribe(Collections.singleton(0)).get();
-      // With QUERY_VENICE enabled, all key-value pairs should be found.
-      assertEquals(client.batchGet(keyValueMap.keySet()).get().size(), keyValueMap.size());
+      assertThrows(() -> client.batchGet(keySet).get());
     }
   }
 

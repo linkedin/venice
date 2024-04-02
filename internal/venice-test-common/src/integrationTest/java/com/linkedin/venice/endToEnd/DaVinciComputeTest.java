@@ -17,7 +17,6 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -560,7 +559,6 @@ public class DaVinciComputeTest {
     keySet.add(NON_EXISTING_KEY2);
 
     DaVinciConfig config = new DaVinciConfig();
-    config.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE);
 
     DaVinciTestContext<String, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
