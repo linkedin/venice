@@ -761,7 +761,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           newSourceTopicPartition,
           topicSwitch.rewindStartTimestamp);
       LOGGER.info(
-          "Calculated upstream from TopicSwitch rewind TS with {} offset {} partition {}",
+          "Calculated upstream from TopicSwitch rewind TS {} with {} offset {} partition {}",
+          topicSwitch.rewindStartTimestamp,
           newSourceTopic,
           upstreamStartOffset,
           partitionConsumptionState.getPartition());
