@@ -91,7 +91,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   private final String latestValueSchemaStr;
   private final Schema[] allValueSchemas;
   private final Map<Integer, ValueAndDerivedSchemaData> schemaDataMap = new VeniceConcurrentHashMap<>();
-  private final boolean isChunkingEnabled;
+  private boolean isChunkingEnabled;
   private final String parentDirectory;
   private final PubSubConsumerAdapter consumer;
   private final long messageCount;
@@ -128,14 +128,20 @@ public class KafkaTopicDumper implements AutoCloseable {
     this.maxConsumeAttempts = maxConsumeAttempts;
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+    this.isChunkingEnabled = false;
     if (Version.isATopicThatIsVersioned(topic)) {
       int version = Version.parseVersionFromKafkaTopicName(topic);
-      if (!storeInfo.getVersion(version).isPresent()) {
-        throw new VeniceException("Version: " + version + " does not exist for store: " + storeName);
+      if (storeInfo.getVersion(version).isPresent()) {
+        this.isChunkingEnabled = storeInfo.getVersion(version).get().isChunkingEnabled();
+      } else {
+        // Use the default chunking setting from store if the version does not exist.
+        this.isChunkingEnabled = storeInfo.isChunkingEnabled();
+        LOGGER.warn(
+            "version: {} does not exist for store: {} in Venice, use chunking setting from store: {}",
+            version,
+            storeName,
+            isChunkingEnabled);
       }
-      this.isChunkingEnabled = storeInfo.getVersion(version).get().isChunkingEnabled();
-    } else {
-      this.isChunkingEnabled = false;
     }
     this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
     this.keySchema = AvroCompatibilityHelper.parse(keySchemaStr);
