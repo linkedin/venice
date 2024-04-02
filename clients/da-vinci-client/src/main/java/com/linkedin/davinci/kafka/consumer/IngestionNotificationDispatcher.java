@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -73,14 +72,9 @@ class IngestionNotificationDispatcher {
       try {
         function.apply(notifier);
       } catch (Exception ex) {
-        if (notifier instanceof PartitionPushStatusNotifier) {
-          LOGGER.error("Failed to update Customized View, skip updating offline push status", ex);
-          return;
-        }
         LOGGER.error("Error reporting status to notifier {}", notifier.getClass(), ex);
       }
     }
-
     LOGGER.info("Reported {} to {} notifiers for PartitionConsumptionState: {}", reportType, notifiers.size(), pcs);
   }
 
