@@ -823,10 +823,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long leaderStartOffset = partitionConsumptionState
         .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository);
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
-    if (leaderStartOffset < 0) {
+    if (leaderStartOffset < 0 && leaderTopic.isRealTime()) {
       // TODO: Add description.
       TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch().getTopicSwitch();
-      if (topicSwitch == null && leaderTopic.isRealTime()) {
+      if (topicSwitch == null) {
         throw new VeniceException(
             "New leader does not have topic switch, unable to switch to realtime leader topic: "
                 + leaderTopicPartition);
