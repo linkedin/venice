@@ -389,7 +389,6 @@ public class HelixParticipationService extends AbstractVeniceService
        * the notifier is added.
        */
       partitionPushStatusAccessorFuture.complete(partitionPushStatusAccessor);
-      ingestionBackend.addPushStatusNotifier(pushMonitorNotifier);
       LOGGER.info("Successfully started Helix partition status accessor.");
 
       serviceState.set(ServiceState.STARTED);
