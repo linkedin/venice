@@ -7,7 +7,7 @@ permalink: /docs/proposals/vip-4
 
 # VIP-4: Store Lifecycle Hooks
 
-* **Status**: _Under Discussion_
+* **Status**: _Accepted_
 * **Author(s)**: _Felix GV_
 * **Pull Request**: _N/A_
 * **Release**: _N/A_
@@ -130,7 +130,7 @@ The proposed API for this functionality is described in code here:
 The main design consideration is where to execute the hooks. At a high level, there are three options:
 
 1. Within the push job.
-2. Within the parent controller.
+2. Within the parent controller (chosen option).
 3. Within the child controllers.
 
 It is also possible to consider invoking some hooks in one of these location while other hooks would be executed 
@@ -228,6 +228,9 @@ hook, there will be:
 * the time spend waiting in queue before being executed (which will be useful to determine if the thread pool count is 
   under-provisioned)
 
+N.B.: Implementing metrics from within VPJ is a bit more complicated, whereas controllers already have the ability to
+emit metrics.
+
 ### Design Recommendation
 
 Running hooks in the parent controller is probably most straightforward. The only issue is the inability to support the
@@ -250,6 +253,8 @@ Concretely, choosing the parent controller path would work like this:
 
 4. If at any stage the hooks respond with `ROLLBACK` then the parent controller would send more admin channel commands
    to do the swap in the reverse direction.
+
+**This recommendation has been accepted, after design reviews, hence we will implement hooks in the parent controller.**
 
 ## Development Milestones
 
