@@ -745,6 +745,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     startConsumingAsLeader(partitionConsumptionState);
   }
 
+  protected Map<String, Long> calculateLeaderUpstreamOffsetWithTopicSwitch(
+      PartitionConsumptionState partitionConsumptionState,
+      TopicSwitch topicSwitch,
+      PubSubTopic newSourceTopic,
+      List<CharSequence> unreachableBrokerList) {
+    final String newSourceKafkaServer = topicSwitch.sourceKafkaServers.get(0).toString();
+    final PubSubTopicPartition newSourceTopicPartition =
+        partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
+
+    long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
+    if (topicSwitch.rewindStartTimestamp > 0) {
+      upstreamStartOffset = getTopicPartitionOffsetByKafkaURL(
+          newSourceKafkaServer,
+          newSourceTopicPartition,
+          topicSwitch.rewindStartTimestamp);
+      LOGGER.info(
+          "Calculated upstream from TopicSwitch rewind TS with {} offset {} partition {}",
+          newSourceTopic,
+          upstreamStartOffset,
+          partitionConsumptionState.getPartition());
+    }
+    return Collections.singletonMap(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
+  }
+
   @Override
   protected void startConsumingAsLeader(PartitionConsumptionState partitionConsumptionState) {
     /**
@@ -796,11 +820,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
     final PubSubTopicPartition leaderTopicPartition = partitionConsumptionState.getSourceTopicPartition(leaderTopic);
-    final long leaderStartOffset = partitionConsumptionState
+    long leaderStartOffset = partitionConsumptionState
         .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository);
+    String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
+    if (leaderStartOffset < 0) {
+      // TODO: Add description.
+      TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch().getTopicSwitch();
+      if (topicSwitch == null && leaderTopic.isRealTime()) {
+        throw new VeniceException(
+            "New leader does not have topic switch, unable to switch to realtime leader topic: "
+                + leaderTopicPartition);
+      }
+      leaderStartOffset = calculateLeaderUpstreamOffsetWithTopicSwitch(
+          partitionConsumptionState,
+          topicSwitch,
+          leaderTopic,
+          Collections.emptyList())
+              .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
+    }
 
     // subscribe to the new upstream
-    String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
     LOGGER.info(
         "{} is promoted to leader for partition {} and it is going to start consuming from "
             + "{} at offset {}; source Kafka url: {}; remote consumption flag: {}",
@@ -856,16 +895,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         ? partitionConsumptionState
             .getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY)
         : OffsetRecord.LOWEST_OFFSET;
-
-    if (upstreamStartOffset < 0) {
-      if (topicSwitch.rewindStartTimestamp > 0) {
-        upstreamStartOffset = getTopicPartitionOffsetByKafkaURL(
-            newSourceKafkaServer,
-            newSourceTopicPartition,
-            topicSwitch.rewindStartTimestamp);
-      } else {
-        upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
-      }
+    if (upstreamStartOffset < 0 && newSourceTopic.isRealTime()) {
+      upstreamStartOffset = calculateLeaderUpstreamOffsetWithTopicSwitch(
+          partitionConsumptionState,
+          topicSwitch,
+          newSourceTopic,
+          Collections.emptyList())
+              .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
     }
 
     // unsubscribe the old source and subscribe to the new source
