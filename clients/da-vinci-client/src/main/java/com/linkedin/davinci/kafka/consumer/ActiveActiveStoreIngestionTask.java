@@ -904,6 +904,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             }
           }
         } else {
+          LOGGER.warn(
+              "{} got unexpected rewind time: {}, will start ingesting upstream from the beginning",
+              ingestionTaskName,
+              rewindStartTimestamp);
           upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
         }
       }
