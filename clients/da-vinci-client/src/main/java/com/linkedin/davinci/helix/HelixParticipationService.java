@@ -8,8 +8,7 @@ import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
-import com.linkedin.davinci.notifier.PushMonitorNotifier;
+import com.linkedin.davinci.notifier.PushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -350,13 +349,6 @@ public class HelixParticipationService extends AbstractVeniceService
         veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
         veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs());
 
-    PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
-        veniceOfflinePushMonitorAccessor,
-        statusStoreWriter,
-        helixReadOnlyStoreRepository,
-        instance.getNodeId());
-
-    ingestionBackend.addPushStatusNotifier(pushMonitorNotifier);
     /**
      * The accessor can only get created successfully after helix manager is created.
      */
@@ -383,9 +375,14 @@ public class HelixParticipationService extends AbstractVeniceService
         Utils.exit("Failed to start HelixParticipationService");
       }
 
-      PartitionPushStatusNotifier partitionPushStatusNotifier =
-          new PartitionPushStatusNotifier(partitionPushStatusAccessor);
-      ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
+      PushStatusNotifier pushStatusNotifier = new PushStatusNotifier(
+          veniceOfflinePushMonitorAccessor,
+          partitionPushStatusAccessor,
+          statusStoreWriter,
+          helixReadOnlyStoreRepository,
+          instance.getNodeId());
+
+      ingestionBackend.addPushStatusNotifier(pushStatusNotifier);
       /**
        * Complete the accessor future after the accessor is created && the notifier is added.
        * This is for blocking the {@link AbstractPartitionStateModel #setupNewStorePartition()} until
