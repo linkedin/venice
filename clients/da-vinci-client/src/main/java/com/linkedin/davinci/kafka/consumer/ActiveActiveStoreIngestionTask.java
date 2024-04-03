@@ -863,6 +863,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 sourceKafkaURL,
                 newSourceTopicPartition,
                 rewindStartTimestamp);
+            upstreamOffsetsByKafkaURLs.put(sourceKafkaURL.toString(), upstreamStartOffset);
           } catch (Exception e) {
             /**
              * This is actually tricky. Potentially we could return a -1 value here, but this has the gotcha that if we
@@ -909,11 +910,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               ingestionTaskName,
               rewindStartTimestamp);
           upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
+          upstreamOffsetsByKafkaURLs.put(sourceKafkaURL.toString(), upstreamStartOffset);
         }
       }
-      upstreamOffsetsByKafkaURLs.put(sourceKafkaURL.toString(), upstreamStartOffset);
     });
-
     if (unreachableBrokerList.size() >= ((topicSwitch.sourceKafkaServers.size() + 1) / 2)) {
       // We couldn't reach a quorum of brokers and that's a red flag, so throw exception and abort!
       throw new VeniceException("Couldn't reach any broker!!  Aborting topic switch triggered consumer subscription!");
@@ -962,12 +962,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       LOGGER.warn(
           "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
           unreachableBrokerList.toString());
-      // We won't attempt to resubscribe for brokers we couldn't compute an upstream offset accurately for. We'll
-      // reattempt subscription later
-      // Queue up repair here:
-      for (CharSequence unreachableBroker: unreachableBrokerList) {
-        leaderOffsetByKafkaURL.remove(unreachableBroker.toString());
-      }
     }
     LOGGER.info(
         "{} is promoted to leader for partition {} and it is going to start consuming from "
@@ -1066,12 +1060,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       LOGGER.warn(
           "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
           unreachableBrokerList.toString());
-      // We won't attempt to resubscribe for brokers we couldn't compute an upstream offset accurately for. We'll
-      // reattempt subscription later
-      // Queue up repair here:
-      for (CharSequence unreachableBroker: unreachableBrokerList) {
-        upstreamOffsetsByKafkaURLs.remove(unreachableBroker.toString());
-      }
     }
 
     // Subscribe new leader topic for all regions.
