@@ -122,8 +122,13 @@ public interface PushMonitor {
    * is valid, before making the change. If if wouldn't be valid (because the job already completed
    * or already failed, for example), then we leave the status as is, rather than adding in the
    * new details.
+   *
+   * @return the new {@link OfflinePushStatus} if it was updated, or null if the update was skipped.
    */
-  void refreshAndUpdatePushStatus(String kafkaTopic, ExecutionStatus newStatus, Optional<String> newStatusDetails);
+  OfflinePushStatus refreshAndUpdatePushStatus(
+      String kafkaTopic,
+      ExecutionStatus newStatus,
+      Optional<String> newStatusDetails);
 
   /**
    * stats related operation.

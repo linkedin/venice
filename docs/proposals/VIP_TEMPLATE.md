@@ -7,7 +7,7 @@ permalink: /docs/proposals/VIP_TEMPLATE.md
 
 # VIP-`$VIP_Number`: `$VIP_Title`
 
-* **Status**: _"one of ['Under Discussion', 'Accepted', 'Adopted', 'Rejected']"_
+* **Status**: _"one of ['Under Discussion', 'Accepted', 'Implemented', 'Rejected']"_
 * **Author(s)**: _(Names)_
 * **Pull Request**: _(Link to the main pull request to resolve this VIP)_
 * **Release**: _(Which release include this VIP)_
