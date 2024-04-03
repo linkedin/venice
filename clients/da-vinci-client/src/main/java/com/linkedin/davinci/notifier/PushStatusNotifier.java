@@ -36,7 +36,7 @@ public class PushStatusNotifier implements VeniceNotifier {
   private final OfflinePushAccessor offLinePushAccessor;
   private HelixPartitionStatusAccessor helixPartitionStatusAccessor;
 
-  private final PushStatusStoreWriter pushStatuStoreWriter;
+  private final PushStatusStoreWriter pushStatusStoreWriter;
   private final ReadOnlyStoreRepository storeRepository;
   private final String instanceId;
 
@@ -48,7 +48,7 @@ public class PushStatusNotifier implements VeniceNotifier {
       String instanceId) {
     this.offLinePushAccessor = offlinePushAccessor;
     this.helixPartitionStatusAccessor = helixPartitionStatusAccessor;
-    this.pushStatuStoreWriter = pushStatusStoreWriter;
+    this.pushStatusStoreWriter = pushStatusStoreWriter;
     this.storeRepository = storeRepository;
     this.instanceId = instanceId;
   }
@@ -147,7 +147,7 @@ public class PushStatusNotifier implements VeniceNotifier {
           storeName,
           e);
     }
-    pushStatuStoreWriter.writePushStatus(
+    pushStatusStoreWriter.writePushStatus(
         storeName,
         Version.parseVersionFromKafkaTopicName(kafkaTopic),
         partitionId,
