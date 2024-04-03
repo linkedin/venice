@@ -857,7 +857,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             upstreamStartOffset =
                 getTopicPartitionOffsetByKafkaURL(sourceKafkaURL, newSourceTopicPartition, rewindStartTimestamp);
             LOGGER.info(
-                "Get upstreamStartOffset: {} for source URL: {}, topic: {}, rewind timestamp: {}",
+                "{} get upstreamStartOffset: {} for source URL: {}, topic: {}, rewind timestamp: {}",
+                ingestionTaskName,
                 upstreamStartOffset,
                 sourceKafkaURL,
                 newSourceTopicPartition,
@@ -865,7 +866,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           } catch (Exception e) {
             /**
              * This is actually tricky. Potentially we could return a -1 value here, but this has the gotcha that if we
-             * have a non-symmetrical failure (like, lor1 can't talk to the ltx1 broker) this will result in a remote
+             * have a non-symmetrical failure (like, region1 can't talk to the region2 broker) this will result in a remote
              * colo rewinding to a potentially non-deterministic offset when the remote becomes available again. So
              * instead, we record the context of this call and commit it to a repair queue to rewind to a
              * consistent place on the RT

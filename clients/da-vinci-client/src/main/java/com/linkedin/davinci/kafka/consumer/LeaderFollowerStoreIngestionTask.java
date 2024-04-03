@@ -761,11 +761,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           newSourceTopicPartition,
           topicSwitch.rewindStartTimestamp);
       LOGGER.info(
-          "Calculated upstream from TopicSwitch rewind TS {} with {} offset {} partition {}",
-          topicSwitch.rewindStartTimestamp,
-          newSourceTopic,
+          "{} get upstreamStartOffset: {} for source URL: {}, topic: {}, rewind timestamp: {}",
+          ingestionTaskName,
           upstreamStartOffset,
-          partitionConsumptionState.getPartition());
+          newSourceTopic,
+          partitionConsumptionState.getPartition(),
+          topicSwitch.rewindStartTimestamp);
     }
     return Collections.singletonMap(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
   }
@@ -825,7 +826,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository);
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
     if (leaderStartOffset < 0 && leaderTopic.isRealTime()) {
-      // TODO: Add description.
+      /**
+       * In this case, new leader should already been seeing a TopicSwitch, which has the rewind time information for
+       * it to replay from realtime topic.
+       */
       TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch().getTopicSwitch();
       if (topicSwitch == null) {
         throw new VeniceException(
