@@ -912,6 +912,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
           upstreamOffsetsByKafkaURLs.put(sourceKafkaURL.toString(), upstreamStartOffset);
         }
+      } else {
+        upstreamOffsetsByKafkaURLs.put(sourceKafkaURL.toString(), upstreamStartOffset);
       }
     });
     if (unreachableBrokerList.size() >= ((topicSwitch.sourceKafkaServers.size() + 1) / 2)) {
