@@ -4,6 +4,7 @@ import static org.rocksdb.RateLimiter.DEFAULT_FAIRNESS;
 import static org.rocksdb.RateLimiter.DEFAULT_MODE;
 import static org.rocksdb.RateLimiter.DEFAULT_REFILL_PERIOD_MICROS;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -89,6 +90,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
+  private final VeniceConfigLoader configLoader;
+
   /**
    * Throttler for RocksDB open operations.
    */
@@ -108,25 +111,28 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   private final VeniceServerConfig serverConfig;
 
-  public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
+  public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig, VeniceConfigLoader configLoader) {
     this(
         serverConfig,
         null,
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        configLoader);
   }
 
   public RocksDBStorageEngineFactory(
       VeniceServerConfig serverConfig,
       RocksDBMemoryStats rocksDBMemoryStats,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      VeniceConfigLoader configLoader) {
     this.serverConfig = serverConfig;
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
     this.rocksDBPath = serverConfig.getDataBasePath() + File.separator + "rocksdb";
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.storeVersionStateSerializer = storeVersionStateSerializer;
     this.partitionStateSerializer = partitionStateSerializer;
+    this.configLoader = configLoader;
 
     /**
      * Shared {@link Env} allows us to share the flush thread pool and compaction thread pool.
@@ -269,7 +275,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
               rocksDBServerConfig,
               storeVersionStateSerializer,
               partitionStateSerializer,
-              replicationMetadataEnabled));
+              replicationMetadataEnabled,
+              configLoader));
     } catch (Exception e) {
       throw new StorageInitializationException(e);
     }

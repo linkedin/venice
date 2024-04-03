@@ -3,6 +3,8 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -80,6 +82,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private final EnvOptions envOptions;
 
   protected final String storeName;
+  protected final boolean blobTransferBatchOnlyEnabled;
   private final String storeNameWithoutVersionSuffix;
   protected final int partitionId;
   private final String fullPathForPartitionDB;
@@ -142,7 +145,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
   protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
-
   private RocksDBSstFileWriter rocksDBSstFileWriter = null;
 
   protected RocksDBStoragePartition(
@@ -152,7 +154,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBThrottler rocksDbThrottler,
       RocksDBServerConfig rocksDBServerConfig,
-      List<byte[]> columnFamilyNameList) {
+      List<byte[]> columnFamilyNameList,
+      VeniceConfigLoader configLoader) {
     super(storagePartitionConfig.getPartitionId());
     this.factory = factory;
     this.rocksDBServerConfig = rocksDBServerConfig;
@@ -161,6 +164,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.storeNameWithoutVersionSuffix = Version.parseStoreFromVersionTopic(storeName);
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.aggStatistics = factory.getAggStatistics();
+
+    VeniceStoreVersionConfig veniceStoreVersionConfig = configLoader.getStoreConfig(storeName);
+    this.blobTransferBatchOnlyEnabled = veniceStoreVersionConfig.isBlobTransferBatchOnlyEnabled();
 
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
     // restart,
@@ -205,7 +211,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           options,
           fullPathForTempSSTFileDir,
           false,
-          rocksDBServerConfig);
+          rocksDBServerConfig,
+          blobTransferBatchOnlyEnabled);
     }
 
     /**
@@ -269,7 +276,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBThrottler rocksDbThrottler,
-      RocksDBServerConfig rocksDBServerConfig) {
+      RocksDBServerConfig rocksDBServerConfig,
+      VeniceConfigLoader configLoader) {
     // If not specified, RocksDB inserts values into DEFAULT_COLUMN_FAMILY.
     this(
         storagePartitionConfig,
@@ -278,7 +286,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         rocksDBMemoryStats,
         rocksDbThrottler,
         rocksDBServerConfig,
-        Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY));
+        Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY),
+        configLoader);
   }
 
   private void checkMemoryLimit(long memoryLimit, SstFileManager sstFileManager, String dbPath) {
@@ -331,6 +340,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected EnvOptions getEnvOptions() {
     return envOptions;
+  }
+
+  protected Boolean getBlobTransferBatchOnlyEnabled() {
+    return blobTransferBatchOnlyEnabled;
   }
 
   private Options getStoreOptions(StoragePartitionConfig storagePartitionConfig, boolean isRMD) {

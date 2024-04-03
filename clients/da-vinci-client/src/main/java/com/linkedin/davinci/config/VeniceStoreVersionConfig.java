@@ -1,6 +1,7 @@
 package com.linkedin.davinci.config;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -30,6 +31,7 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
 
   private boolean restoreDataPartitions = true;
   private boolean restoreMetadataPartition = true;
+  private boolean blobTransferBatchOnlyEnabled;
 
   public VeniceStoreVersionConfig(
       String storeVersionName,
@@ -37,6 +39,7 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
       Map<String, Map<String, String>> kafkaClusterMap) {
     super(storeProperties, kafkaClusterMap);
     this.storeVersionName = storeVersionName;
+    this.blobTransferBatchOnlyEnabled = storeProperties.getBoolean(ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE, false);
 
     // Stores all storage engine configs that are needed to be persisted to disk.
     this.persistStorageEngineConfigs = new PropertyBuilder()
@@ -59,6 +62,10 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
 
   public String getStoreVersionName() {
     return storeVersionName;
+  }
+
+  public boolean isBlobTransferBatchOnlyEnabled() {
+    return this.blobTransferBatchOnlyEnabled;
   }
 
   public PersistenceType getStorePersistenceType() {

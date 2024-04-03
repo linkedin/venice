@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -171,14 +172,16 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, props);
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
     ReplicationMetadataRocksDBStoragePartition storagePartition = new ReplicationMetadataRocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
 
     Map<String, Pair<String, String>> inputRecords = generateInputWithMetadata(100);
     for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
@@ -302,14 +305,16 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
     ReplicationMetadataRocksDBStoragePartition storagePartition = new ReplicationMetadataRocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
 
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
@@ -367,7 +372,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
                 DATA_BASE_DIR,
                 null,
                 ROCKSDB_THROTTLER,
-                rocksDBServerConfig);
+                rocksDBServerConfig,
+                configLoader);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
@@ -439,7 +445,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));

@@ -51,7 +51,7 @@ public class RocksDBSstFileWriter {
     public ReusableObjects() {
       directKeyBuffer = ByteBuffer.allocateDirect(1024 * 1024);
       directValueBuffer = ByteBuffer.allocateDirect(1024 * 1024 + 128); // Adding another 128 bytes considering
-                                                                        // potential overhead of metadata
+      // potential overhead of metadata
     }
   }
 
@@ -109,7 +109,8 @@ public class RocksDBSstFileWriter {
       Options options,
       String fullPathForTempSSTFileDir,
       boolean isRMD,
-      RocksDBServerConfig rocksDBServerConfig) {
+      RocksDBServerConfig rocksDBServerConfig,
+      boolean blobTransferBatchOnlyEnabled) {
     this.storeName = storeName;
     this.partitionId = partitionId;
     this.envOptions = envOptions;
@@ -119,7 +120,7 @@ public class RocksDBSstFileWriter {
     this.isRMD = isRMD;
     this.lastCheckPointedSSTFileNum = isRMD ? ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO : ROCKSDB_LAST_FINISHED_SST_FILE_NO;
     this.rocksDBServerConfig = rocksDBServerConfig;
-    this.blobTransferBatchOnlyEnabled = rocksDBServerConfig.isBlobTransferBatchOnlyEnabled();
+    this.blobTransferBatchOnlyEnabled = blobTransferBatchOnlyEnabled;
   }
 
   public void put(byte[] key, ByteBuffer valueBuffer) throws RocksDBException {

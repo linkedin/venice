@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -19,8 +20,9 @@ public class RocksDBStorageEngineFactoryTest {
   public void testRocksDBCreation() {
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
 
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
 
     final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     VeniceStoreVersionConfig testStoreConfig =
@@ -36,8 +38,9 @@ public class RocksDBStorageEngineFactoryTest {
     // Create two databases
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
 
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
 
     final String testStore1 = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     VeniceStoreVersionConfig testStoreConfig1 =
@@ -60,8 +63,9 @@ public class RocksDBStorageEngineFactoryTest {
     // Create one databases
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
 
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
 
     final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     VeniceStoreVersionConfig testStoreConfig =
@@ -80,8 +84,9 @@ public class RocksDBStorageEngineFactoryTest {
     // Create one databases
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
 
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
 
     final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     VeniceStoreVersionConfig testStoreConfig =
@@ -101,7 +106,8 @@ public class RocksDBStorageEngineFactoryTest {
   public void testAddNewPartitionAfterRemoving() {
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
 
     final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store_"), 1);
     VeniceStoreVersionConfig testStoreConfig =

@@ -1,7 +1,5 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
@@ -267,7 +265,6 @@ public class RocksDBServerConfig {
   private final int level0StopWritesTriggerWriteOnlyVersion;
   private final boolean putReuseByteBufferEnabled;
   private final boolean atomicFlushEnabled;
-  private final boolean blobTransferBatchOnlyEnabled;
   private final boolean separateRMDCacheEnabled;
   private int blockBaseFormatVersion;
   private final int maxLogFileNum;
@@ -360,8 +357,8 @@ public class RocksDBServerConfig {
     this.databaseOpenOperationThrottle = props.getInt(ROCKSDB_DB_OPEN_OPERATION_THROTTLE, 3);
     this.cappedPrefixExtractorLength = props.getInt(CAPPED_PREFIX_EXTRACTOR_LENGTH, 16);
     this.writeQuotaBytesPerSecond = props.getSizeInBytes(ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND, 100L * 1024 * 1024); // 100MB
-                                                                                                                    // by
-                                                                                                                    // default
+    // by
+    // default
     this.autoTunedRateLimiterEnabled = props.getBoolean(ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED, false);
     this.level0FileNumCompactionTrigger = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 40);
     this.level0SlowdownWritesTrigger = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 60);
@@ -377,8 +374,6 @@ public class RocksDBServerConfig {
     this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
     this.atomicFlushEnabled = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, true);
     this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, false);
-
-    this.blobTransferBatchOnlyEnabled = props.getBoolean(ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE, false);
 
     this.blockBaseFormatVersion = props.getInt(ROCKSDB_BLOCK_BASE_FORMAT_VERSION, 2);
 
@@ -551,10 +546,6 @@ public class RocksDBServerConfig {
 
   public boolean isAtomicFlushEnabled() {
     return atomicFlushEnabled;
-  }
-
-  public boolean isBlobTransferBatchOnlyEnabled() {
-    return blobTransferBatchOnlyEnabled;
   }
 
   public boolean isUseSeparateRMDCacheEnabled() {

@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
@@ -73,6 +74,7 @@ public class ReplicationConsumptionBenchmark {
   private StoragePartitionConfig partitionConfig;
   private RocksDBServerConfig rocksDBServerConfig;
   private VeniceServerConfig serverConfig;
+  private VeniceConfigLoader configLoader;
   private RocksDBStorageEngineFactory factory;
   private int syncPerRecords;
   private org.rocksdb.Options options;
@@ -92,14 +94,16 @@ public class ReplicationConsumptionBenchmark {
     VeniceProperties veniceServerProperties = getServerProperties(PersistenceType.ROCKS_DB, new Properties());
     rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
     serverConfig = new VeniceServerConfig(veniceServerProperties);
-    factory = new RocksDBStorageEngineFactory(serverConfig);
+    configLoader = new VeniceConfigLoader(veniceServerProperties);
+    factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
     storagePartition = new ReplicationMetadataRocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
     syncPerRecords = 10000;
 
     // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
@@ -161,7 +165,8 @@ public class ReplicationConsumptionBenchmark {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
     storagePartition.delete(toBeDeletedKey.getBytes());

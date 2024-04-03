@@ -16,6 +16,7 @@ import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static org.mockito.ArgumentMatchers.anyLong;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
@@ -133,14 +134,16 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
 
@@ -188,7 +191,8 @@ public class RocksDBStoragePartitionTest {
                 DATA_BASE_DIR,
                 null,
                 ROCKSDB_THROTTLER,
-                rocksDBServerConfig);
+                rocksDBServerConfig,
+                configLoader);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
@@ -244,7 +248,8 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
 
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
@@ -276,14 +281,16 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
     final int syncPerRecords = 100;
     final int interruptedRecord1 = 345;
     final int interruptedRecord2 = 645;
@@ -324,7 +331,8 @@ public class RocksDBStoragePartitionTest {
             DATA_BASE_DIR,
             null,
             ROCKSDB_THROTTLER,
-            rocksDBServerConfig);
+            rocksDBServerConfig,
+            configLoader);
         Options storeOptions = storagePartition.getOptions();
         Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
         if (sorted) {
@@ -378,7 +386,8 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
 
     storagePartition.rocksDB.compactRange();
 
@@ -451,16 +460,18 @@ public class RocksDBStoragePartitionTest {
     VeniceProperties veniceServerProperties =
         AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
 
@@ -507,7 +518,8 @@ public class RocksDBStoragePartitionTest {
                 DATA_BASE_DIR,
                 null,
                 ROCKSDB_THROTTLER,
-                rocksDBServerConfig);
+                rocksDBServerConfig,
+                configLoader);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
@@ -563,7 +575,8 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));
@@ -588,14 +601,16 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
 
     Optional<Supplier<byte[]>> checksumSupplier = Optional.of(() -> new byte[16]);
     storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
@@ -622,14 +637,16 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
 
     storagePartition.close();
     try {
@@ -663,14 +680,16 @@ public class RocksDBStoragePartitionTest {
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     partitionConfig.setWriteOnlyConfig(true);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig, configLoader);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
 
     // By default, it is write only
     Options writeOnlyOptions = storagePartition.getOptions();
@@ -691,7 +710,8 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig);
+        rocksDBServerConfig,
+        configLoader);
     Options readWriteOptions = storagePartition.getOptions();
     Assert.assertEquals(readWriteOptions.level0FileNumCompactionTrigger(), 10);
     Assert.assertEquals(readWriteOptions.level0SlowdownWritesTrigger(), 20);
@@ -724,11 +744,13 @@ public class RocksDBStoragePartitionTest {
 
       RocksDBMemoryStats mockMemoryStats = Mockito.mock(RocksDBMemoryStats.class);
       VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+      VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
       RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(
           serverConfig,
           mockMemoryStats,
           AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
-          AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+          AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+          configLoader);
       Mockito.verify(mockMemoryStats).setMemoryLimit(anyLong());
       Mockito.verify(mockMemoryStats).setSstFileManager(factory.getSstFileManagerForMemoryLimiter());
       storagePartition = new RocksDBStoragePartition(
@@ -737,7 +759,8 @@ public class RocksDBStoragePartitionTest {
           DATA_BASE_DIR,
           null,
           ROCKSDB_THROTTLER,
-          rocksDBServerConfig);
+          rocksDBServerConfig,
+          configLoader);
       RocksDBStoragePartition finalStoragePartition = storagePartition;
       Assert.expectThrows(MemoryLimitExhaustedException.class, () -> {
         String keyPrefix = "key_prefix_";
@@ -769,7 +792,8 @@ public class RocksDBStoragePartitionTest {
           serverConfig,
           mockMemoryStats,
           AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
-          AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+          AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+          configLoader);
       Assert.expectThrows(
           MemoryLimitExhaustedException.class,
           () -> new RocksDBStoragePartition(
@@ -778,7 +802,8 @@ public class RocksDBStoragePartitionTest {
               DATA_BASE_DIR,
               null,
               ROCKSDB_THROTTLER,
-              finalRocksDBServerConfig));
+              finalRocksDBServerConfig,
+              configLoader));
     } finally {
       if (storagePartition != null) {
         storagePartition.close();
