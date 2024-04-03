@@ -2,9 +2,6 @@ package com.linkedin.venice;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.SERVER_ADMIN_RESPONSE;
@@ -90,14 +87,8 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
-import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -196,32 +187,8 @@ public class AdminTool {
 
   public static void main(String args[]) throws Exception {
     // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
-    PubSubClientsFactory pubSubClientsFactory;
-    try {
-      String producerFactoryClassName =
-          System.getProperty(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-          (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
-      String consumerFactoryClassName =
-          System.getProperty(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
-      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
-          (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
-      String adminFactoryClassName =
-          System.getProperty(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
-
-      PubSubAdminAdapterFactory pubSubAdminAdapterFactory =
-          (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
-      pubSubClientsFactory = new PubSubClientsFactory(
-          pubSubProducerAdapterFactory,
-          pubSubConsumerAdapterFactory,
-          pubSubAdminAdapterFactory);
-    } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
-      System.out.println("Failed to create an instance of pub sub clients factory with exception: " + e);
-      throw new VeniceException(e);
-    }
-
+    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(new VeniceProperties(System.getProperties()));
     CommandLine cmd = getCommandLine(args);
-
     try {
       Command foundCommand = ensureOnlyOneCommand(cmd);
 

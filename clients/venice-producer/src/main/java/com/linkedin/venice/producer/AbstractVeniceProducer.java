@@ -9,7 +9,6 @@ import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.schema.SchemaData;
@@ -145,8 +144,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   protected VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
       Properties properties,
       VeniceWriterOptions writerOptions) {
-    return new VeniceWriterFactory(properties, new ApacheKafkaProducerAdapterFactory(), null)
-        .createVeniceWriter(writerOptions);
+    return new VeniceWriterFactory(properties).createVeniceWriter(writerOptions);
   }
 
   protected RecordSerializer<Object> getSerializer(Schema schema) {
