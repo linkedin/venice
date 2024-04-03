@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -340,5 +341,21 @@ public class PushStatusStoreReaderTest {
         pushStatusValue.instances);
     verify(completableFutureMock).get();
     verify(storeClientMock).get(pushStatusKey);
+  }
+
+  @Test
+  public void testNullResponseWhenVersionLevelKeyIsNotWritten() throws ExecutionException, InterruptedException {
+    PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(storeVersion);
+    PushStatusStoreReader storeReaderSpy =
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+
+    doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
+    CompletableFuture<PushStatusValue> completableFutureMock = mock(CompletableFuture.class);
+    when(storeClientMock.get(pushStatusKey)).thenReturn(completableFutureMock);
+    // simulate store client returns null for given keys
+    when(completableFutureMock.get()).thenReturn(null);
+
+    // Test that push status store reader will also return null instead of empty map in this case
+    Assert.assertNull(storeReaderSpy.getVersionStatus(storeName, storeVersion));
   }
 }
