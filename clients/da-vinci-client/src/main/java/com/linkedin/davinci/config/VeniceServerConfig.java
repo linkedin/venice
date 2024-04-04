@@ -78,7 +78,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
@@ -112,7 +111,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_FAST_CLASS_WARMUP_TIM
 import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_PRESENCE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
@@ -391,8 +389,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final int offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
 
-  private final boolean sharedKafkaProducerEnabled;
-  private final int sharedProducerPoolSizePerKafkaCluster;
   private final Set<String> kafkaProducerMetrics;
   /**
    * Boolean flag indicating if it is a Da Vinci application.
@@ -653,9 +649,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     systemSchemaClusterName = serverProperties.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties
         .getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
-    sharedKafkaProducerEnabled = serverProperties.getBoolean(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, false);
-    sharedProducerPoolSizePerKafkaCluster =
-        serverProperties.getInt(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, 8);
 
     List<String> kafkaProducerMetricsList = serverProperties.getList(
         KAFKA_PRODUCER_METRICS,
@@ -1154,18 +1147,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getSharedConsumerNonExistingTopicCleanupDelayMS() {
     return sharedConsumerNonExistingTopicCleanupDelayMS;
-  }
-
-  public boolean isSharedKafkaProducerEnabled() {
-    return sharedKafkaProducerEnabled;
-  }
-
-  public int getSharedProducerPoolSizePerKafkaCluster() {
-    return sharedProducerPoolSizePerKafkaCluster;
-  }
-
-  public Set<String> getKafkaProducerMetrics() {
-    return kafkaProducerMetrics;
   }
 
   public boolean isDaVinciClient() {

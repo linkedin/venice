@@ -56,9 +56,7 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -231,22 +229,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
 
     veniceWriterProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
-
-    // TODO: Move shared producer factory construction to upper layer and pass it in here.
-    LOGGER.info(
-        "Shared kafka producer service is {}",
-        serverConfig.isSharedKafkaProducerEnabled() ? "enabled" : "disabled");
-    if (serverConfig.isSharedKafkaProducerEnabled()) {
-      producerAdapterFactory = new SharedKafkaProducerAdapterFactory(
-          veniceWriterProperties,
-          serverConfig.getSharedProducerPoolSizePerKafkaCluster(),
-          new ApacheKafkaProducerAdapterFactory(),
-          metricsRepository,
-          serverConfig.getKafkaProducerMetrics());
-    } else {
-      producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
-    }
-
+    producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
     VeniceWriterFactory veniceWriterFactory =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
