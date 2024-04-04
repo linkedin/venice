@@ -90,8 +90,6 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
-  private final VeniceConfigLoader configLoader;
-
   /**
    * Throttler for RocksDB open operations.
    */
@@ -111,28 +109,25 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   private final VeniceServerConfig serverConfig;
 
-  public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig, VeniceConfigLoader configLoader) {
+  public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this(
         serverConfig,
         null,
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-        configLoader);
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer());
   }
 
   public RocksDBStorageEngineFactory(
       VeniceServerConfig serverConfig,
       RocksDBMemoryStats rocksDBMemoryStats,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      VeniceConfigLoader configLoader) {
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this.serverConfig = serverConfig;
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
     this.rocksDBPath = serverConfig.getDataBasePath() + File.separator + "rocksdb";
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.storeVersionStateSerializer = storeVersionStateSerializer;
     this.partitionStateSerializer = partitionStateSerializer;
-    this.configLoader = configLoader;
 
     /**
      * Shared {@link Env} allows us to share the flush thread pool and compaction thread pool.
@@ -275,8 +270,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
               rocksDBServerConfig,
               storeVersionStateSerializer,
               partitionStateSerializer,
-              replicationMetadataEnabled,
-              configLoader));
+              replicationMetadataEnabled));
     } catch (Exception e) {
       throw new StorageInitializationException(e);
     }

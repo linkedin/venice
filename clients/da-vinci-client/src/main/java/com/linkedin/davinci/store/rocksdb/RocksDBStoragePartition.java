@@ -155,7 +155,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       RocksDBThrottler rocksDbThrottler,
       RocksDBServerConfig rocksDBServerConfig,
       List<byte[]> columnFamilyNameList,
-      VeniceConfigLoader configLoader) {
+      VeniceStoreVersionConfig storeConfig) {
     super(storagePartitionConfig.getPartitionId());
     this.factory = factory;
     this.rocksDBServerConfig = rocksDBServerConfig;
@@ -164,9 +164,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.storeNameWithoutVersionSuffix = Version.parseStoreFromVersionTopic(storeName);
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.aggStatistics = factory.getAggStatistics();
-
-    VeniceStoreVersionConfig veniceStoreVersionConfig = configLoader.getStoreConfig(storeName);
-    this.blobTransferBatchOnlyEnabled = veniceStoreVersionConfig.isBlobTransferBatchOnlyEnabled();
+    this.blobTransferBatchOnlyEnabled = storeConfig.isBlobTransferBatchOnlyEnabled();
 
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
     // restart,
@@ -277,7 +275,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBThrottler rocksDbThrottler,
       RocksDBServerConfig rocksDBServerConfig,
-      VeniceConfigLoader configLoader) {
+      VeniceStoreVersionConfig storeConfig) {
     // If not specified, RocksDB inserts values into DEFAULT_COLUMN_FAMILY.
     this(
         storagePartitionConfig,
@@ -287,7 +285,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         rocksDbThrottler,
         rocksDBServerConfig,
         Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY),
-        configLoader);
+        storeConfig);
   }
 
   private void checkMemoryLimit(long memoryLimit, SstFileManager sstFileManager, String dbPath) {
@@ -473,7 +471,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void createSnapshot() {
-    rocksDBSstFileWriter.createSnapshot(rocksDB);
+    if (blobTransferBatchOnlyEnabled) {
+      rocksDBSstFileWriter.createSnapshot(rocksDB);
+    }
   }
 
   private void checkAndThrowMemoryLimitException(RocksDBException e) {

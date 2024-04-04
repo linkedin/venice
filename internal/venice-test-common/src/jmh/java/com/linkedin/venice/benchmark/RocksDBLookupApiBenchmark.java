@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
@@ -108,14 +109,15 @@ public class RocksDBLookupApiBenchmark {
     properties.put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 6);
     VeniceProperties veniceServerProperties = getServerProperties(PersistenceType.ROCKS_DB, properties);
     VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
+    VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(storeName);
     storagePartition = new RocksDBStoragePartition(
         new StoragePartitionConfig(storeName, 0),
-        new RocksDBStorageEngineFactory(new VeniceServerConfig(veniceServerProperties), configLoader),
+        new RocksDBStorageEngineFactory(new VeniceServerConfig(veniceServerProperties)),
         DATA_BASE_DIR,
         null,
         new RocksDBThrottler(3),
         new RocksDBServerConfig(veniceServerProperties),
-        configLoader);
+        storeConfig);
 
     // Populate the database
     for (int i = 0; i < ROW_CNT; ++i) {

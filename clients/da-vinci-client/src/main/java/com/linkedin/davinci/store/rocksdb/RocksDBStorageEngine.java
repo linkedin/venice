@@ -41,7 +41,6 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   private RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
   private final VeniceStoreVersionConfig storeConfig;
-  private final VeniceConfigLoader configLoader;
   private final boolean replicationMetadataEnabled;
 
   /**
@@ -62,11 +61,9 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       RocksDBServerConfig rocksDBServerConfig,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      boolean replicationMetadataEnabled,
-      VeniceConfigLoader configLoader) {
+      boolean replicationMetadataEnabled) {
     super(storeConfig.getStoreVersionName(), storeVersionStateSerializer, partitionStateSerializer);
     this.storeConfig = storeConfig;
-    this.configLoader = configLoader;
     this.rocksDbPath = rocksDbPath;
     this.memoryStats = rocksDBMemoryStats;
     this.rocksDbThrottler = rocksDbThrottler;
@@ -140,7 +137,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           memoryStats,
           rocksDbThrottler,
           rocksDBServerConfig,
-          configLoader);
+          storeConfig);
     } else {
       return new ReplicationMetadataRocksDBStoragePartition(
           storagePartitionConfig,
@@ -149,7 +146,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           memoryStats,
           rocksDbThrottler,
           rocksDBServerConfig,
-          configLoader);
+          storeConfig);
     }
   }
 

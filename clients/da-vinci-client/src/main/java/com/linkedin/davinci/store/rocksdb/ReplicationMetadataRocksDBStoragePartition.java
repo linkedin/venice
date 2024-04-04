@@ -4,6 +4,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.DEFAULT_CO
 import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.REPLICATION_METADATA_COLUMN_FAMILY_INDEX;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -41,7 +42,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBThrottler rocksDbThrottler,
       RocksDBServerConfig rocksDBServerConfig,
-      VeniceConfigLoader configLoader) {
+      VeniceStoreVersionConfig storeConfig) {
     super(
         storagePartitionConfig,
         factory,
@@ -50,7 +51,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
         rocksDbThrottler,
         rocksDBServerConfig,
         Arrays.asList(RocksDB.DEFAULT_COLUMN_FAMILY, REPLICATION_METADATA_COLUMN_FAMILY),
-        configLoader);
+        storeConfig);
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempRMDSSTFileDir(dbDir, storeName, partitionId);
     if (deferredWrite) {
       this.rocksDBSstFileWriter = new RocksDBSstFileWriter(

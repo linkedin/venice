@@ -203,8 +203,7 @@ public class StorageService extends AbstractVeniceService {
             serverConfig,
             rocksDBMemoryStats,
             storeVersionStateSerializer,
-            partitionStateSerializer,
-            configLoader));
+            partitionStateSerializer));
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
   }
 
