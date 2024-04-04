@@ -883,8 +883,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 sourceTopicPartition,
                 upstreamStartOffset);
             hostLevelIngestionStats.recordIngestionFailure();
-
-            // Add to repair queue
+            /**
+             *  Add to repair queue. We won't attempt to resubscribe for brokers we couldn't compute an upstream offset
+             *  accurately for. We will not persist the wrong offset into OffsetRecord, we'll reattempt subscription later.
+             */
             if (remoteIngestionRepairService != null) {
               this.remoteIngestionRepairService.registerRepairTask(
                   this,
