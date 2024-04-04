@@ -84,6 +84,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * route requests to the correct server/partition
    */
   private final GrpcClientConfig grpcClientConfig;
+  /**
+   * The time window used to calculate user traffic and corresponding long tail retry budget. The default value is 5
+   * minutes. Meaning it will use the average request occurrence rate over the 5 minutes to calculate the corresponding
+   * retry budget for the next 5 minutes and so on.
+   */
+  private final long longTailRetryBudgetEnforcementWindowInMs;
 
   private boolean projectionFieldValidation;
 
@@ -121,7 +127,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       String clusterDiscoveryD2Service,
       boolean useGrpc,
       GrpcClientConfig grpcClientConfig,
-      boolean projectionFieldValidation) {
+      boolean projectionFieldValidation,
+      long longTailRetryBudgetEnforcementWindowInMs) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -252,6 +259,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.grpcClientConfig = grpcClientConfig;
 
     this.projectionFieldValidation = projectionFieldValidation;
+    this.longTailRetryBudgetEnforcementWindowInMs = longTailRetryBudgetEnforcementWindowInMs;
   }
 
   public String getStoreName() {
@@ -391,6 +399,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return projectionFieldValidation;
   }
 
+  public long getLongTailRetryBudgetEnforcementWindowInMs() {
+    return longTailRetryBudgetEnforcementWindowInMs;
+  }
+
   public ClientConfig setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
     this.projectionFieldValidation = projectionFieldValidation;
     return this;
@@ -439,6 +451,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private GrpcClientConfig grpcClientConfig = null;
 
     private boolean projectionFieldValidation = true;
+
+    private long longTailRetryBudgetEnforcementWindowInMs = 300000; // 5 minutes
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -622,6 +636,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setLongTailRetryBudgetEnforcementWindowInMs(
+        long longTailRetryBudgetEnforcementWindowInMs) {
+      this.longTailRetryBudgetEnforcementWindowInMs = longTailRetryThresholdForBatchGetInMicroSeconds;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -656,7 +676,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
           .setUseGrpc(useGrpc)
           .setGrpcClientConfig(grpcClientConfig)
-          .setProjectionFieldValidationEnabled(projectionFieldValidation);
+          .setProjectionFieldValidationEnabled(projectionFieldValidation)
+          .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -694,7 +715,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           clusterDiscoveryD2Service,
           useGrpc,
           grpcClientConfig,
-          projectionFieldValidation);
+          projectionFieldValidation,
+          longTailRetryBudgetEnforcementWindowInMs);
     }
   }
 }
