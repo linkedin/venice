@@ -49,6 +49,7 @@ public class VeniceController {
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
 
   private Optional<DisabledPartitionEnablerService> disabledPartitionEnablerService;
+  private Optional<UnusedValueSchemaCleanupService> unusedValueSchemaCleanupService;
 
   private Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
   private Optional<SystemStoreRepairService> systemStoreRepairService;
@@ -181,6 +182,8 @@ public class VeniceController {
     storeGraveyardCleanupService = Optional.empty();
     systemStoreRepairService = Optional.empty();
     disabledPartitionEnablerService = Optional.empty();
+    unusedValueSchemaCleanupService = Optional.empty();
+
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
       topicCleanupService = new TopicCleanupServiceForParentController(
@@ -200,6 +203,8 @@ public class VeniceController {
             .of(new SystemStoreRepairService((VeniceParentHelixAdmin) admin, multiClusterConfigs, metricsRepository));
         LOGGER.info("SystemStoreRepairServiceEnabled is enabled");
       }
+      this.unusedValueSchemaCleanupService =
+          Optional.of(new UnusedValueSchemaCleanupService(multiClusterConfigs, (VeniceParentHelixAdmin) admin));
     } else {
       topicCleanupService = new TopicCleanupService(
           admin,
@@ -238,6 +243,7 @@ public class VeniceController {
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
+    unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
@@ -300,6 +306,7 @@ public class VeniceController {
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    unusedValueSchemaCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     disabledPartitionEnablerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);

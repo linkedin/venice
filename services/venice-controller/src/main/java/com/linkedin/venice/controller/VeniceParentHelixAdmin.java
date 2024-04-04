@@ -335,8 +335,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
 
-  private final UnusedValueSchemaCleanupService unusedValueSchemaCleanupService;
-
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
 
   private final SupersetSchemaGenerator defaultSupersetSchemaGenerator = new DefaultSupersetSchemaGenerator();
@@ -517,7 +515,6 @@ public class VeniceParentHelixAdmin implements Admin {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
-    this.unusedValueSchemaCleanupService = new UnusedValueSchemaCleanupService(multiClusterConfigs, this);
   }
 
   // For testing purpose.
@@ -4188,7 +4185,6 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     newFabricControllerClientMap.forEach(
         (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
-    unusedValueSchemaCleanupService.close();
   }
 
   /**
