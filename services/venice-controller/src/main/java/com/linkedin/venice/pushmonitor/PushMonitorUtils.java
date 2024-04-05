@@ -78,7 +78,6 @@ public class PushMonitorUtils {
         boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
         if (!isInstanceAlive) {
           offlineInstanceCount++;
-          allInstancesCompleted = false;
           // Keep at most 5 offline instances for logging purpose.
           if (offlineInstanceList.size() < 5) {
             offlineInstanceList.add(entry.getKey().toString());
@@ -219,8 +218,6 @@ public class PushMonitorUtils {
         }
         boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
         if (!isInstanceAlive) {
-          allInstancesCompleted = false;
-          allMiddleStatusReceived = false;
           // Keep at most 5 offline instances for logging purpose.
           if (offlineInstanceList.size() < 5) {
             offlineInstanceList.add(entry.getKey().toString());
