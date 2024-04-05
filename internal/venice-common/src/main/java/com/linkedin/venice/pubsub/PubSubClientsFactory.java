@@ -109,7 +109,6 @@ public class PubSubClientsFactory {
     try {
       return (T) Class.forName(className).getDeclaredConstructor().newInstance();
     } catch (Exception e) {
-      LOGGER.error("Failed to create instance of class: {}", className, e);
       throw new VeniceException("Failed to create instance of class: " + className, e);
     }
   }

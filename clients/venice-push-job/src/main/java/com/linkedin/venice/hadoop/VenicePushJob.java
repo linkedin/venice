@@ -2271,9 +2271,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(PushJobSetting pushJobSetting) {
     if (veniceWriter == null) {
-      // Initialize VeniceWriter, TODO: passing configurable PubSubProducerAdapter
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(pushJobSetting));
-
       Properties partitionerProperties = new Properties();
       partitionerProperties.putAll(pushJobSetting.partitionerParams);
       VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(
