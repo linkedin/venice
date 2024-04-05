@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_INSTANCE_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static java.lang.Thread.currentThread;
 
@@ -190,7 +191,9 @@ public class DaVinciBackend implements Closeable {
       VeniceWriterFactory writerFactory =
           new VeniceWriterFactory(backendProps.toProperties(), pubSubClientsFactory.getProducerAdapterFactory(), null);
       String pid = Utils.getPid();
-      String instanceName = Utils.getHostName() + "_" + (pid == null ? "NA" : pid);
+      String instanceSuffix = configLoader.getCombinedProperties()
+          .getString(DAVINCI_PUSH_STATUS_INSTANCE_SUFFIX, (pid == null ? "NA" : pid));
+      String instanceName = Utils.getHostName() + "_" + instanceSuffix;
 
       // Fetch latest update schema's protocol ID for Push Status Store from Router.
       ClientConfig pushStatusStoreClientConfig = ClientConfig.cloneConfig(clientConfig)
