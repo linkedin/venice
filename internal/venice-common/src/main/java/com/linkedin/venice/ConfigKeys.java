@@ -1753,7 +1753,7 @@ public class ConfigKeys {
    * Config to control what's the suffix for Da Vinci instance which is reporting push status and heartbeats. By default,
    * it is process PID if not specified, but note that PID is subject to change upon instance restart.
    */
-  public static final String PUSH_STATUS_INSTANCE_SUFFIX = "push.status.instance.suffix";
+  public static final String PUSH_STATUS_INSTANCE_NAME_SUFFIX = "push.status.instance.name.suffix";
 
   /**
    * The expiration timeout. If an instance not sending heartbeats for over the expiration
