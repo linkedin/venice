@@ -145,7 +145,7 @@ public class PushStatusStoreTest {
     extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
     extraBackendConfigMap.put(PUSH_STATUS_STORE_ENABLED, true);
     extraBackendConfigMap.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 5);
-    String expectedInstanceSuffix = "i015";
+    String expectedInstanceSuffix = "sampleApp_i015";
     extraBackendConfigMap.put(PUSH_STATUS_INSTANCE_NAME_SUFFIX, expectedInstanceSuffix);
 
     try (DaVinciClient<Integer, Integer> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
