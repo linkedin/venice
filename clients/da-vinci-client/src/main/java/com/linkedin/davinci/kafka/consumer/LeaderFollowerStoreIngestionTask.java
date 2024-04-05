@@ -933,8 +933,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } catch (Exception e) {
       LOGGER.error(errorMsg, e);
       versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
-      statusReportAdapter
-          .reportError(isDaVinciClient, Collections.singletonList(partitionConsumptionState), errorMsg, e);
+      statusReportAdapter.reportError(Collections.singletonList(partitionConsumptionState), errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
   }
@@ -1536,11 +1535,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
           VeniceException e = new VeniceException(logMsg);
           ingestionTask.getStatusReportAdapter()
-              .reportError(
-                  ingestionTask.isDaVinciClient,
-                  Collections.singletonList(partitionConsumptionState),
-                  logMsg,
-                  e);
+              .reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
           throw e;
         } else {
           logMsg += Utils.NEW_LINE_CHAR;

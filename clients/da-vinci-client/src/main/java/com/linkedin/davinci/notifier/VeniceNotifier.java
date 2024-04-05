@@ -142,10 +142,6 @@ public interface VeniceNotifier extends Closeable {
    * Report an error, during the consumption for a Partitions and store. The error may or may not be fatal.
    */
   default void error(String kafkaTopic, int partitionId, String message, Exception e) {
-    error(false, kafkaTopic, partitionId, message, e);
-  }
-
-  default void error(boolean isDavinciClient, String kafkaTopic, int partitionId, String message, Exception e) {
   }
 
   default void stopped(String kafkaTopic, int partitionId, long offset) {

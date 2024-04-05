@@ -2,8 +2,8 @@ package com.linkedin.davinci;
 
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
@@ -33,6 +33,7 @@ import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -653,25 +654,21 @@ public class DaVinciBackend implements Closeable {
 
     @Override
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
-      error(false, kafkaTopic, partitionId, message, e);
-    }
-
-    public void error(boolean isDaVinciClient, String kafkaTopic, int partitionId, String message, Exception e) {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
           /**
            * Report push status needs to be executed before deleting the {@link VersionBackend}.
            */
-          ExecutionStatus status;
-          if (isDaVinciClient) {
-            if (e instanceof VeniceException && message.startsWith("Disk is full")) {
+          ExecutionStatus status = DVC_INGESTION_ERROR_OTHER;
+          if (e instanceof MemoryLimitExhaustedException) {
+            status = DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
+          } else if (e instanceof VeniceException) {
+            if (message.startsWith("Disk is full")) {
               status = DVC_INGESTION_ERROR_DISK_FULL;
-            } else {
-              status = DVC_INGESTION_ERROR_OTHER;
+            } else if (e.getCause() != null && e.getCause() instanceof MemoryLimitExhaustedException) {
+              status = DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
             }
-          } else {
-            status = ERROR;
           }
           reportPushStatus(kafkaTopic, partitionId, status);
 

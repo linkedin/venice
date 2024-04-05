@@ -76,7 +76,6 @@ public class DiskUsage {
     // Here we're using -1 to subtract the newly written data from the reserve space remaining.
     // If the reserve space remaining is still greater than 0, report disk not full. Otherwise,
     // check the actual state of the disk.
-    // return true;
     if (reserveSpaceBytesRemaining.addAndGet(-1 * bytesWritten) > 0) {
       return false; // disk not full, don't need to actually check again
     } else { // we need to check actual disk usage

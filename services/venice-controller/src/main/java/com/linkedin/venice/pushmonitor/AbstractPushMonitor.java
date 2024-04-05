@@ -935,7 +935,7 @@ public abstract class AbstractPushMonitor
         statusWithDetails.getStatus());
     if (status.equals(ExecutionStatus.COMPLETED)) {
       pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), COMPLETED, null);
-    } else if (status.equals(ExecutionStatus.ERROR)) {
+    } else if (status.isIngestionError()) {
       String statusDetailsString = "STATUS DETAILS ABSENT.";
       if (statusWithDetails.getDetails() == null) {
         LOGGER.error(
@@ -944,7 +944,7 @@ public abstract class AbstractPushMonitor
       } else {
         statusDetailsString = statusWithDetails.getDetails();
       }
-      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), ERROR, statusDetailsString);
+      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), status, statusDetailsString);
     }
   }
 

@@ -251,7 +251,7 @@ public class VenicePushJob implements AutoCloseable {
     DUP_KEY_WITH_DIFF_VALUE(-3), INPUT_DATA_SCHEMA_VALIDATION_FAILED(-4),
     EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED(-5), RECORD_TOO_LARGE_FAILED(-6), CONCURRENT_BATCH_PUSH(-7),
     DATASET_CHANGED(-8), INVALID_INPUT_FILE(-9), ZSTD_DICTIONARY_CREATION_FAILED(-10),
-    DVC_INGESTION_ERROR_DISK_FULL(-11), DVC_INGESTION_ERROR_OTHER(-12);
+    DVC_INGESTION_ERROR_DISK_FULL(-11), DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED(-12), DVC_INGESTION_ERROR_OTHER(-13);
 
     private final int value;
 
@@ -2418,7 +2418,7 @@ public class VenicePushJob implements AutoCloseable {
       updatePushJobDetailsWithColoStatus(regionSpecificInfo, completedDatacenters);
       regionSpecificInfo.forEach((region, regionStatus) -> {
         ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(regionStatus);
-        if (datacenterStatus.isTerminal() && !datacenterStatus.equals(ExecutionStatus.ERROR)) {
+        if (datacenterStatus.isTerminal() && !datacenterStatus.isIngestionError()) {
           completedDatacenters.add(region);
         }
       });

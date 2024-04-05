@@ -88,15 +88,17 @@ public enum ExecutionStatus {
   DATA_RECOVERY_COMPLETED(false, true, false, false, 17),
 
   DVC_INGESTION_ERROR_DISK_FULL(true, false, false, true, 18),
-
-  DVC_INGESTION_ERROR_OTHER(true, false, false, true, 19);
+  DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED(true, false, false, true, 19),
+  DVC_INGESTION_ERROR_OTHER(true, false, false, true, 20);
 
   public boolean isDVCIngestionError() {
-    return (this == DVC_INGESTION_ERROR_DISK_FULL || this == DVC_INGESTION_ERROR_OTHER);
+    return (this == DVC_INGESTION_ERROR_DISK_FULL || this == DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
+        || this == DVC_INGESTION_ERROR_OTHER);
   }
 
   public boolean isIngestionError() {
-    return (this == ERROR || this == DVC_INGESTION_ERROR_DISK_FULL || this == DVC_INGESTION_ERROR_OTHER);
+    return (this == ERROR || this == DVC_INGESTION_ERROR_DISK_FULL || this == DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
+        || this == DVC_INGESTION_ERROR_OTHER);
   }
 
   final boolean isJobStatus;

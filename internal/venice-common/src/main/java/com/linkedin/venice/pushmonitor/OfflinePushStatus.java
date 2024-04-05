@@ -4,6 +4,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.ARCHIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DATA_RECOVERY_COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
@@ -136,18 +137,37 @@ public class OfflinePushStatus {
     boolean isValid;
     switch (currentStatus) {
       case NOT_CREATED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, ERROR);
+        isValid = Utils.verifyTransition(
+            newStatus,
+            STARTED,
+            ERROR,
+            DVC_INGESTION_ERROR_DISK_FULL,
+            DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_OTHER);
         break;
       case STARTED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, ERROR, COMPLETED, END_OF_PUSH_RECEIVED);
+        isValid = Utils.verifyTransition(
+            newStatus,
+            STARTED,
+            ERROR,
+            DVC_INGESTION_ERROR_DISK_FULL,
+            DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_OTHER,
+            COMPLETED,
+            END_OF_PUSH_RECEIVED);
         break;
       case ERROR:
       case COMPLETED:
         isValid = Utils.verifyTransition(newStatus, ARCHIVED);
         break;
       case END_OF_PUSH_RECEIVED:
-        isValid = Utils
-            .verifyTransition(newStatus, COMPLETED, ERROR, DVC_INGESTION_ERROR_DISK_FULL, DVC_INGESTION_ERROR_OTHER);
+        isValid = Utils.verifyTransition(
+            newStatus,
+            COMPLETED,
+            ERROR,
+            DVC_INGESTION_ERROR_DISK_FULL,
+            DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_OTHER);
         break;
       default:
         isValid = false;

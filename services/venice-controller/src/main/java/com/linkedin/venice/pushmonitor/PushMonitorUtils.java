@@ -23,10 +23,13 @@ public class PushMonitorUtils {
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorUtils.class);
 
   private static String getDVCIngestionErrorReason(ExecutionStatus errorReplicaStatus) {
-    if (errorReplicaStatus == ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL) {
-      return " due to disk being full";
-    } else {
-      return "";
+    switch (errorReplicaStatus) {
+      case DVC_INGESTION_ERROR_DISK_FULL:
+        return " due to disk being full";
+      case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
+        return " due to memory limit reached";
+      default:
+        return "";
     }
   }
 

@@ -68,7 +68,6 @@ public class IngestionNotificationDispatcherTest {
     Mockito.doReturn(false).when(pcs).isErrorReported();
     Mockito.doReturn(false).when(pcs).isComplete();
     dispatcher.reportError(
-        false,
         Arrays.asList(new PartitionConsumptionState[] { pcs }),
         "fake ingestion error",
         mock(VeniceException.class));

@@ -1,18 +1,41 @@
 package com.linkedin.venice.pushmonitor;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ARCHIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DATA_RECOVERY_COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DROPPED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.NEW;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_STARTED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.UNKNOWN;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.WARNING;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -57,7 +80,7 @@ public class OfflinePushStatusTest {
 
     try {
       offlinePushStatus.setPartitionStatus(new PartitionStatus(1000));
-      Assert.fail("Partition 1000 dose not exist.");
+      fail("Partition 1000 dose not exist.");
     } catch (IllegalArgumentException e) {
       // expected
     }
@@ -97,7 +120,7 @@ public class OfflinePushStatusTest {
 
     try {
       offlinePushStatus.setPartitionStatus(new PartitionStatus(1000));
-      Assert.fail("Partition 1000 dose not exist.");
+      fail("Partition 1000 dose not exist.");
     } catch (IllegalArgumentException e) {
       // expected
     }
@@ -118,37 +141,100 @@ public class OfflinePushStatusTest {
   }
 
   @Test
-  public void testUpdateStatusFromSTARTED() {
-    testValidTargetStatuses(STARTED, STARTED, COMPLETED, ERROR, END_OF_PUSH_RECEIVED);
-    testInvalidTargetStatuses(STARTED, ARCHIVED);
+  public void testUpdateStatusValidTransitions() {
+    // Define a map to store valid transitions for each source status
+    Map<ExecutionStatus, Set<ExecutionStatus>> validTransitions = new HashMap<>();
+    validTransitions.put(
+        NOT_CREATED,
+        EnumSet.of(
+            STARTED,
+            ERROR,
+            DVC_INGESTION_ERROR_DISK_FULL,
+            DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_OTHER));
+    validTransitions.put(
+        STARTED,
+        EnumSet.of(
+            STARTED,
+            ERROR,
+            DVC_INGESTION_ERROR_DISK_FULL,
+            DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_OTHER,
+            COMPLETED,
+            END_OF_PUSH_RECEIVED));
+    validTransitions.put(ERROR, EnumSet.of(ARCHIVED));
+    validTransitions.put(COMPLETED, EnumSet.of(ARCHIVED));
+    validTransitions.put(
+        END_OF_PUSH_RECEIVED,
+        EnumSet.of(
+            COMPLETED,
+            ERROR,
+            DVC_INGESTION_ERROR_DISK_FULL,
+            DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_OTHER));
+
+    // add other status to the map manually such that test will fail if a new status is added but not updated in
+    // validatePushStatusTransition and here
+    validTransitions.put(NEW, new HashSet<>());
+    validTransitions.put(PROGRESS, new HashSet<>());
+    validTransitions.put(START_OF_BUFFER_REPLAY_RECEIVED, new HashSet<>());
+    validTransitions.put(TOPIC_SWITCH_RECEIVED, new HashSet<>());
+    validTransitions.put(START_OF_INCREMENTAL_PUSH_RECEIVED, new HashSet<>());
+    validTransitions.put(END_OF_INCREMENTAL_PUSH_RECEIVED, new HashSet<>());
+    validTransitions.put(DROPPED, new HashSet<>());
+    validTransitions.put(WARNING, new HashSet<>());
+    validTransitions.put(CATCH_UP_BASE_TOPIC_OFFSET_LAG, new HashSet<>());
+    validTransitions.put(ARCHIVED, new HashSet<>());
+    validTransitions.put(UNKNOWN, new HashSet<>());
+    validTransitions.put(NOT_STARTED, new HashSet<>());
+    validTransitions.put(DATA_RECOVERY_COMPLETED, new HashSet<>());
+    validTransitions.put(DVC_INGESTION_ERROR_DISK_FULL, new HashSet<>());
+    validTransitions.put(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED, new HashSet<>());
+    validTransitions.put(DVC_INGESTION_ERROR_OTHER, new HashSet<>());
+
+    for (ExecutionStatus status: ExecutionStatus.values()) {
+      if (!validTransitions.containsKey(status)) {
+        fail("New ExecutionStatus " + status.toString() + " should be added to the test");
+      }
+    }
+    for (ExecutionStatus fromStatus: ExecutionStatus.values()) {
+      Set<ExecutionStatus> validTransitionsFromAStatus = validTransitions.get(fromStatus);
+      for (ExecutionStatus toStatus: ExecutionStatus.values()) {
+        if (validTransitionsFromAStatus.contains(toStatus)) {
+          testValidTargetStatus(fromStatus, toStatus);
+        } else {
+          if (fromStatus == toStatus) {
+            // not throwing exception for this case as its redundant, so not testing
+            continue;
+          }
+          testInvalidTargetStatus(fromStatus, toStatus);
+        }
+      }
+    }
   }
 
   @Test
-  public void testUpdateStatusFromEndOfPushReceived() {
-    testValidTargetStatuses(END_OF_PUSH_RECEIVED, COMPLETED, ERROR);
-    testInvalidTargetStatuses(END_OF_PUSH_RECEIVED, STARTED, ARCHIVED);
+  public void testisDVCIngestionError() {
+    for (ExecutionStatus status: ExecutionStatus.values()) {
+      if (status == DVC_INGESTION_ERROR_DISK_FULL || status == DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
+          || status == DVC_INGESTION_ERROR_OTHER) {
+        assertTrue(status.isDVCIngestionError(), status + " should not pass isDVCIngestionError()");
+      } else {
+        assertFalse(status.isDVCIngestionError(), status + " should pass isDVCIngestionError()");
+      }
+    }
   }
 
   @Test
-  public void testUpdateStatusFromERROR() {
-    testValidTargetStatuses(ERROR, ARCHIVED);
-    testInvalidTargetStatuses(ERROR, STARTED, COMPLETED);
-  }
-
-  @Test
-  public void testUpdateStatusFromCOMPLETED() {
-    testValidTargetStatuses(COMPLETED, ARCHIVED);
-    testInvalidTargetStatuses(COMPLETED, ERROR, STARTED);
-  }
-
-  @Test
-  public void testUpdateStatusFromARCHIVED() {
-    testInvalidTargetStatuses(ARCHIVED, STARTED, ERROR, COMPLETED);
-  }
-
-  @Test
-  public void testRedundantStatusChange() {
-    testValidTargetStatuses(END_OF_PUSH_RECEIVED, END_OF_PUSH_RECEIVED);
+  public void testisIngestionError() {
+    for (ExecutionStatus status: ExecutionStatus.values()) {
+      if (status == ERROR || status == DVC_INGESTION_ERROR_DISK_FULL
+          || status == DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED || status == DVC_INGESTION_ERROR_OTHER) {
+        assertTrue(status.isIngestionError(), status + " should not pass isIngestionError()");
+      } else {
+        assertFalse(status.isIngestionError(), status + " should pass isIngestionError()");
+      }
+    }
   }
 
   @Test
@@ -172,27 +258,23 @@ public class OfflinePushStatusTest {
     offlinePushStatus.getIncrementalPushStatus(partitionAssignment, "ignore");
   }
 
-  private void testValidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
-    for (ExecutionStatus status: statuses) {
-      OfflinePushStatus offlinePushStatus =
-          new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
-      offlinePushStatus.setCurrentStatus(from);
-      offlinePushStatus.updateStatus(status);
-      Assert.assertEquals(offlinePushStatus.getCurrentStatus(), status, status + " should be valid from:" + from);
-    }
+  private void testValidTargetStatus(ExecutionStatus from, ExecutionStatus to) {
+    OfflinePushStatus offlinePushStatus =
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+    offlinePushStatus.setCurrentStatus(from);
+    offlinePushStatus.updateStatus(to);
+    Assert.assertEquals(offlinePushStatus.getCurrentStatus(), to, to + " should be valid from:" + from);
   }
 
-  private void testInvalidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
-    for (ExecutionStatus status: statuses) {
-      OfflinePushStatus offlinePushStatus =
-          new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
-      offlinePushStatus.setCurrentStatus(from);
-      try {
-        offlinePushStatus.updateStatus(status);
-        Assert.fail(status + " is invalid from:" + from);
-      } catch (VeniceException e) {
-        // expected.
-      }
+  private void testInvalidTargetStatus(ExecutionStatus from, ExecutionStatus to) {
+    OfflinePushStatus offlinePushStatus =
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+    offlinePushStatus.setCurrentStatus(from);
+    try {
+      offlinePushStatus.updateStatus(to);
+      fail(to + " is not invalid from:" + from);
+    } catch (VeniceException e) {
+      // expected.
     }
   }
 }
