@@ -635,6 +635,14 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public void setBlobTransferEnabled(boolean blobTransferEnabled) {
+    throwUnsupportedOperationException("setBlobTransferEnabled");
+  }
+
+  @Override
+  public boolean isBlobTransferEnabled() { return zkSharedStore.isBlobTransferEnabled(); }
+
+  @Override
   public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
     throwUnsupportedOperationException("setMaxCompactionLagSeconds");
   }

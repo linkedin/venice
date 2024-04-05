@@ -79,6 +79,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+
 
 public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams(Map<String, String> initialParams) {
@@ -670,6 +672,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getUnusedSchemaDeletionEnabled() {
     return getBoolean(UNUSED_SCHEMA_DELETION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setBlobTransferEnabled(boolean blobTransferEnabled) {
+    return putBoolean(BLOB_TRANSFER_ENABLED, blobTransferEnabled);
+  }
+
+  public Optional<Boolean> getBlobTransferEnabled() {
+    return getBoolean(BLOB_TRANSFER_ENABLED);
   }
 
   // ***************** above this line are getters and setters *****************

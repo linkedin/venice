@@ -307,4 +307,7 @@ public interface Store {
   void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled);
 
   boolean isUnusedSchemaDeletionEnabled();
+
+  boolean isBlobTransferEnabled();
+  void setBlobTransferEnabled(boolean blobTransferEnabled);
 }

@@ -225,5 +225,7 @@ public class ControllerApiConstants {
 
   public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
 
+  public static final String BLOB_TRANSFER_ENABLED = "blob.transfer.enabled";
+
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
 }

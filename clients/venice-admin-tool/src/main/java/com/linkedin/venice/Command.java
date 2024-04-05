@@ -123,6 +123,7 @@ import static com.linkedin.venice.Arg.VSON_STORE;
 import static com.linkedin.venice.Arg.WRITEABILITY;
 import static com.linkedin.venice.Arg.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.Arg.ZK_SSL_CONFIG_FILE;
+import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;
@@ -235,7 +236,7 @@ public enum Command {
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
-          MAX_COMPACTION_LAG_SECONDS, UNUSED_SCHEMA_DELETION_ENABLED }
+          MAX_COMPACTION_LAG_SECONDS, UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },

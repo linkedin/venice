@@ -255,7 +255,8 @@ public enum Arg {
       "graveyard-clusters", "gc", true, "Clusters to scan store graveyard to retrieve metadata, eg. cluster-1,cluster-2"
   ), RECOVER_CLUSTER("recover-cluster", "rc", true, "Cluster to recover from"),
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
-  DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
+  DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
+  BLOB_TRANSFER_ENABLED("blob.transfer.enabled", "bt", false, "Flag to indicate if the blob transfer is allowed or not");
 
   private final String argName;
   private final String first;
