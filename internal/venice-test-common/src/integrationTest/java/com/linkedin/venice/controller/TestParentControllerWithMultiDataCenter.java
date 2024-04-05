@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.TestVenicePushJob.*;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.*;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
 import static com.linkedin.venice.utils.TestWriteUtils.*;

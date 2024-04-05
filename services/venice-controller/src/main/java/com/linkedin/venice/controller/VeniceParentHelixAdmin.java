@@ -3612,10 +3612,15 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
 
       boolean incPushEnabledBatchPushSuccess = !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
+<<<<<<< HEAD
       boolean nonIncPushBatchSuccess = !store.isIncrementalPushEnabled() && !currentReturnStatus.isError();
+=======
+      boolean nonIncPushBatchSuccess =
+          !store.isIncrementalPushEnabled() && currentReturnStatus != ExecutionStatus.ERROR;
+      boolean isDeferredVersionSwap = version.isPresent() && version.get().isVersionSwapDeferred();
+>>>>>>> 4250aee31 (updated test)
 
-      if ((failedBatchPush || nonIncPushBatchSuccess && !version.get().isVersionSwapDeferred()
-          || incPushEnabledBatchPushSuccess)
+      if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess)
           && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
         LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
         truncateKafkaTopic(kafkaTopic);
