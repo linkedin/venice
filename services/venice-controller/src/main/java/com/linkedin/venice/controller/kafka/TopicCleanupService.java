@@ -278,7 +278,7 @@ public class TopicCleanupService extends AbstractVeniceService {
             continue;
           }
           String pubSubBootstrapServer = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childFabric);
-          Set<PubSubTopic> remoteTopics = getTopicManager(pubSubBootstrapServer).getAllTopicRetentions().keySet();
+          Set<PubSubTopic> remoteTopics = getTopicManager(pubSubBootstrapServer).listTopics();
           clearAndPopulateStoreToVersionTopicCountMap(
               remoteTopics,
               multiDataCenterStoreToVersionTopicCount.get(childFabric));

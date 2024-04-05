@@ -200,7 +200,7 @@ public class TestTopicCleanupService {
     remoteTopics2.put(getPubSubTopic(storeName3, "_rt"), 1000L);
 
     when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics).thenReturn(storeTopics2);
-    when(remoteTopicManager.getAllTopicRetentions()).thenReturn(remoteTopics).thenReturn(remoteTopics2);
+    when(remoteTopicManager.listTopics()).thenReturn(remoteTopics.keySet()).thenReturn(remoteTopics2.keySet());
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
@@ -410,12 +410,12 @@ public class TestTopicCleanupService {
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
     doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
-    when(remoteTopicManager.getAllTopicRetentions()).thenThrow(new VeniceException("test")).thenReturn(storeTopics);
+    when(remoteTopicManager.listTopics()).thenThrow(new VeniceException("test")).thenReturn(storeTopics.keySet());
 
     topicCleanupService.cleanupVeniceTopics();
 
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName, "_rt"));
-    verify(remoteTopicManager, atLeastOnce()).getAllTopicRetentions();
+    verify(remoteTopicManager, atLeastOnce()).listTopics();
     verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(1);
     verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeletionError();
 
@@ -445,6 +445,6 @@ public class TestTopicCleanupService {
 
     topicCleanupService.cleanupVeniceTopics();
 
-    verify(remoteTopicManager, atLeastOnce()).getAllTopicRetentions();
+    verify(remoteTopicManager, atLeastOnce()).listTopics();
   }
 }
