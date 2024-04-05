@@ -27,7 +27,6 @@ import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader
 import com.linkedin.venice.hadoop.task.TaskTracker;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -353,9 +352,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
     writerProps.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS));
     writerProps.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
-
-    VeniceWriterFactory veniceWriterFactoryFactory =
-        new VeniceWriterFactory(writerProps, new ApacheKafkaProducerAdapterFactory(), null);
+    VeniceWriterFactory veniceWriterFactoryFactory = new VeniceWriterFactory(writerProps);
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     boolean rmdChunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, false);
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
