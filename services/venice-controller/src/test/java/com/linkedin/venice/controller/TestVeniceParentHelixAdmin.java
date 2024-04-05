@@ -2192,6 +2192,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
+    ControllerClient client = mock(ControllerClient.class);
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", client);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
 
     Store store = new ZKStore(
@@ -2206,6 +2210,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     store.addVersion(new VersionImpl(storeName, 1, "test_push_id"));
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+    StoreResponse response = mock(StoreResponse.class);
+    StoreInfo info = mock(StoreInfo.class);
+    doReturn(response).when(client).getStore(anyString());
+    doReturn(info).when(response).getStore();
     doReturn(new Pair<>(store, store.getVersion(1).get())).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 

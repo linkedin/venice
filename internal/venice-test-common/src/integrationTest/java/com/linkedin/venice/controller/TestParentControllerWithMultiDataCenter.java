@@ -1,10 +1,13 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.*;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFER_VERSION_SWAP;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static org.testng.Assert.assertEquals;
+import static org.testng.AssertJUnit.fail;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -141,17 +144,16 @@ public class TestParentControllerWithMultiDataCenter {
           StoreInfo storeInfo = storeResponse.getStore();
 
           Assert.assertNotNull(storeInfo.getHybridStoreConfig());
-          Assert.assertEquals(
+          assertEquals(
               storeInfo.getHybridStoreConfig().getOffsetLagThresholdToGoOnline(),
               expectedHybridOffsetLagThreshold);
-          Assert.assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
-          Assert
-              .assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
+          assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
+          assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
-          Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
+          assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           Assert.assertTrue(storeInfo.isChunkingEnabled());
           Assert.assertTrue(storeInfo.isRmdChunkingEnabled());
-          Assert.assertEquals(storeInfo.getPartitionCount(), 2); // hybrid partition count from the config
+          assertEquals(storeInfo.getPartitionCount(), 2); // hybrid partition count from the config
           Assert.assertTrue(storeInfo.isStorageNodeReadQuotaEnabled());
         }
       });
@@ -179,10 +181,8 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
-          Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
-          Assert.assertEquals(
-              storeInfo.getPartitionerConfig().getPartitionerParams(),
-              Collections.singletonMap("key", "val"));
+          assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
+          assertEquals(storeInfo.getPartitionerConfig().getPartitionerParams(), Collections.singletonMap("key", "val"));
         }
       });
 
@@ -204,7 +204,7 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
           Assert.assertNotNull(storeInfo.getHybridStoreConfig());
-          Assert.assertEquals(storeInfo.getPartitionCount(), 3); // max partition count from the config
+          assertEquals(storeInfo.getPartitionCount(), 3); // max partition count from the config
         }
       });
     }
@@ -245,8 +245,8 @@ public class TestParentControllerWithMultiDataCenter {
         StoreResponse storeResponse = dc0Client.getStore(storeName);
         Assert.assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
-        Assert.assertEquals(storeInfo.getStorageQuotaInByte(), expectedStorageQuotaInDC0);
-        Assert.assertEquals(storeInfo.isNativeReplicationEnabled(), expectedNativeReplicationConfigInDC0);
+        assertEquals(storeInfo.getStorageQuotaInByte(), expectedStorageQuotaInDC0);
+        assertEquals(storeInfo.isNativeReplicationEnabled(), expectedNativeReplicationConfigInDC0);
       });
 
       /**
@@ -264,14 +264,14 @@ public class TestParentControllerWithMultiDataCenter {
         /**
          * First, wait for the above UpdateStore to be propagated from parent to child
          */
-        Assert.assertEquals(storeInfo.getReadQuotaInCU(), expectedReadQuota);
+        assertEquals(storeInfo.getReadQuotaInCU(), expectedReadQuota);
 
         /**
          * By default, changing read quota in parent should not propagate the other store configs from parent to child;
          * so the below 3 configs in DC0 should remain unchanged.
          */
-        Assert.assertEquals(storeInfo.getStorageQuotaInByte(), expectedStorageQuotaInDC0);
-        Assert.assertEquals(storeInfo.isNativeReplicationEnabled(), expectedNativeReplicationConfigInDC0);
+        assertEquals(storeInfo.getStorageQuotaInByte(), expectedStorageQuotaInDC0);
+        assertEquals(storeInfo.isNativeReplicationEnabled(), expectedNativeReplicationConfigInDC0);
       });
 
       /**
@@ -303,13 +303,13 @@ public class TestParentControllerWithMultiDataCenter {
         /**
          * First, wait for the above UpdateStore to be propagated from parent to child
          */
-        Assert.assertEquals(storeInfo.getReadQuotaInCU(), newReadQuotaInParent);
+        assertEquals(storeInfo.getReadQuotaInCU(), newReadQuotaInParent);
 
         /**
          * Store configs in child datacenter should be identical to the store configs in parent
          */
-        Assert.assertEquals(storeInfo.getStorageQuotaInByte(), storageQuotaInParent);
-        Assert.assertEquals(storeInfo.isNativeReplicationEnabled(), nativeReplicationInParent);
+        assertEquals(storeInfo.getStorageQuotaInByte(), storageQuotaInParent);
+        assertEquals(storeInfo.isNativeReplicationEnabled(), nativeReplicationInParent);
       });
 
       /**
@@ -371,10 +371,10 @@ public class TestParentControllerWithMultiDataCenter {
           Collection<RmdSchemaEntry> replicationMetadataSchemas =
               veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
           // Expect two RMD schemas because there were 2 value schemas when AA was enabled on this store.
-          Assert.assertEquals(replicationMetadataSchemas.size(), 2);
+          assertEquals(replicationMetadataSchemas.size(), 2);
           Iterator<RmdSchemaEntry> iterator = replicationMetadataSchemas.iterator();
-          Assert.assertEquals(iterator.next().getSchema(), rmdSchema1);
-          Assert.assertEquals(iterator.next().getSchema(), rmdSchema2);
+          assertEquals(iterator.next().getSchema(), rmdSchema1);
+          assertEquals(iterator.next().getSchema(), rmdSchema2);
         });
 
         // Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
@@ -387,11 +387,11 @@ public class TestParentControllerWithMultiDataCenter {
           // find out about it immediately, hence the retries.
           Collection<RmdSchemaEntry> replicationMetadataSchemas =
               veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-          Assert.assertEquals(replicationMetadataSchemas.size(), 3);
+          assertEquals(replicationMetadataSchemas.size(), 3);
           Iterator<RmdSchemaEntry> iterator = replicationMetadataSchemas.iterator();
-          Assert.assertEquals(iterator.next().getSchema(), rmdSchema1);
-          Assert.assertEquals(iterator.next().getSchema(), rmdSchema2);
-          Assert.assertEquals(iterator.next().getSchema(), rmdSchema3);
+          assertEquals(iterator.next().getSchema(), rmdSchema1);
+          assertEquals(iterator.next().getSchema(), rmdSchema2);
+          assertEquals(iterator.next().getSchema(), rmdSchema3);
         });
 
         // Add a new version for the store and make sure all new metadata schema are generated.
@@ -406,19 +406,19 @@ public class TestParentControllerWithMultiDataCenter {
 
           List<Version> versions = storeInfo.getVersions();
           Assert.assertNotNull(versions);
-          Assert.assertEquals(versions.size(), 1);
+          assertEquals(versions.size(), 1);
           Assert.assertTrue(versions.get(0).isActiveActiveReplicationEnabled());
-          Assert.assertEquals(versions.get(0).getRmdVersionId(), 1);
+          assertEquals(versions.get(0).getRmdVersionId(), 1);
         });
 
         Collection<RmdSchemaEntry> replicationMetadataSchemas =
             veniceHelixAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-        Assert.assertEquals(replicationMetadataSchemas.size(), 3);
+        assertEquals(replicationMetadataSchemas.size(), 3);
 
         Iterator<RmdSchemaEntry> iterator = replicationMetadataSchemas.iterator();
-        Assert.assertEquals(iterator.next().getSchema(), rmdSchema1);
-        Assert.assertEquals(iterator.next().getSchema(), rmdSchema2);
-        Assert.assertEquals(iterator.next().getSchema(), rmdSchema3);
+        assertEquals(iterator.next().getSchema(), rmdSchema1);
+        assertEquals(iterator.next().getSchema(), rmdSchema2);
+        assertEquals(iterator.next().getSchema(), rmdSchema3);
       }
     }
   }
@@ -452,7 +452,7 @@ public class TestParentControllerWithMultiDataCenter {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
-          Assert.assertEquals(storeInfo.getCurrentVersion(), 1);
+          assertEquals(storeInfo.getCurrentVersion(), 1);
         });
       }
 
@@ -463,7 +463,7 @@ public class TestParentControllerWithMultiDataCenter {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
-          Assert.assertEquals(storeInfo.getCurrentVersion(), childControllerClient == dc1Client ? 1 : 2);
+          assertEquals(storeInfo.getCurrentVersion(), childControllerClient == dc1Client ? 1 : 2);
         });
       }
     }
@@ -563,7 +563,7 @@ public class TestParentControllerWithMultiDataCenter {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
         Assert.assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
-        Assert.assertEquals(storeInfo.getCurrentVersion(), expectedVersion);
+        assertEquals(storeInfo.getCurrentVersion(), expectedVersion);
       });
     }
   }
