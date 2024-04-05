@@ -1739,16 +1739,17 @@ public class ConfigKeys {
       "push.status.store.heartbeat.interval.seconds";
 
   /**
+   * Config to control what's the suffix for Da Vinci instance which is reporting push status and heartbeats. By default,
+   * it is process PID if not specified, but note that PID is subject to change upon instance restart.
+   */
+  public static final String PUSH_STATUS_INSTANCE_NAME_SUFFIX = "push.status.instance.name.suffix";
+
+  /**
    * The expiration timeout. If an instance not sending heartbeats for over the expiration
    * time, it will be considered as stale.
    */
   public static final String PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS =
       "push.status.store.heartbeat.expiration.seconds";
-
-  /**
-   * Derived schemaId for push status store write compute.
-   */
-  public static final String PUSH_STATUS_STORE_DERIVED_SCHEMA_ID = "push.status.store.derived.schema.id";
 
   /**
    * Whether to throttle SSL connections between router and client.
