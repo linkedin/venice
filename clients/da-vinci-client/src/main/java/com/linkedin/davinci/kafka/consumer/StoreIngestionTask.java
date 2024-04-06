@@ -781,13 +781,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
 
+  protected abstract boolean shouldCheckLeaderCompleteStateInFollower();
+
   /**
    * Checks whether the lag is acceptable for hybrid stores
    */
   protected abstract boolean checkAndLogIfLagIsAcceptableForHybridStore(
       PartitionConsumptionState partitionConsumptionState,
-      long offsetLag,
-      long offsetThreshold,
+      long lag,
+      long threshold,
       boolean shouldLogLag,
       LagType lagType,
       long latestConsumedProducerTimestamp);

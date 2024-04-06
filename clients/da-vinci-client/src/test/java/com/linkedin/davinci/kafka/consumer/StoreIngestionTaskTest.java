@@ -291,8 +291,9 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @DataProvider
-  public static Object[][] nodeTypeAndAAConfigProvider() {
-    return DataProviderUtils.allPermutationGenerator(NodeType.values(), AAConfig.values());
+  public static Object[][] nodeTypeAndAAConfigAndDRPProvider() {
+    return DataProviderUtils
+        .allPermutationGenerator(NodeType.values(), AAConfig.values(), DataReplicationPolicy.values());
   }
 
   @DataProvider
@@ -2822,8 +2823,8 @@ public abstract class StoreIngestionTaskTest {
         "Remote consumer should not poll for new records but return previously cached records");
   }
 
-  @Test(dataProvider = "nodeTypeAndAAConfigProvider")
-  public void testIsReadyToServe(NodeType nodeType, AAConfig aaConfig) {
+  @Test(dataProvider = "nodeTypeAndAAConfigAndDRPProvider")
+  public void testIsReadyToServe(NodeType nodeType, AAConfig aaConfig, DataReplicationPolicy dataReplicationPolicy) {
     int partitionCount = 2;
     int amplificationFactor = 1;
 
@@ -2832,12 +2833,8 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100,
-        100,
-        100,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig =
+        new HybridStoreConfigImpl(100, 100, 100, dataReplicationPolicy, BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -2963,12 +2960,12 @@ public abstract class StoreIngestionTaskTest {
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
     } else {
-      // case 5b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      // case 5b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
       assertEquals(
           storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp),
-          aaConfig == AA_OFF);
+          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
       // case 5c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsBufferReplayStartedLagCaughtUp).isLeaderCompleted();
@@ -2997,12 +2994,12 @@ public abstract class StoreIngestionTaskTest {
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
       assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
     } else {
-      // case 6b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      // case 6b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
       assertEquals(
           storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
-          aaConfig == AA_OFF);
+          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
       // case 6c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsBufferReplayStartedRemoteLagging).isLeaderCompleted();
@@ -3033,12 +3030,12 @@ public abstract class StoreIngestionTaskTest {
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
       assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
     } else {
-      // case 7b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      // case 7b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
       assertEquals(
           storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging),
-          aaConfig == AA_OFF);
+          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
       // case 7c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsOffsetLagCaughtUpTimestampLagging).isLeaderCompleted();
@@ -3166,7 +3163,8 @@ public abstract class StoreIngestionTaskTest {
         LagType.values(),
         new NodeType[] { DA_VINCI, FOLLOWER },
         AAConfig.values(),
-        LeaderCompleteCheck.values());
+        LeaderCompleteCheck.values(),
+        DataReplicationPolicy.values());
   }
 
   /**
@@ -3180,7 +3178,8 @@ public abstract class StoreIngestionTaskTest {
       LagType lagType,
       NodeType nodeType,
       AAConfig aaConfig,
-      LeaderCompleteCheck leaderCompleteCheck) {
+      LeaderCompleteCheck leaderCompleteCheck,
+      DataReplicationPolicy dataReplicationPolicy) {
     int partitionCount = 2;
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(1);
@@ -3188,12 +3187,8 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100,
-        100,
-        100,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig =
+        new HybridStoreConfigImpl(100, 100, 100, dataReplicationPolicy, BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -3297,7 +3292,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             lagType,
             0),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
+            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
     // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is unknown
@@ -3341,7 +3337,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             lagType,
             0),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
+            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
     // Case 8: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and first heart beat SOS has been received and leaderCompleteState is LEADER_NOT_COMPLETED
@@ -3355,7 +3352,8 @@ public abstract class StoreIngestionTaskTest {
             false,
             lagType,
             0),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
+            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
   }
 
   @DataProvider

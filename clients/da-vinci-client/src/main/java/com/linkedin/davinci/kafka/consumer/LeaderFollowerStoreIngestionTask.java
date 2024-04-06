@@ -49,6 +49,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -1961,54 +1962,80 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
+   * For non AA hybrid stores with AGGREGATE DRP, SIT reads from parent RT while the HB is written to the child RTs.
+   * Once all hybrid stores are either AA for cross colo replication and non AA otherwise, DRP and this extra
+   * check can also be removed.
+   */
+  protected boolean shouldCheckLeaderCompleteStateInFollower() {
+    return (getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled() && this.hybridStoreConfig.isPresent()
+        && this.hybridStoreConfig.get().getDataReplicationPolicy() != DataReplicationPolicy.AGGREGATE);
+  }
+
+  /**
    * Checks whether the lag is acceptable for hybrid stores
    * <p>
-   * leaderCompleteStateCheckEnabled is not used for non AA stores: as SIT reads from parent RT for non AA
-   * stores but HB is written to local RT. This should be enabled once all hybrid stores are made AA.
+   * If the instance is a hybrid standby or DaVinciClient: Also check if <br>
+   * 1. checkLeaderCompleteStateInFollower feature is enabled <br>
+   * 2. first HB SOS is received and[ <br>
+   * 3. leaderCompleteStatus header is in the HB and <br>
+   * 4. leaderCompleteStatus has the leader state=completed and <br>
+   * 5. the last update time was within the configured time interval to not use the stale leader state
    */
   @Override
   protected boolean checkAndLogIfLagIsAcceptableForHybridStore(
       PartitionConsumptionState pcs,
-      long offsetLag,
-      long offsetThreshold,
+      long lag,
+      long threshold,
       boolean shouldLogLag,
       LagType lagType,
       long latestConsumedProducerTimestamp) {
-    boolean isLagAcceptable = offsetLag <= offsetThreshold;
+    boolean isLagAcceptable = lag <= threshold;
+    StringBuilder laggingReason = null;
+    if (shouldLogLag) {
+      laggingReason = new StringBuilder();
+    }
+
+    // if lag is acceptable and is a hybrid standby or DaVinciClient: check and override it based on leader follower
+    // state
+    if (isLagAcceptable && isHybridFollower(pcs) && shouldCheckLeaderCompleteStateInFollower()) {
+      if (!pcs.isFirstHeartBeatSOSReceived()) {
+        // wait for the first HB to know if the leader supports sending LeaderCompleteState or not
+        isLagAcceptable = false;
+        if (shouldLogLag) {
+          laggingReason
+              .append("Will wait for the first heart beat to know if the leader supports LeaderCompleteState.");
+        }
+      } else if (!pcs.getLeaderCompleteState().equals(LEADER_COMPLETE_STATE_UNKNOWN)) {
+        // if the first HB is received and the leader supports LeaderCompleteState: check if the
+        // leader is completed and the last update time was within the configured time
+        isLagAcceptable = pcs.isLeaderCompleted()
+            && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
+                .getLeaderCompleteStateCheckInFollowerValidIntervalMs());
+        if (!isLagAcceptable && shouldLogLag) {
+          laggingReason.append("Leader Complete State: {")
+              .append(pcs.getLeaderCompleteState().toString())
+              .append("}, Last update In Ms: {")
+              .append(pcs.getLastLeaderCompleteStateUpdateInMs())
+              .append("}.");
+        }
+      }
+    }
 
     if (shouldLogLag) {
-      logLag(
-          lagType,
+      LOGGER.info(
+          "{} [{} lag] partition {} is {}. {}Lag: [{}] {} Threshold [{}]. {}",
+          this.ingestionTaskName,
+          lagType.prettyString(),
           pcs.getPartition(),
-          isLagAcceptable,
-          latestConsumedProducerTimestamp,
-          offsetLag,
-          offsetThreshold,
-          "");
+          (isLagAcceptable ? "not lagging" : "lagging"),
+          (lagType == OFFSET_LAG ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+          lag,
+          lag <= threshold ? "<=" : ">",
+          threshold,
+          laggingReason);
     }
 
     return isLagAcceptable;
-  }
-
-  protected void logLag(
-      LagType lagType,
-      int partition,
-      boolean isLagAcceptable,
-      long latestConsumedProducerTimestamp,
-      long lag,
-      long threshold,
-      String lagLogFooter) {
-    LOGGER.info(
-        "{} [{} lag] partition {} is {}. {}Lag: [{}] {} Threshold [{}]. {}",
-        this.ingestionTaskName,
-        lagType.prettyString(),
-        partition,
-        (isLagAcceptable ? "not lagging" : "lagging"),
-        (lagType == OFFSET_LAG ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
-        lag,
-        (isLagAcceptable ? "<" : ">"),
-        threshold,
-        lagLogFooter);
   }
 
   /**
