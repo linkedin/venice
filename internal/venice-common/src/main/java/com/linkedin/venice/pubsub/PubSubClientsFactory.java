@@ -1,11 +1,34 @@
 package com.linkedin.venice.pubsub;
 
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Properties;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+
 /**
  * A wrapper around pub-sub producer, consumer, and admin adapter factories
  *
  * This will be passed as one of the arguments to the component which depends on the pub-sub APIs.
  */
 public class PubSubClientsFactory {
+  private static final Logger LOGGER = LogManager.getLogger(PubSubClientsFactory.class);
+
+  private enum FactoryType {
+    PRODUCER, CONSUMER, ADMIN
+  }
+
   private final PubSubProducerAdapterFactory producerAdapterFactory;
   private final PubSubConsumerAdapterFactory consumerAdapterFactory;
   private final PubSubAdminAdapterFactory adminAdapterFactory;
@@ -19,6 +42,10 @@ public class PubSubClientsFactory {
     this.adminAdapterFactory = adminAdapterFactory;
   }
 
+  public PubSubClientsFactory(VeniceProperties properties) {
+    this(createProducerFactory(properties), createConsumerFactory(properties), createAdminFactory(properties));
+  }
+
   public PubSubProducerAdapterFactory getProducerAdapterFactory() {
     return producerAdapterFactory;
   }
@@ -29,5 +56,60 @@ public class PubSubClientsFactory {
 
   public PubSubAdminAdapterFactory getAdminAdapterFactory() {
     return adminAdapterFactory;
+  }
+
+  public static PubSubProducerAdapterFactory<PubSubProducerAdapter> createProducerFactory(Properties properties) {
+    return createProducerFactory(new VeniceProperties(properties));
+  }
+
+  public static PubSubProducerAdapterFactory<PubSubProducerAdapter> createProducerFactory(
+      VeniceProperties veniceProperties) {
+    return createFactory(
+        veniceProperties,
+        PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+        ApacheKafkaProducerAdapterFactory.class.getName(),
+        FactoryType.PRODUCER);
+  }
+
+  public static PubSubConsumerAdapterFactory<PubSubConsumerAdapter> createConsumerFactory(
+      VeniceProperties veniceProperties) {
+    return createFactory(
+        veniceProperties,
+        PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+        ApacheKafkaConsumerAdapterFactory.class.getName(),
+        FactoryType.CONSUMER);
+  }
+
+  public static PubSubAdminAdapterFactory<PubSubAdminAdapter> createAdminFactory(VeniceProperties veniceProperties) {
+    return createFactory(
+        veniceProperties,
+        PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
+        ApacheKafkaAdminAdapterFactory.class.getName(),
+        FactoryType.ADMIN);
+  }
+
+  private static <T> T createFactory(
+      VeniceProperties properties,
+      String configKey,
+      String defaultClassName,
+      FactoryType factoryType) {
+    String className;
+    if (properties.containsKey(configKey)) {
+      className = properties.getString(configKey);
+      LOGGER.info("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
+    } else {
+      className = defaultClassName;
+      LOGGER.info("Creating pub-sub {} adapter factory instance with default class: {}", factoryType, className);
+    }
+
+    return createInstance(className);
+  }
+
+  public static <T> T createInstance(String className) {
+    try {
+      return (T) Class.forName(className).getDeclaredConstructor().newInstance();
+    } catch (Exception e) {
+      throw new VeniceException("Failed to create instance of class: " + className, e);
+    }
   }
 }

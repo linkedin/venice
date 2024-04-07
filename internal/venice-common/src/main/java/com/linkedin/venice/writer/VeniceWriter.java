@@ -541,8 +541,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + "{topicName: " + topicName + ", producerGUID: " + producerGUID
-        + ", numberOfPartitions: " + numberOfPartitions + "}";
+    return this.getClass().getSimpleName() + "{topicName: " + topicName + ", producerGUID: "
+        + GuidUtils.getHexFromGuid(producerGUID) + ", numberOfPartitions: " + numberOfPartitions + "}";
   }
 
   public GUID getProducerGUID() {

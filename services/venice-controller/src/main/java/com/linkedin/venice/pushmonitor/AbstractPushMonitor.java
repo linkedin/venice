@@ -550,12 +550,20 @@ public abstract class AbstractPushMonitor
         // Update the status details if this is the first time finding out Helix assignment completes
         Optional<String> statusDetails = pushStatus.getOptionalStatusDetails();
         if (statusDetails.isPresent() && Objects.equals(statusDetails.get(), HELIX_RESOURCE_NOT_CREATED)) {
-          refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of(HELIX_ASSIGNMENT_COMPLETED));
+          OfflinePushStatus newStatus =
+              refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of(HELIX_ASSIGNMENT_COMPLETED));
+          if (newStatus != null) {
+            pushStatus = newStatus;
+          }
           recordPushPreparationDuration(topic, getDurationInSec(pushStatus));
         }
       }
     }
-    return new ExecutionStatusWithDetails(currentPushStatus, pushStatus.getStatusDetails());
+    return new ExecutionStatusWithDetails(
+        currentPushStatus,
+        pushStatus.getStatusDetails(),
+        true,
+        pushStatus.getStatusUpdateTimestamp());
   }
 
   @Override
@@ -566,6 +574,17 @@ public abstract class AbstractPushMonitor
             .stream()
             .filter(status -> !status.getCurrentStatus().isTerminal())
             .map(OfflinePushStatus::getKafkaTopic)
+            .collect(Collectors.toList()));
+    return result;
+  }
+
+  @Override
+  public List<OfflinePushStatus> getOfflinePushStatusForStore(String storeName) {
+    List<OfflinePushStatus> result = new ArrayList<>();
+    result.addAll(
+        topicToPushMap.values()
+            .stream()
+            .filter(status -> Version.parseStoreFromKafkaTopicName(status.getKafkaTopic()).equals(storeName))
             .collect(Collectors.toList()));
     return result;
   }
@@ -671,19 +690,20 @@ public abstract class AbstractPushMonitor
 
   public abstract List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
 
-  public void refreshAndUpdatePushStatus(
+  public OfflinePushStatus refreshAndUpdatePushStatus(
       String kafkaTopic,
       ExecutionStatus newStatus,
       Optional<String> newStatusDetails) {
     final OfflinePushStatus refreshedPushStatus = getOfflinePushOrThrow(kafkaTopic);
     if (refreshedPushStatus.validatePushStatusTransition(newStatus)) {
-      updatePushStatus(refreshedPushStatus, newStatus, newStatusDetails);
+      return updatePushStatus(refreshedPushStatus, newStatus, newStatusDetails);
     } else {
       LOGGER.info(
           "refreshedPushStatus does not allow transitioning to {}, because it is currently in: {} status. Will skip "
               + "updating the status.",
           newStatus,
           refreshedPushStatus.getCurrentStatus());
+      return null;
     }
   }
 
@@ -691,8 +711,10 @@ public abstract class AbstractPushMonitor
    * Direct calls to updatePushStatus should be made carefully. e.g. calling with {@link ExecutionStatus}.ERROR or
    * other terminal status update should be made through handleOfflinePushUpdate. That method will then invoke
    * handleErrorPush and perform relevant operations to handle the ERROR status update properly.
+   *
+   * @return the new {@link OfflinePushStatus} if it was updated, or null if the update was skipped.
    */
-  protected void updatePushStatus(
+  protected OfflinePushStatus updatePushStatus(
       OfflinePushStatus expectedCurrPushStatus,
       ExecutionStatus newExecutionStatus,
       Optional<String> newExecutionStatusDetails) {
@@ -714,7 +736,7 @@ public abstract class AbstractPushMonitor
             kafkaTopic,
             actualCurrPushStatus.getCurrentStatus(),
             newExecutionStatus);
-        return;
+        return null;
       }
 
       OfflinePushStatus clonedPushStatus = expectedCurrPushStatus.clonePushStatus();
@@ -723,6 +745,7 @@ public abstract class AbstractPushMonitor
       offlinePushAccessor.updateOfflinePushStatus(clonedPushStatus);
       // Update local copy
       topicToPushMap.put(kafkaTopic, clonedPushStatus);
+      return clonedPushStatus;
     }
   }
 

@@ -5,6 +5,7 @@ import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
+import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
@@ -365,15 +366,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * if the rewind time is larger.
      */
     long producerStateMaxAgeMs = builder.getServerConfig().getDivProducerStateMaxAgeMs();
-    if (version.getHybridStoreConfig() != null) {
+    if (producerStateMaxAgeMs != DISABLED && version.getHybridStoreConfig() != null) {
       producerStateMaxAgeMs =
           Math.max(producerStateMaxAgeMs, version.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND);
     }
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(
-        this.kafkaVersionTopic,
-        KafkaDataIntegrityValidator.DISABLED,
-        producerStateMaxAgeMs);
+    this.kafkaDataIntegrityValidator =
+        new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);

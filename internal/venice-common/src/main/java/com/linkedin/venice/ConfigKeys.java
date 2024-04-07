@@ -787,17 +787,6 @@ public class ConfigKeys {
       "freeze.ingestion.if.ready.to.serve.or.local.data.exists";
 
   /**
-   * Whether to enable shared kafka producer in storage node.
-   */
-  public static final String SERVER_SHARED_KAFKA_PRODUCER_ENABLED = "server.shared.kafka.producer.enabled";
-
-  /**
-   * Shared kafka producer pool size per Kafka cluster.
-   */
-  public static final String SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER =
-      "server.kafka.producer.pool.size.per.kafka.cluster";
-
-  /**
    * a comma seperated list of kafka producer metrics that will be reported.
    * For ex. "outgoing-byte-rate,record-send-rate,batch-size-max,batch-size-avg,buffer-available-bytes,buffer-exhausted-rate"
    */
@@ -1750,16 +1739,17 @@ public class ConfigKeys {
       "push.status.store.heartbeat.interval.seconds";
 
   /**
+   * Config to control what's the suffix for Da Vinci instance which is reporting push status and heartbeats. By default,
+   * it is process PID if not specified, but note that PID is subject to change upon instance restart.
+   */
+  public static final String PUSH_STATUS_INSTANCE_NAME_SUFFIX = "push.status.instance.name.suffix";
+
+  /**
    * The expiration timeout. If an instance not sending heartbeats for over the expiration
    * time, it will be considered as stale.
    */
   public static final String PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS =
       "push.status.store.heartbeat.expiration.seconds";
-
-  /**
-   * Derived schemaId for push status store write compute.
-   */
-  public static final String PUSH_STATUS_STORE_DERIVED_SCHEMA_ID = "push.status.store.derived.schema.id";
 
   /**
    * Whether to throttle SSL connections between router and client.

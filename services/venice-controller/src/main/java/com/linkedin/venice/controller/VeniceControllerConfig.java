@@ -86,9 +86,6 @@ import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
@@ -111,14 +108,8 @@ import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
@@ -565,30 +556,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, false);
     this.unusedSchemaCleanupIntervalMinutes = props.getInt(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS, 600);
     this.minSchemaCountToKeep = props.getInt(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 20);
-
-    try {
-      String producerFactoryClassName =
-          props.getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-          (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
-      String consumerFactoryClassName =
-          props.getString(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
-      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
-          (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
-      String adminFactoryClassName =
-          props.getString(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
-      PubSubAdminAdapterFactory pubSubAdminAdapterFactory =
-          (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
-
-      pubSubClientsFactory = new PubSubClientsFactory(
-          pubSubProducerAdapterFactory,
-          pubSubConsumerAdapterFactory,
-          pubSubAdminAdapterFactory);
-    } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
-      LOGGER.error("Failed to create an instance of pub sub clients factory", e);
-      throw new VeniceException(e);
-    }
-
+    this.pubSubClientsFactory = new PubSubClientsFactory(props);
   }
 
   private void validateActiveActiveConfigs() {

@@ -96,8 +96,10 @@ public class JobRoutes extends AbstractRoute {
     Admin.OfflinePushStatusInfo offlineJobStatus =
         admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region, targetedRegions);
     responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
+    responseObject.setStatusUpdateTimestamp(offlineJobStatus.getStatusUpdateTimestamp());
     responseObject.setStatusDetails(offlineJobStatus.getStatusDetails());
     responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
+    responseObject.setExtraInfoUpdateTimestamp(offlineJobStatus.getExtraInfoUpdateTimestamp());
     responseObject.setExtraDetails(offlineJobStatus.getExtraDetails());
     responseObject.setUncompletedPartitions(offlineJobStatus.getUncompletedPartitions());
 

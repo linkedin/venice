@@ -32,6 +32,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.github.benmanes.caffeine.cache.Cache;
@@ -2077,6 +2078,68 @@ public class TestHybrid {
             Assert.assertEquals(foundCount, keyCount * 3);
           });
         }
+      }
+    }
+  }
+
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testLeaderShouldCalculateRewindDuringPromotion() {
+    final Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(20L));
+    final int partitionCount = 1;
+    final int keyCount = 10;
+    try (VeniceClusterWrapper cluster =
+        ServiceFactory.getVeniceCluster(1, 1, 1, 1, 1000000, false, false, extraProperties)) {
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+          // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
+          .setHybridRewindSeconds(10)
+          .setHybridOffsetLagThreshold(10)
+          .setPartitionCount(partitionCount);
+      String storeName = Utils.getUniqueString("store");
+      cluster.useControllerClient(client -> {
+        client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
+        client.updateStore(storeName, params);
+      });
+      cluster.createVersion(
+          storeName,
+          DEFAULT_KEY_SCHEMA,
+          DEFAULT_VALUE_SCHEMA,
+          IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
+      try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          for (Integer i = 0; i < keyCount; i++) {
+            assertEquals(client.get(i).get(), i);
+          }
+        });
+        SystemProducer producer =
+            IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        int badKeyId = 10000;
+        IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, badKeyId, badKeyId);
+        Utils.sleep(10000);
+
+        // Create store version 2 by writing keyCount * 2 records.
+        cluster.useControllerClient(controllerClient -> {
+          VersionCreationResponse response = controllerClient.emptyPush(storeName, "test_push_id", 1000);
+          assertEquals(response.getVersion(), 2);
+          assertFalse(response.isError(), "Empty push to parent colo should succeed");
+          TestUtils.waitForNonDeterministicPushCompletion(
+              Version.composeKafkaTopic(storeName, 2),
+              controllerClient,
+              30,
+              TimeUnit.SECONDS);
+        });
+        for (int i = 0; i < keyCount; i++) {
+          IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, 2 * i);
+        }
+        producer.stop();
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          for (int i = 0; i < keyCount; i++) {
+            assertEquals(client.get(i).get(), 2 * i);
+          }
+          assertNull(client.get(badKeyId).get());
+        });
       }
     }
   }

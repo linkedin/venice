@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
@@ -144,6 +145,8 @@ public class PushStatusStoreTest {
     extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
     extraBackendConfigMap.put(PUSH_STATUS_STORE_ENABLED, true);
     extraBackendConfigMap.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 5);
+    String expectedInstanceSuffix = "sampleApp_i015";
+    extraBackendConfigMap.put(PUSH_STATUS_INSTANCE_NAME_SUFFIX, expectedInstanceSuffix);
 
     try (DaVinciClient<Integer, Integer> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
         storeName,
@@ -152,8 +155,11 @@ public class PushStatusStoreTest {
         extraBackendConfigMap)) {
       daVinciClient.subscribeAll().get();
       runVPJ(vpjProperties, 2, cluster);
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
-        assertEquals(reader.getPartitionStatus(storeName, 2, 0, Optional.empty()).size(), 1);
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        Map<CharSequence, Integer> partitionStatus = reader.getPartitionStatus(storeName, 2, 0, Optional.empty());
+        assertEquals(partitionStatus.size(), 1);
+        String expectedHostName = Utils.getHostName() + "_" + expectedInstanceSuffix;
+        assertTrue(partitionStatus.containsKey(new Utf8(expectedHostName)));
       });
     }
     Admin admin = cluster.getVeniceControllers().get(0).getVeniceAdmin();

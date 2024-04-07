@@ -21,13 +21,18 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENT
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.UNKNOWN;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.WARNING;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -256,6 +261,31 @@ public class OfflinePushStatusTest {
         new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     PartitionAssignment partitionAssignment = new PartitionAssignment("test-topic", 10);
     offlinePushStatus.getIncrementalPushStatus(partitionAssignment, "ignore");
+  }
+
+  @Test
+  public void testGetStatusUpdateTimestamp() {
+    OfflinePushStatus offlinePushStatus =
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+    Long statusUpdateTimestamp = offlinePushStatus.getStatusUpdateTimestamp();
+    assertNotNull(statusUpdateTimestamp);
+
+    // N.B. There are no currently production code paths setting current status to null, so this is just to test the
+    // defensive code...
+    offlinePushStatus.setCurrentStatus(null);
+    statusUpdateTimestamp = offlinePushStatus.getStatusUpdateTimestamp();
+    assertNull(statusUpdateTimestamp);
+
+    offlinePushStatus.setCurrentStatus(PROGRESS);
+    List<StatusSnapshot> statusSnapshots = new ArrayList<>();
+    statusSnapshots.add(new StatusSnapshot(STARTED, LocalDateTime.of(2012, 12, 21, 0, 0, 0).toString()));
+    LocalDateTime startOfProgress = LocalDateTime.of(2012, 12, 21, 1, 0, 0);
+    statusSnapshots.add(new StatusSnapshot(PROGRESS, startOfProgress.toString()));
+    statusSnapshots.add(new StatusSnapshot(PROGRESS, LocalDateTime.of(2012, 12, 21, 2, 0, 0).toString()));
+    offlinePushStatus.setStatusHistory(statusSnapshots);
+    statusUpdateTimestamp = offlinePushStatus.getStatusUpdateTimestamp();
+    assertNotNull(statusUpdateTimestamp);
+    assertEquals(statusUpdateTimestamp, Long.valueOf(startOfProgress.toEpochSecond(ZoneOffset.UTC)));
   }
 
   private void testValidTargetStatus(ExecutionStatus from, ExecutionStatus to) {

@@ -66,8 +66,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -79,7 +77,6 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
@@ -88,7 +85,6 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -577,35 +573,6 @@ public class TestUtils {
     Properties factoryProperties = new Properties();
     factoryProperties.putAll(properties);
     return new VeniceWriterFactory(factoryProperties, pubSubProducerAdapterFactory, null);
-  }
-
-  public static SharedKafkaProducerAdapterFactory getSharedKafkaProducerService(Properties properties) {
-    Properties factoryProperties = new Properties();
-    factoryProperties.putAll(properties);
-    return new SharedKafkaProducerAdapterFactory(
-        factoryProperties,
-        1,
-        new ApacheKafkaProducerAdapterFactory(),
-        new MetricsRepository(),
-        new HashSet<>(
-            Arrays.asList(
-                "outgoing-byte-rate",
-                "record-send-rate",
-                "batch-size-max",
-                "batch-size-avg",
-                "buffer-available-bytes",
-                "buffer-exhausted-rate")));
-  }
-
-  public static VeniceWriterFactory getVeniceWriterFactoryWithSharedProducer(
-      Properties properties,
-      SharedKafkaProducerAdapterFactory sharedKafkaProducerAdapterFactory) {
-    Properties factoryProperties = new Properties();
-    factoryProperties.putAll(properties);
-    return new VeniceWriterFactory(
-        factoryProperties,
-        sharedKafkaProducerAdapterFactory,
-        sharedKafkaProducerAdapterFactory.getMetricsRepository());
   }
 
   public static Store getRandomStore() {

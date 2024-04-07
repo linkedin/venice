@@ -38,9 +38,6 @@ import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_F
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
@@ -78,7 +75,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
@@ -112,7 +108,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_FAST_CLASS_WARMUP_TIM
 import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_PRESENCE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
@@ -144,14 +139,8 @@ import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
-import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -391,8 +380,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final int offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
 
-  private final boolean sharedKafkaProducerEnabled;
-  private final int sharedProducerPoolSizePerKafkaCluster;
   private final Set<String> kafkaProducerMetrics;
   /**
    * Boolean flag indicating if it is a Da Vinci application.
@@ -653,9 +640,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     systemSchemaClusterName = serverProperties.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties
         .getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
-    sharedKafkaProducerEnabled = serverProperties.getBoolean(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, false);
-    sharedProducerPoolSizePerKafkaCluster =
-        serverProperties.getInt(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, 8);
 
     List<String> kafkaProducerMetricsList = serverProperties.getList(
         KAFKA_PRODUCER_METRICS,
@@ -738,29 +722,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       ingestionMemoryLimitStoreSet = Collections.emptySet();
     }
 
-    this.divProducerStateMaxAgeMs =
+    divProducerStateMaxAgeMs =
         serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, KafkaDataIntegrityValidator.DISABLED);
-    try {
-      String producerFactoryClassName = serverProperties
-          .getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-          (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
-      String consumerFactoryClassName = serverProperties
-          .getString(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
-      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
-          (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
-      String adminFactoryClassName = serverProperties
-          .getString(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
-      PubSubAdminAdapterFactory pubSubAdminAdapterFactory =
-          (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
-      pubSubClientsFactory = new PubSubClientsFactory(
-          pubSubProducerAdapterFactory,
-          pubSubConsumerAdapterFactory,
-          pubSubAdminAdapterFactory);
-    } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
-      LOGGER.error("Failed to create an instance of pub sub clients factory", e);
-      throw new VeniceException(e);
-    }
+    pubSubClientsFactory = new PubSubClientsFactory(serverProperties);
     routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "CN=venice-router");
     ingestionTaskMaxIdleCount = serverProperties.getInt(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 10000);
     metaStoreWriterCloseTimeoutInMS = serverProperties.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
@@ -1154,18 +1118,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getSharedConsumerNonExistingTopicCleanupDelayMS() {
     return sharedConsumerNonExistingTopicCleanupDelayMS;
-  }
-
-  public boolean isSharedKafkaProducerEnabled() {
-    return sharedKafkaProducerEnabled;
-  }
-
-  public int getSharedProducerPoolSizePerKafkaCluster() {
-    return sharedProducerPoolSizePerKafkaCluster;
-  }
-
-  public Set<String> getKafkaProducerMetrics() {
-    return kafkaProducerMetrics;
   }
 
   public boolean isDaVinciClient() {
