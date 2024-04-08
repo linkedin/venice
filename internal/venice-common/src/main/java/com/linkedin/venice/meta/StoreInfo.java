@@ -71,6 +71,7 @@ public class StoreInfo {
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
+    storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
     return storeInfo;
   }
 
@@ -314,6 +315,8 @@ public class StoreInfo {
   private long maxCompactionLagSeconds;
 
   private boolean unusedSchemaDeletionEnabled;
+
+  private boolean blobTransferEnabled;
 
   public StoreInfo() {
   }
@@ -787,5 +790,13 @@ public class StoreInfo {
 
   public boolean isUnusedSchemaDeletionEnabled() {
     return this.unusedSchemaDeletionEnabled;
+  }
+
+  public void setBlobTransferEnabled(boolean blobTransferEnabled) {
+    this.blobTransferEnabled = blobTransferEnabled;
+  }
+
+  public boolean isBlobTransferEnabled() {
+    return this.blobTransferEnabled;
   }
 }

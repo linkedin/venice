@@ -10,6 +10,7 @@ import static com.linkedin.venice.Arg.BACKUP_FOLDER;
 import static com.linkedin.venice.Arg.BACKUP_STRATEGY;
 import static com.linkedin.venice.Arg.BACKUP_VERSION_RETENTION_DAY;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
+import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
 import static com.linkedin.venice.Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.Arg.CHUNKING_ENABLED;
@@ -235,7 +236,7 @@ public enum Command {
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
-          MAX_COMPACTION_LAG_SECONDS, UNUSED_SCHEMA_DELETION_ENABLED }
+          MAX_COMPACTION_LAG_SECONDS, UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },

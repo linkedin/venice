@@ -4468,6 +4468,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
+    Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4735,6 +4736,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       storageNodeReadQuotaEnabled
           .ifPresent(aBoolean -> setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));
+
+      blobTransferEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setBlobTransferEnabled(aBoolean);
+        return store;
+      }));
 
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
     } catch (VeniceException e) {
