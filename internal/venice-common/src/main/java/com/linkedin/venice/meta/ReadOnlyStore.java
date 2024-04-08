@@ -1335,11 +1335,13 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setBlobTransferEnabled(boolean blobTransferEnabled) {
-    throw new UnsupportedOperationException();
+    throw new UnsupportedOperationException("Blob transfer not supported");
   }
 
   @Override
-  public boolean isBlobTransferEnabled() { return this.delegate.isBlobTransferEnabled(); }
+  public boolean isBlobTransferEnabled() {
+    return this.delegate.isBlobTransferEnabled();
+  }
 
   @Override
   public String toString() {

@@ -10,6 +10,7 @@ import static com.linkedin.venice.Arg.BACKUP_FOLDER;
 import static com.linkedin.venice.Arg.BACKUP_STRATEGY;
 import static com.linkedin.venice.Arg.BACKUP_VERSION_RETENTION_DAY;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
+import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
 import static com.linkedin.venice.Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.Arg.CHUNKING_ENABLED;
@@ -123,7 +124,6 @@ import static com.linkedin.venice.Arg.VSON_STORE;
 import static com.linkedin.venice.Arg.WRITEABILITY;
 import static com.linkedin.venice.Arg.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.Arg.ZK_SSL_CONFIG_FILE;
-import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;

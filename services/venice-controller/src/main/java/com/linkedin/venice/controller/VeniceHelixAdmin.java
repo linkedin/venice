@@ -4736,7 +4736,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return store;
       }));
 
-
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
     } catch (VeniceException e) {
       LOGGER.error(

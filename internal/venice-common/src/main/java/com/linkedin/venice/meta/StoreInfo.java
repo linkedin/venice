@@ -796,5 +796,7 @@ public class StoreInfo {
     this.blobTransferEnabled = blobTransferEnabled;
   }
 
-  public boolean isBlobTransferEnabled() { return this.blobTransferEnabled; }
+  public boolean isBlobTransferEnabled() {
+    return this.blobTransferEnabled;
+  }
 }
