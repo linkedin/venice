@@ -24,9 +24,15 @@ public class PushMonitorUtils {
 
   /**
    * This method checks Da Vinci client push status for the target version from push status store and compute a final
-   * status. It will try to get an aggregated status from version level status key first; if not found, it will fall
-   * back to partition level status key.
-   * A Da Vinci instance sent heartbeat to controllers recently is considered active.
+   * status.
+   *
+   * It will try to get an aggregated status from version level status key first; if there is value, it will still try
+   * to query the partition level keys, and combine the result with the old keys, in case DaVinci instances are
+   * partially upgraded and some of them are still populating statuses with old keys.
+   * If no value is found for the new key, it will fall back to partition level status key.
+   *
+   * A Da Vinci instance sent heartbeat to controllers recently is considered active. Only consider the push status
+   * from active Da Vinci instances unless there are too many offline instances which triggers the fail fast mechanism.
    */
   public static ExecutionStatusWithDetails getDaVinciPushStatusAndDetails(
       PushStatusStoreReader reader,

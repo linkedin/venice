@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
@@ -57,7 +58,7 @@ public class PushStatusStoreReader implements Closeable {
     AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version);
     try {
-      PushStatusValue pushStatusValue = client.get(pushStatusKey).get();
+      PushStatusValue pushStatusValue = client.get(pushStatusKey).get(60, TimeUnit.SECONDS);
       if (pushStatusValue == null) {
         // Don't return empty map yet, because caller cannot differentiate between DaVinci not migrated to new mode and
         // DaVinci writing empty map.
@@ -89,7 +90,7 @@ public class PushStatusStoreReader implements Closeable {
     PushStatusKey pushStatusKey =
         PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
     try {
-      PushStatusValue pushStatusValue = client.get(pushStatusKey).get();
+      PushStatusValue pushStatusValue = client.get(pushStatusKey).get(60, TimeUnit.SECONDS);
       if (pushStatusValue == null) {
         return Collections.emptyMap();
       } else {
@@ -175,14 +176,14 @@ public class PushStatusStoreReader implements Closeable {
         completableFutures.add(completableFuture);
       }
       for (CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture: completableFutures) {
-        Map<PushStatusKey, PushStatusValue> statuses = completableFuture.get();
+        Map<PushStatusKey, PushStatusValue> statuses = completableFuture.get(60, TimeUnit.SECONDS);
         if (statuses == null) {
           LOGGER.warn("Failed to get incremental push status of some partitions. BatchGet returned null.");
           throw new VeniceException("Failed to get incremental push status of some partitions");
         }
         pushStatusMap.putAll(statuses);
       }
-    } catch (InterruptedException | ExecutionException | VeniceClientException e) {
+    } catch (InterruptedException | ExecutionException | VeniceClientException | TimeoutException e) {
       LOGGER.error(
           "Failed to get statuses of partitions. store:{}, storeVersion:{} incrementalPushVersion:{} "
               + "partitionIds:{} Exception:{}",
@@ -235,8 +236,8 @@ public class PushStatusStoreReader implements Closeable {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     PushStatusValue pushStatusValue;
     try {
-      pushStatusValue = storeClient.get(pushStatusKey).get();
-    } catch (InterruptedException | ExecutionException | VeniceException e) {
+      pushStatusValue = storeClient.get(pushStatusKey).get(60, TimeUnit.SECONDS);
+    } catch (InterruptedException | ExecutionException | VeniceException | TimeoutException e) {
       LOGGER.error("Failed to get ongoing incremental pushes for store:{}.", storeName, e);
       throw new VeniceException(e);
     }
