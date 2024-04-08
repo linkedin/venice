@@ -3064,7 +3064,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return One future version number of all the ongoing pushes or {@linkplain Store#NON_EXISTING_VERSION} if none exists.
+   * @return Returns the online (completed, but not yet swapped) or future version with ongoing ingestion
+   * else if none exists returns {@linkplain Store#NON_EXISTING_VERSION}
    */
   @Override
   public int getFutureVersion(String clusterName, String storeName) {

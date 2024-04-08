@@ -1148,6 +1148,27 @@ public class VeniceParentHelixAdmin implements Admin {
       latestTopic = Optional.of(versionTopics.get(0));
     }
 
+    Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
+    for (Map.Entry<String, String> entry: futureVersions.entrySet()) {
+      ControllerClient controllerClient = getVeniceHelixAdmin().getControllerClientMap(clusterName).get(entry.getKey());
+      StoreResponse storeResponse = controllerClient.retryableRequest(5, c -> c.getStore(storeName));
+      StoreInfo store = storeResponse.getStore();
+      int futureVersion = Integer.parseInt(entry.getValue());
+      Optional<Version> version = store.getVersion(futureVersion);
+      boolean deferredSwap = version.isPresent() && version.get().isVersionSwapDeferred();
+      // if there is a online future version available, do not allow further pushes
+      if (deferredSwap && store.getCurrentVersion() < futureVersion) {
+        LOGGER.error(
+            "There is already future version {} exists in {}, please wait till the future version is made current.",
+            entry.getValue(),
+            entry.getKey());
+        throw new VeniceException(
+            "There is already a future version " + entry.getValue() + " in region " + entry.getKey()
+                + " exists for the store " + storeName
+                + ". Please mark that version current before continuing with a new push.");
+      }
+    }
+
     /**
      * Check current topic retention to decide whether the previous job is already done or not
      */
@@ -1231,22 +1252,6 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           return Optional.empty();
         } else {
-          Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-          for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-            ControllerClient controllerClient = entry.getValue();
-            StoreResponse response = controllerClient.getStore(storeName);
-            if (!response.isError()) {
-              StoreInfo store = response.getStore();
-              Optional<Version> version = store.getVersion(versionNumber);
-              // if there is a online future version available, do not allow further pushes
-              if (version.isPresent() && version.get().getStatus().equals(ONLINE)
-                  && version.get().isVersionSwapDeferred() && store.getCurrentVersion() < versionNumber) {
-                throw new VeniceException(
-                    "There is already a future version " + versionNumber + " exists for the store " + storeName
-                        + ". Please mark that version current before continuing with a new push.");
-              }
-            }
-          }
           /**
            * If the job status of latestKafkaTopic is terminal and it is not an incremental push,
            * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
@@ -1799,7 +1804,8 @@ public class VeniceParentHelixAdmin implements Admin {
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
-      MultiStoreStatusResponse response = controllerClient.getFutureVersions(clusterName, storeName);
+      MultiStoreStatusResponse response =
+          controllerClient.retryableRequest(10, c -> c.getFutureVersions(clusterName, storeName));
       if (response.isError()) {
         LOGGER.error(
             "Could not query store from region: {} for cluster: {}. Error: {}",
@@ -3518,7 +3524,8 @@ public class VeniceParentHelixAdmin implements Admin {
     ExecutionStatus currentReturnStatus =
         getFinalReturnStatus(sortedStatuses, childRegions, failCount, currentReturnStatusDetails);
 
-    if (currentReturnStatus.isTerminal()) {
+    // Do not delete parent Kafka if its part of targeted colo push to prevent concurrent pushes
+    if (currentReturnStatus.isTerminal() && StringUtils.isEmpty(targetedRegions)) {
       truncateTopicsOptionally(
           clusterName,
           kafkaTopic,
