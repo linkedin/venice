@@ -124,7 +124,6 @@ import static com.linkedin.venice.Arg.VSON_STORE;
 import static com.linkedin.venice.Arg.WRITEABILITY;
 import static com.linkedin.venice.Arg.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.Arg.ZK_SSL_CONFIG_FILE;
-import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;

@@ -80,8 +80,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-
 
 public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams(Map<String, String> initialParams) {
