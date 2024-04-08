@@ -68,6 +68,7 @@ import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_PROCESSING_CYCLE_DELAY;
+import static com.linkedin.venice.ConfigKeys.FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
@@ -167,6 +168,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final double storageEngineOverheadRatio;
   private final long topicCreationThrottlingTimeWindowMs;
   private final long deprecatedJobTopicRetentionMs;
+
+  private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
   private final long topicCleanupSleepIntervalBetweenTopicListFetchMs;
 
@@ -416,6 +419,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
               + " should be larger than config: " + DEPRECATED_TOPIC_RETENTION_MS + " with value: "
               + this.deprecatedJobTopicRetentionMs);
     }
+
+    this.fatalDataValidationFailureRetentionMs =
+        props.getLong(FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS, TimeUnit.DAYS.toMillis(5));
+
     this.topicCleanupSleepIntervalBetweenTopicListFetchMs =
         props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30
                                                                                                                 // seconds
@@ -622,6 +629,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getDeprecatedJobTopicRetentionMs() {
     return deprecatedJobTopicRetentionMs;
+  }
+
+  public long getFatalDataValidationFailureRetentionMs() {
+    return fatalDataValidationFailureRetentionMs;
   }
 
   public long getDeprecatedJobTopicMaxRetentionMs() {

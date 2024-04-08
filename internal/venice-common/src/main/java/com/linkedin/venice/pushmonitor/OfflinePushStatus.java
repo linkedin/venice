@@ -281,6 +281,19 @@ public class OfflinePushStatus {
     return latestIncrementalPushVersion;
   }
 
+  public boolean hasFatalDataValidationError() {
+    return partitionIdToStatus.values().stream().anyMatch(partitionStatus -> {
+      if (partitionStatus.hasFatalDataValidationError()) {
+        LOGGER.warn(
+            "Fatal data validation error found in topic: {}, partition: {}",
+            kafkaTopic,
+            partitionStatus.getPartitionId());
+        return true;
+      }
+      return false;
+    });
+  }
+
   public String getKafkaTopic() {
     return kafkaTopic;
   }

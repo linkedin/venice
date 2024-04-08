@@ -6,6 +6,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIV
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
+import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -13,6 +14,7 @@ import static org.testng.Assert.assertNull;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.utils.DataProviderUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -202,6 +204,46 @@ public class OfflinePushStatusTest {
     assertEquals(statusUpdateTimestamp, Long.valueOf(startOfProgress.toEpochSecond(ZoneOffset.UTC)));
   }
 
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testHasFatalDataValidationError(boolean hasFatalDataValidationError) {
+    String kafkaTopic = "testTopic";
+    int numberOfPartition = 3;
+    int replicationFactor = 2;
+    OfflinePushStrategy strategy = OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION;
+
+    // Create an OfflinePushStatus object
+    OfflinePushStatus offlinePushStatus =
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+
+    // Create a PartitionStatus
+    PartitionStatus partitionStatus = new PartitionStatus(1);
+
+    // Create a ReplicaStatus with an error ExecutionStatus and an incrementalPushVersion that contains "Fatal data
+    // validation problem"
+    ReplicaStatus replicaStatus = new ReplicaStatus("instance1", true);
+    if (hasFatalDataValidationError) {
+      replicaStatus.updateStatus(ExecutionStatus.ERROR);
+      replicaStatus.setIncrementalPushVersion(
+          FATAL_DATA_VALIDATION_ERROR + " with partition 1, offset 1096534. Consumption will be halted.");
+    } else {
+      replicaStatus.updateStatus(ExecutionStatus.COMPLETED);
+    }
+
+    // Add the ReplicaStatus to the replicaStatusMap of the PartitionStatus
+    partitionStatus.setReplicaStatuses(Collections.singleton(replicaStatus));
+
+    // Set the PartitionStatus in the OfflinePushStatus
+    offlinePushStatus.setPartitionStatus(partitionStatus);
+
+    if (hasFatalDataValidationError) {
+      // Assert that hasFatalDataValidationError returns true
+      Assert.assertTrue(offlinePushStatus.hasFatalDataValidationError());
+    } else {
+      // Assert that hasFatalDataValidationError returns false
+      Assert.assertFalse(offlinePushStatus.hasFatalDataValidationError());
+    }
+  }
+
   private void testValidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
     for (ExecutionStatus status: statuses) {
       OfflinePushStatus offlinePushStatus =
@@ -225,4 +267,5 @@ public class OfflinePushStatusTest {
       }
     }
   }
+
 }

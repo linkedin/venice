@@ -110,6 +110,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getDeprecatedJobTopicRetentionMs();
   }
 
+  public long getFatalDataValidationFailureRetentionMs() {
+    return getCommonConfig().getFatalDataValidationFailureRetentionMs();
+  }
+
   public long getDeprecatedJobTopicMaxRetentionMs() {
     return getCommonConfig().getDeprecatedJobTopicMaxRetentionMs();
   }

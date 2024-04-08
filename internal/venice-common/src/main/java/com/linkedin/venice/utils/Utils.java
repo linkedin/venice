@@ -76,6 +76,8 @@ public class Utils {
   public static final String NEW_LINE_CHAR = System.lineSeparator();
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
 
+  public static final String FATAL_DATA_VALIDATION_ERROR = "fatal data validation problem";
+
   /**
    * Print an error and exit with error code 1
    *

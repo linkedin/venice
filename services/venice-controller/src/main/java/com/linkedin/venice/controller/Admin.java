@@ -691,6 +691,17 @@ public interface Admin extends AutoCloseable, Closeable {
   boolean truncateKafkaTopic(String topicName);
 
   /**
+   * Truncate a Kafka topic by setting its retention time to the input value.
+   * @param topicName the name of the topic to truncate.
+   * @param retentionTimeInMs the retention time in milliseconds to set for the topic.
+   * @return true if truncating this topic successfully.
+   *        false otherwise.
+   */
+  default boolean truncateKafkaTopic(String topicName, Optional<Long> retentionTimeInMs) {
+    return false;
+  }
+
+  /**
    * Check whether the specified resource is fully removed or not.
    */
   boolean isResourceStillAlive(String resourceName);
