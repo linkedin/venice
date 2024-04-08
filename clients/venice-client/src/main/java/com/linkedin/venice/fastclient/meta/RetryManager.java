@@ -108,24 +108,14 @@ public class RetryManager implements Closeable {
     }
   }
 
-  /**
-   * Used for testing only
-   */
-  protected TokenBucket getRetryTokenBucket() {
+  public TokenBucket getRetryTokenBucket() {
     return retryTokenBucket.get();
   }
 
   @Override
   public void close() {
     if (scheduler != null) {
-      scheduler.shutdown();
-      try {
-        if (!scheduler.awaitTermination(60, TimeUnit.SECONDS)) {
-          scheduler.shutdownNow();
-        }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
+      scheduler.shutdownNow();
     }
   }
 }

@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.RetryManager;
+import com.linkedin.venice.fastclient.stats.RetryManagerStats;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.Optional;
@@ -40,14 +41,15 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final TimeoutProcessor timeoutProcessor;
   /**
    * The long tail retry budget is only applied to long tail retries. If there were any exception that's not a 429 the
-   * retry will be triggered without going through the long tail {@link RetryManager}. If the retry budget is exceeded
-   * then the retry task will simply do nothing and the request will either complete eventually (original future) or
-   * time out.
+   * retry will be triggered without going through the long tail {@link RetryManager}. If the retry budget is t
+   * then the retry task will do nothing and the request will either complete eventually (original future) or time out.
    */
   private final RetryManager longTailRetryManager;
+  private final RetryManagerStats retryManagerStats;
   private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
   // Default value of 0.1 meaning only 10 percent of the user requests are allowed to trigger long tail retry
   private static final double LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL = 0.1d;
+  private static final String LONG_TAIL_RETRY_STATS_PREFIX = "long-tail-retry-manager";
 
   public RetriableAvroGenericStoreClient(
       InternalAvroStoreClient<K, V> delegate,
@@ -71,6 +73,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     this.longTailRetryManager = new RetryManager(
         clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
         LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL);
+    this.retryManagerStats = new RetryManagerStats(
+        clientConfig.getClusterStats().getMetricsRepository(),
+        LONG_TAIL_RETRY_STATS_PREFIX,
+        longTailRetryManager);
   }
 
   enum RetryType {

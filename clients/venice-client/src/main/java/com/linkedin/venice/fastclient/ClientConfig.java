@@ -452,7 +452,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private boolean projectionFieldValidation = true;
 
-    private long longTailRetryBudgetEnforcementWindowInMs = 300000; // 5 minutes
+    private long longTailRetryBudgetEnforcementWindowInMs = 60000; // 1 minute
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;

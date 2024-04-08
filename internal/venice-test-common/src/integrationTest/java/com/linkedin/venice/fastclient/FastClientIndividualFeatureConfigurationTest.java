@@ -27,6 +27,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -378,5 +379,40 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     }
     assertTrue(nonZeroRequestedKeyCount);
     assertTrue(nonZeroSuccessRequestKeyCount);
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testLongTailRetryManagerStats() throws IOException, ExecutionException, InterruptedException {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setLongTailRetryEnabledForBatchGet(true)
+            .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
+            .setLongTailRetryBudgetEnforcementWindowInMs(1000)
+            .setSpeculativeQueryEnabled(false);
+    String longTailRetryManagerStatsPrefix = ".long-tail-retry-manager--";
+    MetricsRepository clientMetric = new MetricsRepository();
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, clientMetric, StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < recordCnt; ++i) {
+      String key = keyPrefix + i;
+      keys.add(key);
+    }
+    for (int i = 0; i < 10; i++) {
+      genericFastClient.batchGet(keys).get();
+    }
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> assertTrue(
+            clientMetric.getMetric(longTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge").value() > 0,
+            "Current value: "
+                + clientMetric.getMetric(longTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge").value()));
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> assertTrue(
+            clientMetric.getMetric(longTailRetryManagerStatsPrefix + "retries_remaining.Gauge").value() > 0));
   }
 }
