@@ -67,9 +67,9 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
           try {
             List<SchemaEntry> allSchemas =
                 new ArrayList<>(veniceParentHelixAdmin.getValueSchemas(clusterName, storeName));
-            if (allSchemas.size() < minSchemaCountToKeep) {
-              continue;
-            }
+            // if (allSchemas.size() < minSchemaCountToKeep) {
+            // continue;
+            // }
 
             Set<Integer> inUseValueSchemaIds = veniceParentHelixAdmin.getInUseValueSchemaIds(clusterName, storeName);
 
@@ -147,7 +147,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    executor.scheduleAtFixedRate(getRunnableForSchemaCleanup(), 0, scheduleIntervalMinutes, TimeUnit.MINUTES);
+    executor.scheduleAtFixedRate(getRunnableForSchemaCleanup(), 0, scheduleIntervalMinutes, TimeUnit.SECONDS);
     return true;
   }
 

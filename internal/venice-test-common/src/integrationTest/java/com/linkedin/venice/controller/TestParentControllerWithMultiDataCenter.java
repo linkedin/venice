@@ -3,7 +3,11 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFER_VERSION_SWAP;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
+import static org.testng.AssertJUnit.fail;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -24,9 +28,12 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -516,6 +523,30 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
         }
       });
+    }
+  }
+
+  @Test
+  public void testUnusedSchema() throws IOException {
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 100, 100);
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    props.setProperty(DEFER_VERSION_SWAP, "true");
+    String keySchemaStr = "\"string\"";
+    String valueSchemaStr = "\"string\"";
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setPartitionCount(1);
+    createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParms).close();
+
+    TestWriteUtils.runPushJob("Test push job 1", props);
+    try {
+      TestWriteUtils.runPushJob("Test push job 2", props);
+      fail("Deferred version swap should fail second push");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getMessage().contains("Please mark that version current before continuing with a new push."));
     }
   }
 
