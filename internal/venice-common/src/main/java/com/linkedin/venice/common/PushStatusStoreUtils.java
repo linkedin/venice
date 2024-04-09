@@ -2,6 +2,7 @@ package com.linkedin.venice.common;
 
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Optional;
 
 
@@ -23,6 +24,10 @@ public class PushStatusStoreUtils {
     pushStatusKey.keyStrings = Arrays.asList(instanceName);
     pushStatusKey.messageType = PushStatusKeyType.HEARTBEAT.ordinal();
     return pushStatusKey;
+  }
+
+  public static PushStatusKey getPushKey(int version) {
+    return getFullPushKey(version);
   }
 
   public static PushStatusKey getPushKey(int version, int partitionId, Optional<String> incrementalPushVersion) {
@@ -47,14 +52,21 @@ public class PushStatusStoreUtils {
     return getFullPushKey(version, partitionId);
   }
 
-  public static PushStatusKey getFullPushKey(int version, int partitionId) {
+  private static PushStatusKey getFullPushKey(int version) {
+    PushStatusKey pushStatusKey = new PushStatusKey();
+    pushStatusKey.keyStrings = Collections.singletonList(version);
+    pushStatusKey.messageType = PushStatusKeyType.FULL_PUSH.ordinal();
+    return pushStatusKey;
+  }
+
+  private static PushStatusKey getFullPushKey(int version, int partitionId) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId);
     pushStatusKey.messageType = PushStatusKeyType.FULL_PUSH.ordinal();
     return pushStatusKey;
   }
 
-  public static PushStatusKey getIncrementalPushKey(int version, int partitionId, String incrementalPushVersion) {
+  private static PushStatusKey getIncrementalPushKey(int version, int partitionId, String incrementalPushVersion) {
     PushStatusKey pushStatusKey = new PushStatusKey();
     pushStatusKey.keyStrings = Arrays.asList(version, partitionId, incrementalPushVersion);
     pushStatusKey.messageType = PushStatusKeyType.INCREMENTAL_PUSH.ordinal();
