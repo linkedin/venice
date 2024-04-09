@@ -3,6 +3,7 @@ package com.linkedin.venice.pushstatushelper;
 import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
 import static com.linkedin.venice.common.PushStatusStoreUtils.getServerIncrementalPushKey;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anySet;
 import static org.mockito.Mockito.doReturn;
@@ -31,6 +32,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -76,7 +79,7 @@ public class PushStatusStoreReaderTest {
 
   @Test(description = "Expect empty results when push status info is not available for any of the partition")
   public void testGetPartitionStatusesWhenPushStatusesAreNotAvailable()
-      throws ExecutionException, InterruptedException {
+      throws ExecutionException, InterruptedException, TimeoutException {
     Map<PushStatusKey, PushStatusValue> pushStatusMap =
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
 
@@ -87,7 +90,7 @@ public class PushStatusStoreReaderTest {
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.batchGet(pushStatusMap.keySet())).thenReturn(completableFutureMock);
     // simulate store client returns null for given keys
-    when(completableFutureMock.get()).thenReturn(Collections.emptyMap());
+    when(completableFutureMock.get(anyLong(), any())).thenReturn(Collections.emptyMap());
 
     Map<Integer, Map<CharSequence, Integer>> result =
         storeReaderSpy.getPartitionStatuses(storeName, storeVersion, incPushVersion, partitionCount);
@@ -99,7 +102,7 @@ public class PushStatusStoreReaderTest {
 
   @Test(expectedExceptions = VeniceException.class, description = "Expect exception when result when push status read fails for some partitions")
   public void testGetPartitionStatusesWhenPushStatusReadFailsForSomePartitions()
-      throws ExecutionException, InterruptedException {
+      throws ExecutionException, InterruptedException, TimeoutException {
     Map<PushStatusKey, PushStatusValue> pushStatusMap =
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
 
@@ -110,7 +113,7 @@ public class PushStatusStoreReaderTest {
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.batchGet(pushStatusMap.keySet())).thenReturn(completableFutureMock);
     // simulate store client returns null for given keys
-    when(completableFutureMock.get()).thenReturn(null);
+    when(completableFutureMock.get(anyLong(), any())).thenReturn(null);
 
     Map<Integer, Map<CharSequence, Integer>> result =
         storeReaderSpy.getPartitionStatuses(storeName, storeVersion, incPushVersion, partitionCount);
@@ -118,7 +121,8 @@ public class PushStatusStoreReaderTest {
   }
 
   @Test(expectedExceptions = VeniceException.class, description = "Expect an exception when push status store client throws an exception")
-  public void testGetPartitionStatusesWhenStoreClientThrowsException() throws ExecutionException, InterruptedException {
+  public void testGetPartitionStatusesWhenStoreClientThrowsException()
+      throws ExecutionException, InterruptedException, TimeoutException {
     Map<PushStatusKey, PushStatusValue> pushStatusMap =
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
 
@@ -129,14 +133,15 @@ public class PushStatusStoreReaderTest {
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.batchGet(pushStatusMap.keySet())).thenReturn(completableFutureMock);
     // simulate store client returns an exception when fetching status info for given keys
-    when(completableFutureMock.get()).thenThrow(new ExecutionException(new Throwable("Mock execution exception")));
+    when(completableFutureMock.get(anyLong(), any()))
+        .thenThrow(new ExecutionException(new Throwable("Mock execution exception")));
 
     storeReaderSpy.getPartitionStatuses(storeName, storeVersion, incPushVersion, partitionCount);
   }
 
   @Test(description = "Expect statuses of all replicas when store returns all replica statuses")
   public void testGetPartitionStatusesWhenStoreReturnStatusesOfAllReplicas()
-      throws ExecutionException, InterruptedException {
+      throws ExecutionException, InterruptedException, TimeoutException {
     Map<PushStatusKey, PushStatusValue> pushStatusMap =
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
 
@@ -146,7 +151,7 @@ public class PushStatusStoreReaderTest {
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.batchGet(pushStatusMap.keySet())).thenReturn(completableFutureMock);
-    when(completableFutureMock.get()).thenReturn(pushStatusMap);
+    when(completableFutureMock.get(anyLong(), any())).thenReturn(pushStatusMap);
 
     Map<Integer, Map<CharSequence, Integer>> result =
         storeReaderSpy.getPartitionStatuses(storeName, storeVersion, incPushVersion, partitionCount);
@@ -159,7 +164,8 @@ public class PushStatusStoreReaderTest {
   }
 
   @Test(description = "Expect empty status when statuses for replicas of a partition is missing")
-  public void testGetPartitionStatusesWhenStatusOfPartitionIsMissing() throws ExecutionException, InterruptedException {
+  public void testGetPartitionStatusesWhenStatusOfPartitionIsMissing()
+      throws ExecutionException, InterruptedException, TimeoutException {
     Map<PushStatusKey, PushStatusValue> pushStatusMap =
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
     // erase status of partitionId 0
@@ -174,7 +180,7 @@ public class PushStatusStoreReaderTest {
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.batchGet(pushStatusMap.keySet())).thenReturn(completableFutureMock);
-    when(completableFutureMock.get()).thenReturn(pushStatusMap);
+    when(completableFutureMock.get(anyLong(), any())).thenReturn(pushStatusMap);
 
     Map<Integer, Map<CharSequence, Integer>> result =
         storeReaderSpy.getPartitionStatuses(storeName, storeVersion, incPushVersion, partitionCount);
@@ -190,7 +196,7 @@ public class PushStatusStoreReaderTest {
 
   @Test(description = "Expect empty status when instance info for replicas of a partition is missing")
   public void testGetPartitionStatusesWhenInstanceInfoOfPartitionIsMissing()
-      throws ExecutionException, InterruptedException {
+      throws ExecutionException, InterruptedException, TimeoutException {
     Map<PushStatusKey, PushStatusValue> pushStatusMap =
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
     // set empty status for partitionId 0
@@ -205,7 +211,7 @@ public class PushStatusStoreReaderTest {
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.batchGet(pushStatusMap.keySet())).thenReturn(completableFutureMock);
-    when(completableFutureMock.get()).thenReturn(pushStatusMap);
+    when(completableFutureMock.get(anyLong(), any())).thenReturn(pushStatusMap);
 
     Map<Integer, Map<CharSequence, Integer>> result =
         storeReaderSpy.getPartitionStatuses(storeName, storeVersion, incPushVersion, partitionCount);
@@ -222,7 +228,7 @@ public class PushStatusStoreReaderTest {
 
   @Test(description = "Expect all statuses even when number of partitions are greater than the batchGetLimit")
   public void testGetPartitionStatusesWhenNumberOfPartitionsAreGreaterThanBatchGetLimit()
-      throws ExecutionException, InterruptedException {
+      throws ExecutionException, InterruptedException, TimeoutException {
     int partitionCount = 1055;
     int batchGetLimit = 256;
 
@@ -246,7 +252,7 @@ public class PushStatusStoreReaderTest {
       keySets.add(statuses.keySet());
       CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFutureMock = mock(CompletableFuture.class);
       when(storeClientMock.batchGet(eq(statuses.keySet()))).thenReturn(completableFutureMock);
-      when(completableFutureMock.get()).thenReturn(statuses);
+      when(completableFutureMock.get(anyLong(), any())).thenReturn(statuses);
     }
 
     Map<Integer, Map<CharSequence, Integer>> result =
@@ -281,7 +287,7 @@ public class PushStatusStoreReaderTest {
 
   @Test(description = "Expect an empty result when key-value for ongoing incremental pushes doesn't exist")
   public void testGetSupposedlyOngoingIncrementalPushVersionsWhenIncPushVersionsDoesNotExist()
-      throws ExecutionException, InterruptedException {
+      throws ExecutionException, InterruptedException, TimeoutException {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     PushStatusStoreReader storeReaderSpy =
         spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
@@ -289,18 +295,18 @@ public class PushStatusStoreReaderTest {
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.get(pushStatusKey)).thenReturn(completableFutureMock);
-    when(completableFutureMock.get()).thenReturn(null);
+    when(completableFutureMock.get(anyLong(), any())).thenReturn(null);
 
     assertEqualsDeep(
         storeReaderSpy.getSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion),
         Collections.emptyMap());
-    verify(completableFutureMock).get();
+    verify(completableFutureMock).get(60, TimeUnit.SECONDS);
     verify(storeClientMock).get(pushStatusKey);
   }
 
   @Test(description = "Expect an empty result when inc push versions are missing in the returned result")
   public void testGetSupposedlyOngoingIncrementalPushVersionsWhenIncPushVersionsAreMissing()
-      throws ExecutionException, InterruptedException {
+      throws ExecutionException, InterruptedException, TimeoutException {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     PushStatusValue pushStatusValue = new PushStatusValue();
     pushStatusValue.instances = null; // to make intentions clear explicitly setting it to null
@@ -310,18 +316,18 @@ public class PushStatusStoreReaderTest {
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.get(pushStatusKey)).thenReturn(completableFutureMock);
-    when(completableFutureMock.get()).thenReturn(pushStatusValue);
+    when(completableFutureMock.get(anyLong(), any())).thenReturn(pushStatusValue);
 
     assertEqualsDeep(
         storeReaderSpy.getSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion),
         Collections.emptyMap());
-    verify(completableFutureMock).get();
+    verify(completableFutureMock).get(60, TimeUnit.SECONDS);
     verify(storeClientMock).get(pushStatusKey);
   }
 
   @Test(description = "Expect all inc push versions when inc push versions are found in push status store")
   public void testGetSupposedlyOngoingIncrementalPushVersionsWhenIncPushVersionsAreAvailable()
-      throws ExecutionException, InterruptedException {
+      throws ExecutionException, InterruptedException, TimeoutException {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     PushStatusValue pushStatusValue = new PushStatusValue();
     pushStatusValue.instances = new HashMap<>();
@@ -334,17 +340,18 @@ public class PushStatusStoreReaderTest {
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.get(pushStatusKey)).thenReturn(completableFutureMock);
-    when(completableFutureMock.get()).thenReturn(pushStatusValue);
+    when(completableFutureMock.get(anyLong(), any())).thenReturn(pushStatusValue);
 
     assertEqualsDeep(
         storeReaderSpy.getSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion),
         pushStatusValue.instances);
-    verify(completableFutureMock).get();
+    verify(completableFutureMock).get(60, TimeUnit.SECONDS);
     verify(storeClientMock).get(pushStatusKey);
   }
 
   @Test
-  public void testNullResponseWhenVersionLevelKeyIsNotWritten() throws ExecutionException, InterruptedException {
+  public void testNullResponseWhenVersionLevelKeyIsNotWritten()
+      throws ExecutionException, InterruptedException, TimeoutException {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(storeVersion);
     PushStatusStoreReader storeReaderSpy =
         spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
@@ -353,7 +360,7 @@ public class PushStatusStoreReaderTest {
     CompletableFuture<PushStatusValue> completableFutureMock = mock(CompletableFuture.class);
     when(storeClientMock.get(pushStatusKey)).thenReturn(completableFutureMock);
     // simulate store client returns null for given keys
-    when(completableFutureMock.get()).thenReturn(null);
+    when(completableFutureMock.get(anyLong(), any())).thenReturn(null);
 
     // Test that push status store reader will also return null instead of empty map in this case
     Assert.assertNull(storeReaderSpy.getVersionStatus(storeName, storeVersion));
