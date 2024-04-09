@@ -17,13 +17,16 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BU
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -37,8 +40,11 @@ import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.jobs.DataWriterComputeJob;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
+import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -65,6 +71,7 @@ import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.RunningJob;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -631,10 +638,44 @@ public class TestVenicePushJobCheckpoints {
           VenicePushJob.PushJobCheckpoints.DATASET_CHANGED);
     }
 
-    runJobAndAssertCheckpoints(jobClientWrapper, 10, 1, true, true, properties -> {
+    runJobAndAssertCheckpoints(jobClientWrapper, 10, 1, true, true, ExecutionStatus.COMPLETED, properties -> {
       properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
       properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
     }, expectedReportedCheckpoints);
+  }
+
+  @DataProvider(name = "DVC-ERROR-EXECUTION-STATUS")
+  public static Object[][] dvcErrorExecutionStatus() {
+    return allPermutationGenerator((permutation) -> {
+      ExecutionStatus status = (ExecutionStatus) permutation[0];
+      if (status.isDVCIngestionError()) {
+        return true;
+      }
+      return false;
+    }, ExecutionStatus.values());
+  }
+
+  @Test(expectedExceptions = { VeniceException.class }, dataProvider = "DVC-ERROR-EXECUTION-STATUS")
+  public void testHandleDVCFailureCheckpoints(ExecutionStatus status) throws Exception {
+    JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
+    doAnswer(invocation -> null).when(jobClientWrapper).runJobWithConfig(any());
+
+    final List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints;
+    expectedReportedCheckpoints = Arrays.asList(
+        VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+        VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+        VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED,
+        VenicePushJob.PushJobCheckpoints.valueOf(status.toString()));
+
+    runJobAndAssertCheckpoints(
+        jobClientWrapper,
+        10,
+        1,
+        true,
+        false,
+        status,
+        properties -> {},
+        expectedReportedCheckpoints);
   }
 
   private void testHandleErrorsInCounter(
@@ -671,6 +712,7 @@ public class TestVenicePushJobCheckpoints {
         numInputFiles,
         inputFileHasRecords,
         false,
+        ExecutionStatus.COMPLETED,
         extraProps,
         expectedReportedCheckpoints);
   }
@@ -681,6 +723,7 @@ public class TestVenicePushJobCheckpoints {
       int numInputFiles,
       boolean inputFileHasRecords,
       boolean datasetChanged,
+      ExecutionStatus executionStatus,
       Consumer<Properties> extraProps,
       List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints) throws Exception {
     Properties props = getVPJProps();
@@ -688,12 +731,21 @@ public class TestVenicePushJobCheckpoints {
       extraProps.accept(props);
     }
     ControllerClient controllerClient = mock(ControllerClient.class);
-    configureControllerClientMock(controllerClient, props);
+    configureControllerClientMock(controllerClient, props, executionStatus);
     configureClusterDiscoverControllerClient(controllerClient);
     try (VenicePushJob venicePushJob = new VenicePushJob("job-id", props)) {
       venicePushJob.setControllerClient(controllerClient);
       venicePushJob.setKmeSchemaSystemStoreControllerClient(controllerClient);
       venicePushJob.setJobClientWrapper(jobClientWrapper);
+      if (executionStatus.isDVCIngestionError()) {
+        DataWriterComputeJob dataWriterComputeJob = venicePushJob.getDataWriterComputeJob();
+        DataWriterComputeJob spyDataWriterComputeJob = spy(dataWriterComputeJob);
+        venicePushJob.setDataWriterComputeJob(spyDataWriterComputeJob);
+        Counters counters = new Counters();
+        DataWriterTaskTracker counterBackedMapReduceDataWriterTaskTracker =
+            new CounterBackedMapReduceDataWriterTaskTracker(counters);
+        when(spyDataWriterComputeJob.getTaskTracker()).thenReturn(counterBackedMapReduceDataWriterTaskTracker);
+      }
       InputDataInfoProvider inputDataInfoProvider = getInputDataInfoProviderMock(
           props,
           venicePushJob.getPushJobSetting(),
@@ -800,17 +852,25 @@ public class TestVenicePushJobCheckpoints {
     return inputDataInfoProvider;
   }
 
-  private JobStatusQueryResponse createJobStatusQueryResponseMock() {
+  private JobStatusQueryResponse createJobStatusQueryResponseMock(ExecutionStatus executionStatus) {
     JobStatusQueryResponse jobStatusQueryResponse = mock(JobStatusQueryResponse.class);
     when(jobStatusQueryResponse.isError()).thenReturn(false);
     when(jobStatusQueryResponse.getExtraInfo()).thenReturn(Collections.emptyMap());
+    if (executionStatus == ExecutionStatus.COMPLETED) {
+      when(jobStatusQueryResponse.getStatus()).thenReturn(ExecutionStatus.COMPLETED.toString());
+    } else {
+      when(jobStatusQueryResponse.getStatus()).thenReturn(executionStatus.toString());
+    }
     when(jobStatusQueryResponse.getOptionalStatusDetails()).thenReturn(Optional.empty());
     when(jobStatusQueryResponse.getOptionalExtraDetails()).thenReturn(Optional.empty());
-    when(jobStatusQueryResponse.getStatus()).thenReturn(ExecutionStatus.COMPLETED.toString());
+
     return jobStatusQueryResponse;
   }
 
-  private void configureControllerClientMock(ControllerClient controllerClient, Properties props) {
+  private void configureControllerClientMock(
+      ControllerClient controllerClient,
+      Properties props,
+      ExecutionStatus executionStatus) {
     StoreResponse storeResponse = mock(StoreResponse.class);
     when(controllerClient.getClusterName()).thenReturn(TEST_CLUSTER_NAME);
 
@@ -859,8 +919,12 @@ public class TestVenicePushJobCheckpoints {
             anyLong(),
             anyBoolean(),
             any())).thenReturn(versionCreationResponse);
-    JobStatusQueryResponse jobStatusQueryResponse = createJobStatusQueryResponseMock();
+    JobStatusQueryResponse jobStatusQueryResponse = createJobStatusQueryResponseMock(executionStatus);
     when(controllerClient.queryOverallJobStatus(anyString(), any(), any())).thenReturn(jobStatusQueryResponse);
+
+    doAnswer(invocation -> {
+      return null;
+    }).when(controllerClient).killOfflinePushJob(anyString());
 
     ControllerResponse controllerResponse = mock(ControllerResponse.class);
     when(controllerResponse.isError()).thenReturn(false);

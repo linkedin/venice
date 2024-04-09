@@ -5018,7 +5018,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               topic);
           return;
         }
-        if (pushMonitor.getOfflinePushOrThrow(topic).getCurrentStatus().equals(ExecutionStatus.ERROR)) {
+        if (pushMonitor.getOfflinePushOrThrow(topic).getCurrentStatus().isError()) {
           throw new VeniceException("Push " + topic + " has already failed.");
         }
 
@@ -7325,7 +7325,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ret.setPushEndTimestamp(status.getTime());
       } else if (shouldUpdateStartTime(ret, status)) {
         ret.setPushStartTimestamp(status.getTime());
-      } else if (status.getStatus() == ExecutionStatus.ERROR) {
+      } else if (status.getStatus().isError()) {
         ret.setErrorMessage(zkData.getStatusDetails());
         ret.setLatestFailedPush(status.getTime());
       }

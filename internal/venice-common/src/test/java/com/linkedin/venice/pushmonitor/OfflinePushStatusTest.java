@@ -8,6 +8,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DROPPED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
@@ -154,6 +155,7 @@ public class OfflinePushStatusTest {
             ERROR,
             DVC_INGESTION_ERROR_DISK_FULL,
             DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
             DVC_INGESTION_ERROR_OTHER));
     validTransitions.put(
         STARTED,
@@ -162,6 +164,7 @@ public class OfflinePushStatusTest {
             ERROR,
             DVC_INGESTION_ERROR_DISK_FULL,
             DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
             DVC_INGESTION_ERROR_OTHER,
             COMPLETED,
             END_OF_PUSH_RECEIVED));
@@ -174,6 +177,7 @@ public class OfflinePushStatusTest {
             ERROR,
             DVC_INGESTION_ERROR_DISK_FULL,
             DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
             DVC_INGESTION_ERROR_OTHER));
 
     // add other status to the map manually such that test will fail if a new status is added but not updated in
@@ -193,6 +197,7 @@ public class OfflinePushStatusTest {
     validTransitions.put(DATA_RECOVERY_COMPLETED, new HashSet<>());
     validTransitions.put(DVC_INGESTION_ERROR_DISK_FULL, new HashSet<>());
     validTransitions.put(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED, new HashSet<>());
+    validTransitions.put(DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES, new HashSet<>());
     validTransitions.put(DVC_INGESTION_ERROR_OTHER, new HashSet<>());
 
     for (ExecutionStatus status: ExecutionStatus.values()) {

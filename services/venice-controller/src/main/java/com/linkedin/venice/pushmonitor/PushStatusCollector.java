@@ -188,12 +188,11 @@ public class PushStatusCollector {
             && daVinciStatus.getStatus().equals(ExecutionStatus.COMPLETED)) {
           pushStatus.setMonitoring(false);
           pushCompletedHandler.accept(pushStatus.getTopicName());
-        } else if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)
-            || daVinciStatus.getStatus().isDVCIngestionError()) {
+        } else if (serverStatus.getStatus().isError() || daVinciStatus.getStatus().isDVCIngestionError()) {
           pushStatus.setMonitoring(false);
           ExecutionStatus errorStatus = null;
           StringBuilder pushErrorDetailStringBuilder = new StringBuilder();
-          if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+          if (serverStatus.getStatus().isError()) {
             pushErrorDetailStringBuilder.append("Server push error: ").append(serverStatus.getDetails()).append("\n");
             errorStatus = serverStatus.getStatus();
           }
@@ -227,7 +226,7 @@ public class PushStatusCollector {
     if ((!daVinciPushStatusScanEnabled) || topicPushStatus == null) {
       if (executionStatus.equals(ExecutionStatus.COMPLETED)) {
         pushCompletedHandler.accept(topicName);
-      } else if (executionStatus.isIngestionError()) {
+      } else if (executionStatus.isError()) {
         pushErrorHandler.accept(topicName, new ExecutionStatusWithDetails(executionStatus, detailsString));
       }
     }

@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
+import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -70,7 +71,7 @@ public class RouterBasedPushMonitor implements Closeable {
     this.pushMonitorTask.exitMode = exitMode;
   }
 
-  private static class PushMonitorTask implements Runnable, Closeable {
+  static class PushMonitorTask implements Runnable, Closeable {
     private static final ObjectMapper MAPPER = ObjectMapperFactory.getInstance();
 
     private final AtomicBoolean isRunning;
@@ -98,6 +99,10 @@ public class RouterBasedPushMonitor implements Closeable {
       this.isRunning = new AtomicBoolean(true);
     }
 
+    PushStatusResponse getPushStatusResponse(TransportClientResponse response) throws IOException {
+      return MAPPER.readValue(response.getBody(), PushStatusResponse.class);
+    }
+
     @Override
     public void run() {
       LOGGER.info("Running {}", this.getClass().getSimpleName());
@@ -106,13 +111,13 @@ public class RouterBasedPushMonitor implements Closeable {
           // Get push status
           CompletableFuture<TransportClientResponse> responseFuture = transportClient.get(requestPath);
           TransportClientResponse response = responseFuture.get(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-          PushStatusResponse pushStatusResponse = MAPPER.readValue(response.getBody(), PushStatusResponse.class);
+          PushStatusResponse pushStatusResponse = getPushStatusResponse(response);
           if (pushStatusResponse.isError()) {
             LOGGER.error("Router was not able to get push status: {}", pushStatusResponse.getError());
             continue;
           }
           pushMonitorService.setCurrentStatus(pushStatusResponse.getExecutionStatus());
-          switch (pushStatusResponse.getExecutionStatus()) {
+          switch (pushStatusResponse.getExecutionStatus().getRootStatus()) {
             case END_OF_PUSH_RECEIVED:
             case COMPLETED:
               LOGGER.info("Samza stream reprocessing has finished successfully for store version: {}", topicName);
@@ -156,6 +161,7 @@ public class RouterBasedPushMonitor implements Closeable {
               LOGGER.info("Stream reprocessing job failed for store version: {}", topicName);
               factory.endStreamReprocessingSystemProducer(producer, false);
               // Stop polling
+              close();
               return;
             default:
               LOGGER.info(
@@ -179,5 +185,14 @@ public class RouterBasedPushMonitor implements Closeable {
     private static String buildPushStatusRequestPath(String topicName) {
       return TYPE_PUSH_STATUS + "/" + topicName;
     }
+
+    AtomicBoolean isRunning() {
+      return isRunning;
+    }
+  }
+
+  // used only for testing
+  PushMonitorTask getPushMonitorTask() {
+    return pushMonitorTask;
   }
 }

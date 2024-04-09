@@ -90,37 +90,52 @@ public enum ExecutionStatus {
 
   DATA_RECOVERY_COMPLETED(false, true, false, false, 17),
 
-  DVC_INGESTION_ERROR_DISK_FULL(true, false, false, true, 18),
-  DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED(true, false, false, true, 19),
-  DVC_INGESTION_ERROR_OTHER(true, false, false, true, 20);
+  /** DaVinci client specific ERRORS: rootStatus => ERROR */
+  /** DaVinci client fails ingestion due to disk reaching the threshold in the host */
+  DVC_INGESTION_ERROR_DISK_FULL(true, false, true, true, ERROR, 18),
 
-  public boolean isDVCIngestionError() {
-    return (this == DVC_INGESTION_ERROR_DISK_FULL || this == DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
-        || this == DVC_INGESTION_ERROR_OTHER);
-  }
+  /** DaVinci client fails ingestion due to reaching the configured memory limit in the host */
+  DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED(true, false, true, true, ERROR, 19),
 
-  public boolean isIngestionError() {
-    return (this == ERROR || this == DVC_INGESTION_ERROR_DISK_FULL || this == DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
-        || this == DVC_INGESTION_ERROR_OTHER);
-  }
+  /** There are too many dead DaVinci instances leading to failed push job */
+  DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES(true, false, true, true, ERROR, 20),
+
+  /** Other uncategorized DaVinci Client errors */
+  DVC_INGESTION_ERROR_OTHER(true, false, true, true, ERROR, 21);
 
   final boolean isJobStatus;
   final boolean isTaskStatus;
-  final boolean isUsedByHybridStoresOnly;
+  final boolean isUsedByDaVinciClientOnly;
   final boolean isTerminal;
-
+  final ExecutionStatus rootStatus;
   final int value;
 
   ExecutionStatus(
       boolean isJobStatus,
       boolean isTaskStatus,
-      boolean isUsedByHybridStoresOnly,
+      boolean isUsedByDaVinciClientOnly,
       boolean isTerminal,
       int value) {
     this.isJobStatus = isJobStatus;
     this.isTaskStatus = isTaskStatus;
-    this.isUsedByHybridStoresOnly = isUsedByHybridStoresOnly;
+    this.isUsedByDaVinciClientOnly = isUsedByDaVinciClientOnly;
     this.isTerminal = isTerminal;
+    this.value = value;
+    this.rootStatus = this;
+  }
+
+  ExecutionStatus(
+      boolean isJobStatus,
+      boolean isTaskStatus,
+      boolean isUsedByDaVinciClientOnly,
+      boolean isTerminal,
+      ExecutionStatus rootStatus,
+      int value) {
+    this.isJobStatus = isJobStatus;
+    this.isTaskStatus = isTaskStatus;
+    this.isUsedByDaVinciClientOnly = isUsedByDaVinciClientOnly;
+    this.isTerminal = isTerminal;
+    this.rootStatus = rootStatus;
     this.value = value;
   }
 
@@ -130,8 +145,9 @@ public enum ExecutionStatus {
    * and whether a host is ready to serve read requests.
    */
   public static boolean isDeterminedStatus(ExecutionStatus status) {
-    return status == STARTED || status == COMPLETED || status == ERROR || status == DROPPED
-        || status == END_OF_PUSH_RECEIVED;
+    ExecutionStatus rootStatus = status.getRootStatus();
+    return rootStatus == STARTED || rootStatus == COMPLETED || rootStatus == ERROR || rootStatus == DROPPED
+        || rootStatus == END_OF_PUSH_RECEIVED;
   }
 
   public boolean isJobStatus() {
@@ -142,8 +158,8 @@ public enum ExecutionStatus {
     return this.isTaskStatus;
   }
 
-  public boolean isUsedByHybridStoresOnly() {
-    return this.isUsedByHybridStoresOnly;
+  public boolean isUsedByDaVinciClientOnly() {
+    return this.isUsedByDaVinciClientOnly;
   }
 
   /**
@@ -180,5 +196,25 @@ public enum ExecutionStatus {
       return ExecutionStatus.UNKNOWN;
     }
     return status;
+  }
+
+  public ExecutionStatus getRootStatus() {
+    return this.rootStatus;
+  }
+
+  public boolean isDVCIngestionError() {
+    return (this.getRootStatus() == ERROR && this.isUsedByDaVinciClientOnly());
+  }
+
+  public boolean isError() {
+    return (this.getRootStatus() == ERROR);
+  }
+
+  public static boolean isError(String errorString) {
+    try {
+      return (ExecutionStatus.valueOf(errorString.toUpperCase()).getRootStatus() == ERROR);
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
   }
 }

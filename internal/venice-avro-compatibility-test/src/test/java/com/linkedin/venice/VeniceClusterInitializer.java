@@ -207,7 +207,7 @@ public class VeniceClusterInitializer implements Closeable {
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       String status = controllerClient.queryJobStatus(pushVersionTopic).getStatus();
-      if (status.equals(ExecutionStatus.ERROR.name())) {
+      if (ExecutionStatus.isError(status)) {
         // Not recoverable (at least not without re-pushing), so not worth spinning our wheels until the timeout.
         throw new VeniceException("Push failed.");
       }

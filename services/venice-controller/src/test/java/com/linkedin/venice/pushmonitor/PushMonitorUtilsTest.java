@@ -47,7 +47,7 @@ public class PushMonitorUtilsTest {
         "store_v1",
         1,
         0.25,
-        ExecutionStatus.ERROR,
+        ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
         "Too many dead instances: 2, total instances: 4, example offline instances: " + offlineInstances);
 
     /**
@@ -61,7 +61,7 @@ public class PushMonitorUtilsTest {
         "store_v2",
         1,
         0.25,
-        ExecutionStatus.ERROR,
+        ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
         "Too many dead instances: 2, total instances: 4, example offline instances: " + offlineInstances);
   }
 
@@ -94,7 +94,7 @@ public class PushMonitorUtilsTest {
         maxOfflineInstanceCount,
         maxOfflineInstanceRatio);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), expectedStatus);
-    if (expectedStatus.equals(ExecutionStatus.ERROR)) {
+    if (expectedStatus.isError()) {
       Assert.assertEquals(executionStatusWithDetails.getDetails(), expectedErrorDetails);
     }
   }

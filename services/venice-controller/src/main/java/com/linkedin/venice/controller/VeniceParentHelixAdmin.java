@@ -1694,7 +1694,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     String incrementalPushTopic = Version.composeRealTimeTopic(storeName);
-    if (status == ExecutionStatus.ERROR || getVeniceHelixAdmin().isTopicTruncated(incrementalPushTopic)) {
+    if (status.isError() || getVeniceHelixAdmin().isTopicTruncated(incrementalPushTopic)) {
       throw new VeniceException(
           "Cannot start incremental push since previous batch push has failed. Please run another bash job."
               + " store: " + storeName);
@@ -3565,7 +3565,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // COMPLETED -> ONLINE
     // ERROR -> ERROR
     // TODO: remove this if statement since it was only for debugging purpose
-    if (maxErroredTopicNumToKeep > 0 && currentReturnStatus.equals(ExecutionStatus.ERROR)) {
+    if (maxErroredTopicNumToKeep > 0 && currentReturnStatus.isError()) {
       currentReturnStatusDetails.append("Parent Kafka topic won't be truncated");
       LOGGER.info(
           "The errored kafka topic {} won't be truncated since it will be used to investigate some Kafka related issue",
@@ -3578,10 +3578,9 @@ public class VeniceParentHelixAdmin implements Admin {
        * 3. the store is incremental push enabled and same incPushToRT and batch push finished
        */
       Store store = getVeniceHelixAdmin().getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
-      boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR;
+      boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus.isError();
       boolean incPushEnabledBatchPushSuccess = !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
-      boolean nonIncPushBatchSuccess =
-          !store.isIncrementalPushEnabled() && currentReturnStatus != ExecutionStatus.ERROR;
+      boolean nonIncPushBatchSuccess = !store.isIncrementalPushEnabled() && !currentReturnStatus.isError();
 
       if ((failedBatchPush || nonIncPushBatchSuccess || incPushEnabledBatchPushSuccess)
           && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {

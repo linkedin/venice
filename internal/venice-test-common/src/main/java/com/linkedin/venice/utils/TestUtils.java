@@ -469,7 +469,7 @@ public class TestUtils {
       JobStatusQueryResponse jobStatusQueryResponse =
           assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
-      if (executionStatus == ExecutionStatus.ERROR) {
+      if (executionStatus.isError()) {
         throw new VeniceException("Unexpected push failure for topic: " + topicName + ": " + jobStatusQueryResponse);
       }
       assertEquals(

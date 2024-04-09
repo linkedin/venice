@@ -7,6 +7,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DROPPED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NEW;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_STARTED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
@@ -31,9 +32,10 @@ public class TestPushJobDetailsEnums {
   @Test
   public void testPushJobDetailsStatusEnums() {
     // A list of known ExecutionStatus that we don't report/expose to job status polling.
-    ExecutionStatus[] unreportedStatusesArray = { NEW, NOT_STARTED, PROGRESS, START_OF_BUFFER_REPLAY_RECEIVED,
-        TOPIC_SWITCH_RECEIVED, DROPPED, WARNING, ARCHIVED, CATCH_UP_BASE_TOPIC_OFFSET_LAG, DATA_RECOVERY_COMPLETED,
-        DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED, DVC_INGESTION_ERROR_DISK_FULL, DVC_INGESTION_ERROR_OTHER };
+    ExecutionStatus[] unreportedStatusesArray =
+        { NEW, NOT_STARTED, PROGRESS, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED, DROPPED, WARNING,
+            ARCHIVED, CATCH_UP_BASE_TOPIC_OFFSET_LAG, DATA_RECOVERY_COMPLETED, DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+            DVC_INGESTION_ERROR_DISK_FULL, DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES, DVC_INGESTION_ERROR_OTHER };
     HashSet<ExecutionStatus> unreportedStatuses = new HashSet<>(Arrays.asList(unreportedStatusesArray));
     HashSet<Integer> processedSignals = new HashSet<>();
     for (ExecutionStatus status: ExecutionStatus.values()) {
