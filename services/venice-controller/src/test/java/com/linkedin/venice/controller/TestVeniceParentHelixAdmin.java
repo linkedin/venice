@@ -42,6 +42,7 @@ import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -1431,19 +1432,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
-    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
-
-    for (int i = 0; i < 3; i++) {
-      ControllerClient client = mock(ControllerClient.class);
-      StoreResponse storeResponse = new StoreResponse();
-      Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
-      s.setCurrentVersion(i + 4); // child region current versions 4,5,6
-      storeResponse.setStore(StoreInfo.fromStore(s));
-      doReturn(storeResponse).when(client).getStore(anyString());
-      controllerClientMap.put("region" + i, client);
-    }
-
-    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+    mockControllerClients();
 
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
     verify(storeRepo).getStore(storeName);
@@ -1463,6 +1452,26 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 9; i <= 10; ++i) {
       Assert.assertTrue(capturedStore.containsVersion(i));
     }
+  }
+
+  private void mockControllerClients() {
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+
+    for (int i = 0; i < 3; i++) {
+      ControllerClient client = mock(ControllerClient.class);
+      StoreResponse storeResponse = new StoreResponse();
+      Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
+      s.setCurrentVersion(i + 4); // child region current versions 4,5,6
+      storeResponse.setStore(StoreInfo.fromStore(s));
+      doReturn(storeResponse).when(client).getStore(anyString());
+      MultiStoreStatusResponse response = mock(MultiStoreStatusResponse.class);
+      doReturn(false).when(response).isError();
+      doReturn(response).when(client).retryableRequest(10, c -> c.getFutureVersions(anyString(), anyString()));
+      // doReturn(response).when(client).getFutureVersions(anyString(), anyString());
+      controllerClientMap.put("region" + i, client);
+    }
+
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
   }
 
   // get a map of mock client that can return vairable execution status
@@ -2426,6 +2435,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
           .when(veniceWriter)
           .put(any(), any(), anyInt());
+      mockControllerClients();
       when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
           .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
