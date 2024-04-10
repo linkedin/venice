@@ -221,6 +221,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   protected void record() {
+
     recordLags(
         leaderHeartbeatTimeStamps,
         ((storeName, version, region, heartbeatTs) -> versionStatsReporter

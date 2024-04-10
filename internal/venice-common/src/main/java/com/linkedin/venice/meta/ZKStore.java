@@ -858,6 +858,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     return this.storeProperties.unusedSchemaDeletionEnabled;
   }
 
+  @Override
+  public void setBlobTransferEnabled(boolean blobTransferEnabled) {
+    this.storeProperties.blobTransferEnabled = blobTransferEnabled;
+  }
+
+  @Override
+  public boolean isBlobTransferEnabled() {
+    return this.storeProperties.blobTransferEnabled;
+  }
+
   /**
    * Set all of PUSHED version to ONLINE once store is enabled to write.
    */

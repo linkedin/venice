@@ -106,7 +106,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       try {
         long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
         setupNewStorePartition();
-        updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::addFollowerLagMonitor);
         logger.info(
             "Completed setting up new store partition for {} partition {}. Total elapsed time: {} ms",
             resourceName,
@@ -122,6 +121,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       if (isRegularStoreCurrentVersion) {
         waitConsumptionCompleted(resourceName, notifier);
       }
+      updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::addFollowerLagMonitor);
     });
   }
 
