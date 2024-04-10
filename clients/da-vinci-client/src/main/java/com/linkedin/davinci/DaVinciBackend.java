@@ -87,23 +87,23 @@ import org.apache.logging.log4j.Logger;
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
 
-  private final VeniceConfigLoader configLoader;
-  private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
-  private final ReadOnlySchemaRepository schemaRepository;
-  private final MetricsRepository metricsRepository;
-  private final RocksDBMemoryStats rocksDBMemoryStats;
-  private final StorageService storageService;
-  private final KafkaStoreIngestionService ingestionService;
+  private VeniceConfigLoader configLoader = null;
+  private SubscriptionBasedReadOnlyStoreRepository storeRepository = null;
+  private ReadOnlySchemaRepository schemaRepository = null;
+  private MetricsRepository metricsRepository = null;
+  private RocksDBMemoryStats rocksDBMemoryStats = null;
+  private StorageService storageService = null;
+  private KafkaStoreIngestionService ingestionService = null;
   private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
-  private final StorageMetadataService storageMetadataService;
-  private final PushStatusStoreWriter pushStatusStoreWriter;
+  private StorageMetadataService storageMetadataService = null;
+  private PushStatusStoreWriter pushStatusStoreWriter = null;
   private final ExecutorService ingestionReportExecutor = Executors.newSingleThreadExecutor();
-  private final StorageEngineBackedCompressorFactory compressorFactory;
-  private final Optional<ObjectCacheBackend> cacheBackend;
+  private StorageEngineBackedCompressorFactory compressorFactory = null;
+  private Optional<ObjectCacheBackend> cacheBackend = Optional.empty();
   private DaVinciIngestionBackend ingestionBackend;
-  private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
+  private AggVersionedStorageEngineStats aggVersionedStorageEngineStats = null;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -292,6 +292,10 @@ public class DaVinciBackend implements Closeable {
       LOGGER.error(msg, e);
       throw new VeniceException(msg, e);
     }
+  }
+
+  // used only for testing
+  DaVinciBackend() {
   }
 
   private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot(
@@ -642,7 +646,12 @@ public class DaVinciBackend implements Closeable {
     }
   };
 
-  private final VeniceNotifier ingestionListener = new VeniceNotifier() {
+  class DaVinciNotifier implements VeniceNotifier {
+    // trickery for unit testing
+    void reportPushStatusInDaVinciBackend(String kafkaTopic, int subPartition, ExecutionStatus status) {
+      reportPushStatus(kafkaTopic, subPartition, status);
+    }
+
     @Override
     public void completed(String kafkaTopic, int partitionId, long offset, String message) {
       ingestionReportExecutor.submit(() -> {
@@ -673,7 +682,7 @@ public class DaVinciBackend implements Closeable {
               status = DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
             }
           }
-          reportPushStatus(kafkaTopic, partitionId, status);
+          reportPushStatusInDaVinciBackend(kafkaTopic, partitionId, status);
 
           versionBackend.completePartitionExceptionally(partitionId, e);
           versionBackend.tryStopHeartbeat();
@@ -747,4 +756,11 @@ public class DaVinciBackend implements Closeable {
       });
     }
   };
+
+  private final DaVinciNotifier ingestionListener = new DaVinciNotifier();
+
+  // used only for testing
+  DaVinciNotifier getIngestionListener() {
+    return ingestionListener;
+  }
 }

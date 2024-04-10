@@ -3482,6 +3482,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // the aggregate status will go from PROGRESS back down to NOT_CREATED.
     List<ExecutionStatus> sortedStatuses = statuses.values()
         .stream()
+        .map(ExecutionStatus::getRootStatus)
         .sorted(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf))
         .collect(Collectors.toList());
 

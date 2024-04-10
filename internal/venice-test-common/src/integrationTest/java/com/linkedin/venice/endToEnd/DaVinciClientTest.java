@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
@@ -323,6 +324,26 @@ public class DaVinciClientTest {
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
       });
+    }
+  }
+
+  @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Disk is full.*")
+  public void testDavinciSubscribeFailureWithFullDisk() throws Exception {
+    String storeName = Utils.getUniqueString("test-davinci-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    setUpStore(storeName, paramsConsumer, properties -> {});
+
+    Map<String, Object> backendConfigMap = new HashMap<>();
+    backendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
+    backendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
+    backendConfigMap.put(SERVER_DISK_FULL_THRESHOLD, 0.01); // force it to fail
+
+    try (DaVinciClient<Integer, Integer> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
+        storeName,
+        cluster.getZk().getAddress(),
+        new DaVinciConfig(),
+        backendConfigMap)) {
+      daVinciClient.subscribeAll().get();
     }
   }
 

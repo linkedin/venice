@@ -644,7 +644,7 @@ public class TestVenicePushJobCheckpoints {
     }, expectedReportedCheckpoints);
   }
 
-  @DataProvider(name = "DVC-ERROR-EXECUTION-STATUS")
+  @DataProvider(name = "DvcErrorExecutionStatus")
   public static Object[][] dvcErrorExecutionStatus() {
     return allPermutationGenerator((permutation) -> {
       ExecutionStatus status = (ExecutionStatus) permutation[0];
@@ -655,7 +655,7 @@ public class TestVenicePushJobCheckpoints {
     }, ExecutionStatus.values());
   }
 
-  @Test(expectedExceptions = { VeniceException.class }, dataProvider = "DVC-ERROR-EXECUTION-STATUS")
+  @Test(expectedExceptions = { VeniceException.class }, dataProvider = "DvcErrorExecutionStatus")
   public void testHandleDVCFailureCheckpoints(ExecutionStatus status) throws Exception {
     JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
     doAnswer(invocation -> null).when(jobClientWrapper).runJobWithConfig(any());

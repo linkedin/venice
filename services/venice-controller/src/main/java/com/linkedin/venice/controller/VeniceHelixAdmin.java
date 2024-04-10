@@ -5861,7 +5861,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   // The method merges push status from Venice Server replicas and online Da Vinci hosts and return the unified status.
   private ExecutionStatus getOverallPushStatus(ExecutionStatus veniceStatus, ExecutionStatus daVinciStatus) {
-    List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
+    List<ExecutionStatus> statuses = Arrays.asList(veniceStatus.getRootStatus(), daVinciStatus.getRootStatus());
     statuses.sort(Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
     return statuses.get(0);
   }

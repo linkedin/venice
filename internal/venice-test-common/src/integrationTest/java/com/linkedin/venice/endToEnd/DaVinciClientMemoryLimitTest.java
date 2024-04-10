@@ -51,6 +51,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -202,7 +203,11 @@ public class DaVinciClientMemoryLimitTest {
 
         VeniceException exception =
             expectThrows(VeniceException.class, () -> runVPJ(vpjPropertiesForV2, 2, controllerClient));
-        assertTrue(exception.getMessage().contains("Found a failed partition replica in Da Vinci"));
+        assertTrue(
+            exception.getMessage().contains("status: " + ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED));
+        assertTrue(
+            exception.getMessage()
+                .contains("Found a failed partition replica in Da Vinci due to memory limit reached"));
 
         // Run a bigger push against a non-enforced store should succeed
         vpjProperties = defaultVPJProps(venice, inputDirPath, storeNameWithoutMemoryEnforcement);
@@ -353,7 +358,11 @@ public class DaVinciClientMemoryLimitTest {
 
         VeniceException exception =
             expectThrows(VeniceException.class, () -> runVPJ(vpjPropertiesForV2, 2, controllerClient));
-        assertTrue(exception.getMessage().contains("Found a failed partition replica in Da Vinci"));
+        assertTrue(
+            exception.getMessage().contains("status: " + ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED));
+        assertTrue(
+            exception.getMessage()
+                .contains("Found a failed partition replica in Da Vinci due to memory limit reached"));
 
         // Write more records to the hybrid store.
         for (; hybridStoreKeyId < 200; ++hybridStoreKeyId) {

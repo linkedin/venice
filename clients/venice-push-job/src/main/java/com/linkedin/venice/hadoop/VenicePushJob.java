@@ -596,7 +596,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for testing
-  protected void setSentPushJobDetailsTracker(SentPushJobDetailsTracker sentPushJobDetailsTracker) {
+  public void setSentPushJobDetailsTracker(SentPushJobDetailsTracker sentPushJobDetailsTracker) {
     this.sentPushJobDetailsTracker = sentPushJobDetailsTracker;
   }
 

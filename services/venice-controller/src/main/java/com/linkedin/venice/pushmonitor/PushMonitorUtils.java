@@ -25,7 +25,7 @@ public class PushMonitorUtils {
   private static String getDVCIngestionErrorReason(ExecutionStatus errorReplicaStatus) {
     switch (errorReplicaStatus) {
       case DVC_INGESTION_ERROR_DISK_FULL:
-        return " due to disk being full";
+        return " due to disk threshold reached";
       case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
         return " due to memory limit reached";
       default:

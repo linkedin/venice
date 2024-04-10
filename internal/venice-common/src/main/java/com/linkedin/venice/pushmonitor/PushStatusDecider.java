@@ -213,7 +213,7 @@ public abstract class PushStatusDecider {
           continue; // Dont add disabled replica to status map
         }
       }
-      executionStatusMap.merge(currentStatus, 1, Integer::sum);
+      executionStatusMap.merge(currentStatus.getRootStatus(), 1, Integer::sum);
     }
 
     Integer statusCount = executionStatusMap.get(COMPLETED);
