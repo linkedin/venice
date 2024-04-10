@@ -1,6 +1,5 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.store.AbstractStorageEngine;

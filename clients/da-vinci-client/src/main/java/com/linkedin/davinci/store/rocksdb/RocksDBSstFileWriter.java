@@ -50,7 +50,8 @@ public class RocksDBSstFileWriter {
 
     public ReusableObjects() {
       directKeyBuffer = ByteBuffer.allocateDirect(1024 * 1024);
-      directValueBuffer = ByteBuffer.allocateDirect(1024 * 1024 + 128); // Adding another 128 bytes considering potential overhead of metadata
+      directValueBuffer = ByteBuffer.allocateDirect(1024 * 1024 + 128); // Adding another 128 bytes considering
+                                                                        // potential overhead of metadata
     }
   }
 
@@ -115,7 +116,8 @@ public class RocksDBSstFileWriter {
     this.envOptions = envOptions;
     this.options = options;
     this.fullPathForTempSSTFileDir = fullPathForTempSSTFileDir;
-    this.fullPathForPartitionDBSnapshot = blobTransferBatchOnlyEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId) : null;
+    this.fullPathForPartitionDBSnapshot =
+        blobTransferBatchOnlyEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId) : null;
     this.isRMD = isRMD;
     this.lastCheckPointedSSTFileNum = isRMD ? ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO : ROCKSDB_LAST_FINISHED_SST_FILE_NO;
     this.rocksDBServerConfig = rocksDBServerConfig;

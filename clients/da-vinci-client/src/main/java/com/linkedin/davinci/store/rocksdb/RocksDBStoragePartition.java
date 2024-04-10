@@ -3,7 +3,6 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStoragePartition;

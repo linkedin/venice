@@ -77,7 +77,6 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;

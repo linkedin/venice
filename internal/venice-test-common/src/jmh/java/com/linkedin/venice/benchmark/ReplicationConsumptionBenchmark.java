@@ -8,7 +8,6 @@ import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.store.StoragePartitionConfig;

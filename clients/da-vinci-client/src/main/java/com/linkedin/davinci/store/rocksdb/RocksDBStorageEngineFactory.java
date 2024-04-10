@@ -4,7 +4,6 @@ import static org.rocksdb.RateLimiter.DEFAULT_FAIRNESS;
 import static org.rocksdb.RateLimiter.DEFAULT_MODE;
 import static org.rocksdb.RateLimiter.DEFAULT_REFILL_PERIOD_MICROS;
 
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
