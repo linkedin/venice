@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static java.lang.Thread.currentThread;
 
@@ -106,7 +107,7 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformer recordTransformer) {
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -190,7 +191,9 @@ public class DaVinciBackend implements Closeable {
       VeniceWriterFactory writerFactory =
           new VeniceWriterFactory(backendProps.toProperties(), pubSubClientsFactory.getProducerAdapterFactory(), null);
       String pid = Utils.getPid();
-      String instanceName = Utils.getHostName() + "_" + (pid == null ? "NA" : pid);
+      String instanceSuffix =
+          configLoader.getCombinedProperties().getString(PUSH_STATUS_INSTANCE_NAME_SUFFIX, (pid == null ? "NA" : pid));
+      String instanceName = Utils.getHostName() + "_" + instanceSuffix;
 
       // Fetch latest update schema's protocol ID for Push Status Store from Router.
       ClientConfig pushStatusStoreClientConfig = ClientConfig.cloneConfig(clientConfig)
@@ -251,7 +254,7 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
-          recordTransformer,
+          getRecordTransformer,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,

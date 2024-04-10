@@ -101,11 +101,11 @@ it defaults to false.
 kafka.input.combiner.enabled = true
 ```
 
-To specify whether to enable TTL for the repush job. This is an experimental functionality.
-If unspecified, it defaults to false.
+To specify whether to enable TTL for the repush job. If unspecified, it defaults to false.
 ```
 repush.ttl.enable = true
 ```
+More details on how to configure TTL can be found in the [TTL](../user_guide/ttl) guide.
 
 ## Future Work
 

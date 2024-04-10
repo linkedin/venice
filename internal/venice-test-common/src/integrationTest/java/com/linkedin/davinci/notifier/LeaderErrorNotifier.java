@@ -3,6 +3,7 @@ package com.linkedin.davinci.notifier;
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
+import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
@@ -11,17 +12,18 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 /**
  * A test only notifier to simulate ERROR in leader replica to test single leader replica failover scenario.
  */
-public class LeaderErrorNotifier extends PushMonitorNotifier {
+public class LeaderErrorNotifier extends PushStatusNotifier {
   private boolean doOne = true;
   private final OfflinePushAccessor accessor;
   private final String instanceId;
 
   public LeaderErrorNotifier(
       OfflinePushAccessor accessor,
+      HelixPartitionStatusAccessor helixPartitionStatusAccessor,
       PushStatusStoreWriter writer,
       ReadOnlyStoreRepository repository,
       String instanceId) {
-    super(accessor, writer, repository, instanceId);
+    super(accessor, helixPartitionStatusAccessor, writer, repository, instanceId);
     this.accessor = accessor;
     this.instanceId = instanceId;
   }

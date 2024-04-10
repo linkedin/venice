@@ -5,6 +5,7 @@ import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
+import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
@@ -14,7 +15,6 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.TransformedRecord;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -95,6 +95,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -335,7 +336,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformer recordTransformer,
+      Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
       Queue<VeniceNotifier> notifiers) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -360,11 +361,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // kill message
     this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
+    /**
+     * Use the max of the two values to avoid the case where the producer state max age is set to a value that is less
+     * than the rewind time. Otherwise, this would cause the corresponding segments in DIV partitionTracker to be
+     * unnecessarily deleted (then created) during the time period between the rewind time and the producer state max age,
+     * if the rewind time is larger.
+     */
+    long producerStateMaxAgeMs = builder.getServerConfig().getDivProducerStateMaxAgeMs();
+    if (producerStateMaxAgeMs != DISABLED && version.getHybridStoreConfig() != null) {
+      producerStateMaxAgeMs =
+          Math.max(producerStateMaxAgeMs, version.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND);
+    }
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(
-        this.kafkaVersionTopic,
-        KafkaDataIntegrityValidator.DISABLED,
-        builder.getServerConfig().getDivProducerStateMaxAgeMs());
+    this.kafkaDataIntegrityValidator =
+        new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
@@ -433,9 +443,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
-    this.recordTransformer = recordTransformer;
+    this.recordTransformer =
+        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
     if (recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
+      versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
     }
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
@@ -3238,18 +3250,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               consumerRecord.getOffset(),
               Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema)),
               putSchemaId,
-              compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+              compressor.get());
 
           // Current record is a chunk. We only write to the storage engine for fully assembled records
           if (assembledObject == null) {
             return 0;
           }
 
-          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
           Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
-          TransformedRecord transformedRecord = recordTransformer.put(lazyKey, lazyValue);
-          ByteBuffer transformedBytes = transformedRecord.getValueBytes(recordTransformer.getValueOutputSchema());
+
+          Object transformedRecord = null;
+          try {
+            transformedRecord = recordTransformer.put(lazyValue);
+          } catch (Exception e) {
+            versionedIngestionStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
+            String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
+
+            throw new VeniceMessageException(errorMessage, e);
+          }
+          ByteBuffer transformedBytes =
+              recordTransformer.getValueBytes(recordTransformer.getValueOutputSchema(), transformedRecord);
 
           put.putValue = transformedBytes;
           versionedIngestionStats.recordTransformerLatency(
@@ -3490,10 +3510,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Value deserialization succeeded with schema id {} for: {}", schemaId, record.getTopicPartition());
       deserializedSchemaIds.set(schemaId, new Object());
     }
-  }
-
-  private Object deserializeAvroObjectAndReturn(ByteBuffer input, SchemaEntry schemaEntry) {
-    return new AvroGenericDeserializer<>(schemaEntry.getSchema(), schemaEntry.getSchema()).deserialize(input);
   }
 
   private void maybeCloseInactiveIngestionTask() {

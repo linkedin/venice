@@ -89,9 +89,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -172,11 +169,6 @@ public class AdminTool {
 
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
-  private static final PubSubClientsFactory PUB_SUB_CLIENTS_FACTORY = new PubSubClientsFactory(
-      new ApacheKafkaProducerAdapterFactory(),
-      new ApacheKafkaConsumerAdapterFactory(),
-      new ApacheKafkaAdminAdapterFactory());
-
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static ControllerClient controllerClient;
@@ -194,8 +186,9 @@ public class AdminTool {
       "zookeeper.ssl.trustStore.type");
 
   public static void main(String args[]) throws Exception {
+    // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
+    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(new VeniceProperties(System.getProperties()));
     CommandLine cmd = getCommandLine(args);
-
     try {
       Command foundCommand = ensureOnlyOneCommand(cmd);
 
@@ -407,19 +400,19 @@ public class AdminTool {
           listBootstrappingVersions(cmd);
           break;
         case DELETE_KAFKA_TOPIC:
-          deleteKafkaTopic(cmd);
+          deleteKafkaTopic(cmd, pubSubClientsFactory);
           break;
         case DUMP_ADMIN_MESSAGES:
-          dumpAdminMessages(cmd);
+          dumpAdminMessages(cmd, pubSubClientsFactory);
           break;
         case DUMP_CONTROL_MESSAGES:
-          dumpControlMessages(cmd);
+          dumpControlMessages(cmd, pubSubClientsFactory);
           break;
         case DUMP_KAFKA_TOPIC:
-          dumpKafkaTopic(cmd);
+          dumpKafkaTopic(cmd, pubSubClientsFactory);
           break;
         case QUERY_KAFKA_TOPIC:
-          queryKafkaTopic(cmd);
+          queryKafkaTopic(cmd, pubSubClientsFactory);
           break;
         case MIGRATE_STORE:
           migrateStore(cmd);
@@ -554,7 +547,7 @@ public class AdminTool {
           backupStoreMetadataFromGraveyard(cmd);
           break;
         case RECOVER_STORE_METADATA:
-          recoverStoreMetadata(cmd);
+          recoverStoreMetadata(cmd, pubSubClientsFactory);
           break;
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
@@ -1247,7 +1240,8 @@ public class AdminTool {
     }
   }
 
-  private static void recoverStoreMetadata(CommandLine cmd) throws Exception {
+  private static void recoverStoreMetadata(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory)
+      throws Exception {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.RECOVER_STORE_METADATA);
     String url = getRequiredArgument(cmd, Arg.URL, Command.RECOVER_STORE_METADATA);
     boolean skipLastStoreCreation =
@@ -1273,7 +1267,7 @@ public class AdminTool {
         consumerConfigFile.isEmpty() ? new Properties() : loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS, Command.RECOVER_STORE_METADATA);
     consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
-    PubSubConsumerAdapter consumer = getConsumer(consumerProperties);
+    PubSubConsumerAdapter consumer = getConsumer(consumerProperties, pubSubClientsFactory);
 
     try {
       RecoverStoreMetadata.recover(
@@ -1499,7 +1493,7 @@ public class AdminTool {
     printObject(response);
   }
 
-  private static void deleteKafkaTopic(CommandLine cmd) throws Exception {
+  private static void deleteKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) throws Exception {
     long startTime = System.currentTimeMillis();
     String kafkaBootstrapServer = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
     Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
@@ -1517,8 +1511,8 @@ public class AdminTool {
             .setPubSubOperationTimeoutMs(kafkaTimeOut)
             .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollingInterval)
             .setTopicMinLogCompactionLagMs(0L)
-            .setPubSubConsumerAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory())
-            .setPubSubAdminAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getAdminAdapterFactory())
+            .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
+            .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
             .setPubSubTopicRepository(pubSubTopicRepository)
             .setTopicMetadataFetcherConsumerPoolSize(1)
             .setTopicMetadataFetcherThreadPoolSize(1)
@@ -1539,11 +1533,11 @@ public class AdminTool {
     }
   }
 
-  private static void dumpAdminMessages(CommandLine cmd) {
+  private static void dumpAdminMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
     Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
     consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
-    PubSubConsumerAdapter consumer = getConsumer(consumerProperties);
+    PubSubConsumerAdapter consumer = getConsumer(consumerProperties, pubSubClientsFactory);
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
         consumer,
         getRequiredArgument(cmd, Arg.CLUSTER),
@@ -1552,7 +1546,7 @@ public class AdminTool {
     printObject(adminMessages);
   }
 
-  private static void dumpControlMessages(CommandLine cmd) {
+  private static void dumpControlMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
 
@@ -1569,12 +1563,13 @@ public class AdminTool {
     int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
     int startingOffset = Integer.parseInt(getRequiredArgument(cmd, Arg.STARTING_OFFSET));
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
-    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
+    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
       new ControlMessageDumper(consumer, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch().display();
     }
   }
 
-  private static void queryKafkaTopic(CommandLine cmd) throws java.text.ParseException {
+  private static void queryKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory)
+      throws java.text.ParseException {
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
     consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
@@ -1587,7 +1582,7 @@ public class AdminTool {
 
     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
     dateFormat.setTimeZone(TimeZone.getTimeZone("America/Los_Angeles"));
-    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
+    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
       TopicMessageFinder.find(
           controllerClient,
           consumer,
@@ -1599,7 +1594,7 @@ public class AdminTool {
     }
   }
 
-  private static void dumpKafkaTopic(CommandLine cmd) {
+  private static void dumpKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
 
@@ -1630,7 +1625,7 @@ public class AdminTool {
     boolean logMetadata = cmd.hasOption(Arg.LOG_METADATA.toString());
     boolean logDataRecord = cmd.hasOption(Arg.LOG_DATA_RECORD.toString());
     boolean logRmdRecord = cmd.hasOption(Arg.LOG_RMD_RECORD.toString());
-    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
+    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
       try (KafkaTopicDumper ktd = new KafkaTopicDumper(
           controllerClient,
           consumer,
@@ -3263,12 +3258,14 @@ public class AdminTool {
     }
   }
 
-  private static PubSubConsumerAdapter getConsumer(Properties consumerProps) {
+  private static PubSubConsumerAdapter getConsumer(
+      Properties consumerProps,
+      PubSubClientsFactory pubSubClientsFactory) {
     PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    return PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory()
+    return pubSubClientsFactory.getConsumerAdapterFactory()
         .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "admin-tool-topic-dumper");
   }
 

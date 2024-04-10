@@ -1695,6 +1695,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     AvroSchemaUtils.validateAvroSchemaStr(keySchema);
     AvroSchemaUtils.validateAvroSchemaStr(valueSchema);
+    AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchema);
     checkControllerLeadershipFor(clusterName);
     checkStoreNameConflict(storeName, allowSystemStore);
     // Before creating store, check the global stores configs at first.
@@ -3068,14 +3069,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public int getFutureVersion(String clusterName, String storeName) {
     // Find all ongoing offline pushes at first.
     PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-    Optional<String> offlinePush = monitor.getTopicsOfOngoingOfflinePushes()
-        .stream()
-        .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storeName))
+    List<OfflinePushStatus> offlinePushStatuses = monitor.getOfflinePushStatusForStore(storeName);
+    if (offlinePushStatuses.isEmpty()) {
+      return NON_EXISTING_VERSION;
+    }
+    Optional<String> offlinePush = offlinePushStatuses.stream()
+        .filter(status -> !status.getCurrentStatus().isTerminal())
+        .map(OfflinePushStatus::getKafkaTopic)
         .findFirst();
     if (offlinePush.isPresent()) {
       return Version.parseVersionFromKafkaTopicName(offlinePush.get());
     }
-    return Store.NON_EXISTING_VERSION;
+    // If the push status is finished, then return the largest online version greater than current version
+    return getOnlineFutureVersion(clusterName, storeName);
   }
 
   @Override
@@ -5385,6 +5391,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     AvroSchemaUtils.validateAvroSchemaStr(valueSchemaStr);
+    AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr);
     validateValueSchemaUsingRandomGenerator(valueSchemaStr, clusterName, storeName);
     checkControllerLeadershipFor(clusterName);
     return getHelixVeniceClusterResources(clusterName).getSchemaRepository()
@@ -5722,7 +5729,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER.warn(
           "Could not find any valid incremental push status for store: {}, returning NOT_CREATED status.",
           storeName);
-      return new OfflinePushStatusInfo(ExecutionStatus.NOT_CREATED, "Offline job hasn't been created yet.");
+      return new OfflinePushStatusInfo(ExecutionStatus.NOT_CREATED, null, "Offline job hasn't been created yet.");
     }
     // higher priority of EOIP followed by SOIP and NOT_CREATED
     list.sort(((o1, o2) -> {
@@ -5781,7 +5788,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String msg = "Push errored out for " + kafkaTopic + "due to too many offline instances. Reason: "
           + maintenanceSignal.getReason();
       LOGGER.error(msg);
-      return new OfflinePushStatusInfo(ExecutionStatus.ERROR, msg);
+      return new OfflinePushStatusInfo(ExecutionStatus.ERROR, null, msg);
     }
 
     if (incrementalPushVersion.isPresent()) {
@@ -5791,6 +5798,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     ExecutionStatus executionStatus = statusAndDetails.getStatus();
     String details = statusAndDetails.getDetails();
+    Long statusUpdateTimestamp = statusAndDetails.getStatusUpdateTimestamp();
     if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
       StringBuilder moreDetailsBuilder = new StringBuilder(details == null ? "" : details + " and ");
 
@@ -5809,7 +5817,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (monitor.isOfflinePushMonitorDaVinciPushStatusEnabled() && !incrementalPushVersion.isPresent()) {
         // The offline push status will contain Da Vinci push status when either server or Da Vinci push status becomes
         // terminal.
-        return new OfflinePushStatusInfo(executionStatus, details);
+        return new OfflinePushStatusInfo(executionStatus, statusUpdateTimestamp, details);
       }
       if (store.getVersion(versionNumber).isPresent()) {
         Version version = store.getVersion(versionNumber).get();
@@ -5822,7 +5830,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             multiClusterConfigs.getControllerConfig(clusterName).getDaVinciPushStatusScanMaxOfflineInstanceRatio());
         ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getStatus();
         String daVinciDetails = daVinciStatusAndDetails.getDetails();
-        executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
+        ExecutionStatus overallExecutionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
+        if (overallExecutionStatus != executionStatus) {
+          executionStatus = overallExecutionStatus;
+          statusUpdateTimestamp = null;
+        }
         if (details != null || daVinciDetails != null) {
           String overallDetails = "";
           if (details != null) {
@@ -5838,7 +5850,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .info("Version {} of {} does not exist, will not check push status store", versionNumber, store.getName());
       }
     }
-    return new OfflinePushStatusInfo(executionStatus, details);
+    return new OfflinePushStatusInfo(executionStatus, statusUpdateTimestamp, details);
   }
 
   // The method merges push status from Venice Server replicas and online Da Vinci hosts and return the unified status.

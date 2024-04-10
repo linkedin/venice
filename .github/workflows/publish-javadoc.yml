@@ -22,7 +22,7 @@ jobs:
           git config --global user.name "JavaDoc Bot"
           git config --global user.email "javadoc_bot@invalid.com"
           git switch -C javadoc
-          git rebase upstream/main
+          git rebase origin/main
           git push -f origin javadoc
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@v1

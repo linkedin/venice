@@ -75,7 +75,6 @@ class IngestionNotificationDispatcher {
         LOGGER.error("Error reporting status to notifier {}", notifier.getClass(), ex);
       }
     }
-
     LOGGER.info("Reported {} to {} notifiers for PartitionConsumptionState: {}", reportType, notifiers.size(), pcs);
   }
 

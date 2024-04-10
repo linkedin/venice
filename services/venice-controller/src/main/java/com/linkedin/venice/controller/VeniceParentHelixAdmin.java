@@ -3400,7 +3400,8 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
       String statusDetails = response.getOptionalStatusDetails().orElse(null);
-      OfflinePushStatusInfo offlinePushStatusInfo = new OfflinePushStatusInfo(status, statusDetails);
+      OfflinePushStatusInfo offlinePushStatusInfo =
+          new OfflinePushStatusInfo(status, response.getStatusUpdateTimestamp(), statusDetails);
       offlinePushStatusInfo.setUncompletedPartitions(response.getUncompletedPartitions());
       return offlinePushStatusInfo;
     }
@@ -3433,6 +3434,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, ExecutionStatus> statuses = new HashMap<>();
     Map<String, String> extraInfo = new HashMap<>();
     Map<String, String> extraDetails = new HashMap<>();
+    Map<String, Long> extraInfoUpdateTimestamp = new HashMap<>();
     int failCount = 0;
     Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
 
@@ -3464,6 +3466,9 @@ public class VeniceParentHelixAdmin implements Admin {
         ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
         statuses.put(region, status);
         extraInfo.put(region, response.getStatus());
+        if (response.getStatusUpdateTimestamp() != null) {
+          extraInfoUpdateTimestamp.put(region, response.getStatusUpdateTimestamp());
+        }
         Optional<String> statusDetails = response.getOptionalStatusDetails();
         statusDetails.ifPresent(s -> extraDetails.put(region, leaderControllerUrl + " " + s));
       }
@@ -3494,9 +3499,11 @@ public class VeniceParentHelixAdmin implements Admin {
 
     return new OfflinePushStatusInfo(
         currentReturnStatus,
+        null,
         extraInfo,
         currentReturnStatusDetails.toString(),
-        extraDetails);
+        extraDetails,
+        extraInfoUpdateTimestamp);
   }
 
   /**

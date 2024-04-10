@@ -340,7 +340,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   private Dataset<Row> getInputDataFrame() {
     if (pushJobSetting.isSourceKafka) {
-      throw new VeniceUnsupportedOperationException("Spark push job doesn't support KIF yet");
+      throw new VeniceUnsupportedOperationException("Spark push job for repush workloads");
     } else {
       return getUserInputDataFrame();
     }

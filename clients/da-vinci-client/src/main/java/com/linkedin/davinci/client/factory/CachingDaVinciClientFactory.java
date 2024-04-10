@@ -277,12 +277,6 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       client = clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider);
       isolatedClients.add(client);
     } else {
-      if (originalConfig.getNonLocalAccessPolicy() != config.getNonLocalAccessPolicy()) {
-        throw new VeniceException(
-            "Non-local access policy conflict" + ", storeName=" + storeName + ", original="
-                + originalConfig.getNonLocalAccessPolicy() + ", requested=" + config.getNonLocalAccessPolicy());
-      }
-
       client = sharedClients.computeIfAbsent(
           storeName,
           k -> clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider));

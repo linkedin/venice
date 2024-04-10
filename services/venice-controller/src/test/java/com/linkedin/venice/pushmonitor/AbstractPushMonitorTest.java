@@ -2,6 +2,10 @@ package com.linkedin.venice.pushmonitor;
 
 import static com.linkedin.venice.pushmonitor.AbstractPushMonitor.MAX_PUSH_TO_KEEP;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_NOT_CREATED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -16,6 +20,10 @@ import static org.mockito.Mockito.only;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -964,6 +972,44 @@ public abstract class AbstractPushMonitorTest {
     OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     monitor.updatePushStatus(pushStatus, ExecutionStatus.COMPLETED, Optional.empty());
     Assert.assertTrue(monitor.getUncompletedPartitions(topic).isEmpty());
+  }
+
+  @Test
+  public void testGetPushStatusAndDetails() {
+    ResourceAssignment resourceAssignment = mock(ResourceAssignment.class);
+    doReturn(true).when(resourceAssignment).containsResource(topic);
+    doReturn(mock(PartitionAssignment.class)).when(resourceAssignment).getPartitionAssignment(topic);
+    doReturn(resourceAssignment).when(mockRoutingDataRepo).getResourceAssignment();
+
+    // Initial conditions
+    OfflinePushStatus offlinePushStatus = monitor.getOfflinePush(topic);
+    assertNull(offlinePushStatus);
+
+    ExecutionStatusWithDetails statusWithDetails = monitor.getPushStatusAndDetails(topic);
+    assertNotNull(statusWithDetails);
+    assertEquals(statusWithDetails.getStatus(), NOT_CREATED);
+
+    // After starting to monitor, the push should be initialized as STARTED
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
+    offlinePushStatus = monitor.getOfflinePush(topic);
+    assertNotNull(offlinePushStatus);
+    assertEquals(offlinePushStatus.getCurrentStatus(), STARTED);
+    Optional<String> statusDetails = offlinePushStatus.getOptionalStatusDetails();
+    assertTrue(statusDetails.isPresent());
+    assertEquals(statusDetails.get(), HELIX_RESOURCE_NOT_CREATED);
+
+    statusWithDetails = monitor.getPushStatusAndDetails(topic);
+    assertNotNull(statusWithDetails);
+    assertEquals(statusWithDetails.getStatus(), STARTED);
+    assertEquals(
+        statusWithDetails.getDetails(),
+        HELIX_ASSIGNMENT_COMPLETED,
+        "Details should change as a side effect of calling getPushStatusAndDetails.");
   }
 
   protected Store prepareMockStore(String topic, VersionStatus status) {

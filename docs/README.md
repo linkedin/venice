@@ -57,11 +57,11 @@ In addition, any service can asynchronously produce single row inserts and updat
 [Online Producer](user_guide/write_api/online_producer.md) library. The table below summarizes the write operations 
 supported by each platform:
 
-|                                                  | [Hadoop](user_guide/write_api/push_job.md) | [Samza](user_guide/write_api/stream_processor.md)  | [Any Service](user_guide/write_api/online_producer.md)  |
-|-------------------------------------------------:|:---------------------------------------:|:-----------------------------------------------:|:----------------------------------------------------:|
-|                                Full dataset swap |                    ✅                    |                        ✅                        |                                                      |
-|  Insertion of some rows into an existing dataset |                    ✅                    |                        ✅                        |                          ✅                           |
-|             Updates to some columns of some rows |                    ✅                    |                        ✅                        |                          ✅                           |
+|                                                  | [Hadoop](user_guide/write_api/push_job.md) | [Samza](user_guide/write_api/stream_processor.md) | [Any Service](user_guide/write_api/online_producer.md) |
+|-------------------------------------------------:|:------------------------------------------:|:-------------------------------------------------:|:------------------------------------------------------:|
+|                                Full dataset swap |                     ✅                      |                         ✅                         |                                                        |
+|  Insertion of some rows into an existing dataset |                     ✅                      |                         ✅                         |                           ✅                            |
+|             Updates to some columns of some rows |                     ✅                      |                         ✅                         |                           ✅                            |
 
 ### Hybrid Stores
 Moreover, the three granularities of write operations can all be mixed within a single dataset. A dataset which gets 

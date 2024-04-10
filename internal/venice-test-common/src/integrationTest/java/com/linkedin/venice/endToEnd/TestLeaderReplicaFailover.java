@@ -151,6 +151,7 @@ public class TestLeaderReplicaFailover {
       assertNotNull(leader);
     });
     Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
+
     LeaderErrorNotifier leaderErrorNotifier = null;
     for (VeniceServerWrapper serverWrapper: clusterWrapper.getVeniceServers()) {
       assertNotNull(serverWrapper);
@@ -159,6 +160,7 @@ public class TestLeaderReplicaFailover {
         HelixParticipationService participationService = serverWrapper.getVeniceServer().getHelixParticipationService();
         leaderErrorNotifier = new LeaderErrorNotifier(
             participationService.getVeniceOfflinePushMonitorAccessor(),
+            null,
             participationService.getStatusStoreWriter(),
             participationService.getHelixReadOnlyStoreRepository(),
             participationService.getInstance().getNodeId());

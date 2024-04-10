@@ -108,6 +108,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   private static final long TEST_OFFSET_OLD = 1L;
   private static final long TEST_OFFSET_NEW = 2L;
   private static final long TEST_DB_SYNC_BYTES_INTERVAL = 1000L;
+  private static final long TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES = 1024L;
   private String storeName;
   private String localStateTopicName;
   private InternalLocalBootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer;
@@ -180,6 +181,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
             .setConsumerProperties(consumerProperties)
             .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
+            .setRocksDBBlockCacheSizeInBytes(TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES)
             .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL);
     bootstrappingVeniceChangelogConsumer =
         new InternalLocalBootstrappingVeniceChangelogConsumer<>(changelogClientConfig, pubSubConsumer, null);
@@ -299,6 +301,9 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     Assert.assertTrue(completed.get());
     Assert.assertEquals(state.bootstrapState, InternalLocalBootstrappingVeniceChangelogConsumer.PollState.CONSUMING);
     Assert.assertEquals(bootstrappingVeniceChangelogConsumer.getBootstrapCompletedCount(), 2);
+    Assert.assertEquals(
+        bootstrappingVeniceChangelogConsumer.getChangelogClientConfig().getRocksDBBlockCacheSizeInBytes(),
+        TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES);
   }
 
   @Test

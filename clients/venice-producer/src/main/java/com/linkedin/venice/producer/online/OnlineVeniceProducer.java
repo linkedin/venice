@@ -59,8 +59,24 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
       schemaRefreshPeriod = storeClientConfig.getSchemaRefreshPeriod();
     }
 
+    ClientConfig clientConfigForSchemaReader = ClientConfig.cloneConfig(storeClientConfig)
+        .setSchemaRefreshPeriod(schemaRefreshPeriod)
+        .setMetricsRepository(null);
+
+    // We don't need metrics and schema refresh for KME schema reader
+    ClientConfig<KafkaMessageEnvelope> kmeClientConfig = ClientConfig.cloneConfig(clientConfigForSchemaReader)
+        .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
+        .setSpecificValueClass(KafkaMessageEnvelope.class)
+        .setSchemaRefreshPeriod(null);
+
+    // We don't need metrics and schema refresh for the client that is used for requestTopic call
+    ClientConfig clientConfigForRouterQueries = ClientConfig.cloneConfig(storeClientConfig)
+        .setSchemaRefreshPeriod(schemaRefreshPeriod)
+        .setMetricsRepository(null)
+        .setSchemaRefreshPeriod(null);
+
     try {
-      AvroGenericStoreClient<K, V> tempStoreClient = ClientFactory.getAndStartAvroClient(storeClientConfig);
+      AvroGenericStoreClient<K, V> tempStoreClient = ClientFactory.getAndStartAvroClient(clientConfigForRouterQueries);
 
       if (!(tempStoreClient instanceof InternalAvroStoreClient)) {
         throw new IllegalStateException(
@@ -69,17 +85,7 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
       }
 
       this.storeClient = (InternalAvroStoreClient<K, V>) tempStoreClient;
-
-      ClientConfig clientConfigForSchemaReader = ClientConfig.cloneConfig(storeClientConfig)
-          .setSchemaRefreshPeriod(schemaRefreshPeriod)
-          .setMetricsRepository(null);
-
       this.schemaReader = ClientFactory.getSchemaReader(clientConfigForSchemaReader, icProvider);
-      ClientConfig<KafkaMessageEnvelope> kmeClientConfig = ClientConfig.cloneConfig(storeClientConfig)
-          .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
-          .setSpecificValueClass(KafkaMessageEnvelope.class)
-          .setMetricsRepository(null);
-
       try (SchemaReader kmeSchemaReader = ClientFactory.getSchemaReader(kmeClientConfig, icProvider)) {
         configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
       }

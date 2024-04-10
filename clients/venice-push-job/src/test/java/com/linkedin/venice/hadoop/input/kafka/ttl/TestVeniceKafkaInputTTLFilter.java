@@ -54,7 +54,7 @@ public class TestVeniceKafkaInputTTLFilter {
   public void setUp() throws IOException {
     Properties validProps = new Properties();
     validProps.put(REPUSH_TTL_ENABLE, true);
-    validProps.put(REPUSH_TTL_POLICY, 0);
+    validProps.put(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue());
     validProps.put(REPUSH_TTL_START_TIMESTAMP, DUMMY_CURRENT_TIMESTAMP - TTL_IN_SECONDS_DEFAULT * Time.MS_PER_SECOND);
     validProps.put(RMD_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());
     validProps.put(VALUE_SCHEMA_DIR, getTempDataDirectory().getAbsolutePath());

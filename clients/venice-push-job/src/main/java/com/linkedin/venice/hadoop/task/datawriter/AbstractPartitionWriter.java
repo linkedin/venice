@@ -27,7 +27,6 @@ import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader
 import com.linkedin.venice.hadoop.task.TaskTracker;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -342,8 +341,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
   private VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
     Properties writerProps = props.toProperties();
-    // Closing segments based on elapsed time should always be disabled in MR to prevent storage nodes consuming out of
-    // order keys when speculative execution is in play.
+    // Closing segments based on elapsed time should always be disabled in data writer compute jobs to prevent storage
+    // nodes from consuming out of order keys when speculative execution is enabled.
     writerProps.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
 
     EngineTaskConfigProvider engineTaskConfigProvider = getEngineTaskConfigProvider();
@@ -353,9 +352,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
     writerProps.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS));
     writerProps.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
-
-    VeniceWriterFactory veniceWriterFactoryFactory =
-        new VeniceWriterFactory(writerProps, new ApacheKafkaProducerAdapterFactory(), null);
+    VeniceWriterFactory veniceWriterFactoryFactory = new VeniceWriterFactory(writerProps);
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     boolean rmdChunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, false);
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
@@ -378,12 +375,12 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           (System.nanoTime() - lastTimeThroughputWasLoggedInNS) / (double) Time.NS_PER_SECOND;
 
       // Mapping rate measurement
-      long mrFrameworkRate = (long) (telemetryMessageInterval / timeSinceLastMeasurementInSeconds);
+      long writeThroughput = (long) (telemetryMessageInterval / timeSinceLastMeasurementInSeconds);
       LOGGER.info(
-          "MR Framework records processed: {}, total time spent: {}, current throughput: {} rec/s",
+          "DataWriterComputeJob records processed: {}, total time spent: {}, current throughput: {} rec/s",
           messageSent,
           Utils.makeTimePretty(aggregateTimeOfInBetweenReduceInvocationsInNS),
-          Utils.makeLargeNumberPretty(mrFrameworkRate));
+          Utils.makeLargeNumberPretty(writeThroughput));
 
       // Produce rate measurement
       long newMessageCompletedCount = messageCompleted.get();

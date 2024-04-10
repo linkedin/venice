@@ -257,9 +257,9 @@ public class IntegrationTestPushUtils {
     NewStoreResponse newStoreResponse = controllerClient
         .createNewStore(props.getProperty(VENICE_STORE_NAME_PROP), "test@linkedin.com", keySchemaStr, valueSchemaStr);
 
-    Assert.assertFalse(
-        newStoreResponse.isError(),
-        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+    if (newStoreResponse.isError()) {
+      throw new VeniceException("Could not create store " + props.getProperty(VENICE_STORE_NAME_PROP));
+    }
 
     updateStore(veniceClusterName, props, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
     return controllerClient;
