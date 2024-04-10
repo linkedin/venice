@@ -16,7 +16,6 @@ import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static org.mockito.ArgumentMatchers.anyLong;
 
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -135,9 +134,8 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -283,7 +281,6 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
     VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
@@ -463,11 +460,10 @@ public class RocksDBStoragePartitionTest {
     VeniceProperties veniceServerProperties =
         AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
-    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -684,8 +680,8 @@ public class RocksDBStoragePartitionTest {
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     partitionConfig.setWriteOnlyConfig(true);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -695,7 +691,7 @@ public class RocksDBStoragePartitionTest {
         rocksDBServerConfig,
         storeConfig);
 
-    // By default, it is write-only
+    // By default, it is write only
     Options writeOnlyOptions = storagePartition.getOptions();
     Assert.assertEquals(writeOnlyOptions.level0FileNumCompactionTrigger(), 40);
     Assert.assertEquals(writeOnlyOptions.level0SlowdownWritesTrigger(), 50);

@@ -6,7 +6,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -172,8 +171,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, props);
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     ReplicationMetadataRocksDBStoragePartition storagePartition = new ReplicationMetadataRocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -303,11 +302,10 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     Map<String, Pair<String, String>> inputRecords = generateInputWithMetadata(0, 1000, sorted, true);
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     ReplicationMetadataRocksDBStoragePartition storagePartition = new ReplicationMetadataRocksDBStoragePartition(
         partitionConfig,
         factory,

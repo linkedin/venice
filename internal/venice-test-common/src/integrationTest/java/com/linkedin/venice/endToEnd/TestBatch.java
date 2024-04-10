@@ -22,7 +22,8 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSIO
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
-import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.venice.utils.TestUtils.directoryContainsFolder;
+import static com.linkedin.venice.utils.TestUtils.findFoldersWithFileExtension;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITH_NULL_SCHEMA;
@@ -264,7 +265,8 @@ public abstract class TestBatch {
         validator,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
 
-    testRepushWithKafkaInput(storeName, validator);
+    // Re-push with Kafka Input
+    testRepush(storeName, validator);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -391,7 +393,7 @@ public abstract class TestBatch {
     VeniceProperties veniceProperties = new VeniceProperties(props);
     ByteBuffer sourceDict = DictionaryUtils.readDictionaryFromKafka(sourceTopic, veniceProperties);
 
-    testRepushWithKafkaInput(storeName, validator);
+    testRepush(storeName, validator);
 
     /**
      * Verify that the dictionary in the repushed version should be different from the source version.
@@ -619,8 +621,8 @@ public abstract class TestBatch {
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         validator);
-
-    testRepushWithKafkaInput(storeName, validator);
+    // Re-push with Kafka Input
+    testRepush(storeName, validator);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -639,64 +641,8 @@ public abstract class TestBatch {
             .setHybridRewindSeconds(5)
             .setHybridOffsetLagThreshold(2)
             .setNativeReplicationEnabled(true));
-
-    testRepushWithKafkaInput(storeName, validator);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBatchJobSnapshots(Boolean isKakfaPush) throws Exception {
-
-    VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
-      for (int i = 1; i <= 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-      }
-    };
-
-    String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
-        properties -> {},
-        validator);
-
-    verifySnapshotFolders();
-
-    if (isKakfaPush) {
-      testRepushWithKafkaInput(storeName, validator);
-    } else {
-      testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
-          properties -> {},
-          validator,
-          storeName,
-          new UpdateStoreQueryParams());
-    }
-
-    verifySnapshotFolders();
-  }
-
-  private void verifySnapshotFolders() {
-    Path folderPath1 = Paths.get(BASE_DATA_PATH_1);
-    Path folderPath2 = Paths.get(BASE_DATA_PATH_2);
-
-    List<String> directories = findFoldersWithFileExtension(folderPath1.toFile(), ".sst");
-    directories.addAll(findFoldersWithFileExtension(folderPath2.toFile(), ".sst"));
-
-    for (String directoryPath: directories) {
-      // the directories containing .sst files should contain the ".snapshot" folder
-      boolean containsSnapshotFolder = directoryContainsFolder(directoryPath, ".snapshot_files");
-
-      // base path 2's blob transfer is disabled, and we shouldn't find a snapshot file
-      if (directoryPath.startsWith(BASE_DATA_PATH_2)) {
-        Assert.assertFalse(containsSnapshotFolder);
-        continue;
-      }
-
-      Assert.assertTrue(containsSnapshotFolder);
-
-      // snapshot_files folder should contain the .sst files
-      Path snapshotPath = Paths.get(directoryPath + "/.snapshot_files");
-      List<String> snapshots = findFoldersWithFileExtension(snapshotPath.toFile(), ".sst");
-      Assert.assertTrue(snapshots.size() > 0);
-    }
+    // Re-push with Kafka Input
+    testRepush(storeName, validator);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -854,7 +800,7 @@ public abstract class TestBatch {
     return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true);
   }
 
-  private void testRepushWithKafkaInput(String storeName, VPJValidator dataValidator) throws Exception {
+  private void testRepush(String storeName, VPJValidator dataValidator) throws Exception {
     for (String combiner: new String[] { "true", "false" }) {
       testBatchStore(
           inputDir -> new KeyAndValueSchemas(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
@@ -1393,5 +1339,61 @@ public abstract class TestBatch {
           .getCurrentVersion(veniceCluster.getClusterName(), storeName);
       Assert.assertEquals(version, 2);
     });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBatchJobSnapshots(Boolean isKakfaPush) throws Exception {
+
+    VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    };
+
+    String storeName = testBatchStore(
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        properties -> {},
+        validator);
+
+    verifySnapshotFolders();
+
+    if (isKakfaPush) {
+      testRepush(storeName, validator);
+    } else {
+      testBatchStore(
+          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+          properties -> {},
+          validator,
+          storeName,
+          new UpdateStoreQueryParams());
+    }
+
+    verifySnapshotFolders();
+  }
+
+  private void verifySnapshotFolders() {
+    Path folderPath1 = Paths.get(BASE_DATA_PATH_1);
+    Path folderPath2 = Paths.get(BASE_DATA_PATH_2);
+
+    List<String> directories = findFoldersWithFileExtension(folderPath1.toFile(), ".sst");
+    directories.addAll(findFoldersWithFileExtension(folderPath2.toFile(), ".sst"));
+
+    for (String directoryPath: directories) {
+      // the directories containing .sst files should contain the ".snapshot" folder
+      boolean containsSnapshotFolder = directoryContainsFolder(directoryPath, ".snapshot_files");
+
+      // base path 2's blob transfer is disabled, and we shouldn't find a snapshot file
+      if (directoryPath.startsWith(BASE_DATA_PATH_2)) {
+        Assert.assertFalse(containsSnapshotFolder);
+        continue;
+      }
+
+      Assert.assertTrue(containsSnapshotFolder);
+
+      // snapshot_files folder should contain the .sst files
+      Path snapshotPath = Paths.get(directoryPath + "/.snapshot_files");
+      List<String> snapshots = findFoldersWithFileExtension(snapshotPath.toFile(), ".sst");
+      Assert.assertTrue(snapshots.size() > 0);
+    }
   }
 }

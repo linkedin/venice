@@ -562,5 +562,4 @@ public class RocksDBSstFileWriterTest {
     }
     return fileCount;
   }
-
 }
