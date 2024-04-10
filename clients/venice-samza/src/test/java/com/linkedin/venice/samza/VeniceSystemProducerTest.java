@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -213,13 +214,12 @@ public class VeniceSystemProducerTest {
 
     VeniceWriter<byte[], byte[], byte[]> mockVeniceWriter = mock(VeniceWriter.class);
     doReturn(mockVeniceWriter).when(mockveniceSystemProducer).getVeniceWriter(any());
-
-    when(mockveniceSystemProducer.getControllerClient()).thenReturn(mockControllerClient);
+    mockveniceSystemProducer.setControllerClient(mockControllerClient);
     mockveniceSystemProducer.start();
     RouterBasedPushMonitor mockPushMonitor = mock(RouterBasedPushMonitor.class);
-    when(mockPushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.ERROR);
     mockveniceSystemProducer.setPushMonitor(mockPushMonitor);
 
+    when(mockPushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.ERROR);
     doAnswer(invocation -> null).when(mockveniceSystemProducer).send((Object) any(), (Object) any());
     try {
       mockveniceSystemProducer.send(
@@ -232,7 +232,35 @@ public class VeniceSystemProducerTest {
       if (pushType != Version.PushType.STREAM_REPROCESSING) {
         fail();
       }
+      assertTrue(e.getMessage().contains("is in error state"));
     }
+
+    when(mockPushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
+    doAnswer(invocation -> null).when(mockveniceSystemProducer).send((Object) any(), (Object) any());
+    try {
+      mockveniceSystemProducer.send(
+          "test",
+          new OutgoingMessageEnvelope(new SystemStream("venice", "test_store"), "key1", new byte[] { 1, 2, 3 }));
+      if (pushType == Version.PushType.STREAM_REPROCESSING) {
+        fail();
+      }
+    } catch (Exception e) {
+      if (pushType != Version.PushType.STREAM_REPROCESSING) {
+        fail();
+      }
+      assertTrue(e.getMessage().contains("is in error state"));
+    }
+
+    when(mockPushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.COMPLETED);
+    doAnswer(invocation -> null).when(mockveniceSystemProducer).send((Object) any(), (Object) any());
+    try {
+      mockveniceSystemProducer.send(
+          "test",
+          new OutgoingMessageEnvelope(new SystemStream("venice", "test_store"), "key1", new byte[] { 1, 2, 3 }));
+    } catch (Exception e) {
+      fail();
+    }
+
     mockveniceSystemProducer.stop();
   }
 

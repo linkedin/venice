@@ -159,7 +159,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Map<String, String> additionalWriterConfigs = new HashMap<>();
 
   private TransportClient transportClient;
-  RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
+  private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
 
   @Deprecated
   public VeniceSystemProducer(
@@ -505,7 +505,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   void getKeySchema() {
     SchemaResponse keySchemaResponse =
-        (SchemaResponse) controllerRequestWithRetry(() -> getControllerClient().getKeySchema(this.storeName), 2);
+        (SchemaResponse) controllerRequestWithRetry(() -> this.controllerClient.getKeySchema(this.storeName), 2);
     LOGGER.info("Got [store: {}] SchemaResponse for key schema: {}", storeName, keySchemaResponse);
     this.keySchema = parseSchemaFromJSONStrictValidation(keySchemaResponse.getSchemaStr());
     this.canonicalKeySchemaStr = AvroCompatibilityHelper.toParsingForm(this.keySchema);
@@ -522,7 +522,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     // Request all the necessary info from Venice Controller
     VersionCreationResponse versionCreationResponse = (VersionCreationResponse) controllerRequestWithRetry(
-        () -> getControllerClient().requestTopicForWrites(
+        () -> this.controllerClient.requestTopicForWrites(
             this.storeName,
             1,
             pushType,
@@ -541,7 +541,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.kafkaBootstrapServers = versionCreationResponse.getKafkaBootstrapServers();
 
     StoreResponse storeResponse =
-        (StoreResponse) controllerRequestWithRetry(() -> getControllerClient().getStore(storeName), 2);
+        (StoreResponse) controllerRequestWithRetry(() -> this.controllerClient.getStore(storeName), 2);
     this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
 
     boolean hybridStoreDiskQuotaEnabled = storeResponse.getStore().isHybridStoreDiskQuotaEnabled();
@@ -594,7 +594,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   // Grabs all Venice schemas and their associated ID's and caches them
   void refreshSchemaCache() {
     MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse) controllerRequestWithRetry(
-        () -> getControllerClient().getAllValueAndDerivedSchema(this.storeName),
+        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName),
         2);
     LOGGER.info("Got [store: {}] SchemaResponse for value schemas: {}", storeName, valueSchemaResponse);
     for (MultiSchemaResponse.Schema valueSchema: valueSchemaResponse.getSchemas()) {
@@ -633,12 +633,12 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
            * the containers send kill requests to controller at the same time to avoid hammering on controller.
            */
           Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
-          getControllerClient().retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
+          this.controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
           LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
       }
       Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
     }
-    Utils.closeQuietlyWithErrorLogged(getControllerClient());
+    Utils.closeQuietlyWithErrorLogged(this.controllerClient);
     hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
     d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
   }
@@ -946,8 +946,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
   }
 
-  ControllerClient getControllerClient() {
-    return this.controllerClient;
+  void setControllerClient(ControllerClient controllerClient) {
+    this.controllerClient = controllerClient;
   }
 
   // used only for testing

@@ -44,7 +44,7 @@ public class RouterBasedPushMonitorTest {
 
     // Verify expected behavior
     verify(factory).endStreamReprocessingSystemProducer(producer, false);
-    assertFalse(mockTask.isRunning().get()); // Task should continue polling
+    assertFalse(mockTask.isRunning().get()); // Task should not continue polling
     mockTask.close();
     monitor.close();
   }
