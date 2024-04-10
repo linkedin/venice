@@ -14,6 +14,7 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -161,6 +162,10 @@ public class AbstractTestVeniceParentHelixAdmin {
     ControllerClient mockControllerClient = mock(ControllerClient.class);
     doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
     doReturn(new StoreResponse()).when(mockControllerClient).getStore(anyString());
+    MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
+    doReturn(Collections.emptyMap()).when(storeStatusResponse).getStoreStatusMap();
+    doReturn(storeStatusResponse).when(mockControllerClient).getFutureVersions(anyString(), anyString());
+
     parentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
         .getFabricToControllerClientsMap()

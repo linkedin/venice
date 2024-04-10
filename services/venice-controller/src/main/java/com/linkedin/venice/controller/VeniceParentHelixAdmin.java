@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils.addUpdateSchemaForStore;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACTIVE_ACTIVE_REPLICATION_ENABLED;
@@ -86,7 +87,6 @@ import com.linkedin.venice.controller.init.DelegatingClusterLeaderInitialization
 import com.linkedin.venice.controller.init.SharedInternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -1151,9 +1151,14 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
     for (Map.Entry<String, String> entry: futureVersions.entrySet()) {
       ControllerClient controllerClient = getVeniceHelixAdmin().getControllerClientMap(clusterName).get(entry.getKey());
-      StoreResponse storeResponse = controllerClient.retryableRequest(5, c -> c.getStore(storeName));
+      StoreResponse storeResponse = ControllerClient.retryableRequest(controllerClient, 5, c -> c.getStore(storeName));
       StoreInfo store = storeResponse.getStore();
-      int futureVersion = Integer.parseInt(entry.getValue());
+      int futureVersion;
+      try {
+        futureVersion = Integer.parseInt(entry.getValue());
+      } catch (Exception e) {
+        continue;
+      }
       Optional<Version> version = store.getVersion(futureVersion);
       boolean deferredSwap = version.isPresent() && version.get().isVersionSwapDeferred();
       // if there is a online future version available, do not allow further pushes
@@ -1805,14 +1810,14 @@ public class VeniceParentHelixAdmin implements Admin {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
       MultiStoreStatusResponse response =
-          controllerClient.retryableRequest(10, c -> c.getFutureVersions(clusterName, storeName));
+          ControllerClient.retryableRequest(controllerClient, 5, c -> c.getFutureVersions(clusterName, storeName));
       if (response.isError()) {
         LOGGER.error(
             "Could not query store from region: {} for cluster: {}. Error: {}",
             region,
             clusterName,
             response.getError());
-        result.put(region, String.valueOf(AdminConsumptionTask.IGNORED_CURRENT_VERSION));
+        result.put(region, String.valueOf(IGNORED_CURRENT_VERSION));
       } else {
         result.put(region, response.getStoreStatusMap().get(storeName));
       }
@@ -1834,7 +1839,7 @@ public class VeniceParentHelixAdmin implements Admin {
             region,
             clusterName,
             response.getError());
-        result.put(region, String.valueOf(AdminConsumptionTask.IGNORED_CURRENT_VERSION));
+        result.put(region, String.valueOf(IGNORED_CURRENT_VERSION));
       } else {
         result.put(region, response.getStoreStatusMap().get(storeName));
       }
@@ -1870,7 +1875,7 @@ public class VeniceParentHelixAdmin implements Admin {
             region,
             clusterName,
             response.getError());
-        result.put(region, AdminConsumptionTask.IGNORED_CURRENT_VERSION);
+        result.put(region, IGNORED_CURRENT_VERSION);
       } else {
         result.put(region, response.getStore().getCurrentVersion());
       }
@@ -2365,8 +2370,8 @@ public class VeniceParentHelixAdmin implements Admin {
       // We need to be careful when handling currentVersion.
       // Since it is not synced between parent and local controller,
       // It is very likely to override local values unintentionally.
-      setStore.currentVersion = currentVersion.map(addToUpdatedConfigList(updatedConfigsList, VERSION))
-          .orElse(AdminConsumptionTask.IGNORED_CURRENT_VERSION);
+      setStore.currentVersion =
+          currentVersion.map(addToUpdatedConfigList(updatedConfigsList, VERSION)).orElse(IGNORED_CURRENT_VERSION);
 
       hybridRewindSeconds.map(addToUpdatedConfigList(updatedConfigsList, REWIND_TIME_IN_SECONDS));
       hybridOffsetLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, OFFSET_LAG_TO_GO_ONLINE));

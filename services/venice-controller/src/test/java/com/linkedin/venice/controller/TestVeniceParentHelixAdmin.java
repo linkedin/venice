@@ -111,6 +111,8 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdmin {
+  String storeName = Utils.getUniqueString("test_store");
+
   @BeforeMethod
   public void setupTestCase() {
     setupInternalMocks();
@@ -725,7 +727,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIdempotentIncrementVersionWhenNoPreviousTopics() {
-    String storeName = Utils.getUniqueString("test_store");
     String pushJobId = Utils.getUniqueString("push_job_id");
     doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
         .addVersionAndTopicOnly(
@@ -1432,7 +1433,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
-    mockControllerClients();
+    mockControllerClients(storeName);
 
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
     verify(storeRepo).getStore(storeName);
@@ -1454,8 +1455,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
-  private void mockControllerClients() {
+  private void mockControllerClients(String storeName) {
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    Map<String, String> map = new HashMap<>();
+    map.put(storeName, "1");
 
     for (int i = 0; i < 3; i++) {
       ControllerClient client = mock(ControllerClient.class);
@@ -1463,11 +1466,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
       s.setCurrentVersion(i + 4); // child region current versions 4,5,6
       storeResponse.setStore(StoreInfo.fromStore(s));
+      MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
+      doReturn(map).when(storeStatusResponse).getStoreStatusMap();
+      doReturn(storeStatusResponse).when(client).getFutureVersions(anyString(), anyString());
       doReturn(storeResponse).when(client).getStore(anyString());
-      MultiStoreStatusResponse response = mock(MultiStoreStatusResponse.class);
-      doReturn(false).when(response).isError();
-      doReturn(response).when(client).retryableRequest(10, c -> c.getFutureVersions(anyString(), anyString()));
-      // doReturn(response).when(client).getFutureVersions(anyString(), anyString());
       controllerClientMap.put("region" + i, client);
     }
 
@@ -2435,7 +2437,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
           .when(veniceWriter)
           .put(any(), any(), anyInt());
-      mockControllerClients();
+      mockControllerClients(storeName);
       when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
           .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
