@@ -186,7 +186,7 @@ public class ConfigKeys {
   /**
    * Store-level config to enable blob transfers (feature flag)
    */
-  public static final String ENABLE_BLOB_TRANSFER_FOR_BATCH_ONLY_STORE = "enable.blob.transfer.for.batch.only.store";
+  public static final String ENABLE_BLOB_TRANSFER = "enable.blob.transfer";
 
   /**
    * Sets the default for whether or not do schema validation for all stores
