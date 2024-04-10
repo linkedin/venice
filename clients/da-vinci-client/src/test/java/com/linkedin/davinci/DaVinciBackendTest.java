@@ -2,22 +2,12 @@ package com.linkedin.davinci;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Utils;
-import java.util.concurrent.TimeUnit;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -35,10 +25,7 @@ public class DaVinciBackendTest {
   }
 
   @Test(dataProvider = "DvcErrorExecutionStatus")
-  public void testDaVinciReportError(ExecutionStatus executionStatus) {
-    DaVinciBackend daVinciBackend = new DaVinciBackend();
-    String topic = Utils.getUniqueString("test_v1");
-    int partitionId = 1;
+  public void testGetDaVinciErrorStatus(ExecutionStatus executionStatus) {
     String message;
     VeniceException veniceException;
     switch (executionStatus) {
@@ -62,30 +49,15 @@ public class DaVinciBackendTest {
         fail("Unexpected execution status: " + executionStatus);
         return;
     }
-
-    DaVinciBackend.DaVinciNotifier ingestionListener = daVinciBackend.getIngestionListener();
-    DaVinciBackend.DaVinciNotifier mockIngestionListener = spy(ingestionListener);
-    VersionBackend mockVersionBackend = mock(VersionBackend.class);
-    daVinciBackend.getVersionByTopicMap().put(topic, mockVersionBackend);
-    doAnswer(invocation -> {
-      return null;
-    }).when(mockIngestionListener).reportPushStatusInDaVinciBackend(anyString(), anyInt(), (ExecutionStatus) any());
-    mockIngestionListener.error(topic, partitionId, message, veniceException);
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(mockIngestionListener, times(1)).reportPushStatusInDaVinciBackend(
-          topic,
-          partitionId,
-          executionStatus.equals(ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
-              ? DVC_INGESTION_ERROR_OTHER
-              : executionStatus);
-    });
+    assertEquals(
+        DaVinciBackend.getDaVinciErrorStatus(message, veniceException),
+        executionStatus.equals(ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
+            ? DVC_INGESTION_ERROR_OTHER
+            : executionStatus);
   }
 
   @Test(dataProvider = "DvcErrorExecutionStatus")
-  public void testDaVinciReportErrorInvalidCases(ExecutionStatus executionStatus) {
-    DaVinciBackend daVinciBackend = new DaVinciBackend();
-    String topic = Utils.getUniqueString("test_v1");
-    int partitionId = 1;
+  public void testGetDaVinciErrorStatusWithInvalidCases(ExecutionStatus executionStatus) {
     String message;
     VeniceException veniceException;
     switch (executionStatus) {
@@ -110,18 +82,7 @@ public class DaVinciBackendTest {
         return;
     }
 
-    DaVinciBackend.DaVinciNotifier ingestionListener = daVinciBackend.getIngestionListener();
-    DaVinciBackend.DaVinciNotifier mockIngestionListener = spy(ingestionListener);
-    VersionBackend mockVersionBackend = mock(VersionBackend.class);
-    daVinciBackend.getVersionByTopicMap().put(topic, mockVersionBackend);
-    doAnswer(invocation -> {
-      return null;
-    }).when(mockIngestionListener).reportPushStatusInDaVinciBackend(anyString(), anyInt(), (ExecutionStatus) any());
-    mockIngestionListener.error(topic, partitionId, message, veniceException);
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(mockIngestionListener, times(1))
-          .reportPushStatusInDaVinciBackend(topic, partitionId, DVC_INGESTION_ERROR_OTHER);
-    });
+    assertEquals(DaVinciBackend.getDaVinciErrorStatus(message, veniceException), DVC_INGESTION_ERROR_OTHER);
   }
 
 }
