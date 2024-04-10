@@ -1,6 +1,8 @@
 package com.linkedin.venice.fastclient.meta;
 
+import com.linkedin.venice.fastclient.stats.RetryManagerStats;
 import com.linkedin.venice.throttle.TokenBucket;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.time.Clock;
 import java.util.concurrent.Executors;
@@ -20,6 +22,10 @@ import org.apache.logging.log4j.Logger;
 public class RetryManager implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(RetryManager.class);
   private static final int TOKEN_BUCKET_REFILL_INTERVAL_IN_SECONDS = 1;
+  /**
+   * Capacity multiple of 5 to accommodate retry burst. For example, long tail retry budget is 10% of request.
+   * A multiple of 5 will allow 50% of the requests trigger long tail retry for a short period of time.
+   */
   private static final int TOKEN_BUCKET_CAPACITY_MULTIPLE = 5;
   private final AtomicBoolean retryBudgetEnabled = new AtomicBoolean();
   private final long enforcementWindowInMs;
@@ -28,11 +34,16 @@ public class RetryManager implements Closeable {
   private final AtomicReference<TokenBucket> retryTokenBucket = new AtomicReference<>(null);
   private final ScheduledExecutorService scheduler;
   private final Clock clock;
-
+  RetryManagerStats retryManagerStats;
   private long lastUpdateTimestamp;
   private long previousQPS = 0;
 
-  public RetryManager(long enforcementWindowInMs, double retryBudgetInPercentDecimal, Clock clock) {
+  public RetryManager(
+      MetricsRepository metricsRepository,
+      String metricNamePrefix,
+      long enforcementWindowInMs,
+      double retryBudgetInPercentDecimal,
+      Clock clock) {
     if (enforcementWindowInMs <= 0 || retryBudgetInPercentDecimal <= 0) {
       scheduler = null;
       retryBudgetEnabled.set(false);
@@ -40,6 +51,7 @@ public class RetryManager implements Closeable {
       scheduler = Executors.newScheduledThreadPool(1);
       retryBudgetEnabled.set(true);
       lastUpdateTimestamp = clock.millis();
+      retryManagerStats = new RetryManagerStats(metricsRepository, metricNamePrefix, this);
       scheduler.schedule(this::updateRetryTokenBucket, enforcementWindowInMs, TimeUnit.MILLISECONDS);
     }
     this.enforcementWindowInMs = enforcementWindowInMs;
@@ -47,8 +59,12 @@ public class RetryManager implements Closeable {
     this.clock = clock;
   }
 
-  public RetryManager(long enforcementWindowInMs, double retryBudgetInPercentDecimal) {
-    this(enforcementWindowInMs, retryBudgetInPercentDecimal, Clock.systemUTC());
+  public RetryManager(
+      MetricsRepository metricsRepository,
+      String metricNamePrefix,
+      long enforcementWindowInMs,
+      double retryBudgetInPercentDecimal) {
+    this(metricsRepository, metricNamePrefix, enforcementWindowInMs, retryBudgetInPercentDecimal, Clock.systemUTC());
   }
 
   public void recordRequest() {
@@ -58,12 +74,17 @@ public class RetryManager implements Closeable {
   }
 
   public boolean isRetryAllowed() {
-    if (!retryBudgetEnabled.get() || retryTokenBucket.get() == null) {
+    TokenBucket tokenBucket = retryTokenBucket.get();
+    if (!retryBudgetEnabled.get() || tokenBucket == null) {
       // All retries are allowed when the feature is disabled or during the very first enforcement window when we
       // haven't collected enough data points yet
       return true;
     }
-    return retryTokenBucket.get().tryConsume(1);
+    boolean retryAllowed = retryTokenBucket.get().tryConsume(1);
+    if (!retryAllowed) {
+      retryManagerStats.recordRejectedRetry();
+    }
+    return retryAllowed;
   }
 
   private void updateRetryTokenBucket() {

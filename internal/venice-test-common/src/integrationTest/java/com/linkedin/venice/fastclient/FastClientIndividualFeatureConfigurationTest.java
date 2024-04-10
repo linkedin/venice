@@ -390,7 +390,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
             .setLongTailRetryBudgetEnforcementWindowInMs(1000)
             .setSpeculativeQueryEnabled(false);
-    String longTailRetryManagerStatsPrefix = ".long-tail-retry-manager--";
+    String multiGetLongTailRetryManagerStatsPrefix = ".multi-get-long-tail-retry-manager--";
+    String singleGetLongTailRetryManagerStatsPrefix = ".single-get-long-tail-retry-manager--";
     MetricsRepository clientMetric = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, clientMetric, StoreMetadataFetchMode.SERVER_BASED_METADATA);
@@ -406,13 +407,18 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         10,
         TimeUnit.SECONDS,
         () -> assertTrue(
-            clientMetric.getMetric(longTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge").value() > 0,
+            clientMetric.getMetric(multiGetLongTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge")
+                .value() > 0,
             "Current value: "
-                + clientMetric.getMetric(longTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge").value()));
-    TestUtils.waitForNonDeterministicAssertion(
-        10,
-        TimeUnit.SECONDS,
-        () -> assertTrue(
-            clientMetric.getMetric(longTailRetryManagerStatsPrefix + "retries_remaining.Gauge").value() > 0));
+                + clientMetric.getMetric(multiGetLongTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge")
+                    .value()));
+    assertTrue(clientMetric.getMetric(multiGetLongTailRetryManagerStatsPrefix + "retries_remaining.Gauge").value() > 0);
+    assertEquals(
+        clientMetric.getMetric(multiGetLongTailRetryManagerStatsPrefix + "rejected_retry.OccurrenceRate").value(),
+        0d);
+    // single get long tail retry manager metrics shouldn't be initialized because it's not enabled
+    assertNull(clientMetric.getMetric(singleGetLongTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge"));
+    assertNull(clientMetric.getMetric(singleGetLongTailRetryManagerStatsPrefix + "retries_remaining.Gauge"));
+    assertNull(clientMetric.getMetric(singleGetLongTailRetryManagerStatsPrefix + "rejected_retry.OccurrenceRate"));
   }
 }
