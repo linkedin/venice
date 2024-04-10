@@ -1148,32 +1148,6 @@ public class VeniceParentHelixAdmin implements Admin {
       latestTopic = Optional.of(versionTopics.get(0));
     }
 
-    Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
-    for (Map.Entry<String, String> entry: futureVersions.entrySet()) {
-      ControllerClient controllerClient = getVeniceHelixAdmin().getControllerClientMap(clusterName).get(entry.getKey());
-      StoreResponse storeResponse = ControllerClient.retryableRequest(controllerClient, 5, c -> c.getStore(storeName));
-      StoreInfo store = storeResponse.getStore();
-      int futureVersion;
-      try {
-        futureVersion = Integer.parseInt(entry.getValue());
-      } catch (Exception e) {
-        continue;
-      }
-      Optional<Version> version = store.getVersion(futureVersion);
-      boolean deferredSwap = version.isPresent() && version.get().isVersionSwapDeferred();
-      // if there is a online future version available, do not allow further pushes
-      if (deferredSwap && store.getCurrentVersion() < futureVersion) {
-        LOGGER.error(
-            "There is already future version {} exists in {}, please wait till the future version is made current.",
-            entry.getValue(),
-            entry.getKey());
-        throw new VeniceException(
-            "There is already a future version " + entry.getValue() + " in region " + entry.getKey()
-                + " exists for the store " + storeName
-                + ". Please mark that version current before continuing with a new push.");
-      }
-    }
-
     /**
      * Check current topic retention to decide whether the previous job is already done or not
      */
@@ -1182,6 +1156,16 @@ public class VeniceParentHelixAdmin implements Admin {
 
       final String latestTopicName = latestTopic.get().getName();
       int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
+      boolean deferredSwap = isDeferredSwap(clusterName, storeName, versionNumber);
+      if (deferredSwap) {
+        LOGGER.error(
+            "There is already future version {} exists for store {}, please wait till the future version is made current.",
+            versionNumber,
+            storeName);
+        throw new VeniceException(
+            "There is already a future version " + versionNumber + " exists for the store " + storeName
+                + ". Please mark that version current before continuing with a new push.");
+      }
 
       if (!isTopicTruncated(latestTopicName)) {
         /**
@@ -1387,7 +1371,7 @@ public class VeniceParentHelixAdmin implements Admin {
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
-      StoreResponse response = controllerClient.retryableRequest(10, c -> c.getStore(storeName));
+      StoreResponse response = controllerClient.retryableRequest(5, c -> c.getStore(storeName));
       if (response.isError()) {
         LOGGER.warn(
             "isActiveActiveReplicationEnabledInAllRegion: Could not query store from region: {} for cluster: {}. "
@@ -2004,6 +1988,15 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = rollForwardCurrentVersion;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
+      int futureVersion = 0;
+      for (Map.Entry<String, String> entry: futureVersions.entrySet()) {
+        futureVersion = Integer.parseInt(entry.getValue());
+        if (futureVersion > 0) {
+          break;
+        }
+      }
+      truncateKafkaTopic(Version.composeKafkaTopic(storeName, futureVersion));
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
@@ -3530,13 +3523,18 @@ public class VeniceParentHelixAdmin implements Admin {
         getFinalReturnStatus(sortedStatuses, childRegions, failCount, currentReturnStatusDetails);
 
     // Do not delete parent Kafka if its part of targeted colo push to prevent concurrent pushes
-    if (currentReturnStatus.isTerminal() && StringUtils.isEmpty(targetedRegions)) {
-      truncateTopicsOptionally(
-          clusterName,
-          kafkaTopic,
-          incrementalPushVersion,
-          currentReturnStatus,
-          currentReturnStatusDetails);
+    if (currentReturnStatus.isTerminal()) {
+      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+      int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+      boolean deferredSwap = isDeferredSwap(clusterName, storeName, versionNum);
+      if (!deferredSwap) {
+        truncateTopicsOptionally(
+            clusterName,
+            kafkaTopic,
+            incrementalPushVersion,
+            currentReturnStatus,
+            currentReturnStatusDetails);
+      }
     }
 
     return new OfflinePushStatusInfo(
@@ -3546,6 +3544,22 @@ public class VeniceParentHelixAdmin implements Admin {
         currentReturnStatusDetails.toString(),
         extraDetails,
         extraInfoUpdateTimestamp);
+  }
+
+  boolean isDeferredSwap(String clusterName, String storeName, int versionNum) {
+    Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
+    for (Map.Entry<String, String> entry: futureVersions.entrySet()) {
+      ControllerClient controllerClient = getVeniceHelixAdmin().getControllerClientMap(clusterName).get(entry.getKey());
+      StoreResponse storeResponse = ControllerClient.retryableRequest(controllerClient, 5, c -> c.getStore(storeName));
+      StoreInfo store = storeResponse.getStore();
+      Optional<Version> version = store.getVersion(versionNum);
+      if (version.isPresent()) {
+        if (version.get().isVersionSwapDeferred() && store.getCurrentVersion() < versionNum) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**

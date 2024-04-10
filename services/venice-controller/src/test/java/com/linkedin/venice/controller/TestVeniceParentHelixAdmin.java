@@ -112,6 +112,7 @@ import org.testng.annotations.Test;
 
 public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdmin {
   String storeName = Utils.getUniqueString("test_store");
+  static final int NUM_REGIONS = 3;
 
   @BeforeMethod
   public void setupTestCase() {
@@ -1460,7 +1461,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, String> map = new HashMap<>();
     map.put(storeName, "1");
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < NUM_REGIONS; i++) {
       ControllerClient client = mock(ControllerClient.class);
       StoreResponse storeResponse = new StoreResponse();
       Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
@@ -1559,7 +1560,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(false).when(store).isIncrementalPushEnabled();
     doReturn(Optional.empty()).when(store).getVersion(anyInt());
     doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
-
+    // doReturn(false).when(parentAdmin).isDeferredSwap(anyString(), anyString(), anyInt());
     Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", completeMap);
     Map<String, String> extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
