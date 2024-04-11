@@ -783,6 +783,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public void deleteFilesInDirectory(String fullPath) {
+    if (fullPath == null || fullPath.isEmpty()) {
+      return;
+    }
+
     File dir = new File(fullPath);
     if (dir.exists()) {
       // Remove the files inside
