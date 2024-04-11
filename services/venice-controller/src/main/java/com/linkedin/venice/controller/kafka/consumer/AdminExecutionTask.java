@@ -491,8 +491,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setMigrationDuplicateStore(message.migrationDuplicateStore)
         .setLatestSupersetSchemaId(message.latestSuperSetValueSchemaId)
         .setBlobTransferEnabled(message.blobTransferEnabled)
-        .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
-        .setLatestSupersetSchemaId(message.latestSuperSetValueSchemaId);
+        .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled);
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)

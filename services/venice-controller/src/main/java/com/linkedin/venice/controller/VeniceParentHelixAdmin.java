@@ -633,7 +633,6 @@ public class VeniceParentHelixAdmin implements Admin {
   public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedValueSchemaIds) {
     Set<Integer> inuseValueSchemaIds = getInUseValueSchemaIds(clusterName, storeName);
     if (inuseValueSchemaIds.isEmpty()) {
-      LOGGER.error("For store {} cannot find in-use schema ids.", storeName);
       return;
     }
     boolean isCommon = unusedValueSchemaIds.stream().anyMatch(inuseValueSchemaIds::contains);
