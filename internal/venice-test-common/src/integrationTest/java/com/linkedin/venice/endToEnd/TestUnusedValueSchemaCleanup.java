@@ -107,6 +107,7 @@ public class TestUnusedValueSchemaCleanup {
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
+      // only V3 schema is used, we should have only 1 schema left after deleting V1 and V2
       TestUtils.waitForNonDeterministicCompletion(
           20,
           TimeUnit.SECONDS,
