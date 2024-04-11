@@ -143,7 +143,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(19, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(20, StoreMetaValue.class),
 
   /**
    * Key schema for push status system store.

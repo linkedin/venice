@@ -9,6 +9,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
@@ -2530,6 +2531,10 @@ public class VeniceParentHelixAdmin implements Admin {
           .orElse(false);
 
       setStore.storagePersona = personaName.map(addToUpdatedConfigList(updatedConfigsList, PERSONA_NAME)).orElse(null);
+
+      setStore.blobTransferEnabled = params.getBlobTransferEnabled()
+          .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_ENABLED))
+          .orElseGet(currStore::isBlobTransferEnabled);
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {

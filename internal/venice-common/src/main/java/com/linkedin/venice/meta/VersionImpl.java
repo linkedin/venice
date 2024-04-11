@@ -69,6 +69,7 @@ public class VersionImpl implements Version {
     if (dataRecoveryVersionConfig != null) {
       this.storeVersion.dataRecoveryConfig = dataRecoveryVersionConfig.dataModel();
     }
+
     this.storeVersion.leaderFollowerModelEnabled = true;
     this.kafkaTopicName = Version.composeKafkaTopic(storeName, number);
   }
@@ -266,6 +267,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isBlobTransferEnabled() {
+    return this.storeVersion.blobTransferEnabled;
+  }
+
+  @Override
+  public void setBlobTransferEnabled(boolean blobTransferEnabled) {
+    this.storeVersion.blobTransferEnabled = blobTransferEnabled;
+  }
+
+  @Override
   public boolean isUseVersionLevelIncrementalPushEnabled() {
     return this.storeVersion.useVersionLevelIncrementalPushEnabled;
   }
@@ -434,6 +445,7 @@ public class VersionImpl implements Version {
     clonedVersion.setRmdVersionId(getRmdVersionId());
     clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
     clonedVersion.setViewConfigs(getViewConfigs());
+    clonedVersion.setBlobTransferEnabled(isBlobTransferEnabled());
     return clonedVersion;
   }
 
