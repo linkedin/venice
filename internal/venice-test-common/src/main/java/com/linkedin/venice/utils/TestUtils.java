@@ -104,6 +104,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.FileUtils;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -911,5 +912,13 @@ public class TestUtils {
       }
     }
     return false;
+  }
+
+  public static void deleteDirectory(File fileToDelete) {
+    try {
+      FileUtils.deleteDirectory(fileToDelete);
+    } catch (IOException e) {
+      throw new VeniceException("Could not delete directory: " + fileToDelete, e);
+    }
   }
 }

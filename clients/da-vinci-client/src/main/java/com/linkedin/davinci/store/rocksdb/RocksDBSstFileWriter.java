@@ -86,7 +86,6 @@ public class RocksDBSstFileWriter {
   private final EnvOptions envOptions;
   private final Options options;
   private final boolean isRMD;
-  private final boolean blobTransferBatchOnlyEnabled;
   private final RocksDBServerConfig rocksDBServerConfig;
 
   @VisibleForTesting
@@ -110,18 +109,17 @@ public class RocksDBSstFileWriter {
       String fullPathForTempSSTFileDir,
       boolean isRMD,
       RocksDBServerConfig rocksDBServerConfig,
-      boolean blobTransferBatchOnlyEnabled) {
+      boolean blobTransferEnabled) {
     this.storeName = storeName;
     this.partitionId = partitionId;
     this.envOptions = envOptions;
     this.options = options;
     this.fullPathForTempSSTFileDir = fullPathForTempSSTFileDir;
     this.fullPathForPartitionDBSnapshot =
-        blobTransferBatchOnlyEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId) : null;
+        blobTransferEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId) : null;
     this.isRMD = isRMD;
     this.lastCheckPointedSSTFileNum = isRMD ? ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO : ROCKSDB_LAST_FINISHED_SST_FILE_NO;
     this.rocksDBServerConfig = rocksDBServerConfig;
-    this.blobTransferBatchOnlyEnabled = blobTransferBatchOnlyEnabled;
   }
 
   public void put(byte[] key, ByteBuffer valueBuffer) throws RocksDBException {
@@ -504,7 +502,7 @@ public class RocksDBSstFileWriter {
   }
 
   public void createSnapshot(RocksDB rocksDB) {
-    if (!blobTransferBatchOnlyEnabled) {
+    if (fullPathForPartitionDBSnapshot == null || fullPathForPartitionDBSnapshot.isEmpty()) {
       return;
     }
 

@@ -31,7 +31,7 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
 
   private boolean restoreDataPartitions = true;
   private boolean restoreMetadataPartition = true;
-  private boolean blobTransferBatchOnlyEnabled;
+  private boolean blobTransferEnabled;
 
   public VeniceStoreVersionConfig(
       String storeVersionName,
@@ -39,7 +39,7 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
       Map<String, Map<String, String>> kafkaClusterMap) {
     super(storeProperties, kafkaClusterMap);
     this.storeVersionName = storeVersionName;
-    this.blobTransferBatchOnlyEnabled = storeProperties.getBoolean(ENABLE_BLOB_TRANSFER, false);
+    this.blobTransferEnabled = storeProperties.getBoolean(ENABLE_BLOB_TRANSFER, false);
 
     // Stores all storage engine configs that are needed to be persisted to disk.
     this.persistStorageEngineConfigs = new PropertyBuilder()
@@ -64,8 +64,8 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
     return storeVersionName;
   }
 
-  public boolean isBlobTransferBatchOnlyEnabled() {
-    return this.blobTransferBatchOnlyEnabled;
+  public boolean isBlobTransferEnabled() {
+    return this.blobTransferEnabled;
   }
 
   public PersistenceType getStorePersistenceType() {

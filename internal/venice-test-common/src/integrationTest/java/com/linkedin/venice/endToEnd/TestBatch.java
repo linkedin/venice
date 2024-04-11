@@ -22,6 +22,7 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSIO
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
+import static com.linkedin.venice.utils.TestUtils.deleteDirectory;
 import static com.linkedin.venice.utils.TestUtils.directoryContainsFolder;
 import static com.linkedin.venice.utils.TestUtils.findFoldersWithFileExtension;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA;
@@ -1357,6 +1358,9 @@ public abstract class TestBatch {
 
     verifySnapshotFolders();
 
+    deleteDirectory(Paths.get(BASE_DATA_PATH_1).toFile());
+    deleteDirectory(Paths.get(BASE_DATA_PATH_2).toFile());
+
     if (isKakfaPush) {
       testRepush(storeName, validator);
     } else {
@@ -1390,7 +1394,7 @@ public abstract class TestBatch {
 
       Assert.assertTrue(containsSnapshotFolder);
 
-      // snapshot_files folder should contain the .sst files
+      // .snapshot_files folder should contain the .sst files
       Path snapshotPath = Paths.get(directoryPath + "/.snapshot_files");
       List<String> snapshots = findFoldersWithFileExtension(snapshotPath.toFile(), ".sst");
       Assert.assertTrue(snapshots.size() > 0);

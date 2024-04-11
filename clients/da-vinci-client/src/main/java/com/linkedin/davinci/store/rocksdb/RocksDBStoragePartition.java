@@ -81,7 +81,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private final EnvOptions envOptions;
 
   protected final String storeName;
-  protected final boolean blobTransferBatchOnlyEnabled;
+  protected final boolean blobTransferEnabled;
   private final String storeNameWithoutVersionSuffix;
   protected final int partitionId;
   private final String fullPathForPartitionDB;
@@ -163,7 +163,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.storeNameWithoutVersionSuffix = Version.parseStoreFromVersionTopic(storeName);
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.aggStatistics = factory.getAggStatistics();
-    this.blobTransferBatchOnlyEnabled = storeConfig.isBlobTransferBatchOnlyEnabled();
+    this.blobTransferEnabled = storeConfig.isBlobTransferEnabled();
 
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
     // restart,
@@ -198,7 +198,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.expectedChecksumSupplier = Optional.empty();
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
-    this.fullPathForTempSnapshotFileDir = RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId);
+    this.fullPathForTempSnapshotFileDir =
+        blobTransferEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId) : null;
+
     if (deferredWrite) {
       this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
           storeName,
@@ -209,7 +211,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           fullPathForTempSSTFileDir,
           false,
           rocksDBServerConfig,
-          blobTransferBatchOnlyEnabled);
+          blobTransferEnabled);
     }
 
     /**
@@ -339,8 +341,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return envOptions;
   }
 
-  protected Boolean getBlobTransferBatchOnlyEnabled() {
-    return blobTransferBatchOnlyEnabled;
+  protected Boolean getBlobTransferEnabled() {
+    return blobTransferEnabled;
   }
 
   private Options getStoreOptions(StoragePartitionConfig storagePartitionConfig, boolean isRMD) {
@@ -465,12 +467,15 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * the last SST file written is finished.
      */
     rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
-    createSnapshot();
+
+    if (blobTransferEnabled) {
+      createSnapshot();
+    }
   }
 
   @Override
   public synchronized void createSnapshot() {
-    if (blobTransferBatchOnlyEnabled) {
+    if (blobTransferEnabled) {
       rocksDBSstFileWriter.createSnapshot(rocksDB);
     }
   }
