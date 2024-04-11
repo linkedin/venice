@@ -19,6 +19,7 @@ import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
@@ -4074,6 +4075,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Fetch value schema id used by all existing store version
     for (Version version: store.getVersions()) {
       Map<String, String> map = new HashMap<>(2);
+      map.put(KEY_STRING_STORE_NAME, storeName);
       map.put(MetaStoreWriter.KEY_STRING_VERSION_NUMBER, Integer.toString(version.getNumber()));
       StoreMetaKey key = MetaStoreDataType.VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION.getStoreMetaKey(map);
       StoreMetaValue metaValue = getMetaStoreValue(key, storeName);
@@ -4082,10 +4084,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         String msg = "Could not find in-use value schema for store " + storeName;
         LOGGER.warn(msg);
         throw new VeniceException(msg);
-      }
-      // Skip if its recorded recently
-      if (System.currentTimeMillis() < metaValue.timestamp + UNUSED_SCHEMA_DELETION_TIME_GAP) {
-        continue;
       }
       schemaIds.addAll(metaValue.storeValueSchemaIdsWrittenPerStoreVersion);
     }

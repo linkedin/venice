@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -43,7 +44,7 @@ public class TestUnusedValueSchemaCleanupService {
   public void testCleanupUnusedSchema() throws Exception {
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
-    doReturn(1).when(config).getUnusedSchemaCleanupIntervalMinutes();
+    doReturn(1).when(config).getUnusedSchemaCleanupIntervalSeconds();
     doReturn(1).when(config).getMinSchemaCountToKeep();
     VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
     doReturn(controllerConfig).when(config).getControllerConfig(any());
@@ -92,7 +93,7 @@ public class TestUnusedValueSchemaCleanupService {
     doReturn(true).when(controllerConfig).isUnusedValueSchemaCleanupServiceEnabled();
     doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(any());
     Store store = mockStore();
-    HelixReadOnlyZKSharedSchemaRepository schemaRepository = mock(HelixReadOnlyZKSharedSchemaRepository.class);
+    ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
     doReturn(schemaRepository).when(parentHelixAdmin).getReadOnlyZKSharedSchemaRepository();
     List<SchemaEntry> schemaEntries = new ArrayList<>();
     schemaEntries.add(new SchemaEntry(1, SCHEMA));

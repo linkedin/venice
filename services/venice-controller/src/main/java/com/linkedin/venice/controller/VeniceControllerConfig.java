@@ -53,7 +53,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
@@ -315,7 +315,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean isKMERegistrationFromMessageHeaderEnabled;
   private final boolean unusedValueSchemaCleanupServiceEnabled;
 
-  private final int unusedSchemaCleanupIntervalMinutes;
+  private final int unusedSchemaCleanupIntervalSeconds;
 
   private final int minSchemaCountToKeep;
 
@@ -554,7 +554,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
     this.unusedValueSchemaCleanupServiceEnabled =
         props.getBoolean(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, false);
-    this.unusedSchemaCleanupIntervalMinutes = props.getInt(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS, 600);
+    this.unusedSchemaCleanupIntervalSeconds = props.getInt(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS, 36000);
     this.minSchemaCountToKeep = props.getInt(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 20);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
   }
@@ -670,8 +670,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return unusedValueSchemaCleanupServiceEnabled;
   }
 
-  public int getUnusedSchemaCleanupIntervalMinutes() {
-    return unusedSchemaCleanupIntervalMinutes;
+  public int getUnusedSchemaCleanupIntervalSeconds() {
+    return unusedSchemaCleanupIntervalSeconds;
   }
 
   public int getMinSchemaCountToKeep() {
