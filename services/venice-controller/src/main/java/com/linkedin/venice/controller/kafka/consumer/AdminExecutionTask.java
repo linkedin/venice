@@ -489,7 +489,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)
         .setMigrationDuplicateStore(message.migrationDuplicateStore)
-        .setLatestSupersetSchemaId(message.latestSuperSetValueSchemaId);
+        .setLatestSupersetSchemaId(message.latestSuperSetValueSchemaId)
+        .setBlobTransferEnabled(message.blobTransferEnabled);
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)

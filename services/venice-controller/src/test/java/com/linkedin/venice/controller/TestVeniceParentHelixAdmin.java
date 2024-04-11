@@ -1702,8 +1702,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
+    UpdateStoreQueryParams storeQueryParams1 =
+        new UpdateStoreQueryParams().setIncrementalPushEnabled(true).setBlobTransferEnabled(true);
     parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    parentAdmin.updateStore(clusterName, storeName, storeQueryParams1);
 
     verify(zkClient, times(1)).readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -1722,6 +1724,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.incrementalPushEnabled, true);
+    Assert.assertTrue(updateStore.blobTransferEnabled);
 
     long readQuota = 100L;
     boolean readability = true;
@@ -1740,7 +1743,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .setHybridOffsetLagThreshold(2000)
         .setHybridBufferReplayPolicy(REWIND_FROM_SOP)
         .setBootstrapToOnlineTimeoutInHours(48)
-        .setReplicationFactor(2);
+        .setReplicationFactor(2)
+        .setBlobTransferEnabled(false);
 
     parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
 
@@ -1774,6 +1778,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         updateStore.partitionerConfig.partitionerClass.toString(),
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
     Assert.assertEquals(updateStore.replicationFactor, 2);
+    Assert.assertFalse(updateStore.blobTransferEnabled);
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));
