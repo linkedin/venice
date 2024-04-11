@@ -51,7 +51,7 @@ public class TestUnusedValueSchemaCleanup {
     controllerProps.put(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 2);
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3);
     controllerProps.put(DEFAULT_PARTITION_SIZE, 1024);
-    controllerProps.put(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS, 5);
+    controllerProps.put(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS, 1);
     controllerProps.put(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 1);
     controllerProps.put(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, true);
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(

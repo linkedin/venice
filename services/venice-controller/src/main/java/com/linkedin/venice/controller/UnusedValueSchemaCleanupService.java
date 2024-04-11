@@ -148,7 +148,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    executor.scheduleAtFixedRate(getRunnableForSchemaCleanup(), 5, scheduleIntervalSeconds, TimeUnit.SECONDS);
+    executor.scheduleAtFixedRate(getRunnableForSchemaCleanup(), 0, scheduleIntervalSeconds, TimeUnit.SECONDS);
     return true;
   }
 

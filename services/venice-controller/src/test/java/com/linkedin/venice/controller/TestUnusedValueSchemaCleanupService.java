@@ -7,7 +7,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -51,12 +50,17 @@ public class TestUnusedValueSchemaCleanupService {
     doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(anyString());
     doReturn(true).when(controllerConfig).isUnusedValueSchemaCleanupServiceEnabled();
     doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(any());
+    ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
+    HelixVeniceClusterResources clusterResources = mock(HelixVeniceClusterResources.class);
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doReturn(admin).when(parentHelixAdmin).getVeniceHelixAdmin();
+    doReturn(clusterResources).when(admin).getHelixVeniceClusterResources(anyString());
+    doReturn(schemaRepository).when(clusterResources).getSchemaRepository();
+
     Store store = mockStore();
 
     String clusterName = "test_cluster";
     Set<String> clusters = new HashSet<>();
-    HelixReadOnlyZKSharedSchemaRepository schemaRepository = mock(HelixReadOnlyZKSharedSchemaRepository.class);
-    doReturn(schemaRepository).when(parentHelixAdmin).getReadOnlyZKSharedSchemaRepository();
     clusters.add(clusterName);
     doReturn(clusters).when(config).getClusters();
     List<Store> storeList = new ArrayList<>();
@@ -94,7 +98,11 @@ public class TestUnusedValueSchemaCleanupService {
     doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(any());
     Store store = mockStore();
     ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
-    doReturn(schemaRepository).when(parentHelixAdmin).getReadOnlyZKSharedSchemaRepository();
+    HelixVeniceClusterResources clusterResources = mock(HelixVeniceClusterResources.class);
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doReturn(admin).when(parentHelixAdmin).getVeniceHelixAdmin();
+    doReturn(clusterResources).when(admin).getHelixVeniceClusterResources(anyString());
+    doReturn(schemaRepository).when(clusterResources).getSchemaRepository();
     List<SchemaEntry> schemaEntries = new ArrayList<>();
     schemaEntries.add(new SchemaEntry(1, SCHEMA));
     schemaEntries.add(new SchemaEntry(2, SCHEMA));
