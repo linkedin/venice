@@ -51,6 +51,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_Q
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
@@ -335,8 +336,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
 
-  private final UnusedValueSchemaCleanupService unusedValueSchemaCleanupService;
-
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
 
   private final SupersetSchemaGenerator defaultSupersetSchemaGenerator = new DefaultSupersetSchemaGenerator();
@@ -517,7 +516,6 @@ public class VeniceParentHelixAdmin implements Admin {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
-    this.unusedValueSchemaCleanupService = new UnusedValueSchemaCleanupService(multiClusterConfigs, this);
   }
 
   // For testing purpose.
@@ -634,6 +632,9 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void deleteValueSchemas(String clusterName, String storeName, Set<Integer> unusedValueSchemaIds) {
     Set<Integer> inuseValueSchemaIds = getInUseValueSchemaIds(clusterName, storeName);
+    if (inuseValueSchemaIds.isEmpty()) {
+      return;
+    }
     boolean isCommon = unusedValueSchemaIds.stream().anyMatch(inuseValueSchemaIds::contains);
     if (isCommon) {
       LOGGER
@@ -2210,6 +2211,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Map<String, String>> viewParams = params.getViewClassParams();
       Optional<Boolean> removeView = params.getDisableStoreView();
       Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
+      Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2551,6 +2553,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.storageNodeReadQuotaEnabled =
           storageNodeReadQuotaEnabled.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_NODE_READ_QUOTA_ENABLED))
               .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
+      setStore.unusedSchemaDeletionEnabled =
+          unusedSchemaDeletionEnabled.map(addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
+              .orElseGet(currStore::isUnusedSchemaDeletionEnabled);
       setStore.minCompactionLagSeconds =
           minCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
               .orElseGet(currStore::getMinCompactionLagSeconds);
@@ -4188,7 +4193,6 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     newFabricControllerClientMap.forEach(
         (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
-    unusedValueSchemaCleanupService.close();
   }
 
   /**
