@@ -128,6 +128,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
+    /**
+     * We set up the lag monitor first for leader transitions because we want to monitor the amount of time
+     * where a slice doesn't have a replicating leader.  While this state transition executes, there should be no
+     * other leader in the slice.
+     */
     updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::addLeaderLagMonitor);
     executeStateTransition(
         message,

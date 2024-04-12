@@ -37,10 +37,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
   public static final int DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS = 60;
 
-  // This default value SHOULD be a number that will trip an alert. Alerting on this should be duration based,
-  // so starting off with a large value is fine that is cleared once we get the next heartbeat
-  public long DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP = System.currentTimeMillis() - 21600000; // 6 hours ago
-
   private final Set<String> regionNames;
   private final String localRegionName;
 
@@ -83,10 +79,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           Map<String, Long> regionTimestamps = new VeniceConcurrentHashMap<>();
           if (version.isActiveActiveReplicationEnabled() && !isFollower) {
             for (String region: regionNames) {
-              regionTimestamps.put(region, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
+              regionTimestamps.put(region, System.currentTimeMillis());
             }
           } else {
-            regionTimestamps.put(localRegionName, DEFAULT_SENTINEL_HEARTBEAT_TIMESTAMP);
+            regionTimestamps.put(localRegionName, System.currentTimeMillis());
           }
           return regionTimestamps;
         });
