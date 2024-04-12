@@ -122,4 +122,9 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   public long getPartitionSizeInBytes() {
     return partitionSize;
   }
+
+  @Override
+  public void createSnapshot() {
+    throw new UnsupportedOperationException("Method not implemented!");
+  }
 }

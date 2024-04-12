@@ -130,4 +130,9 @@ public class VeniceStoreCacheStoragePartition extends AbstractStoragePartition {
   public VeniceStoreCache getVeniceCache() {
     return veniceCache;
   }
+
+  @Override
+  public void createSnapshot() {
+    throw new UnsupportedOperationException("Method not implemented!");
+  }
 }
