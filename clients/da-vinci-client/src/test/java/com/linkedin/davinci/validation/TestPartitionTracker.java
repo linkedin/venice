@@ -1,5 +1,7 @@
 package com.linkedin.davinci.validation;
 
+import static org.mockito.Mockito.mock;
+
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -11,6 +13,8 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfSegment;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
@@ -20,6 +24,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -235,6 +240,85 @@ public class TestPartitionTracker {
         System.currentTimeMillis(),
         0);
     partitionTracker.validateMessage(firstConsumerRecord, endOfPushReceived, Lazy.FALSE);
+  }
+
+  @Test(timeOut = 5 * Time.MS_PER_SECOND)
+  public void testHandleFirstMessageAfterLoadingFromCheckPoint() {
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
+    int segmentNum = 1;
+    int sequenceNum = 1;
+    int firstNewSegmentNumber = 5;
+    int firstNewSequenceNum = 2;
+    int secondNewSegmentNumber = 6;
+    int secondNewSequenceNum = 10;
+    long offset = 10;
+
+    // Create an InternalAvroSpecificSerializer instance
+    InternalAvroSpecificSerializer<PartitionState> serializer = mock(InternalAvroSpecificSerializer.class);
+
+    // Create an OffsetRecord instance with your specific constructor
+    OffsetRecord offsetRecord = new OffsetRecord(serializer);
+
+    // Create a ProducerPartitionState instance
+    ProducerPartitionState state = new ProducerPartitionState();
+    state.segmentNumber = segmentNum;
+    state.setMessageSequenceNumber(sequenceNum);
+    state.checksumType = 0;
+    state.checksumState = ByteBuffer.wrap(new byte[0]);
+    state.isRegistered = true;
+    state.messageTimestamp = System.currentTimeMillis();
+
+    // Set the ProducerPartitionState in the OffsetRecord
+    offsetRecord.setProducerPartitionState(guid, state);
+
+    // Set the OffsetRecord in the PartitionTracker to mimic the behavior of loading from checkpoint.
+    partitionTracker.setPartitionState(offsetRecord, 0);
+
+    // Send the first message after loading from checkpoint.
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstMsgAfterLoadingFromCheckPoint = buildPutMessage(
+        firstNewSegmentNumber,
+        firstNewSequenceNum,
+        offset,
+        pubSubTopicPartition,
+        "first_key",
+        "first_message");
+
+    /**
+     * After loading from checkpoint, the new message with segment number gap should be accepted by ProducerTracker
+     * when it is the 1st encountered message even if tolerate message flag is false.
+     */
+    partitionTracker.validateMessage(firstMsgAfterLoadingFromCheckPoint, true, Lazy.FALSE);
+
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> secondMsgAfterLoadingFromCheckPoint = buildPutMessage(
+        secondNewSegmentNumber,
+        secondNewSequenceNum,
+        offset + 1,
+        pubSubTopicPartition,
+        "second_key",
+        "second_message");
+
+    // After the 1st message is handled correctly, if DIV still sees segment gaps, it should report
+    // MissingDataException.
+    Assert.assertThrows(
+        MissingDataException.class,
+        () -> partitionTracker.validateMessage(secondMsgAfterLoadingFromCheckPoint, true, Lazy.FALSE));
+  }
+
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> buildPutMessage(
+      int segNum,
+      int seqNum,
+      long offset,
+      PubSubTopicPartition partition,
+      String key,
+      String value) {
+    Segment segment = new Segment(partitionId, segNum, CheckSumType.NONE);
+    Put putMsg = getPutMessage(value.getBytes());
+    KafkaMessageEnvelope putMsgEnv =
+        getKafkaMessageEnvelope(MessageType.PUT, guid, segment, Optional.of(seqNum), putMsg);
+    KafkaKey putKey = getPutMessageKey(key.getBytes());
+
+    return new ImmutablePubSubMessage<>(putKey, putMsgEnv, partition, offset, System.currentTimeMillis(), 0);
   }
 
   @Test

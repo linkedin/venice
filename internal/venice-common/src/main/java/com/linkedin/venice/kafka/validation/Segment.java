@@ -76,6 +76,13 @@ public class Segment {
   // record the last producer message time stamp passed within the ConsumerRecord
   private long lastRecordProducerTimestamp = -1;
 
+  /**
+   * Indicate if a segment is constructed from a check point. When a host regains its leadership and consume RT,
+   * DIV tolerates the segment gap for very first message it meets and creates a new unregistered segment to replace it.
+   * Only set to true when a segment is created from a check point or copy constructed into the leader DIV.
+   */
+  private final boolean isCreatedFromCheckPoint;
+
   public Segment(
       int partition,
       int segmentNumber,
@@ -93,6 +100,7 @@ public class Segment {
     this.newSegment = true;
     this.debugInfo = getDedupedDebugInfo(debugInfo);
     this.aggregates = aggregates;
+    this.isCreatedFromCheckPoint = false;
   }
 
   public Segment(int partition, int segmentNumber, CheckSumType checkSumType) {
@@ -118,6 +126,7 @@ public class Segment {
     this.aggregates = CollectionUtils.substituteEmptyMap(state.getAggregates());
     this.registered = state.isRegistered;
     this.lastRecordProducerTimestamp = state.messageTimestamp;
+    this.isCreatedFromCheckPoint = true;
   }
 
   public Segment(Segment segment) {
@@ -138,6 +147,11 @@ public class Segment {
     this.aggregates = segment.aggregates;
     this.registered = segment.registered;
     this.lastRecordProducerTimestamp = segment.lastRecordProducerTimestamp;
+    this.isCreatedFromCheckPoint = segment.isCreatedFromCheckPoint;
+  }
+
+  public boolean isCreatedFromCheckPoint() {
+    return isCreatedFromCheckPoint;
   }
 
   public int getSegmentNumber() {

@@ -242,29 +242,52 @@ public class PartitionTracker {
             null,
             endOfPushReceived);
       }
-      Segment newSegment = initializeNewSegment(consumerRecord, endOfPushReceived, true);
-      return newSegment;
-    } else {
-      int previousSegmentNumber = previousSegment.getSegmentNumber();
-      if (incomingSegmentNumber == previousSegmentNumber) {
-        return previousSegment;
-      } else if (incomingSegmentNumber == previousSegmentNumber + 1 && previousSegment.isEnded()) {
-        /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param endOfPushReceived} */
-        return initializeNewSegment(consumerRecord, endOfPushReceived, false);
-      } else if (incomingSegmentNumber > previousSegmentNumber) {
-        if (tolerateMissingMsgs.get()) {
-          return initializeNewSegment(consumerRecord, endOfPushReceived, true);
-        } else {
-          throw DataFaultType.MISSING.getNewException(previousSegment, consumerRecord);
-        }
-      } else if (incomingSegmentNumber < previousSegmentNumber) {
-        throw DataFaultType.DUPLICATE.getNewException(previousSegment, consumerRecord);
-      } else {
-        // Defensive code.
-        throw new IllegalStateException(
-            "This condition should never happen. " + getClass().getSimpleName() + " may have a regression.");
-      }
+      return initializeNewSegment(consumerRecord, endOfPushReceived, true);
     }
+
+    int previousSegmentNumber = previousSegment.getSegmentNumber();
+    if (incomingSegmentNumber == previousSegmentNumber) {
+      return previousSegment;
+    }
+
+    if (incomingSegmentNumber == previousSegmentNumber + 1 && previousSegment.isEnded()) {
+      /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param endOfPushReceived} */
+      return initializeNewSegment(consumerRecord, endOfPushReceived, false);
+    }
+
+    if (incomingSegmentNumber > previousSegmentNumber) {
+      if (tolerateMissingMsgs.get()) {
+        return initializeNewSegment(consumerRecord, endOfPushReceived, true);
+      }
+
+      /**
+       * DIV dumps its segments information into offset record periodically or before server shut down and loads
+       * the contents back during Helix state transition (OFFLINE->STANDBY) when the host is transitioned to
+       * follower and, when it becomes the leader, copied into the leader DIV.
+       *
+       * For hybrid store partitions (after EOP), if a host went through a LEADER -> (OFFLINE ->) FOLLOWER -> LEADER
+       * transition, e.g. because of host shutdown, its DIV dumps and reloads segments and if another host became
+       * the new leader (when it was offline or follower) did its leadership duty by consuming messages from RT topic,
+       * producing to local VT etc., then when previous host became leader for the 2nd time, its DIV, after loading
+       * segment from checkpoint, only contains the stale segment info in terms of the segment number for the RT topic,
+       * thus when it starts to consume, it can see segment number gaps.
+       *
+       * So, when a host regains its leadership and re-consumes RT, DIV tolerates the segment gap for very first message
+       * it meets and creates a new unregistered segment (based on the contents fo the impending message) to replace it.
+       */
+      if (endOfPushReceived && previousSegment.isCreatedFromCheckPoint()) {
+        return initializeNewSegment(consumerRecord, true, true);
+      }
+
+      throw DataFaultType.MISSING.getNewException(previousSegment, consumerRecord);
+    }
+
+    if (incomingSegmentNumber < previousSegmentNumber) {
+      throw DataFaultType.DUPLICATE.getNewException(previousSegment, consumerRecord);
+    }
+    // Defensive code.
+    throw new IllegalStateException(
+        "This condition should never happen. " + getClass().getSimpleName() + " may have a regression.");
   }
 
   /**
