@@ -178,11 +178,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     preValidation.run();
   }
 
-  // For testing
-  void setDaVinciBackend(DaVinciBackend testDaVinciBackend) {
-    daVinciBackend = new ReferenceCounted<>(testDaVinciBackend, (ignored) -> {});
-  }
-
   @Override
   public String getStoreName() {
     return clientConfig.getStoreName();
