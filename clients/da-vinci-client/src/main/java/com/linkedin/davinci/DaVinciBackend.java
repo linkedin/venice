@@ -34,6 +34,7 @@ import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -663,7 +664,7 @@ public class DaVinciBackend implements Closeable {
           /**
            * Report push status needs to be executed before deleting the {@link VersionBackend}.
            */
-          ExecutionStatus status = getDaVinciErrorStatus(message, e);
+          ExecutionStatus status = getDaVinciErrorStatus(e);
           reportPushStatus(kafkaTopic, partitionId, status);
 
           versionBackend.completePartitionExceptionally(partitionId, e);
@@ -739,15 +740,15 @@ public class DaVinciBackend implements Closeable {
     }
   };
 
-  static ExecutionStatus getDaVinciErrorStatus(String message, Exception e) {
+  static ExecutionStatus getDaVinciErrorStatus(Exception e) {
     ExecutionStatus status = DVC_INGESTION_ERROR_OTHER;
-    if (e instanceof MemoryLimitExhaustedException) {
-      status = DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
-    } else if (e instanceof VeniceException) {
-      if (message.startsWith("Disk is full")) {
-        status = DVC_INGESTION_ERROR_DISK_FULL;
-      } else if (e.getCause() != null && e.getCause() instanceof MemoryLimitExhaustedException) {
+    if (e instanceof VeniceException) {
+      if (e instanceof MemoryLimitExhaustedException
+          || (e.getCause() != null && e.getCause() instanceof MemoryLimitExhaustedException)) {
         status = DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
+      } else if (e instanceof DiskLimitExhaustedException
+          || (e.getCause() != null && e.getCause() instanceof DiskLimitExhaustedException)) {
+        status = DVC_INGESTION_ERROR_DISK_FULL;
       }
     }
     return status;

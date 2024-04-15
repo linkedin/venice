@@ -29,6 +29,7 @@ import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -50,6 +51,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
@@ -327,7 +329,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Disk is full.*")
+  @Test(timeOut = TEST_TIMEOUT)
   public void testDavinciSubscribeFailureWithFullDisk() throws Exception {
     String storeName = Utils.getUniqueString("test-davinci-store");
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
@@ -344,6 +346,9 @@ public class DaVinciClientTest {
         new DaVinciConfig(),
         backendConfigMap)) {
       daVinciClient.subscribeAll().get();
+      fail("should fail with disk full exception");
+    } catch (Exception e) {
+      assertTrue(e.getCause() instanceof DiskLimitExhaustedException);
     }
   }
 

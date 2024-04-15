@@ -5,6 +5,7 @@ import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerato
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -23,31 +24,49 @@ public class DaVinciBackendTest {
 
   @Test(dataProvider = "DvcErrorExecutionStatus")
   public void testGetDaVinciErrorStatus(ExecutionStatus executionStatus) {
-    String message;
     VeniceException veniceException;
     switch (executionStatus) {
       case DVC_INGESTION_ERROR_DISK_FULL:
-        message = "Disk is full";
-        veniceException = new VeniceException("Disk is full");
+        veniceException = new DiskLimitExhaustedException("test");
         break;
       case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
-        message = "Memory limit reached";
-        veniceException = new MemoryLimitExhaustedException("Memory limit reached");
+        veniceException = new MemoryLimitExhaustedException("test");
         break;
       case DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES:
-        message = "Too many dead instances";
-        veniceException = new VeniceException("Too many dead instances");
-        break;
       case DVC_INGESTION_ERROR_OTHER:
-        message = "Some other error";
-        veniceException = new VeniceException("Some other error");
+        veniceException = new VeniceException("test");
         break;
       default:
         fail("Unexpected execution status: " + executionStatus);
         return;
     }
     assertEquals(
-        DaVinciBackend.getDaVinciErrorStatus(message, veniceException),
+        DaVinciBackend.getDaVinciErrorStatus(veniceException),
+        executionStatus.equals(ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
+            ? DVC_INGESTION_ERROR_OTHER
+            : executionStatus);
+  }
+
+  @Test(dataProvider = "DvcErrorExecutionStatus")
+  public void testGetDaVinciErrorStatusNested(ExecutionStatus executionStatus) {
+    VeniceException veniceException;
+    switch (executionStatus) {
+      case DVC_INGESTION_ERROR_DISK_FULL:
+        veniceException = new VeniceException(new DiskLimitExhaustedException("test"));
+        break;
+      case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
+        veniceException = new VeniceException(new MemoryLimitExhaustedException("test"));
+        break;
+      case DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES:
+      case DVC_INGESTION_ERROR_OTHER:
+        veniceException = new VeniceException("test");
+        break;
+      default:
+        fail("Unexpected execution status: " + executionStatus);
+        return;
+    }
+    assertEquals(
+        DaVinciBackend.getDaVinciErrorStatus(veniceException),
         executionStatus.equals(ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
             ? DVC_INGESTION_ERROR_OTHER
             : executionStatus);
@@ -55,31 +74,20 @@ public class DaVinciBackendTest {
 
   @Test(dataProvider = "DvcErrorExecutionStatus")
   public void testGetDaVinciErrorStatusWithInvalidCases(ExecutionStatus executionStatus) {
-    String message;
     VeniceException veniceException;
     switch (executionStatus) {
       case DVC_INGESTION_ERROR_DISK_FULL:
-        message = "Disk is not full";
-        veniceException = new VeniceException("Disk is not full");
-        break;
       case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
-        message = "Memory limit reached";
-        veniceException = new VeniceException("Memory limit reached");
-        break;
       case DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES:
-        message = "Too many dead instances";
-        veniceException = new VeniceException("Too many dead instances");
-        break;
       case DVC_INGESTION_ERROR_OTHER:
-        message = "Some other error";
-        veniceException = new VeniceException("Some other error");
+        veniceException = new VeniceException("test");
         break;
       default:
         fail("Unexpected execution status: " + executionStatus);
         return;
     }
 
-    assertEquals(DaVinciBackend.getDaVinciErrorStatus(message, veniceException), DVC_INGESTION_ERROR_OTHER);
+    assertEquals(DaVinciBackend.getDaVinciErrorStatus(veniceException), DVC_INGESTION_ERROR_OTHER);
   }
 
 }

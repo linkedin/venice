@@ -18,7 +18,11 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;

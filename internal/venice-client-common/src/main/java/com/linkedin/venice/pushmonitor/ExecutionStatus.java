@@ -40,14 +40,14 @@ public enum ExecutionStatus {
   PROGRESS(false, true, false, false, 3),
 
   /** Tasks belonging to a Hybrid Store emits this instead of {@link ExecutionStatus#COMPLETED} when it consumes a EOP message */
-  END_OF_PUSH_RECEIVED(true, true, true, false, 4),
+  END_OF_PUSH_RECEIVED(true, true, false, false, 4),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a SOBR message */
   @Deprecated
-  START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false, 5),
+  START_OF_BUFFER_REPLAY_RECEIVED(false, true, false, false, 5),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a TS message */
-  TOPIC_SWITCH_RECEIVED(false, true, true, false, 6),
+  TOPIC_SWITCH_RECEIVED(false, true, false, false, 6),
 
   /** An incremental push job/task is started*/
   START_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, false, 7),
@@ -72,7 +72,7 @@ public enum ExecutionStatus {
   /** Job/task met error when processing the data. */
   ERROR(true, true, false, true, 12),
 
-  CATCH_UP_BASE_TOPIC_OFFSET_LAG(false, true, true, false, 13),
+  CATCH_UP_BASE_TOPIC_OFFSET_LAG(false, true, false, false, 13),
 
   /**
    * Job is terminated and be removed from repository. Should be archived to historic data storage.
