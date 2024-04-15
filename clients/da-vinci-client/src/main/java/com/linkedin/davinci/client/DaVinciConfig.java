@@ -41,6 +41,13 @@ public class DaVinciConfig {
    */
   private boolean readMetricsEnabled = false;
 
+  /**
+   * When the request key count exceeds the following threshold, it will be split into multiple small
+   * chunks with max size to be the threshold and these chunks will be executed concurrently in a
+   * pre-allocated thread pool.
+   */
+  private int largeBatchRequestSplitThreshold = AvroGenericDaVinciClient.DEFAULT_CHUNK_SPLIT_THRESHOLD;
+
   public DaVinciConfig() {
   }
 
@@ -53,8 +60,19 @@ public class DaVinciConfig {
 
   @Override
   public String toString() {
-    return "DaVinciConfig{" + "managed=" + managed + ", isolated=" + isolated + ", storageClass=" + storageClass
-        + ", cacheConfig=" + cacheConfig + "}";
+    StringBuilder sb = new StringBuilder();
+    sb.append("DaVinciConfig{managed=")
+        .append(managed)
+        .append(", isolated=")
+        .append(isolated)
+        .append(", storageClass=")
+        .append(storageClass)
+        .append(", cacheConfig=")
+        .append(cacheConfig)
+        .append(", largeBatchRequestSplitThreshold=")
+        .append(largeBatchRequestSplitThreshold)
+        .append("}");
+    return sb.toString();
   }
 
   public boolean isManaged() {
@@ -118,7 +136,20 @@ public class DaVinciConfig {
     return readMetricsEnabled;
   }
 
-  public void setReadMetricsEnabled(boolean readMetricsEnabled) {
+  public DaVinciConfig setReadMetricsEnabled(boolean readMetricsEnabled) {
     this.readMetricsEnabled = readMetricsEnabled;
+    return this;
+  }
+
+  public int getLargeBatchRequestSplitThreshold() {
+    return largeBatchRequestSplitThreshold;
+  }
+
+  public DaVinciConfig setLargeBatchRequestSplitThreshold(int largeBatchRequestSplitThreshold) {
+    if (largeBatchRequestSplitThreshold < 1) {
+      throw new IllegalArgumentException("'largeBatchRequestSplitThreshold' param needs to be at least 1");
+    }
+    this.largeBatchRequestSplitThreshold = largeBatchRequestSplitThreshold;
+    return this;
   }
 }
