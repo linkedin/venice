@@ -46,6 +46,18 @@ import org.apache.logging.log4j.Logger;
 public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> implements ServerInterceptor {
   private static final Logger LOGGER = LogManager.getLogger(StoreAclHandler.class);
 
+  /**
+   *  Skip ACL for requests to /metadata, /admin, /current_version, /health and /topic_partition_ingestion_context
+   *  as there's no sensitive information in the response.
+   */
+  private static final Set<QueryAction> QUERIES_TO_SKIP_ACL = new HashSet<>(
+      Arrays.asList(
+          QueryAction.METADATA,
+          QueryAction.ADMIN,
+          QueryAction.HEALTH,
+          QueryAction.CURRENT_VERSION,
+          QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT));
+
   private final ReadOnlyStoreRepository metadataRepository;
   private final DynamicAccessController accessController;
 
@@ -108,14 +120,9 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
       return;
     }
 
-    /**
-     *  Skip ACL for requests to /metadata, /admin /current_version and /health as there's no sensitive information in the response.
-     */
-    Set<QueryAction> queriesToSkipAcl = new HashSet<>(
-        Arrays.asList(QueryAction.METADATA, QueryAction.ADMIN, QueryAction.HEALTH, QueryAction.CURRENT_VERSION));
     try {
       QueryAction queryAction = QueryAction.valueOf(requestParts[1].toUpperCase());
-      if (queriesToSkipAcl.contains(queryAction)) {
+      if (QUERIES_TO_SKIP_ACL.contains(queryAction)) {
         ReferenceCountUtil.retain(req);
         ctx.fireChannelRead(req);
         return;
