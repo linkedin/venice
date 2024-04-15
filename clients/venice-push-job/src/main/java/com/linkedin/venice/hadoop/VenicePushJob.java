@@ -2340,6 +2340,22 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
+  static ExecutionStatus getExecutionStatusFromControllerResponse(JobStatusQueryResponse response) {
+    ExecutionStatus status;
+    try {
+      status = ExecutionStatus.valueOf(response.getStatus());
+    } catch (IllegalArgumentException e) {
+      StringBuilder errorMsg = new StringBuilder().append("Invalid ExecutionStatus returned from backend. status: ")
+          .append(response.getStatus());
+      if (response.getOptionalExtraDetails().isPresent()) {
+        errorMsg.append(", extra details: ").append(response.getOptionalExtraDetails().get());
+      }
+      LOGGER.error(errorMsg.toString());
+      throw new VeniceException(errorMsg.toString(), e);
+    }
+    return status;
+  }
+
   /**
    * High level, we want to poll the consumption job status until it errors or is complete. This is more complicated
    * because we might be dealing with multiple destination clusters and we might not be able to reach all of them. We
@@ -2407,7 +2423,7 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
-      ExecutionStatus overallStatus = ExecutionStatus.valueOf(response.getStatus());
+      ExecutionStatus overallStatus = getExecutionStatusFromControllerResponse(response);
       Map<String, String> regionSpecificInfo = response.getExtraInfo();
       // Note that it's intended to update the push job details before updating the completed datacenter set.
       updatePushJobDetailsWithColoStatus(regionSpecificInfo, completedDatacenters);
@@ -2417,7 +2433,6 @@ public class VenicePushJob implements AutoCloseable {
           completedDatacenters.add(region);
         }
       });
-
       if (overallStatus.isTerminal()) {
         if (completedDatacenters.size() != regionSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
           // 1) For regular push, one or more DC could have an UNKNOWN status and never successfully reported a

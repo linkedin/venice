@@ -10,11 +10,7 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED;
 import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.DVC_INGESTION_ERROR_DISK_FULL;
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB;
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED;
-import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.START_JOB_STATUS_POLLING;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -55,7 +51,6 @@ import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -118,7 +113,7 @@ public class DaVinciClientDiskFullTest {
     long totalSpaceBytes = disk.getTotalSpace();
     long usableSpaceBytes = disk.getUsableSpace();
 
-    long recordSizeBytes = (long) recordSizeMin * recordCount * 2;
+    long recordSizeBytes = (long) recordSizeMin * recordCount;
     long freeSpaceBytesRemainingAfterUsage = usableSpaceBytes - recordSizeBytes;
     double diskFullThreshold = 1 - (double) freeSpaceBytesRemainingAfterUsage / totalSpaceBytes;
     LOGGER.info(
@@ -267,21 +262,21 @@ public class DaVinciClientDiskFullTest {
         VeniceException exception = expectThrows(
             VeniceException.class,
             () -> runVPJ(vpjPropertiesForV2, 2, controllerClient, Optional.of(pushJobDetailsTracker)));
-        assertTrue(exception.getMessage().contains("status: " + ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL));
+        assertTrue(
+            exception.getMessage().contains("status: " + ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL),
+            exception.getMessage());
         assertTrue(
             exception.getMessage()
-                .contains("Found a failed partition replica in Da Vinci due to disk threshold reached"));
-        List<Integer> expectedCheckPoints = Arrays.asList(
-            INITIALIZE_PUSH_JOB.getValue(),
-            NEW_VERSION_CREATED.getValue(),
-            DATA_WRITER_JOB_COMPLETED.getValue(),
-            START_JOB_STATUS_POLLING.getValue(),
+                .contains("Found a failed partition replica in Da Vinci due to disk threshold reached"),
+            exception.getMessage());
+        assertEquals(
+            pushJobDetailsTracker.getRecordedPushJobDetails()
+                .get(pushJobDetailsTracker.getRecordedPushJobDetails().size() - 1)
+                .getPushJobLatestCheckpoint()
+                .intValue(),
             DVC_INGESTION_ERROR_DISK_FULL.getValue());
-        List<Integer> actualCheckPoints = new ArrayList<>();
-        pushJobDetailsTracker.getRecordedPushJobDetails().forEach(pushJobDetails -> {
-          actualCheckPoints.add(pushJobDetails.pushJobLatestCheckpoint);
-        });
-        assertEquals(expectedCheckPoints, actualCheckPoints);
+      } finally {
+        controllerClient.disableAndDeleteStore(storeName);
       }
     }
   }

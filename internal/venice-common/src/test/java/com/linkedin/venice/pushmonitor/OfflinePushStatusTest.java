@@ -157,6 +157,7 @@ public class OfflinePushStatusTest {
             DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
             DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
             DVC_INGESTION_ERROR_OTHER));
+
     validTransitions.put(
         STARTED,
         EnumSet.of(
@@ -168,8 +169,16 @@ public class OfflinePushStatusTest {
             DVC_INGESTION_ERROR_OTHER,
             COMPLETED,
             END_OF_PUSH_RECEIVED));
+
+    // ERROR Cases
     validTransitions.put(ERROR, EnumSet.of(ARCHIVED));
+    validTransitions.put(DVC_INGESTION_ERROR_DISK_FULL, validTransitions.get(ERROR));
+    validTransitions.put(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED, validTransitions.get(ERROR));
+    validTransitions.put(DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES, validTransitions.get(ERROR));
+    validTransitions.put(DVC_INGESTION_ERROR_OTHER, validTransitions.get(ERROR));
+
     validTransitions.put(COMPLETED, EnumSet.of(ARCHIVED));
+
     validTransitions.put(
         END_OF_PUSH_RECEIVED,
         EnumSet.of(
@@ -195,10 +204,6 @@ public class OfflinePushStatusTest {
     validTransitions.put(UNKNOWN, new HashSet<>());
     validTransitions.put(NOT_STARTED, new HashSet<>());
     validTransitions.put(DATA_RECOVERY_COMPLETED, new HashSet<>());
-    validTransitions.put(DVC_INGESTION_ERROR_DISK_FULL, new HashSet<>());
-    validTransitions.put(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED, new HashSet<>());
-    validTransitions.put(DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES, new HashSet<>());
-    validTransitions.put(DVC_INGESTION_ERROR_OTHER, new HashSet<>());
 
     for (ExecutionStatus status: ExecutionStatus.values()) {
       if (!validTransitions.containsKey(status)) {

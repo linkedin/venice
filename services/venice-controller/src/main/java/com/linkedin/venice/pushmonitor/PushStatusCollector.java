@@ -188,7 +188,7 @@ public class PushStatusCollector {
             && daVinciStatus.getStatus().equals(ExecutionStatus.COMPLETED)) {
           pushStatus.setMonitoring(false);
           pushCompletedHandler.accept(pushStatus.getTopicName());
-        } else if (serverStatus.getStatus().isError() || daVinciStatus.getStatus().isDVCIngestionError()) {
+        } else if (serverStatus.getStatus().isError() || daVinciStatus.getStatus().isError()) {
           pushStatus.setMonitoring(false);
           ExecutionStatus errorStatus = null;
           StringBuilder pushErrorDetailStringBuilder = new StringBuilder();
@@ -196,7 +196,7 @@ public class PushStatusCollector {
             pushErrorDetailStringBuilder.append("Server push error: ").append(serverStatus.getDetails()).append("\n");
             errorStatus = serverStatus.getStatus();
           }
-          if (daVinciStatus.getStatus().isDVCIngestionError()) {
+          if (daVinciStatus.getStatus().isError()) {
             pushErrorDetailStringBuilder.append("Da Vinci push error: ")
                 .append(daVinciStatus.getDetails())
                 .append("\n");

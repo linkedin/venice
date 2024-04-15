@@ -133,7 +133,7 @@ public class OfflinePushStatus {
    */
   public boolean validatePushStatusTransition(ExecutionStatus newStatus) {
     boolean isValid;
-    switch (currentStatus) {
+    switch (currentStatus.getRootStatus()) {
       case NOT_CREATED:
         isValid = Utils.verifyTransition(newStatus, STARTED, ERROR);
         break;

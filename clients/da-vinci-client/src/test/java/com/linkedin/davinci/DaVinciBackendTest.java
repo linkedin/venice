@@ -17,10 +17,7 @@ public class DaVinciBackendTest {
   public static Object[][] dvcErrorExecutionStatus() {
     return allPermutationGenerator((permutation) -> {
       ExecutionStatus status = (ExecutionStatus) permutation[0];
-      if (status.isDVCIngestionError()) {
-        return true;
-      }
-      return false;
+      return status.isDVCIngestionError();
     }, ExecutionStatus.values());
   }
 

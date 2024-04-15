@@ -269,7 +269,7 @@ public abstract class AbstractPushMonitor
       OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
       offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatus, this);
       routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
-      if (pushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR) && !isForcedDelete) {
+      if (pushStatus.getCurrentStatus().isError() && !isForcedDelete) {
         retireOldErrorPushes(storeName);
       } else {
         cleanupPushStatus(pushStatus, deletePushStatus);

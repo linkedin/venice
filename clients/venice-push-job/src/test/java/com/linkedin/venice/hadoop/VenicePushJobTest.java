@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
@@ -774,6 +775,34 @@ public class VenicePushJobTest {
     repushInfoResponse.setRepushInfo(repushInfo);
     pushJob.getPushJobSetting().repushInfoResponse = repushInfoResponse;
     pushJob.initKIFRepushDetails();
+  }
+
+  @Test
+  public void getExecutionStatusFromControllerResponseTest() {
+    // some valid cases
+    JobStatusQueryResponse response = new JobStatusQueryResponse();
+    response.setStatus(ExecutionStatus.COMPLETED.toString());
+    assertEquals(getExecutionStatusFromControllerResponse(response), ExecutionStatus.COMPLETED);
+    response.setStatus(ExecutionStatus.ERROR.toString());
+    assertEquals(getExecutionStatusFromControllerResponse(response), ExecutionStatus.ERROR);
+    response.setStatus(ExecutionStatus.DVC_INGESTION_ERROR_OTHER.toString());
+    assertEquals(getExecutionStatusFromControllerResponse(response), ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
+
+    // invalid case
+    response.setStatus("INVALID_STATUS");
+    VeniceException exception =
+        Assert.expectThrows(VeniceException.class, () -> getExecutionStatusFromControllerResponse(response));
+    Assert.assertTrue(
+        exception.getMessage().contains("Invalid ExecutionStatus returned from backend. status: INVALID_STATUS"));
+
+    Map<String, String> extraDetails = new HashMap<>();
+    extraDetails.put("extraDetails", "invalid status");
+    response.setExtraDetails(extraDetails);
+    exception = Assert.expectThrows(VeniceException.class, () -> getExecutionStatusFromControllerResponse(response));
+    Assert.assertTrue(
+        exception.getMessage()
+            .contains(
+                "Invalid ExecutionStatus returned from backend. status: INVALID_STATUS, extra details: {extraDetails=invalid status}"));
   }
 
   private JobStatusQueryResponse mockJobStatusQuery() {

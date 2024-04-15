@@ -84,6 +84,7 @@ public class PushMonitorUtils {
       Optional<String> erroredInstance = Optional.empty();
       Set<String> offlineInstanceList = new HashSet<>();
       Set<String> incompleteInstanceList = new HashSet<>();
+      ExecutionStatus errorStatus = ExecutionStatus.ERROR;
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
         // We will skip completed instances, as they have stopped emitting heartbeats and will not be counted as live
@@ -104,7 +105,8 @@ public class PushMonitorUtils {
         // Derive the overall partition ingestion status based on all live replica ingestion status.
         liveInstanceCount++;
         allInstancesCompleted = false;
-        if (status == ExecutionStatus.ERROR) {
+        if (status.isError()) {
+          errorStatus = status;
           erroredInstance = Optional.of(entry.getKey().toString());
           break;
         }
@@ -124,7 +126,7 @@ public class PushMonitorUtils {
           if (lastUpdateTime + TimeUnit.MINUTES.toMillis(daVinciErrorInstanceWaitTime) < System.currentTimeMillis()) {
             storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
             return new ExecutionStatusWithDetails(
-                ExecutionStatus.ERROR,
+                ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
                 "Too many dead instances: " + offlineInstanceCount + ", total instances: " + totalInstanceCount
                     + ", example offline instances: " + offlineInstanceList,
                 noDaVinciStatusReported);
@@ -180,7 +182,7 @@ public class PushMonitorUtils {
       }
       if (erroredInstance.isPresent()) {
         storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
-        return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail, noDaVinciStatusReported);
+        return new ExecutionStatusWithDetails(errorStatus, statusDetail, noDaVinciStatusReported);
       }
       return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail, noDaVinciStatusReported);
     }

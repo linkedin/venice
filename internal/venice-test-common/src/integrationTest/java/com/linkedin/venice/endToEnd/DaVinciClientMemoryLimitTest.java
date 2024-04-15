@@ -234,6 +234,8 @@ public class DaVinciClientMemoryLimitTest {
           // Another big push should succeed as well
           runVPJ(vpjProperties, 2, controllerClient1);
         }
+      } finally {
+        controllerClient.disableAndDeleteStore(storeName);
       }
     }
   }
@@ -380,6 +382,9 @@ public class DaVinciClientMemoryLimitTest {
             }
           }
         });
+      } finally {
+        controllerClient.disableAndDeleteStore(batchOnlyStoreName);
+        controllerClient.disableAndDeleteStore(hybridStoreName);
       }
     }
   }
@@ -393,7 +398,7 @@ public class DaVinciClientMemoryLimitTest {
    * @throws Exception
    */
   @Test(enabled = false, timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testHybridStoreHittingMemoryLimiterShouldResumeAfterFreeUpResource(// ) throws Exception {
+  public void testHybridStoreHittingMemoryLimiterShouldResumeAfterFreeUpResource(
       boolean ingestionIsolationEnabledInDaVinci) throws Exception {
     String batchOnlyStoreName = Utils.getUniqueString("davinci_memory_limit_test_batch_only");
     // Test a medium push close to the memory limit
@@ -541,6 +546,9 @@ public class DaVinciClientMemoryLimitTest {
             }
           }
         });
+      } finally {
+        controllerClient.disableAndDeleteStore(batchOnlyStoreName);
+        controllerClient.disableAndDeleteStore(hybridStoreName);
       }
     }
   }
