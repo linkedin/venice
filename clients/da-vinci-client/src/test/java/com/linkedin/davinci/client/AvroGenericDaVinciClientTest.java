@@ -86,6 +86,11 @@ public class AvroGenericDaVinciClientTest {
     AvroGenericDaVinciClient<String, String> dvcClient = mock(AvroGenericDaVinciClient.class);
     when(dvcClient.getStoreName()).thenReturn("test_store");
 
+    int largeRequestSplitThreshold = 10;
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setLargeBatchRequestSplitThreshold(largeRequestSplitThreshold);
+    when(dvcClient.getDaVinciConfig()).thenReturn(daVinciConfig);
+
     String testValue = "test_value";
     StoreBackend storeBackend = mock(StoreBackend.class);
     VersionBackend versionBackend = mock(VersionBackend.class);
@@ -117,7 +122,7 @@ public class AvroGenericDaVinciClientTest {
 
     // Simulate a large request
     Set<String> largeKeySet = new HashSet<>();
-    int keyCnt = (int) (AvroGenericDaVinciClient.CHUNK_SPLIT_THRESHOLD * 1.5);
+    int keyCnt = (int) (largeRequestSplitThreshold * 1.5);
     String keyPrefix = "key_";
     for (int i = 0; i < keyCnt; ++i) {
       largeKeySet.add(keyPrefix + i);

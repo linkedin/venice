@@ -114,7 +114,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private static final ExecutorService READ_CHUNK_EXECUTOR = Executors.newFixedThreadPool(
       Runtime.getRuntime().availableProcessors(),
       new DaemonThreadFactory("DaVinci_Read_Chunk_Executor"));
-  public static final int CHUNK_SPLIT_THRESHOLD = 100;
+  public static final int DEFAULT_CHUNK_SPLIT_THRESHOLD = 100;
 
   private final DaVinciConfig daVinciConfig;
   private final ClientConfig clientConfig;
@@ -334,6 +334,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return this.storeDeserializerCache;
   }
 
+  DaVinciConfig getDaVinciConfig() {
+    return this.daVinciConfig;
+  }
+
   CompletableFuture<Map<K, V>> batchGetFromLocalStorage(Iterable<K> keys) {
     // expose underlying getAll functionality.
     Map<K, V> result = new VeniceConcurrentHashMap<>();
@@ -375,10 +379,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
           }
         }
       };
+      int chunkSplitThreshold = getDaVinciConfig().getLargeBatchRequestSplitThreshold();
 
-      if (keys instanceof Set && ((Set) keys).size() > CHUNK_SPLIT_THRESHOLD) {
+      if (keys instanceof Set && ((Set) keys).size() > chunkSplitThreshold) {
         // Execute large request concurrently
-        List<List<K>> splits = split((Set) keys, CHUNK_SPLIT_THRESHOLD);
+        List<List<K>> splits = split((Set) keys, chunkSplitThreshold);
         CompletableFuture[] splitFutures = new CompletableFuture[splits.size()];
         for (int cur = 0; cur < splits.size(); ++cur) {
           List<K> currentSplit = splits.get(cur);
