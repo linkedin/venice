@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
@@ -28,6 +29,7 @@ import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -49,6 +51,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
@@ -323,6 +326,29 @@ public class DaVinciClientTest {
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDavinciSubscribeFailureWithFullDisk() throws Exception {
+    String storeName = Utils.getUniqueString("test-davinci-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
+    setUpStore(storeName, paramsConsumer, properties -> {});
+
+    Map<String, Object> backendConfigMap = new HashMap<>();
+    backendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
+    backendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
+    backendConfigMap.put(SERVER_DISK_FULL_THRESHOLD, 0.01); // force it to fail
+
+    try (DaVinciClient<Integer, Integer> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
+        storeName,
+        cluster.getZk().getAddress(),
+        new DaVinciConfig(),
+        backendConfigMap)) {
+      daVinciClient.subscribeAll().get();
+      fail("should fail with disk full exception");
+    } catch (Exception e) {
+      assertTrue(e.getCause() instanceof DiskLimitExhaustedException);
     }
   }
 

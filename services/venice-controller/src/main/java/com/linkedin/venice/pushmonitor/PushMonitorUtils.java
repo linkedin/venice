@@ -22,6 +22,17 @@ public class PushMonitorUtils {
   private static final Map<String, Long> storeVersionToDVCDeadInstanceTimeMap = new ConcurrentHashMap<>();
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorUtils.class);
 
+  private static String getDVCIngestionErrorReason(ExecutionStatus errorReplicaStatus) {
+    switch (errorReplicaStatus) {
+      case DVC_INGESTION_ERROR_DISK_FULL:
+        return " due to disk threshold reached";
+      case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
+        return " due to memory limit reached";
+      default:
+        return "";
+    }
+  }
+
   /**
    * This method checks Da Vinci client push status for the target version from push status store and compute a final
    * status.
@@ -73,6 +84,7 @@ public class PushMonitorUtils {
       Optional<String> erroredInstance = Optional.empty();
       Set<String> offlineInstanceList = new HashSet<>();
       Set<String> incompleteInstanceList = new HashSet<>();
+      ExecutionStatus errorStatus = ExecutionStatus.ERROR;
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
         // We will skip completed instances, as they have stopped emitting heartbeats and will not be counted as live
@@ -93,7 +105,8 @@ public class PushMonitorUtils {
         // Derive the overall partition ingestion status based on all live replica ingestion status.
         liveInstanceCount++;
         allInstancesCompleted = false;
-        if (status == ExecutionStatus.ERROR) {
+        if (status.isError()) {
+          errorStatus = status;
           erroredInstance = Optional.of(entry.getKey().toString());
           break;
         }
@@ -113,7 +126,7 @@ public class PushMonitorUtils {
           if (lastUpdateTime + TimeUnit.MINUTES.toMillis(daVinciErrorInstanceWaitTime) < System.currentTimeMillis()) {
             storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
             return new ExecutionStatusWithDetails(
-                ExecutionStatus.ERROR,
+                ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
                 "Too many dead instances: " + offlineInstanceCount + ", total instances: " + totalInstanceCount
                     + ", example offline instances: " + offlineInstanceList,
                 noDaVinciStatusReported);
@@ -169,7 +182,7 @@ public class PushMonitorUtils {
       }
       if (erroredInstance.isPresent()) {
         storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
-        return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail, noDaVinciStatusReported);
+        return new ExecutionStatusWithDetails(errorStatus, statusDetail, noDaVinciStatusReported);
       }
       return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail, noDaVinciStatusReported);
     }
@@ -201,6 +214,8 @@ public class PushMonitorUtils {
         : ExecutionStatus.END_OF_PUSH_RECEIVED;
     Optional<String> erroredReplica = Optional.empty();
     int erroredPartitionId = 0;
+    // initialize errorReplicaStatus to ERROR and then set specific error status if found
+    ExecutionStatus errorReplicaStatus = ExecutionStatus.ERROR;
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     int version = Version.parseVersionFromVersionTopicName(topicName);
     int completedPartitions = 0;
@@ -238,9 +253,10 @@ public class PushMonitorUtils {
         }
         allInstancesCompleted = false;
         allMiddleStatusReceived = false;
-        if (status == ExecutionStatus.ERROR) {
+        if (status.isError()) {
           erroredReplica = Optional.of(entry.getKey().toString());
           erroredPartitionId = partitionId;
+          errorReplicaStatus = status;
           break;
         }
       }
@@ -261,7 +277,7 @@ public class PushMonitorUtils {
         if (lastUpdateTime + TimeUnit.MINUTES.toMillis(daVinciErrorInstanceWaitTime) < System.currentTimeMillis()) {
           storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
           return new ExecutionStatusWithDetails(
-              ExecutionStatus.ERROR,
+              ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
               "Too many dead instances: " + offlineReplicaCount + ", total instances: " + totalReplicaCount
                   + ", example offline instances: " + offlineInstanceList,
               noDaVinciStatusReported);
@@ -283,7 +299,9 @@ public class PushMonitorUtils {
           .append(" Da Vinci replicas.");
     }
     if (erroredReplica.isPresent()) {
-      statusDetailStringBuilder.append("Found a failed partition replica in Da Vinci. ")
+      statusDetailStringBuilder.append("Found a failed partition replica in Da Vinci")
+          .append(getDVCIngestionErrorReason(errorReplicaStatus))
+          .append(". ")
           .append("Partition: ")
           .append(erroredPartitionId)
           .append(" Replica: ")
@@ -316,7 +334,7 @@ public class PushMonitorUtils {
     }
     if (erroredReplica.isPresent()) {
       storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
-      return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail, noDaVinciStatusReported);
+      return new ExecutionStatusWithDetails(errorReplicaStatus, statusDetail, noDaVinciStatusReported);
     }
     return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail, noDaVinciStatusReported);
   }

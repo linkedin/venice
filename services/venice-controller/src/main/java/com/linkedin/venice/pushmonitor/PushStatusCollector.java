@@ -34,7 +34,7 @@ import org.apache.logging.log4j.Logger;
 public class PushStatusCollector {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusCollector.class);
   private final Consumer<String> pushCompletedHandler;
-  private final BiConsumer<String, String> pushErrorHandler;
+  private final BiConsumer<String, ExecutionStatusWithDetails> pushErrorHandler;
   private final Map<String, TopicPushStatus> topicToPushStatusMap = new VeniceConcurrentHashMap<>();
   private final PushStatusStoreReader pushStatusStoreReader;
   private final ReadWriteStoreRepository storeRepository;
@@ -54,7 +54,7 @@ public class PushStatusCollector {
       ReadWriteStoreRepository storeRepository,
       PushStatusStoreReader pushStatusStoreReader,
       Consumer<String> pushCompletedHandler,
-      BiConsumer<String, String> pushErrorHandler,
+      BiConsumer<String, ExecutionStatusWithDetails> pushErrorHandler,
       boolean daVinciPushStatusScanEnabled,
       int daVinciPushStatusScanIntervalInSeconds,
       int daVinciPushStatusScanThreadNumber,
@@ -188,19 +188,23 @@ public class PushStatusCollector {
             && daVinciStatus.getStatus().equals(ExecutionStatus.COMPLETED)) {
           pushStatus.setMonitoring(false);
           pushCompletedHandler.accept(pushStatus.getTopicName());
-        } else if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)
-            || daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+        } else if (serverStatus.getStatus().isError() || daVinciStatus.getStatus().isError()) {
           pushStatus.setMonitoring(false);
+          ExecutionStatus errorStatus = null;
           StringBuilder pushErrorDetailStringBuilder = new StringBuilder();
-          if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+          if (serverStatus.getStatus().isError()) {
             pushErrorDetailStringBuilder.append("Server push error: ").append(serverStatus.getDetails()).append("\n");
+            errorStatus = serverStatus.getStatus();
           }
-          if (daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+          if (daVinciStatus.getStatus().isError()) {
             pushErrorDetailStringBuilder.append("Da Vinci push error: ")
                 .append(daVinciStatus.getDetails())
                 .append("\n");
+            errorStatus = daVinciStatus.getStatus();
           }
-          pushErrorHandler.accept(pushStatus.getTopicName(), pushErrorDetailStringBuilder.toString());
+          pushErrorHandler.accept(
+              pushStatus.getTopicName(),
+              new ExecutionStatusWithDetails(errorStatus, pushErrorDetailStringBuilder.toString()));
         }
       } catch (Exception e) {
         LOGGER.error(
@@ -222,8 +226,8 @@ public class PushStatusCollector {
     if ((!daVinciPushStatusScanEnabled) || topicPushStatus == null) {
       if (executionStatus.equals(ExecutionStatus.COMPLETED)) {
         pushCompletedHandler.accept(topicName);
-      } else if (executionStatus.equals(ExecutionStatus.ERROR)) {
-        pushErrorHandler.accept(topicName, detailsString);
+      } else if (executionStatus.isError()) {
+        pushErrorHandler.accept(topicName, new ExecutionStatusWithDetails(executionStatus, detailsString));
       }
     }
   }

@@ -235,7 +235,7 @@ public abstract class AbstractPushMonitor
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       if (topicToPushMap.containsKey(kafkaTopic)) {
         ExecutionStatus existingStatus = getPushStatus(kafkaTopic);
-        if (existingStatus.equals(ExecutionStatus.ERROR)) {
+        if (existingStatus.isError()) {
           LOGGER.info(
               "The previous push status for topic: {} is 'ERROR',"
                   + " and the new push will clean up the previous 'ERROR' push status",
@@ -269,7 +269,7 @@ public abstract class AbstractPushMonitor
       OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
       offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatus, this);
       routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
-      if (pushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR) && !isForcedDelete) {
+      if (pushStatus.getCurrentStatus().isError() && !isForcedDelete) {
         retireOldErrorPushes(storeName);
       } else {
         cleanupPushStatus(pushStatus, deletePushStatus);
@@ -667,7 +667,7 @@ public abstract class AbstractPushMonitor
     List<OfflinePushStatus> errorPushStatusList = versionNums.stream()
         .sorted()
         .map(version -> getOfflinePush(Version.composeKafkaTopic(storeName, version)))
-        .filter(offlinePushStatus -> offlinePushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR))
+        .filter(offlinePushStatus -> offlinePushStatus.getCurrentStatus().isError())
         .collect(Collectors.toList());
 
     for (OfflinePushStatus errorPushStatus: errorPushStatusList) {
@@ -839,7 +839,7 @@ public abstract class AbstractPushMonitor
 
       if (pushStatus != null) {
         ExecutionStatus previousStatus = pushStatus.getCurrentStatus();
-        if (previousStatus.equals(ExecutionStatus.COMPLETED) || previousStatus.equals(ExecutionStatus.ERROR)) {
+        if (previousStatus.equals(ExecutionStatus.COMPLETED) || previousStatus.isError()) {
           LOGGER.warn("Skip updating push status: {} since it is already in: {}", kafkaTopic, previousStatus);
           return;
         }
@@ -958,7 +958,7 @@ public abstract class AbstractPushMonitor
         statusWithDetails.getStatus());
     if (status.equals(ExecutionStatus.COMPLETED)) {
       pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), COMPLETED, null);
-    } else if (status.equals(ExecutionStatus.ERROR)) {
+    } else if (status.isError()) {
       String statusDetailsString = "STATUS DETAILS ABSENT.";
       if (statusWithDetails.getDetails() == null) {
         LOGGER.error(
@@ -967,7 +967,7 @@ public abstract class AbstractPushMonitor
       } else {
         statusDetailsString = statusWithDetails.getDetails();
       }
-      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), ERROR, statusDetailsString);
+      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), status, statusDetailsString);
     }
   }
 
@@ -1014,7 +1014,9 @@ public abstract class AbstractPushMonitor
     LOGGER.info("Offline push for topic: {} is completed.", pushStatus.getKafkaTopic());
   }
 
-  protected void handleErrorPush(String topic, String statusDetails) {
+  protected void handleErrorPush(String topic, ExecutionStatusWithDetails executionStatusWithDetails) {
+    ExecutionStatus executionStatus = executionStatusWithDetails.getStatus();
+    String statusDetails = executionStatusWithDetails.getDetails();
     routingDataRepository.unSubscribeRoutingDataChange(topic, this);
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null) {
@@ -1025,9 +1027,9 @@ public abstract class AbstractPushMonitor
         "Updating offline push status, push for: {} is now {}, new status: {}, statusDetails: {}",
         topic,
         pushStatus.getCurrentStatus(),
-        ExecutionStatus.ERROR,
+        executionStatus,
         statusDetails);
-    updatePushStatus(pushStatus, ExecutionStatus.ERROR, Optional.of(statusDetails));
+    updatePushStatus(pushStatus, executionStatus, Optional.of(statusDetails));
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     try {

@@ -5022,7 +5022,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               topic);
           return;
         }
-        if (pushMonitor.getOfflinePushOrThrow(topic).getCurrentStatus().equals(ExecutionStatus.ERROR)) {
+        if (pushMonitor.getOfflinePushOrThrow(topic).getCurrentStatus().isError()) {
           throw new VeniceException("Push " + topic + " has already failed.");
         }
 
@@ -5859,7 +5859,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   // The method merges push status from Venice Server replicas and online Da Vinci hosts and return the unified status.
   private ExecutionStatus getOverallPushStatus(ExecutionStatus veniceStatus, ExecutionStatus daVinciStatus) {
-    List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
+    List<ExecutionStatus> statuses = Arrays.asList(veniceStatus.getRootStatus(), daVinciStatus.getRootStatus());
     statuses.sort(Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
     return statuses.get(0);
   }
@@ -7329,7 +7329,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ret.setPushEndTimestamp(status.getTime());
       } else if (shouldUpdateStartTime(ret, status)) {
         ret.setPushStartTimestamp(status.getTime());
-      } else if (status.getStatus() == ExecutionStatus.ERROR) {
+      } else if (status.getStatus().isError()) {
         ret.setErrorMessage(zkData.getStatusDetails());
         ret.setLatestFailedPush(status.getTime());
       }

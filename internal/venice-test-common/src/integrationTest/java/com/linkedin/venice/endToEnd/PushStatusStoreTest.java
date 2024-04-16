@@ -160,6 +160,7 @@ public class PushStatusStoreTest {
         assertEquals(partitionStatus.size(), 1);
         String expectedHostName = Utils.getHostName() + "_" + expectedInstanceSuffix;
         assertTrue(partitionStatus.containsKey(new Utf8(expectedHostName)));
+        assertEquals(partitionStatus.get(new Utf8(expectedHostName)).intValue(), ExecutionStatus.COMPLETED.getValue());
       });
     }
     Admin admin = cluster.getVeniceControllers().get(0).getVeniceAdmin();

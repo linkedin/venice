@@ -37,6 +37,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
@@ -2209,9 +2210,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (diskUsage.isDiskFull(recordSize)) {
-      throw new VeniceException(
-          "Disk is full: throwing exception to error push: " + storeName + " version " + versionNumber + ". "
-              + diskUsage.getDiskStatus());
+      throw new DiskLimitExhaustedException(storeName, versionNumber, diskUsage.getDiskStatus());
     }
 
     /*

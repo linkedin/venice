@@ -114,8 +114,7 @@ public class MonitorCommand extends Command {
       JobStatusQueryResponse jobStatusQueryResponse =
           parentCtrlCli.queryDetailedJobStatus(result.kafKaTopic, getParams().targetRegion);
 
-      if (jobStatusQueryResponse.isError()
-          || jobStatusQueryResponse.getStatus().equalsIgnoreCase(ExecutionStatus.ERROR.toString())) {
+      if (jobStatusQueryResponse.isError() || ExecutionStatus.isError(jobStatusQueryResponse.getStatus())) {
         completeCoreWorkWithError(jobStatusQueryResponse.getStatusDetails());
         return;
       }

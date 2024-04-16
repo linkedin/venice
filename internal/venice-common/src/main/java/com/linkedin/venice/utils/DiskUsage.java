@@ -30,7 +30,7 @@ public class DiskUsage {
   private final FileStore disk;
 
   // this is 0.001 of freeSpaceBytesRequired so that it would take 1000 concurrent tasks to blow
-  // past the the diskFullThreshold and actually exhaust the disk before we check again.
+  // past the diskFullThreshold and actually exhaust the disk before we check again.
   private final long reserveSpaceBytes;
 
   private long freeSpaceBytes; // This doesn't stay up-to-date, but is refreshed periodically

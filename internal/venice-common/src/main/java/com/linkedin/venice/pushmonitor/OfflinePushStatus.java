@@ -133,7 +133,7 @@ public class OfflinePushStatus {
    */
   public boolean validatePushStatusTransition(ExecutionStatus newStatus) {
     boolean isValid;
-    switch (currentStatus) {
+    switch (currentStatus.getRootStatus()) {
       case NOT_CREATED:
         isValid = Utils.verifyTransition(newStatus, STARTED, ERROR);
         break;
@@ -386,7 +386,7 @@ public class OfflinePushStatus {
       partitionStatus.getReplicaStatuses()
           .stream()
           // Don't count progress of error tasks
-          .filter(replicaStatus -> !replicaStatus.getCurrentStatus().equals(ERROR))
+          .filter(replicaStatus -> !replicaStatus.getCurrentStatus().isError())
           .forEach(replicaStatus -> {
             String replicaId =
                 ReplicaStatus.getReplicaId(kafkaTopic, partitionStatus.getPartitionId(), replicaStatus.getInstanceId());
