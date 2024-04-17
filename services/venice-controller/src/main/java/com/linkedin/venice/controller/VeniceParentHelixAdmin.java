@@ -1987,7 +1987,6 @@ public class VeniceParentHelixAdmin implements Admin {
       message.operationType = AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue();
       message.payloadUnion = rollForwardCurrentVersion;
 
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
       Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
       int futureVersion = 0;
       for (Map.Entry<String, String> entry: futureVersions.entrySet()) {
@@ -1996,6 +1995,8 @@ public class VeniceParentHelixAdmin implements Admin {
           break;
         }
       }
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+
       truncateKafkaTopic(Version.composeKafkaTopic(storeName, futureVersion));
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
@@ -3638,13 +3639,10 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
 
       boolean incPushEnabledBatchPushSuccess = !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
-<<<<<<< HEAD
       boolean nonIncPushBatchSuccess = !store.isIncrementalPushEnabled() && !currentReturnStatus.isError();
-=======
       boolean nonIncPushBatchSuccess =
           !store.isIncrementalPushEnabled() && currentReturnStatus != ExecutionStatus.ERROR;
-      boolean isDeferredVersionSwap = version.isPresent() && version.get().isVersionSwapDeferred();
->>>>>>> 4250aee31 (updated test)
+      boolean isDeferredVersionSwap = version.map(Version::isVersionSwapDeferred).orElse(false);
 
       if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess)
           && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
