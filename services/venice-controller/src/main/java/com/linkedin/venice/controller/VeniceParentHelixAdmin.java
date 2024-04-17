@@ -1162,9 +1162,7 @@ public class VeniceParentHelixAdmin implements Admin {
             "There is already future version {} exists for store {}, please wait till the future version is made current.",
             versionNumber,
             storeName);
-        throw new VeniceException(
-            "There is already a future version " + versionNumber + " exists for the store " + storeName
-                + ". Please mark that version current before continuing with a new push.");
+        return Optional.of(latestTopic.get().getName());
       }
 
       if (!isTopicTruncated(latestTopicName)) {
