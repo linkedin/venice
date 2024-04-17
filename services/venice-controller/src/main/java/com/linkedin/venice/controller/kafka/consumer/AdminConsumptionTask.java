@@ -38,7 +38,6 @@ import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -55,7 +54,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
@@ -289,7 +287,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
-    this.storeHasScheduledTask = new HashSet<>();
+    this.storeHasScheduledTask = ConcurrentHashMap.newKeySet();
     // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
         maxWorkerThreadPoolSize,
@@ -505,6 +503,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           entry.getValue().remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
+        storeHasScheduledTask.add(entry.getKey());
         tasks.add(
             new AdminExecutionTask(
                 LOGGER,
@@ -517,8 +516,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 executionIdAccessor,
                 isParentController,
                 stats,
-                regionName));
-        storeHasScheduledTask.add(entry.getKey());
+                regionName,
+                storeHasScheduledTask));
         stores.add(entry.getKey());
       }
     }
@@ -531,11 +530,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         int pendingAdminMessagesCount = 0;
         int storesWithPendingAdminMessagesCount = 0;
         long adminExecutionTasksInvokeTime = System.currentTimeMillis();
-        // Wait for the worker threads to finish processing the internal admin topics. Here
-        List<Future<Void>> results = new ArrayList<>();
-        for (int i = 0; i < tasks.size(); i++) {
-          results.add(executorService.submit(tasks.get(i)));
-        }
+        // Wait for the worker threads to finish processing the internal admin topics.
+        List<Future<Void>> results =
+            executorService.invokeAll(tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
         stats.recordAdminConsumptionCycleDurationMs(System.currentTimeMillis() - adminExecutionTasksInvokeTime);
         Map<String, Long> newLastSucceededExecutionIdMap =
             executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
@@ -544,19 +541,19 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           String storeName = stores.get(i);
           Future<Void> result = results.get(i);
           try {
-            result.get(processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
+            result.get();
             problematicStores.remove(storeName);
             if (internalQueuesEmptied && storeAdminOperationsMapWithOffset.containsKey(storeName)
                 && !storeAdminOperationsMapWithOffset.get(storeName).isEmpty()) {
               internalQueuesEmptied = false;
             }
-          } catch (ExecutionException | CancellationException | TimeoutException e) {
+          } catch (ExecutionException | CancellationException e) {
             internalQueuesEmptied = false;
             AdminErrorInfo errorInfo = new AdminErrorInfo();
             int perStorePendingMessagesCount = storeAdminOperationsMapWithOffset.get(storeName).size();
             pendingAdminMessagesCount += perStorePendingMessagesCount;
             storesWithPendingAdminMessagesCount += perStorePendingMessagesCount > 0 ? 1 : 0;
-            if (e instanceof CancellationException || e instanceof TimeoutException) {
+            if (e instanceof CancellationException) {
               long lastSucceededId = lastSucceededExecutionIdMap.getOrDefault(storeName, -1L);
               long newLastSucceededId = newLastSucceededExecutionIdMap.getOrDefault(storeName, -1L);
 
@@ -576,12 +573,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               errorInfo.exception = e;
               errorInfo.offset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
               problematicStores.put(storeName, errorInfo);
-            }
-          } finally {
-            // Here we only remove task is done. For some timeout task waiting for the lock (non-interruptable), we will
-            // not create new task for it.
-            if (result.isDone()) {
-              storeHasScheduledTask.remove(storeName);
             }
           }
         }

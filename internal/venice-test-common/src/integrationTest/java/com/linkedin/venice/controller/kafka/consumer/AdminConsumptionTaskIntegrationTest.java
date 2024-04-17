@@ -8,9 +8,11 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOU
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
-import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -33,7 +35,6 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -150,16 +151,21 @@ public class AdminConsumptionTaskIntegrationTest {
         Thread infiniteLockThread = new Thread(infiniteLockOccupy, "infiniteLockOccupy: " + storeName);
         infiniteLockThread.start();
 
+        // Here we wait here to send every operation to let each consumer pool has at most one admin operation from
+        // this store, as the waiting time of 5 seconds > ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS setting.
         for (int i = 0; i < adminConsumptionMaxWorkerPoolSize; i++) {
-          // Here we wait here to send every operation to let each consumer pool has at most one admin operation from
-          // this store.
           Utils.sleep(5000);
           executionId++;
-          byte[] valueSchemaMessage = getUpdateStoreMessage(clusterName, storeName, i + 1, executionId);
-          writer.put(new byte[0], valueSchemaMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+          getDisableWrite(clusterName, storeName, executionId);
         }
 
-        // Create a new store to see if it is blocked by previous messages..
+        // Store deletion need to disable read.
+        Utils.sleep(5000);
+        executionId++;
+        byte[] valueSchemaMessage = getDisableRead(clusterName, storeName, executionId);
+        writer.put(new byte[0], valueSchemaMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+        // Create a new store to see if it is blocked by previous messages.
         String otherStoreName = "other-test-store";
         executionId++;
         byte[] otherStoreMessage =
@@ -169,7 +175,15 @@ public class AdminConsumptionTaskIntegrationTest {
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
           Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, otherStoreName));
         });
+
         infiniteLockThread.interrupt(); // This will release the lock
+        // Check this store is unblocked or not.
+        executionId++;
+        byte[] storeDeletionMessage = getStoreDeletionMessage(clusterName, storeName, executionId);
+        writer.put(new byte[0], storeDeletionMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+        TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
+          Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, storeName));
+        });
       }
     }
   }
@@ -188,20 +202,24 @@ public class AdminConsumptionTaskIntegrationTest {
     };
   }
 
-  private byte[] getUpdateStoreMessage(String clusterName, String storeName, int partitionNum, long executionId) {
-    UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
-    updateStore.clusterName = clusterName;
-    updateStore.storeName = storeName;
-    updateStore.partitionNum = partitionNum;
-    updateStore.owner = owner;
-    updateStore.currentVersion = 1;
-    updateStore.enableReads = true;
-    updateStore.enableWrites = true;
-    updateStore.replicateAllConfigs = true;
-    updateStore.updatedConfigsList = Collections.emptyList();
+  private byte[] getDisableRead(String clusterName, String storeName, long executionId) {
+    DisableStoreRead disableStoreRead = (DisableStoreRead) AdminMessageType.DISABLE_STORE_READ.getNewInstance();
+    disableStoreRead.clusterName = clusterName;
+    disableStoreRead.storeName = storeName;
     AdminOperation adminMessage = new AdminOperation();
-    adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
-    adminMessage.payloadUnion = updateStore;
+    adminMessage.operationType = AdminMessageType.DISABLE_STORE_READ.getValue();
+    adminMessage.payloadUnion = disableStoreRead;
+    adminMessage.executionId = executionId;
+    return adminOperationSerializer.serialize(adminMessage);
+  }
+
+  private byte[] getDisableWrite(String clusterName, String storeName, long executionId) {
+    PauseStore pauseStore = (PauseStore) AdminMessageType.DISABLE_STORE_WRITE.getNewInstance();
+    pauseStore.clusterName = clusterName;
+    pauseStore.storeName = storeName;
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.DISABLE_STORE_WRITE.getValue();
+    adminMessage.payloadUnion = pauseStore;
     adminMessage.executionId = executionId;
     return adminOperationSerializer.serialize(adminMessage);
   }
@@ -226,6 +244,19 @@ public class AdminConsumptionTaskIntegrationTest {
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
     adminMessage.payloadUnion = storeCreation;
+    adminMessage.executionId = executionId;
+    return adminOperationSerializer.serialize(adminMessage);
+  }
+
+  private byte[] getStoreDeletionMessage(String clusterName, String storeName, long executionId) {
+    DeleteStore deleteStore = (DeleteStore) AdminMessageType.DELETE_STORE.getNewInstance();
+    deleteStore.clusterName = clusterName;
+    deleteStore.storeName = storeName;
+    // Tell each prod colo the largest used version number in corp to make it consistent.
+    deleteStore.largestUsedVersionNumber = 0;
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.DELETE_STORE.getValue();
+    adminMessage.payloadUnion = deleteStore;
     adminMessage.executionId = executionId;
     return adminOperationSerializer.serialize(adminMessage);
   }

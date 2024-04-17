@@ -84,6 +84,8 @@ public class AdminExecutionTask implements Callable<Void> {
   private final ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
   private final long lastPersistedExecutionId;
 
+  private final Set<String> storeSet;
+
   AdminExecutionTask(
       Logger LOGGER,
       String clusterName,
@@ -95,7 +97,8 @@ public class AdminExecutionTask implements Callable<Void> {
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController,
       AdminConsumptionStats stats,
-      String regionName) {
+      String regionName,
+      Set<String> storeSet) {
     this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
@@ -107,18 +110,19 @@ public class AdminExecutionTask implements Callable<Void> {
     this.isParentController = isParentController;
     this.stats = stats;
     this.regionName = regionName;
+    this.storeSet = storeSet;
   }
 
   @Override
   public Void call() {
-    while (!internalTopic.isEmpty()) {
-      if (!admin.isLeaderControllerFor(clusterName)) {
-        throw new VeniceRetriableException(
-            "This controller is no longer the leader of: " + clusterName
-                + ". The consumption task should unsubscribe soon");
-      }
-      AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
-      try {
+    try {
+      while (!internalTopic.isEmpty()) {
+        if (!admin.isLeaderControllerFor(clusterName)) {
+          throw new VeniceRetriableException(
+              "This controller is no longer the leader of: " + clusterName
+                  + ". The consumption task should unsubscribe soon");
+        }
+        AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
         if (adminOperationWrapper.getStartProcessingTimestamp() == null) {
           adminOperationWrapper.setStartProcessingTimestamp(System.currentTimeMillis());
           stats.recordAdminMessageStartProcessingLatency(
@@ -138,23 +142,25 @@ public class AdminExecutionTask implements Callable<Void> {
         stats.recordAdminMessageTotalLatency(
             Math.max(0, completionTimestamp - adminOperationWrapper.getProducerTimestamp()));
         internalTopic.remove();
-      } catch (Exception e) {
-        // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
-        // The queue with the problematic operation will be delegated and retried by the worker thread in the next
-        // cycle.
-        String logMessage =
-            "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getOffset()
-                + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
-        if (e instanceof VeniceRetriableException) {
-          // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
-          stats.recordFailedRetriableAdminConsumption();
-          LOGGER.info("Retriable exception thrown {}", logMessage, e);
-        } else {
-          stats.recordFailedAdminConsumption();
-          LOGGER.error("Error {}", logMessage, e);
-        }
-        throw e;
       }
+    } catch (Exception e) {
+      // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
+      // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
+      AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
+      String logMessage =
+          "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getOffset()
+              + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
+      if (e instanceof VeniceRetriableException) {
+        // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
+        stats.recordFailedRetriableAdminConsumption();
+        LOGGER.info("Retriable exception thrown {}", logMessage, e);
+      } else {
+        stats.recordFailedAdminConsumption();
+        LOGGER.error("Error {}", logMessage, e);
+      }
+      throw e;
+    } finally {
+      storeSet.remove(storeName);
     }
     return null;
   }
