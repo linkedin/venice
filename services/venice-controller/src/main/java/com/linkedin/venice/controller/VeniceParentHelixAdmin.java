@@ -3640,8 +3640,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
       boolean incPushEnabledBatchPushSuccess = !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
       boolean nonIncPushBatchSuccess = !store.isIncrementalPushEnabled() && !currentReturnStatus.isError();
-      boolean nonIncPushBatchSuccess =
-          !store.isIncrementalPushEnabled() && currentReturnStatus != ExecutionStatus.ERROR;
       boolean isDeferredVersionSwap = version.map(Version::isVersionSwapDeferred).orElse(false);
 
       if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess)
