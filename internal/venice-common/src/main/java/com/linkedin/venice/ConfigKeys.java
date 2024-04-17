@@ -1757,6 +1757,13 @@ public class ConfigKeys {
       "push.status.store.heartbeat.expiration.seconds";
 
   /**
+   * when enabled, Da Vinci Clients returns specific status codes to indicate the type of ingestion failure
+   * rather than a generic {@link com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR}
+   */
+  public static final String USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR =
+      "use.da.vinci.specific.execution.status.for.error";
+
+  /**
    * Whether to throttle SSL connections between router and client.
    */
   public static final String ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES = "router.throttle.client.ssl.handshakes";

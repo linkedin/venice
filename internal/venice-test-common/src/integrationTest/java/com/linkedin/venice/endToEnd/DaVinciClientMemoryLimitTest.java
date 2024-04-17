@@ -17,6 +17,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICAT
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -101,12 +102,18 @@ public class DaVinciClientMemoryLimitTest {
     Utils.closeQuietlyWithErrorLogged(venice);
   }
 
-  private VeniceProperties getDaVinciBackendConfig(boolean ingestionIsolationEnabledInDaVinci) {
-    return getDaVinciBackendConfig(ingestionIsolationEnabledInDaVinci, Collections.EMPTY_SET);
+  private VeniceProperties getDaVinciBackendConfig(
+      boolean ingestionIsolationEnabledInDaVinci,
+      boolean useDaVinciSpecificExecutionStatusForError) {
+    return getDaVinciBackendConfig(
+        ingestionIsolationEnabledInDaVinci,
+        useDaVinciSpecificExecutionStatusForError,
+        Collections.EMPTY_SET);
   }
 
   private VeniceProperties getDaVinciBackendConfig(
       boolean ingestionIsolationEnabledInDaVinci,
+      boolean useDaVinciSpecificExecutionStatusForError,
       Set<String> memoryLimitStores) {
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     PropertyBuilder venicePropertyBuilder = new PropertyBuilder();
@@ -119,7 +126,8 @@ public class DaVinciClientMemoryLimitTest {
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .put(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, "2MB")
         .put(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, "10MB")
-        .put(INGESTION_MEMORY_LIMIT_STORE_LIST, String.join(",", memoryLimitStores));
+        .put(INGESTION_MEMORY_LIMIT_STORE_LIST, String.join(",", memoryLimitStores))
+        .put(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, useDaVinciSpecificExecutionStatusForError);
     if (ingestionIsolationEnabledInDaVinci) {
       venicePropertyBuilder.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);
       venicePropertyBuilder.put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, TestUtils.getFreePort());
@@ -133,9 +141,10 @@ public class DaVinciClientMemoryLimitTest {
     return venicePropertyBuilder.build();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testDaVinciMemoryLimitShouldFailLargeDataPush(boolean ingestionIsolationEnabledInDaVinci)
-      throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testDaVinciMemoryLimitShouldFailLargeDataPush(
+      boolean ingestionIsolationEnabledInDaVinci,
+      boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
     String storeName = Utils.getUniqueString("davinci_memory_limit_test");
     // Test a small push
     File inputDir = getTempDataDirectory();
@@ -173,8 +182,10 @@ public class DaVinciClientMemoryLimitTest {
       });
 
       // Spin up DaVinci client
-      VeniceProperties backendConfig =
-          getDaVinciBackendConfig(ingestionIsolationEnabledInDaVinci, new HashSet<>(Arrays.asList(storeName)));
+      VeniceProperties backendConfig = getDaVinciBackendConfig(
+          ingestionIsolationEnabledInDaVinci,
+          useDaVinciSpecificExecutionStatusForError,
+          new HashSet<>(Arrays.asList(storeName)));
       MetricsRepository metricsRepository = new MetricsRepository();
       try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
           d2Client,
@@ -204,10 +215,16 @@ public class DaVinciClientMemoryLimitTest {
         VeniceException exception =
             expectThrows(VeniceException.class, () -> runVPJ(vpjPropertiesForV2, 2, controllerClient));
         assertTrue(
-            exception.getMessage().contains("status: " + ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED));
+            exception.getMessage()
+                .contains(
+                    "status: " + (useDaVinciSpecificExecutionStatusForError
+                        ? ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
+                        : ExecutionStatus.ERROR)));
         assertTrue(
             exception.getMessage()
-                .contains("Found a failed partition replica in Da Vinci due to memory limit reached"));
+                .contains(
+                    "Found a failed partition replica in Da Vinci"
+                        + (useDaVinciSpecificExecutionStatusForError ? " due to memory limit reached" : "")));
 
         // Run a bigger push against a non-enforced store should succeed
         vpjProperties = defaultVPJProps(venice, inputDirPath, storeNameWithoutMemoryEnforcement);
@@ -240,9 +257,10 @@ public class DaVinciClientMemoryLimitTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
   public void testDaVinciMemoryLimitShouldFailLargeDataPushAndResumeHybridStore(
-      boolean ingestionIsolationEnabledInDaVinci) throws Exception {
+      boolean ingestionIsolationEnabledInDaVinci,
+      boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
     String batchOnlyStoreName = Utils.getUniqueString("davinci_memory_limit_test_batch_only");
     // Test a small push
     File inputDir = getTempDataDirectory();
@@ -305,7 +323,8 @@ public class DaVinciClientMemoryLimitTest {
       });
 
       // Spin up DaVinci client
-      VeniceProperties backendConfig = getDaVinciBackendConfig(ingestionIsolationEnabledInDaVinci);
+      VeniceProperties backendConfig =
+          getDaVinciBackendConfig(ingestionIsolationEnabledInDaVinci, useDaVinciSpecificExecutionStatusForError);
       MetricsRepository metricsRepository = new MetricsRepository();
       try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
           d2Client,
@@ -361,10 +380,16 @@ public class DaVinciClientMemoryLimitTest {
         VeniceException exception =
             expectThrows(VeniceException.class, () -> runVPJ(vpjPropertiesForV2, 2, controllerClient));
         assertTrue(
-            exception.getMessage().contains("status: " + ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED));
+            exception.getMessage()
+                .contains(
+                    "status: " + (useDaVinciSpecificExecutionStatusForError
+                        ? ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
+                        : ExecutionStatus.ERROR)));
         assertTrue(
             exception.getMessage()
-                .contains("Found a failed partition replica in Da Vinci due to memory limit reached"));
+                .contains(
+                    "Found a failed partition replica in Da Vinci"
+                        + (useDaVinciSpecificExecutionStatusForError ? " due to memory limit reached" : "")));
 
         // Write more records to the hybrid store.
         for (; hybridStoreKeyId < 200; ++hybridStoreKeyId) {
@@ -462,7 +487,7 @@ public class DaVinciClientMemoryLimitTest {
       });
 
       // Spin up DaVinci client
-      VeniceProperties backendConfig = getDaVinciBackendConfig(ingestionIsolationEnabledInDaVinci);
+      VeniceProperties backendConfig = getDaVinciBackendConfig(ingestionIsolationEnabledInDaVinci, false);
       MetricsRepository metricsRepository = new MetricsRepository();
       try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
           d2Client,
