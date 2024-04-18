@@ -18,6 +18,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -44,6 +45,8 @@ public class TestPartitionTracker {
   private PartitionTracker partitionTracker;
   private GUID guid;
   private String topic;
+
+  private String rtTopic;
   int partitionId = 0;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
@@ -53,7 +56,9 @@ public class TestPartitionTracker {
     this.guid = new GUID();
     guid.bytes(testGuid.getBytes());
     this.topic = "test_topic_" + System.currentTimeMillis() + "_v1";
+    this.rtTopic = Version.composeRealTimeTopic(Version.parseStoreFromKafkaTopicName(topic));
     this.partitionTracker = new PartitionTracker(topic, partitionId);
+
   }
 
   private KafkaMessageEnvelope getKafkaMessageEnvelope(
@@ -245,7 +250,7 @@ public class TestPartitionTracker {
   @Test(timeOut = 5 * Time.MS_PER_SECOND)
   public void testHandleFirstMessageAfterLoadingFromCheckPoint() {
     PubSubTopicPartition pubSubTopicPartition =
-        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(this.rtTopic), partitionId);
     int segmentNum = 1;
     int sequenceNum = 1;
     int firstNewSegmentNumber = 5;
