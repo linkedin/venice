@@ -155,6 +155,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @Override
+  public int getPartitionCount() {
+    return partitionCount;
+  }
+
+  @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     return internalSubscribe(partitions, null);
   }
