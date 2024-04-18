@@ -22,6 +22,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.CollectionUtils;
@@ -275,7 +276,8 @@ public class PartitionTracker {
        * So, when a host regains its leadership and re-consumes RT, DIV tolerates the segment gap for very first message
        * it meets and creates a new unregistered segment (based on the contents fo the impending message) to replace it.
        */
-      if (endOfPushReceived && previousSegment.isCreatedFromCheckPoint()) {
+      if (endOfPushReceived && previousSegment.isCreatedFromCheckPoint()
+          && Version.isRealTimeTopic(consumerRecord.getTopicName())) {
         return initializeNewSegment(consumerRecord, true, true);
       }
 
@@ -369,7 +371,7 @@ public class PartitionTracker {
       String errorMsgIdentifier = consumerRecord.getTopicPartition().getPubSubTopic().getName() + "-"
           + consumerRecord.getTopicPartition().getPartitionNumber() + "-" + DataFaultType.UNREGISTERED_PRODUCER;
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
-        logger.warn("Will {}, endOfPushReceived=true, tolerateAnyMessageType=true", scenario);
+        logger.info("Will {}, endOfPushReceived=true, tolerateAnyMessageType=true", scenario);
       }
     } else {
       throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(
