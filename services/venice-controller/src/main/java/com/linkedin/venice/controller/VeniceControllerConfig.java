@@ -99,6 +99,7 @@ import static com.linkedin.venice.ConfigKeys.TOPIC_CREATION_THROTTLING_TIME_WIND
 import static com.linkedin.venice.ConfigKeys.TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
@@ -318,7 +319,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int unusedSchemaCleanupIntervalSeconds;
 
   private final int minSchemaCountToKeep;
-
+  private final boolean useDaVinciSpecificExecutionStatusForError;
   private final PubSubClientsFactory pubSubClientsFactory;
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -556,6 +557,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, false);
     this.unusedSchemaCleanupIntervalSeconds = props.getInt(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS, 36000);
     this.minSchemaCountToKeep = props.getInt(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 20);
+    this.useDaVinciSpecificExecutionStatusForError =
+        props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
   }
 
@@ -676,6 +679,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getMinSchemaCountToKeep() {
     return minSchemaCountToKeep;
+  }
+
+  public boolean useDaVinciSpecificExecutionStatusForError() {
+    return useDaVinciSpecificExecutionStatusForError;
   }
 
   public Map<String, String> getChildDataCenterControllerD2Map() {

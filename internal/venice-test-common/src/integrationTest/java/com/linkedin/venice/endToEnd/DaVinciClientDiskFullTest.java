@@ -10,7 +10,9 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.DVC_INGESTION_ERROR_DISK_FULL;
+import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.START_JOB_STATUS_POLLING;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -43,6 +45,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -130,7 +133,8 @@ public class DaVinciClientDiskFullTest {
     return diskFullThreshold;
   }
 
-  private VeniceProperties getDaVinciBackendConfig() throws IOException {
+  private VeniceProperties getDaVinciBackendConfig(boolean useDaVinciSpecificExecutionStatusForError)
+      throws IOException {
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     PropertyBuilder venicePropertyBuilder = new PropertyBuilder();
 
@@ -141,6 +145,7 @@ public class DaVinciClientDiskFullTest {
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(D2_ZK_HOSTS_ADDRESS, venice.getZk().getAddress())
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .put(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, useDaVinciSpecificExecutionStatusForError)
         .put(SERVER_DISK_FULL_THRESHOLD, getDiskFullThreshold(largePushRecordCount, largePushRecordMinSize));
     return venicePropertyBuilder.build();
   }
@@ -194,8 +199,8 @@ public class DaVinciClientDiskFullTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDaVinciDiskFullFailure() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testDaVinciDiskFullFailure(boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
     String storeName = Utils.getUniqueString("davinci_disk_full_test");
     // Test a small push
     File inputDir = getTempDataDirectory();
@@ -231,7 +236,7 @@ public class DaVinciClientDiskFullTest {
       });
 
       // Spin up DaVinci client
-      VeniceProperties backendConfig = getDaVinciBackendConfig();
+      VeniceProperties backendConfig = getDaVinciBackendConfig(useDaVinciSpecificExecutionStatusForError);
       MetricsRepository metricsRepository = new MetricsRepository();
       try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
           d2Client,
@@ -267,18 +272,27 @@ public class DaVinciClientDiskFullTest {
             VeniceException.class,
             () -> runVPJ(vpjPropertiesForV2, 2, controllerClient, Optional.of(pushJobDetailsTracker)));
         assertTrue(
-            exception.getMessage().contains("status: " + ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL),
+            exception.getMessage()
+                .contains(
+                    "status: " + (useDaVinciSpecificExecutionStatusForError
+                        ? ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL
+                        : ExecutionStatus.ERROR)),
             exception.getMessage());
         assertTrue(
             exception.getMessage()
-                .contains("Found a failed partition replica in Da Vinci due to disk threshold reached"),
+                .contains(
+                    "Found a failed partition replica in Da Vinci"
+                        + (useDaVinciSpecificExecutionStatusForError ? " due to disk threshold reached" : "")),
             exception.getMessage());
+
         assertEquals(
             pushJobDetailsTracker.getRecordedPushJobDetails()
                 .get(pushJobDetailsTracker.getRecordedPushJobDetails().size() - 1)
                 .getPushJobLatestCheckpoint()
                 .intValue(),
-            DVC_INGESTION_ERROR_DISK_FULL.getValue());
+            useDaVinciSpecificExecutionStatusForError
+                ? DVC_INGESTION_ERROR_DISK_FULL.getValue()
+                : START_JOB_STATUS_POLLING.getValue());
       } finally {
         controllerClient.disableAndDeleteStore(storeName);
       }

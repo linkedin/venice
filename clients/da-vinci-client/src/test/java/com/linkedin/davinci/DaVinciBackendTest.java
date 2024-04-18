@@ -1,6 +1,8 @@
 package com.linkedin.davinci;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
+import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
@@ -14,16 +16,18 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciBackendTest {
-  @DataProvider(name = "DvcErrorExecutionStatus")
-  public static Object[][] dvcErrorExecutionStatus() {
+  @DataProvider(name = "DvcErrorExecutionStatusAndBoolean")
+  public static Object[][] dvcErrorExecutionStatusAndBoolean() {
     return allPermutationGenerator((permutation) -> {
       ExecutionStatus status = (ExecutionStatus) permutation[0];
       return status.isDVCIngestionError();
-    }, ExecutionStatus.values());
+    }, ExecutionStatus.values(), BOOLEAN);
   }
 
-  @Test(dataProvider = "DvcErrorExecutionStatus")
-  public void testGetDaVinciErrorStatus(ExecutionStatus executionStatus) {
+  @Test(dataProvider = "DvcErrorExecutionStatusAndBoolean")
+  public void testGetDaVinciErrorStatus(
+      ExecutionStatus executionStatus,
+      boolean useDaVinciSpecificExecutionStatusForError) {
     VeniceException veniceException;
     switch (executionStatus) {
       case DVC_INGESTION_ERROR_DISK_FULL:
@@ -40,15 +44,23 @@ public class DaVinciBackendTest {
         fail("Unexpected execution status: " + executionStatus);
         return;
     }
-    assertEquals(
-        DaVinciBackend.getDaVinciErrorStatus(veniceException),
-        executionStatus.equals(ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
-            ? DVC_INGESTION_ERROR_OTHER
-            : executionStatus);
+    if (useDaVinciSpecificExecutionStatusForError) {
+      assertEquals(
+          DaVinciBackend.getDaVinciErrorStatus(veniceException, useDaVinciSpecificExecutionStatusForError),
+          executionStatus.equals(ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
+              ? DVC_INGESTION_ERROR_OTHER
+              : executionStatus);
+    } else {
+      assertEquals(
+          DaVinciBackend.getDaVinciErrorStatus(veniceException, useDaVinciSpecificExecutionStatusForError),
+          ERROR);
+    }
   }
 
-  @Test(dataProvider = "DvcErrorExecutionStatus")
-  public void testGetDaVinciErrorStatusNested(ExecutionStatus executionStatus) {
+  @Test(dataProvider = "DvcErrorExecutionStatusAndBoolean")
+  public void testGetDaVinciErrorStatusNested(
+      ExecutionStatus executionStatus,
+      boolean useDaVinciSpecificExecutionStatusForError) {
     VeniceException veniceException;
     switch (executionStatus) {
       case DVC_INGESTION_ERROR_DISK_FULL:
@@ -65,15 +77,23 @@ public class DaVinciBackendTest {
         fail("Unexpected execution status: " + executionStatus);
         return;
     }
-    assertEquals(
-        DaVinciBackend.getDaVinciErrorStatus(veniceException),
-        executionStatus.equals(ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
-            ? DVC_INGESTION_ERROR_OTHER
-            : executionStatus);
+    if (useDaVinciSpecificExecutionStatusForError) {
+      assertEquals(
+          DaVinciBackend.getDaVinciErrorStatus(veniceException, useDaVinciSpecificExecutionStatusForError),
+          executionStatus.equals(ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
+              ? DVC_INGESTION_ERROR_OTHER
+              : executionStatus);
+    } else {
+      assertEquals(
+          DaVinciBackend.getDaVinciErrorStatus(veniceException, useDaVinciSpecificExecutionStatusForError),
+          ERROR);
+    }
   }
 
-  @Test(dataProvider = "DvcErrorExecutionStatus")
-  public void testGetDaVinciErrorStatusWithInvalidCases(ExecutionStatus executionStatus) {
+  @Test(dataProvider = "DvcErrorExecutionStatusAndBoolean")
+  public void testGetDaVinciErrorStatusWithInvalidCases(
+      ExecutionStatus executionStatus,
+      boolean useDaVinciSpecificExecutionStatusForError) {
     VeniceException veniceException;
     switch (executionStatus) {
       case DVC_INGESTION_ERROR_DISK_FULL:
@@ -87,7 +107,16 @@ public class DaVinciBackendTest {
         return;
     }
 
-    assertEquals(DaVinciBackend.getDaVinciErrorStatus(veniceException), DVC_INGESTION_ERROR_OTHER);
+    if (useDaVinciSpecificExecutionStatusForError) {
+      assertEquals(
+          DaVinciBackend.getDaVinciErrorStatus(veniceException, useDaVinciSpecificExecutionStatusForError),
+          DVC_INGESTION_ERROR_OTHER);
+
+    } else {
+      assertEquals(
+          DaVinciBackend.getDaVinciErrorStatus(veniceException, useDaVinciSpecificExecutionStatusForError),
+          ERROR);
+    }
   }
 
 }

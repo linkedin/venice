@@ -5,6 +5,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,8 +52,8 @@ public class PushMonitorUtilsTest {
     validatePushStatus(reader, "store_v1", 2, 0.25, ExecutionStatus.COMPLETED);
   }
 
-  @Test
-  public void testDaVinciPushStatusScan() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testDaVinciPushStatusScan(boolean useDaVinciSpecificExecutionStatusForError) {
     PushMonitorUtils.setDaVinciErrorInstanceWaitTime(0);
     PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
     doReturn(true).when(reader).isInstanceAlive(eq("store"), eq("a"));
@@ -83,7 +84,8 @@ public class PushMonitorUtilsTest {
         2,
         0.25,
         ExecutionStatus.STARTED,
-        null);
+        null,
+        useDaVinciSpecificExecutionStatusForError);
 
     // Expected to fail.
     validateOfflineReplicaInPushStatusWhenBreachingFailFastThreshold(
@@ -91,8 +93,11 @@ public class PushMonitorUtilsTest {
         "store_v1",
         1,
         0.25,
-        ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
-        "Too many dead instances: 2, total instances: 4, example offline instances: " + offlineInstances);
+        useDaVinciSpecificExecutionStatusForError
+            ? ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
+            : ExecutionStatus.ERROR,
+        "Too many dead instances: 2, total instances: 4, example offline instances: " + offlineInstances,
+        useDaVinciSpecificExecutionStatusForError);
 
     /**
      * Testing ratio-based threshold.
@@ -104,15 +109,19 @@ public class PushMonitorUtilsTest {
         1,
         0.5,
         ExecutionStatus.STARTED,
-        null);
+        null,
+        useDaVinciSpecificExecutionStatusForError);
     // Expected to fail.
     validateOfflineReplicaInPushStatusWhenBreachingFailFastThreshold(
         reader,
         "store_v2",
         1,
         0.25,
-        ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
-        "Too many dead instances: 2, total instances: 4, example offline instances: " + offlineInstances);
+        useDaVinciSpecificExecutionStatusForError
+            ? ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
+            : ExecutionStatus.ERROR,
+        "Too many dead instances: 2, total instances: 4, example offline instances: " + offlineInstances,
+        useDaVinciSpecificExecutionStatusForError);
   }
 
   private void validateOfflineReplicaInPushStatusWhenBreachingFailFastThreshold(
@@ -121,7 +130,8 @@ public class PushMonitorUtilsTest {
       int maxOfflineInstanceCount,
       double maxOfflineInstanceRatio,
       ExecutionStatus expectedStatus,
-      String expectedErrorDetails) {
+      String expectedErrorDetails,
+      boolean useDaVinciSpecificExecutionStatusForError) {
     /**
      * Even if offline instances number exceed the max offline threshold count it will remain STARTED for the first check,
      * as we need to wait until daVinciErrorInstanceWaitTime has passed since it first occurs.
@@ -132,7 +142,8 @@ public class PushMonitorUtilsTest {
         1,
         Optional.empty(),
         maxOfflineInstanceCount,
-        maxOfflineInstanceRatio);
+        maxOfflineInstanceRatio,
+        useDaVinciSpecificExecutionStatusForError);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.STARTED);
     // Sleep 1ms and try again.
     Utils.sleep(1);
@@ -142,7 +153,8 @@ public class PushMonitorUtilsTest {
         1,
         Optional.empty(),
         maxOfflineInstanceCount,
-        maxOfflineInstanceRatio);
+        maxOfflineInstanceRatio,
+        useDaVinciSpecificExecutionStatusForError);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), expectedStatus);
     if (expectedStatus.isError()) {
       Assert.assertEquals(executionStatusWithDetails.getDetails(), expectedErrorDetails);
@@ -161,7 +173,8 @@ public class PushMonitorUtilsTest {
         1,
         Optional.empty(),
         maxOfflineInstanceCount,
-        maxOfflineInstanceRatio);
+        maxOfflineInstanceRatio,
+        true);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), expectedStatus);
   }
 }

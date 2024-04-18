@@ -105,6 +105,7 @@ public class DaVinciBackend implements Closeable {
   private final Optional<ObjectCacheBackend> cacheBackend;
   private DaVinciIngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
+  private final boolean useDaVinciSpecificExecutionStatusForError;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -116,6 +117,7 @@ public class DaVinciBackend implements Closeable {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
+      useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       this.configLoader = configLoader;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
           .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
@@ -664,7 +666,7 @@ public class DaVinciBackend implements Closeable {
           /**
            * Report push status needs to be executed before deleting the {@link VersionBackend}.
            */
-          ExecutionStatus status = getDaVinciErrorStatus(e);
+          ExecutionStatus status = getDaVinciErrorStatus(e, useDaVinciSpecificExecutionStatusForError);
           reportPushStatus(kafkaTopic, partitionId, status);
 
           versionBackend.completePartitionExceptionally(partitionId, e);
@@ -740,16 +742,21 @@ public class DaVinciBackend implements Closeable {
     }
   };
 
-  static ExecutionStatus getDaVinciErrorStatus(Exception e) {
-    ExecutionStatus status = DVC_INGESTION_ERROR_OTHER;
-    if (e instanceof VeniceException) {
-      if (e instanceof MemoryLimitExhaustedException
-          || (e.getCause() != null && e.getCause() instanceof MemoryLimitExhaustedException)) {
-        status = DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
-      } else if (e instanceof DiskLimitExhaustedException
-          || (e.getCause() != null && e.getCause() instanceof DiskLimitExhaustedException)) {
-        status = DVC_INGESTION_ERROR_DISK_FULL;
+  static ExecutionStatus getDaVinciErrorStatus(Exception e, boolean useDaVinciSpecificExecutionStatusForError) {
+    ExecutionStatus status;
+    if (useDaVinciSpecificExecutionStatusForError) {
+      status = DVC_INGESTION_ERROR_OTHER;
+      if (e instanceof VeniceException) {
+        if (e instanceof MemoryLimitExhaustedException
+            || (e.getCause() != null && e.getCause() instanceof MemoryLimitExhaustedException)) {
+          status = DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
+        } else if (e instanceof DiskLimitExhaustedException
+            || (e.getCause() != null && e.getCause() instanceof DiskLimitExhaustedException)) {
+          status = DVC_INGESTION_ERROR_DISK_FULL;
+        }
       }
+    } else {
+      status = ExecutionStatus.ERROR;
     }
     return status;
   }
