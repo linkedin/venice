@@ -51,7 +51,8 @@ public class PushMonitorUtils {
       int partitionCount,
       Optional<String> incrementalPushVersion,
       int maxOfflineInstanceCount,
-      double maxOfflineInstanceRatio) {
+      double maxOfflineInstanceRatio,
+      boolean useDaVinciSpecificExecutionStatusForError) {
     if (reader == null) {
       throw new VeniceException("PushStatusStoreReader is null");
     }
@@ -70,7 +71,8 @@ public class PushMonitorUtils {
           partitionCount,
           incrementalPushVersion,
           maxOfflineInstanceCount,
-          maxOfflineInstanceRatio);
+          maxOfflineInstanceRatio,
+          useDaVinciSpecificExecutionStatusForError);
     } else {
       // DaVinci starts using new status key format, which contains status for all partitions in one key.
       // Only batch pushes will use this key; incremental pushes will still use partition level status key.
@@ -126,7 +128,9 @@ public class PushMonitorUtils {
           if (lastUpdateTime + TimeUnit.MINUTES.toMillis(daVinciErrorInstanceWaitTime) < System.currentTimeMillis()) {
             storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
             return new ExecutionStatusWithDetails(
-                ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
+                useDaVinciSpecificExecutionStatusForError
+                    ? ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
+                    : ExecutionStatus.ERROR,
                 "Too many dead instances: " + offlineInstanceCount + ", total instances: " + totalInstanceCount
                     + ", example offline instances: " + offlineInstanceList,
                 noDaVinciStatusReported);
@@ -165,7 +169,8 @@ public class PushMonitorUtils {
             partitionCount,
             incrementalPushVersion,
             maxOfflineInstanceCount,
-            maxOfflineInstanceRatio);
+            maxOfflineInstanceRatio,
+            useDaVinciSpecificExecutionStatusForError);
         if (partitionLevelStatus.getStatus() != ExecutionStatus.COMPLETED) {
           // Do not report COMPLETED, instead, report status from the partition level status key.
           statusDetailStringBuilder.append(
@@ -200,7 +205,8 @@ public class PushMonitorUtils {
       int partitionCount,
       Optional<String> incrementalPushVersion,
       int maxOfflineInstanceCount,
-      double maxOfflineInstanceRatio) {
+      double maxOfflineInstanceRatio,
+      boolean useDaVinciSpecificExecutionStatusForError) {
     if (reader == null) {
       throw new VeniceException("PushStatusStoreReader is null");
     }
@@ -277,7 +283,9 @@ public class PushMonitorUtils {
         if (lastUpdateTime + TimeUnit.MINUTES.toMillis(daVinciErrorInstanceWaitTime) < System.currentTimeMillis()) {
           storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
           return new ExecutionStatusWithDetails(
-              ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
+              useDaVinciSpecificExecutionStatusForError
+                  ? ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
+                  : ExecutionStatus.ERROR,
               "Too many dead instances: " + offlineReplicaCount + ", total instances: " + totalReplicaCount
                   + ", example offline instances: " + offlineInstanceList,
               noDaVinciStatusReported);
