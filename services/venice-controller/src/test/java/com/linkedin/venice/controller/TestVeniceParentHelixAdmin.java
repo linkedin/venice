@@ -42,6 +42,7 @@ import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -110,6 +111,9 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdmin {
+  String storeName = Utils.getUniqueString("test_store");
+  static final int NUM_REGIONS = 3;
+
   @BeforeMethod
   public void setupTestCase() {
     setupInternalMocks();
@@ -724,7 +728,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testIdempotentIncrementVersionWhenNoPreviousTopics() {
-    String storeName = Utils.getUniqueString("test_store");
     String pushJobId = Utils.getUniqueString("push_job_id");
     doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
         .addVersionAndTopicOnly(
@@ -1431,19 +1434,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
-    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
-
-    for (int i = 0; i < 3; i++) {
-      ControllerClient client = mock(ControllerClient.class);
-      StoreResponse storeResponse = new StoreResponse();
-      Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
-      s.setCurrentVersion(i + 4); // child region current versions 4,5,6
-      storeResponse.setStore(StoreInfo.fromStore(s));
-      doReturn(storeResponse).when(client).getStore(anyString());
-      controllerClientMap.put("region" + i, client);
-    }
-
-    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+    mockControllerClients(storeName);
 
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
     verify(storeRepo).getStore(storeName);
@@ -1463,6 +1454,27 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 9; i <= 10; ++i) {
       Assert.assertTrue(capturedStore.containsVersion(i));
     }
+  }
+
+  private void mockControllerClients(String storeName) {
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    Map<String, String> map = new HashMap<>();
+    map.put(storeName, "1");
+
+    for (int i = 0; i < NUM_REGIONS; i++) {
+      ControllerClient client = mock(ControllerClient.class);
+      StoreResponse storeResponse = new StoreResponse();
+      Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
+      s.setCurrentVersion(i + 4); // child region current versions 4,5,6
+      storeResponse.setStore(StoreInfo.fromStore(s));
+      MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
+      doReturn(map).when(storeStatusResponse).getStoreStatusMap();
+      doReturn(storeStatusResponse).when(client).getFutureVersions(anyString(), anyString());
+      doReturn(storeResponse).when(client).getStore(anyString());
+      controllerClientMap.put("region" + i, client);
+    }
+
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
   }
 
   // get a map of mock client that can return vairable execution status
@@ -1548,7 +1560,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(false).when(store).isIncrementalPushEnabled();
     doReturn(Optional.empty()).when(store).getVersion(anyInt());
     doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
-
+    // doReturn(false).when(parentAdmin).isDeferredSwap(anyString(), anyString(), anyInt());
     Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", completeMap);
     Map<String, String> extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
@@ -2192,6 +2204,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
+    ControllerClient client = mock(ControllerClient.class);
+    Map<String, ControllerClient> map = new HashMap<>();
+    map.put("dc-0", client);
+    doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
 
     Store store = new ZKStore(
@@ -2206,6 +2222,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     store.addVersion(new VersionImpl(storeName, 1, "test_push_id"));
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+    StoreResponse response = mock(StoreResponse.class);
+    StoreInfo info = mock(StoreInfo.class);
+    doReturn(response).when(client).getStore(anyString());
+    doReturn(info).when(response).getStore();
     doReturn(new Pair<>(store, store.getVersion(1).get())).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
@@ -2418,6 +2438,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
           .when(veniceWriter)
           .put(any(), any(), anyInt());
+      mockControllerClients(storeName);
       when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
           .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
