@@ -26,10 +26,6 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
   public abstract void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition)
       throws InterruptedException;
 
-  public abstract int getDrainerCount();
-
-  public abstract long getDrainerQueueMemoryUsage(int index);
-
   public abstract long getTotalMemoryUsage();
 
   public abstract long getTotalRemainingMemory();

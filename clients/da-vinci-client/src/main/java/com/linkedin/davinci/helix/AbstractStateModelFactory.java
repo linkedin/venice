@@ -2,9 +2,7 @@ package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import java.util.concurrent.CompletableFuture;
@@ -74,20 +72,8 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
   @Override
   public abstract StateModel createNewStateModel(String resourceName, String partitionName);
 
-  public StoreIngestionService getStoreIngestionService() {
-    return ingestionBackend.getStoreIngestionService();
-  }
-
-  public StorageService getStorageService() {
-    return ingestionBackend.getStorageService();
-  }
-
   public VeniceConfigLoader getConfigService() {
     return configService;
-  }
-
-  public ExecutorService getExecutorService() {
-    return executorService;
   }
 
   public ReadOnlyStoreRepository getStoreMetadataRepo() {

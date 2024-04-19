@@ -57,10 +57,6 @@ public class LeaderFollowerPartitionStateModelDualPoolFactory extends LeaderFoll
         : stateTransitionStats;
   }
 
-  public ExecutorService getFutureVersionExecutorService() {
-    return futureVersionExecutorService;
-  }
-
   @Override
   public void shutDownExecutor() {
     executorService.shutdownNow();

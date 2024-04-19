@@ -298,7 +298,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final DaVinciRecordTransformer recordTransformer;
-  private final Runnable runnableForKillIngestionTasksForMissingSOP;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -314,8 +313,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected int dataRecoverySourceVersionNumber;
   protected final MetaStoreWriter metaStoreWriter;
   protected final Function<String, String> kafkaClusterUrlResolver;
-  /** TODO Get rid of this map once we delete the dedicated consumer mode */
-  private final Object2IntMap<String> kafkaClusterUrlToIdMap;
   protected final boolean readOnlyForBatchOnlyStoreEnabled;
   protected final CompressionStrategy compressionStrategy;
   protected final StorageEngineBackedCompressorFactory compressorFactory;
@@ -438,8 +435,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion),
         amplificationFactorAdapter);
 
-    this.runnableForKillIngestionTasksForMissingSOP = () -> waitForStateVersion(kafkaVersionTopic);
-    this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
+    this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
     this.recordTransformer =
@@ -470,7 +466,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
-    this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
+    Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
     this.compressionStrategy = version.getCompressionStrategy();
     this.compressorFactory = builder.getCompressorFactory();
@@ -825,8 +821,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     try {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
-      long offsetThreshold =
-          getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeRepository, storeName, subPartitionCount);
+      long offsetThreshold = getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeName, subPartitionCount);
       long producerTimeLagThresholdInSeconds =
           hybridStoreConfig.get().getProducerTimestampLagThresholdToGoOnlineInSeconds();
       String msg = msgForLagMeasurement[partitionId];
@@ -1139,9 +1134,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             beforeProcessingBatchRecordsTimestampMs);
       }
 
-      hostLevelIngestionStats.recordStorageQuotaUsed(
-          storageUtilizationManager.getDiskQuotaUsage(),
-          beforeProcessingBatchRecordsTimestampMs);
+      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
     }
   }
 
@@ -1280,7 +1273,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     idleCounter = 0;
     maybeUnsubscribeCompletedPartitions(store);
-    recordQuotaMetrics(store);
+    recordQuotaMetrics();
     recordMaxIdleTime();
 
     /**
@@ -1333,13 +1326,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void recordQuotaMetrics(Store store) {
+  private void recordQuotaMetrics() {
     if (emitMetrics.get()) {
-      long currentQuota = store.getStorageQuotaInByte();
-      long currentTimeForMetricsMs = System.currentTimeMillis();
-      hostLevelIngestionStats.recordDiskQuotaAllowed(currentQuota, currentTimeForMetricsMs);
-      hostLevelIngestionStats
-          .recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage(), currentTimeForMetricsMs);
+      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
     }
   }
 
@@ -1499,6 +1488,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void internalClose(boolean doFlush) {
+    this.missingSOPCheckExecutor.shutdownNow();
+
     // Only reset Offset Messages are important, subscribe/unsubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     try {
@@ -1642,7 +1633,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected static long getOffsetToOnlineLagThresholdPerPartition(
       Optional<HybridStoreConfig> hybridStoreConfig,
-      ReadOnlyStoreRepository storeRepository,
       String storeName,
       int subPartitionCount) {
     if (!hybridStoreConfig.isPresent()) {
@@ -1729,7 +1719,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long previousOffsetLag = newPartitionConsumptionState.getOffsetRecord().getOffsetLag();
       if (hybridStoreConfig.isPresent() && newPartitionConsumptionState.isEndOfPushReceived()) {
         long offsetLagThreshold =
-            getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeRepository, storeName, subPartitionCount);
+            getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeName, subPartitionCount);
         // Only enable this feature with positive offset lag delta relax factor and offset lag threshold.
         if (offsetLagDeltaRelaxEnabled && offsetLagThreshold > 0) {
           long offsetLag = measureHybridOffsetLag(newPartitionConsumptionState, true);
@@ -2564,7 +2554,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void processEndOfPush(
       KafkaMessageEnvelope endOfPushKME,
-      ControlMessage controlMessage,
       int partition,
       long offset,
       PartitionConsumptionState partitionConsumptionState) {
@@ -2698,7 +2687,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         break;
       case END_OF_PUSH:
-        processEndOfPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
+        processEndOfPush(kafkaMessageEnvelope, partition, offset, partitionConsumptionState);
         break;
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
@@ -2969,7 +2958,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Run a dummy validation to update DIV metadata.
          */
-        validator.validateMessage(consumerRecord, endOfPushReceived, Lazy.TRUE);
+        validator.validateMessage(consumerRecord, true, Lazy.TRUE);
       }
     }
   }
@@ -3485,7 +3474,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   synchronized boolean maybeSetIngestionTaskActiveState(boolean isNewStateActive) {
     if (isNewStateActive) {
-      setIdleCounter(0);
+      resetIdleCounter();
     } else {
       if (getIdleCounter() > getMaxIdleCounter()) {
         close();
@@ -3494,8 +3483,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isRunning();
   }
 
-  void setIdleCounter(int counter) {
-    idleCounter = counter;
+  void resetIdleCounter() {
+    idleCounter = 0;
   }
 
   int getIdleCounter() {
@@ -3550,10 +3539,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public PubSubTopic getVersionTopic() {
     return versionTopic;
-  }
-
-  public PubSubTopic getRealtimeTopic() {
-    return realTimeTopic;
   }
 
   public boolean isMetricsEmissionEnabled() {
@@ -3959,9 +3944,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       return true;
     }
-    if (!topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic)) {
-      return false;
-    }
-    return true;
+    return topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic);
   }
 }

@@ -4425,11 +4425,8 @@ public abstract class StoreIngestionTaskTest {
     // Non-hybrid store should throw
     assertThrows(
         VeniceException.class,
-        () -> StoreIngestionTask.getOffsetToOnlineLagThresholdPerPartition(
-            Optional.empty(),
-            storeRepository,
-            storeName,
-            subPartitionCount));
+        () -> StoreIngestionTask
+            .getOffsetToOnlineLagThresholdPerPartition(Optional.empty(), storeName, subPartitionCount));
 
     // Negative threshold
     HybridStoreConfigImpl hybridStoreConfig1 = new HybridStoreConfigImpl(
@@ -4439,11 +4436,8 @@ public abstract class StoreIngestionTaskTest {
         DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_SOP);
     assertEquals(
-        StoreIngestionTask.getOffsetToOnlineLagThresholdPerPartition(
-            Optional.of(hybridStoreConfig1),
-            storeRepository,
-            storeName,
-            subPartitionCount),
+        StoreIngestionTask
+            .getOffsetToOnlineLagThresholdPerPartition(Optional.of(hybridStoreConfig1), storeName, subPartitionCount),
         -1l);
 
     // For current version, the partition-level offset lag threshold should be divided by partition count
@@ -4457,11 +4451,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(10).when(store).getCurrentVersion();
     doReturn(store).when(storeRepository).getStore(storeName);
     assertEquals(
-        StoreIngestionTask.getOffsetToOnlineLagThresholdPerPartition(
-            Optional.of(hybridStoreConfig2),
-            storeRepository,
-            storeName,
-            subPartitionCount),
+        StoreIngestionTask
+            .getOffsetToOnlineLagThresholdPerPartition(Optional.of(hybridStoreConfig2), storeName, subPartitionCount),
         10l);
   }
 

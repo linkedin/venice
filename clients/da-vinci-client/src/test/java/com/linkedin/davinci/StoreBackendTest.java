@@ -86,7 +86,6 @@ public class StoreBackendTest {
     storageService = mock(StorageService.class);
     ingestionBackend = mock(DaVinciIngestionBackend.class);
     compressorFactory = mock(StorageEngineBackedCompressorFactory.class);
-    when(ingestionBackend.getStorageService()).thenReturn(storageService);
     backend = mock(DaVinciBackend.class);
     when(backend.getExecutor()).thenReturn(executor);
     when(backend.getConfigLoader()).thenReturn(new VeniceConfigLoader(backendConfig));

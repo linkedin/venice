@@ -428,13 +428,6 @@ public class IsolatedIngestionUtils {
   public static IngestionTaskReport createIngestionTaskReport(
       IngestionReportType ingestionReportType,
       String kafkaTopic,
-      int partitionId) {
-    return createIngestionTaskReport(ingestionReportType, kafkaTopic, partitionId, 0, "");
-  }
-
-  public static IngestionTaskReport createIngestionTaskReport(
-      IngestionReportType ingestionReportType,
-      String kafkaTopic,
       int partitionId,
       String message) {
     return createIngestionTaskReport(ingestionReportType, kafkaTopic, partitionId, 0, message);
