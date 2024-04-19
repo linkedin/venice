@@ -18,8 +18,7 @@ import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_ASYNC_START_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_ATTEMPTS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_TARDY_LATENCY_MS;
@@ -61,7 +60,6 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_LEAKED_FUTURE_CLEANUP_THRESH
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE;
@@ -83,7 +81,6 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLE
 import static com.linkedin.venice.ConfigKeys.ROUTER_SOCKET_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_STATEFUL_HEALTHCHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES;
 import static com.linkedin.venice.ConfigKeys.ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE;
 import static com.linkedin.venice.ConfigKeys.ROUTE_DNS_CACHE_HOST_PATTERN;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
@@ -188,11 +185,8 @@ public class VeniceRouterConfig {
   private VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
   private String systemSchemaClusterName;
-  private boolean throttleClientSslHandshakes;
   private int clientSslHandshakeThreads;
-  private int maxConcurrentClientSslHandshakes;
-  private int clientSslHandshakeAttempts;
-  private long clientSslHandshakeBackoffMs;
+  private int clientSslHandshakeQueueCapacity;
   private long readQuotaThrottlingLeaseTimeoutMs;
   private boolean routerHeartBeatEnabled;
   private int httpClient5PoolSize;
@@ -321,11 +315,8 @@ public class VeniceRouterConfig {
     ioThreadCountInPoolMode =
         props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
-    throttleClientSslHandshakes = props.getBoolean(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, false);
-    clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 4);
-    maxConcurrentClientSslHandshakes = props.getInt(ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES, 100);
-    clientSslHandshakeAttempts = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_ATTEMPTS, 5);
-    clientSslHandshakeBackoffMs = props.getLong(ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS, 5 * Time.MS_PER_SECOND);
+    clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 0);
+    clientSslHandshakeQueueCapacity = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY, Integer.MAX_VALUE);
 
     readQuotaThrottlingLeaseTimeoutMs =
         props.getLong(ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS, 6 * Time.MS_PER_HOUR);
@@ -749,24 +740,12 @@ public class VeniceRouterConfig {
     return retryThresholdMap;
   }
 
-  public boolean isThrottleClientSslHandshakesEnabled() {
-    return throttleClientSslHandshakes;
-  }
-
   public int getClientSslHandshakeThreads() {
     return clientSslHandshakeThreads;
   }
 
-  public int getMaxConcurrentClientSslHandshakes() {
-    return maxConcurrentClientSslHandshakes;
-  }
-
-  public int getClientSslHandshakeAttempts() {
-    return clientSslHandshakeAttempts;
-  }
-
-  public long getClientSslHandshakeBackoffMs() {
-    return clientSslHandshakeBackoffMs;
+  public int getClientSslHandshakeQueueCapacity() {
+    return clientSslHandshakeQueueCapacity;
   }
 
   public long getReadQuotaThrottlingLeaseTimeoutMs() {
