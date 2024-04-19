@@ -1764,29 +1764,14 @@ public class ConfigKeys {
       "use.da.vinci.specific.execution.status.for.error";
 
   /**
-   * Whether to throttle SSL connections between router and client.
-   */
-  public static final String ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES = "router.throttle.client.ssl.handshakes";
-
-  /**
    * The number of threads that will be used to perform SSL handshakes between clients and a router.
    */
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
-   * The maximum number of concurrent SSL handshakes between clients and a router.
+   * Config to control the queue capacity for the thread pool executor used for ssl handshake between clients and a router.
    */
-  public static final String ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES = "router.max.concurrent.ssl.handshakes";
-
-  /**
-   * The number of attempts of SSL handshakes between clients and a router.
-   */
-  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_ATTEMPTS = "router.client.ssl.handshake.attempts";
-
-  /**
-   * The delay between attempts of SSL handshakes between clients and a router.
-   */
-  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS = "router.client.ssl.handshake.backoff.ms";
+  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY = "router.client.ssl.handshake.queue.capacity";
 
   /**
    * Lease timeout for leaving quota disabled for a router. If quota was disabled through an API, it will be reset after

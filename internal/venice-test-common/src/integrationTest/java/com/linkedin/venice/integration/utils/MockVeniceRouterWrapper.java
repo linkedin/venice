@@ -6,9 +6,9 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
@@ -137,7 +137,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
               CLUSTER_TO_SERVER_D2,
               TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, serverD2ServiceName)))
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
-          .put(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, true)
+          .put(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 10)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
           .put(extraConfigs);
       StoreConfig storeConfig = new StoreConfig("test");
