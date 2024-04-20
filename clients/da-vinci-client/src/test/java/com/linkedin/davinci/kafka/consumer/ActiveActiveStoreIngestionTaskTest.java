@@ -92,6 +92,8 @@ import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -495,6 +497,9 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey2)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
+    List<byte[]> expectedKeys = new ArrayList(1);
+    expectedKeys.add(chunkedKey1InKey2);
+    when(storageEngine.multiGetReplicationMetadata(eq(subPartition), any())).thenReturn(Arrays.asList(chunkedValue1));
     byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, container, 0L);
     Assert.assertNotNull(result2);
     Assert.assertNotNull(container.getManifest());
@@ -536,6 +541,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey3)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
+    when(storageEngine.multiGetReplicationMetadata(eq(subPartition), any()))
+        .thenReturn(Arrays.asList(chunkedValue1, chunkedValue2));
     byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3, container, 0L);
     Assert.assertNotNull(result3);
     Assert.assertNotNull(container.getManifest());

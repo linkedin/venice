@@ -496,6 +496,13 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
+  public List<byte[]> multiGet(int partitionId, List<byte[]> keys) throws VeniceException {
+    return executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      return partition.multiGet(keys);
+    });
+  }
+
   public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
@@ -536,6 +543,14 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       return partition.getReplicationMetadata(key);
+    });
+  }
+
+  public List<byte[]> multiGetReplicationMetadata(int partitionId, List<byte[]> keys) {
+    System.out.println("key size in multiGetReplicationMetadata:" + keys.size());
+    return executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      return partition.multiGetReplicationMetadata(keys);
     });
   }
 

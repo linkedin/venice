@@ -66,6 +66,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
   private static final String ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_SPACE_QUOTA = "Max allowed space was reached";
   protected static final ReadOptions READ_OPTIONS_DEFAULT = new ReadOptions();
+  /**
+   * Async IO will speed up the lookup for multi-get with posix file system.
+   * https://rocksdb.org/blog/2022/10/07/asynchronous-io-in-rocksdb.html
+   */
+  protected static final ReadOptions READ_OPTIONS_WITH_ASYNC_IO = new ReadOptions().setAsyncIo(true);
   static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
 
   private static final FlushOptions WAIT_FOR_FLUSH_OPTIONS = new FlushOptions().setWaitForFlush(true);
@@ -585,11 +590,19 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
+  protected ReadOptions getReadOptionsForMultiGet() {
+    if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled() || !rocksDBServerConfig.isReadAsyncIOEanbled()) {
+      return READ_OPTIONS_DEFAULT;
+    }
+    return READ_OPTIONS_WITH_ASYNC_IO;
+  }
+
+  @Override
   public List<byte[]> multiGet(List<byte[]> keys) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return rocksDB.multiGetAsList(keys);
+      return rocksDB.multiGetAsList(getReadOptionsForMultiGet(), keys);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {
@@ -602,7 +615,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
     try {
       makeSureRocksDBIsStillOpen();
-      List<ByteBufferGetStatus> statusList = rocksDB.multiGetByteBuffers(keys, values);
+      List<ByteBufferGetStatus> statusList = rocksDB.multiGetByteBuffers(getReadOptionsForMultiGet(), keys, values);
+
       int keyCnt = keys.size();
       int statusCnt = statusList.size();
       int valueCnt = values.size();

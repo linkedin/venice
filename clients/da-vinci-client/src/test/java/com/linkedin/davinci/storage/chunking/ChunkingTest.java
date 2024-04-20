@@ -1,5 +1,6 @@
 package com.linkedin.davinci.storage.chunking;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
@@ -22,6 +23,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
@@ -213,6 +215,8 @@ public class ChunkingTest {
         .get(eq(partition), eq(ByteBuffer.wrap(serializeNonChunkedKey)));
     doReturn(chunk1Bytes).when(storageEngine).get(eq(partition), eq(firstKey));
     doReturn(chunk2Bytes).when(storageEngine).get(eq(partition), eq(secondKey));
+
+    doReturn(Arrays.asList(chunk1Bytes, chunk2Bytes)).when(storageEngine).multiGet(eq(partition), any());
 
     StoreDeserializerCache storeDeserializerCache = rawBytesStoreDeserializerCache
         ? RawBytesStoreDeserializerCache.getInstance()
