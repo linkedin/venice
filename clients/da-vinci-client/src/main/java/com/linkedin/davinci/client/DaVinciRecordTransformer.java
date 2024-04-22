@@ -1,5 +1,6 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -17,10 +18,11 @@ import org.apache.avro.Schema;
  * N.B.: The inputs are wrapped inside {@link Lazy} so that if the implementation need not look at
  * them, the deserialization cost is not paid.
  *
- * @param <K> type of the key value
+ * @param <K> type of the input key
  * @param <V> type of the input value
  * @param <O> type of the output value
  */
+@Experimental
 public abstract class DaVinciRecordTransformer<K, V, O> {
   /**
    * Version of the store of when the transformer is initialized.
@@ -45,7 +47,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    * @param value to be put
    * @return the object to keep in storage, or null if the put should be skipped
    */
-  public abstract O put(Lazy<V> value);
+  public abstract O put(Lazy<K> key, Lazy<V> value);
 
   /**
    * By default, deletes will proceed. This can be overridden if some deleted records should be kept.

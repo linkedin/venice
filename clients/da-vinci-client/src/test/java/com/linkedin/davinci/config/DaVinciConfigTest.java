@@ -26,7 +26,7 @@ public class DaVinciConfigTest {
       return Schema.create(Schema.Type.INT);
     }
 
-    public Integer put(Lazy<Integer> value) {
+    public Integer put(Lazy<Integer> key, Lazy<Integer> value) {
       return value.get() + 1;
     }
   }

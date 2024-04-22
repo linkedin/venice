@@ -3205,11 +3205,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             return 0;
           }
 
+          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
+          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
           Lazy<Object> lazyValue = Lazy.of(() -> assembledObject);
 
           Object transformedRecord = null;
           try {
-            transformedRecord = recordTransformer.put(lazyValue);
+            transformedRecord = recordTransformer.put(lazyKey, lazyValue);
           } catch (Exception e) {
             versionedIngestionStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
             String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
@@ -3464,6 +3466,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Value deserialization succeeded with schema id {} for: {}", schemaId, record.getTopicPartition());
       deserializedSchemaIds.set(schemaId, new Object());
     }
+  }
+
+  private Object deserializeAvroObjectAndReturn(ByteBuffer input, SchemaEntry schemaEntry) {
+    return new AvroGenericDeserializer<>(schemaEntry.getSchema(), schemaEntry.getSchema()).deserialize(input);
   }
 
   private void maybeCloseInactiveIngestionTask() {

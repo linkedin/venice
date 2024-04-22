@@ -18,7 +18,7 @@ public class TestAvroRecordTransformer extends DaVinciRecordTransformer<Integer,
     return Schema.create(Schema.Type.STRING);
   }
 
-  public Object put(Lazy<Object> value) {
+  public Object put(Lazy<Integer> key, Lazy<Object> value) {
     return value.get() + "Transformed";
   }
 }
