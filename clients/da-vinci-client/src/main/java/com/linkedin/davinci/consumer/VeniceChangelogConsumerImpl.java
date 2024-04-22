@@ -1,6 +1,6 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 
 import com.google.common.annotations.VisibleForTesting;
