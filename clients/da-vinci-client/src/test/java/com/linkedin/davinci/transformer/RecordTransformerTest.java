@@ -22,12 +22,12 @@ public class RecordTransformerTest {
     Schema valueOutputSchema = recordTransformer.getValueOutputSchema();
     assertEquals(valueOutputSchema.getType(), Schema.Type.STRING);
 
+    Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
-    String transformedRecord = recordTransformer.put(lazyValue);
+    String transformedRecord = recordTransformer.put(lazyKey, lazyValue);
     assertEquals(transformedRecord, "SampleValueTransformed");
 
-    Lazy<Integer> lazyDeleteKey = Lazy.of(() -> 99);
-    String deletedRecord = recordTransformer.delete(lazyDeleteKey);
+    String deletedRecord = recordTransformer.delete(lazyKey);
     assertNull(deletedRecord);
   }
 

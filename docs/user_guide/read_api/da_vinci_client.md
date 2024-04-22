@@ -46,7 +46,7 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
     return Schema.create(Schema.Type.STRING);
   }
 
-  public String put(Lazy<String> value) {
+  public String put(Lazy<Integer> key, Lazy<String> value) {
     return value.get() + "Transformed";
   }
 }
