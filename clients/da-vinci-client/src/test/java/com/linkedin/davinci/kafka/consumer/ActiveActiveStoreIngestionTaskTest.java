@@ -93,6 +93,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -496,7 +497,9 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey2)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
-    when(storageEngine.multiGetReplicationMetadata(eq(subPartition), any())).thenReturn(Arrays.asList(chunkedValue1));
+    List<byte[]> chunkedValues = new ArrayList<>(1);
+    chunkedValues.add(chunkedValue1);
+    when(storageEngine.multiGetReplicationMetadata(eq(subPartition), any())).thenReturn(chunkedValues);
     byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, container, 0L);
     Assert.assertNotNull(result2);
     Assert.assertNotNull(container.getManifest());
