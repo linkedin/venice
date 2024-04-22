@@ -85,9 +85,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    */
   private final GrpcClientConfig grpcClientConfig;
   /**
-   * The time window used to calculate user traffic and corresponding long tail retry budget. The default value is 5
-   * minutes. Meaning it will use the average request occurrence rate over the 5 minutes to calculate the corresponding
-   * retry budget for the next 5 minutes and so on.
+   * The time window used to calculate user traffic and corresponding long tail retry budget. The default value is one
+   * minute. Meaning it will use the average request occurrence rate over the one minute to calculate the corresponding
+   * retry budget for the next minute and so on.
    */
   private final long longTailRetryBudgetEnforcementWindowInMs;
 

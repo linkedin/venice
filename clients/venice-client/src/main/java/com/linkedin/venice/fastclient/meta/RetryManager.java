@@ -34,7 +34,7 @@ public class RetryManager implements Closeable {
   private final AtomicReference<TokenBucket> retryTokenBucket = new AtomicReference<>(null);
   private final ScheduledExecutorService scheduler;
   private final Clock clock;
-  RetryManagerStats retryManagerStats;
+  private RetryManagerStats retryManagerStats;
   private long lastUpdateTimestamp;
   private long previousQPS = 0;
 
