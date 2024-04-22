@@ -896,7 +896,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat);
         }
         try {
-          TimeUnit.SECONDS.sleep(60000L);
+          TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
           break;
