@@ -532,8 +532,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           Version.parseVersionFromKafkaTopicName(pubSubTopicPartition.getPubSubTopic().getName()),
           storeName);
       // Jump to next topic
-      switchToNewTopic(pubSubTopicPartition.getPubSubTopic(), topicSuffix, pubSubTopicPartition.getPartitionNumber());
-      return true;
+      return switchToNewTopic(
+          pubSubTopicPartition.getPubSubTopic(),
+          topicSuffix,
+          pubSubTopicPartition.getPartitionNumber());
     }
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       return handleVersionSwapControlMessage(controlMessage, pubSubTopicPartition, topicSuffix);
@@ -787,14 +789,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return false;
   }
 
-  protected void switchToNewTopic(PubSubTopic newTopic, String topicSuffix, Integer partition) {
+  protected boolean switchToNewTopic(PubSubTopic newTopic, String topicSuffix, Integer partition) {
     PubSubTopic mergedTopicName = pubSubTopicRepository.getTopic(newTopic.getName() + topicSuffix);
     Set<Integer> partitions = Collections.singleton(partition);
     for (PubSubTopicPartition currentSubscribedPartition: pubSubConsumer.getAssignment()) {
       if (partition.equals(currentSubscribedPartition.getPartitionNumber())) {
         if (mergedTopicName.getName().equals(currentSubscribedPartition.getPubSubTopic().getName())) {
           // We're being asked to switch to a topic that we're already subscribed to, NoOp this
-          return;
+          return false;
         }
       }
     }
@@ -804,6 +806,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     } catch (InterruptedException | ExecutionException e) {
       throw new VeniceException("Subscribe to new topic:" + mergedTopicName + " is not successful, error: " + e);
     }
+    return true;
   }
 
   @Override
