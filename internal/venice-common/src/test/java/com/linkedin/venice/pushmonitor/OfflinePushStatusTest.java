@@ -322,16 +322,6 @@ public class OfflinePushStatusTest {
     Assert.assertEquals(offlinePushStatus.getCurrentStatus(), to, to + " should be valid from:" + from);
   }
 
-  private void testValidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
-    for (ExecutionStatus status: statuses) {
-      OfflinePushStatus offlinePushStatus =
-          new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
-      offlinePushStatus.setCurrentStatus(from);
-      offlinePushStatus.updateStatus(status);
-      Assert.assertEquals(offlinePushStatus.getCurrentStatus(), status, status + " should be valid from:" + from);
-    }
-  }
-
   private void testInvalidTargetStatus(ExecutionStatus from, ExecutionStatus to) {
     OfflinePushStatus offlinePushStatus =
         new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
