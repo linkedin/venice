@@ -113,6 +113,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final ChunkAssembler chunkAssembler;
 
   protected final BasicConsumerStats changeCaptureStats;
+  protected final HeartbeatReporterThread heartbeatReporterThread;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -120,9 +121,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.pubSubConsumer = pubSubConsumer;
     this.storeName = changelogClientConfig.getStoreName();
     this.d2ControllerClient = changelogClientConfig.getD2ControllerClient();
-    this.changeCaptureStats = new BasicConsumerStats(
-        changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
-        "vcc-" + changelogClientConfig.getConsumerName());
+    if (changelogClientConfig.getInnerClientConfig().getMetricsRepository() != null) {
+      this.changeCaptureStats = new BasicConsumerStats(
+          changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
+          "vcc-" + changelogClientConfig.getConsumerName());
+    } else {
+      changeCaptureStats = null;
+    }
+    heartbeatReporterThread = new HeartbeatReporterThread();
     StoreResponse storeResponse = changelogClientConfig.getD2ControllerClient().getStore(storeName);
     if (storeResponse.isError()) {
       throw new VeniceException(
@@ -171,6 +177,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       try {
         storeRepository.start();
         storeRepository.subscribe(storeName);
+        if (changeCaptureStats != null) {
+          if (!heartbeatReporterThread.isAlive()) {
+            heartbeatReporterThread.start();
+          }
+        }
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }

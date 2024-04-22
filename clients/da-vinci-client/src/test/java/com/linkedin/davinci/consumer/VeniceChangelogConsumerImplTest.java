@@ -377,6 +377,9 @@ public class VeniceChangelogConsumerImplTest {
     versionSwapMessage.localHighWatermarks = localHighWatermarks;
 
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.setMessageTimestamp(1000L);
+    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageUnion = versionSwapMessage;
     controlMessage.controlMessageType = ControlMessageType.VERSION_SWAP.getValue();
@@ -406,11 +409,14 @@ public class VeniceChangelogConsumerImplTest {
     final RecordSerializer<RecordChangeEvent> recordChangeSerializer = FastSerializerDeserializerFactory
         .getFastAvroGenericSerializer(AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersionSchema());
     recordChangeSerializer.serialize(recordChangeEvent);
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.setMessageTimestamp(1000L);
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope(
         MessageType.PUT.getValue(),
-        new ProducerMetadata(),
+        producerMetadata,
         new Put(ByteBuffer.wrap(recordChangeSerializer.serialize(recordChangeEvent)), 0, 0, ByteBuffer.allocate(0)),
         null);
+    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(key));
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(changeCaptureVersionTopic, partition);
     return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
@@ -427,9 +433,11 @@ public class VeniceChangelogConsumerImplTest {
     rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, replicationCheckpointVector);
     ByteBuffer bytes =
         ByteBuffer.wrap(FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema).serialize(rmdRecord));
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = 10000L;
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope(
         MessageType.PUT.getValue(),
-        new ProducerMetadata(),
+        producerMetadata,
         new Put(ByteBuffer.wrap(valueSerializer.serialize(newValue)), 1, 1, bytes),
         null);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(key));
@@ -444,6 +452,9 @@ public class VeniceChangelogConsumerImplTest {
     KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
     EndOfPush endOfPush = new EndOfPush();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.setMessageTimestamp(1000L);
+    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageUnion = endOfPush;
     controlMessage.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
@@ -459,6 +470,9 @@ public class VeniceChangelogConsumerImplTest {
     StartOfPush startOfPush = new StartOfPush();
     startOfPush.compressionStrategy = CompressionStrategy.NO_OP.getValue();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.setMessageTimestamp(1000L);
+    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageUnion = startOfPush;
     controlMessage.controlMessageType = ControlMessageType.START_OF_PUSH.getValue();
