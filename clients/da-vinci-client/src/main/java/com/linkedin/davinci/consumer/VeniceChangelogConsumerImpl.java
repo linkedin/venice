@@ -1,8 +1,10 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
@@ -52,6 +54,7 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -62,6 +65,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -83,9 +87,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
 
-  protected final AbstractAvroChunkingAdapter<RecordChangeEvent> recordChangeEventChunkingAdapter =
-      new SpecificRecordChunkingAdapter<>();
-
   protected final AbstractAvroChunkingAdapter<V> userEventChunkingAdapter;
 
   protected final SchemaReader schemaReader;
@@ -104,11 +105,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final PubSubConsumerAdapter pubSubConsumer;
   protected final Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
+  protected final Map<Integer, Long> currentVersionLastHeartbeat = new HashMap<>();
   protected final int[] currentValuePayloadSize;
 
   protected final ChangelogClientConfig changelogClientConfig;
 
   protected final ChunkAssembler chunkAssembler;
+
+  protected final BasicConsumerStats changeCaptureStats;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -116,6 +120,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.pubSubConsumer = pubSubConsumer;
     this.storeName = changelogClientConfig.getStoreName();
     this.d2ControllerClient = changelogClientConfig.getD2ControllerClient();
+    this.changeCaptureStats = new BasicConsumerStats(
+        changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
+        "vcc-" + changelogClientConfig.getConsumerName());
     StoreResponse storeResponse = changelogClientConfig.getD2ControllerClient().getStore(storeName);
     if (storeResponse.isError()) {
       throw new VeniceException(
@@ -200,6 +207,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
         for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
           pubSubConsumer.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET);
+          currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
         }
         return null;
       }
@@ -460,6 +468,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       for (PubSubTopicPartition topicPartition: topicPartitionSet) {
         if (partitions.contains(topicPartition.getPartitionNumber())) {
           topicPartitionsToUnsub.add(topicPartition);
+          currentVersionLastHeartbeat.remove(topicPartition.getPartitionNumber());
         }
       }
       pubSubConsumer.batchUnsubscribe(topicPartitionsToUnsub);
@@ -495,7 +504,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
         if (message.getKey().isControlMessage()) {
           ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
-          if (handleControlMessage(controlMessage, pubSubTopicPartition, topicSuffix)) {
+          if (handleControlMessage(
+              controlMessage,
+              pubSubTopicPartition,
+              topicSuffix,
+              message.getKey().getKey(),
+              message.getValue().getProducerMetadata().getMessageTimestamp())) {
             break;
           }
         } else {
@@ -518,7 +532,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected boolean handleControlMessage(
       ControlMessage controlMessage,
       PubSubTopicPartition pubSubTopicPartition,
-      String topicSuffix) {
+      String topicSuffix,
+      byte[] key,
+      long timestamp) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     // TODO: Find a better way to avoid data gap between version topic and change capture topic due to log compaction.
     if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
@@ -532,6 +548,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       return handleVersionSwapControlMessage(controlMessage, pubSubTopicPartition, topicSuffix);
+    }
+    if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
+        && Arrays.equals(key, KafkaKey.HEART_BEAT.getKey())) {
+      currentVersionLastHeartbeat.put(pubSubTopicPartition.getPartitionNumber(), timestamp);
     }
     return false;
   }
@@ -851,5 +871,27 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected ChangelogClientConfig getChangelogClientConfig() {
     return changelogClientConfig;
+  }
+
+  private class HeartbeatReporterThread extends Thread {
+    HeartbeatReporterThread() {
+      super("Ingestion-Heartbeat-Reporter-Service-Thread");
+    }
+
+    @Override
+    public void run() {
+      while (!Thread.interrupted()) {
+        for (Long lastHeartbeat: currentVersionLastHeartbeat.values()) {
+          changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat);
+        }
+        try {
+          TimeUnit.SECONDS.sleep(60000L);
+        } catch (InterruptedException e) {
+          // We've received an interrupt which is to be expected, so we'll just leave the loop and log
+          break;
+        }
+      }
+      LOGGER.info("Lag Monitoring thread interrupted!  Shutting down...");
+    }
   }
 }
