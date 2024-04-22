@@ -185,6 +185,7 @@ public class ExecutionStatusTest {
     }
   }
 
+  @Test
   public void testErrorExecutionStatus() {
     for (ExecutionStatus status: ExecutionStatus.values()) {
       if (status == ERROR) {
