@@ -172,7 +172,6 @@ public class TestActiveActiveIngestion {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         veniceChangelogConsumer.poll(1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey().toString();
       polledChangeEvents.add(pubSubMessage);
     }
   }
