@@ -20,6 +20,8 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
+import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -111,6 +113,9 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
   public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_SCHEMA).build();
+
+  public static final Schema STRING_TO_NAME_RECORD_V3_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V3_SCHEMA).build();
   public static final Schema STRING_TO_NAME_RECORD_V1_UPDATE_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_UPDATE_SCHEMA).build();
   public static final Schema STRING_TO_STRING_WITH_EXTRA_FIELD_SCHEMA =
@@ -168,6 +173,24 @@ public class TestWriteUtils {
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         Arrays.fill(chars, String.valueOf(i).charAt(0));
         user.put(DEFAULT_VALUE_FIELD_PROP, String.copyValueOf(chars));
+        writer.append(user);
+      }
+    });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToV3Schema(File parentDir, int recordCount, int recordSizeMin)
+      throws IOException {
+    char[] chars = new char[recordSizeMin];
+    RandomRecordGenerator recordGenerator = new RandomRecordGenerator();
+    RecordGenerationConfig genConfig = RecordGenerationConfig.newConfig().withAvoidNulls(true);
+
+    return writeAvroFile(parentDir, "string2v4schema.avro", STRING_TO_NAME_RECORD_V3_SCHEMA, (recordSchema, writer) -> {
+      for (int i = 1; i <= recordCount; ++i) {
+        GenericRecord user = new GenericData.Record(recordSchema);
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        Arrays.fill(chars, String.valueOf(i).charAt(0));
+        GenericRecord record = (GenericRecord) recordGenerator.randomGeneric(NAME_RECORD_V3_SCHEMA, genConfig);
+        user.put(DEFAULT_VALUE_FIELD_PROP, record);
         writer.append(user);
       }
     });

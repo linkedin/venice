@@ -58,19 +58,25 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -99,6 +105,16 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   private static final ThreadLocal<ReusableObjects> REUSABLE_OBJECTS = ThreadLocal.withInitial(ReusableObjects::new);
+
+  /**
+   * The following two fields are used to speed up the requests with a big number of keys:
+   * 1. Split the big request into smaller chunks.
+   * 2. Execute these chunks concurrently.
+   */
+  private static final ExecutorService READ_CHUNK_EXECUTOR = Executors.newFixedThreadPool(
+      Runtime.getRuntime().availableProcessors(),
+      new DaemonThreadFactory("DaVinci_Read_Chunk_Executor"));
+  public static final int DEFAULT_CHUNK_SPLIT_THRESHOLD = 100;
 
   private final DaVinciConfig daVinciConfig;
   private final ClientConfig clientConfig;
@@ -289,43 +305,105 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
   }
 
-  private CompletableFuture<Map<K, V>> batchGetFromLocalStorage(Iterable<K> keys) {
+  public static <K> List<List<K>> split(Set<K> keySet, int threshold) {
+    List<List<K>> splits = new ArrayList<>();
+    List<K> currentSplit = new ArrayList<>(threshold);
+    for (K key: keySet) {
+      currentSplit.add(key);
+      if (currentSplit.size() == threshold) {
+        splits.add(currentSplit);
+        currentSplit = new ArrayList<>(threshold);
+      }
+    }
+    if (!currentSplit.isEmpty()) {
+      splits.add(currentSplit);
+    }
+
+    return splits;
+  }
+
+  StoreBackend getStoreBackend() {
+    return this.storeBackend;
+  }
+
+  RecordSerializer<K> getKeySerializer() {
+    return this.keySerializer;
+  }
+
+  StoreDeserializerCache<V> getStoreDeserializerCache() {
+    return this.storeDeserializerCache;
+  }
+
+  DaVinciConfig getDaVinciConfig() {
+    return this.daVinciConfig;
+  }
+
+  CompletableFuture<Map<K, V>> batchGetFromLocalStorage(Iterable<K> keys) {
     // expose underlying getAll functionality.
-    Map<K, V> result = new HashMap<>();
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+    Map<K, V> result = new VeniceConcurrentHashMap<>();
+    try (ReferenceCounted<VersionBackend> versionRef = getStoreBackend().getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
-        storeBackend.getStats().recordBadRequest();
+        getStoreBackend().getStats().recordBadRequest();
         throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
       }
-      ReusableObjects reusableObjects = REUSABLE_OBJECTS.get();
       int readerSchemaId = versionBackend.getSupersetOrLatestValueSchemaId();
-      for (K key: keys) {
-        byte[] keyBytes = keySerializer.serialize(key);
-        int partition = versionBackend.getPartition(keyBytes);
 
-        if (isPartitionReadyToServe(versionBackend, partition)) {
-          V value = versionBackend.read(
-              partition,
-              keyBytes,
-              getAvroChunkingAdapter(),
-              this.storeDeserializerCache,
-              readerSchemaId,
-              reusableObjects.binaryDecoder,
-              reusableObjects.rawValue,
-              null); // TODO: Consider supporting object re-use for batch get as well.
-          // The result should only contain entries for the keys that have a value associated with them
-          if (value != null) {
-            result.put(key, value);
+      Consumer<Iterable<K>> keyArrayConsumer = keyList -> {
+        ReusableObjects reusableObjects = REUSABLE_OBJECTS.get();
+
+        for (K key: keyList) {
+          byte[] keyBytes = getKeySerializer().serialize(key);
+          int partition = versionBackend.getPartition(keyBytes);
+
+          if (isPartitionReadyToServe(versionBackend, partition)) {
+            V value = versionBackend.read(
+                partition,
+                keyBytes,
+                getAvroChunkingAdapter(),
+                getStoreDeserializerCache(),
+                readerSchemaId,
+                reusableObjects.binaryDecoder,
+                reusableObjects.rawValue,
+                null); // TODO: Consider supporting object re-use for batch get as well.
+            if (value != null) {
+              // The result should only contain entries for the keys that have a value associated with them
+              result.put(key, value);
+            }
+          } else if (!isPartitionSubscribed(versionBackend, partition)) {
+            storeBackend.getStats().recordBadRequest();
+            throw new NonLocalAccessException(versionBackend.toString(), partition);
+          } else {
+            throw new VeniceClientException(
+                "Partition: " + partition + " for store version: " + versionBackend + " is not ready to serve");
           }
-
-        } else if (!isPartitionSubscribed(versionBackend, partition)) {
-          storeBackend.getStats().recordBadRequest();
-          throw new NonLocalAccessException(versionBackend.toString(), partition);
         }
-      }
+      };
+      int chunkSplitThreshold = getDaVinciConfig().getLargeBatchRequestSplitThreshold();
 
-      return CompletableFuture.completedFuture(result);
+      if (keys instanceof Set && ((Set) keys).size() > chunkSplitThreshold) {
+        // Execute large request concurrently
+        List<List<K>> splits = split((Set) keys, chunkSplitThreshold);
+        CompletableFuture[] splitFutures = new CompletableFuture[splits.size()];
+        for (int cur = 0; cur < splits.size(); ++cur) {
+          List<K> currentSplit = splits.get(cur);
+          splitFutures[cur] =
+              CompletableFuture.runAsync(() -> keyArrayConsumer.accept(currentSplit), READ_CHUNK_EXECUTOR);
+        }
+        CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
+        CompletableFuture.allOf(splitFutures).whenComplete((ignored, throwable) -> {
+          if (throwable != null) {
+            resultFuture.completeExceptionally(throwable);
+          } else {
+            resultFuture.complete(result);
+          }
+        });
+
+        return resultFuture;
+      } else {
+        keyArrayConsumer.accept(keys);
+        return CompletableFuture.completedFuture(result);
+      }
     }
   }
 

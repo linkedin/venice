@@ -899,6 +899,8 @@ public abstract class StoreIngestionTaskTest {
 
     doReturn(false).when(mockStore).isWriteComputationEnabled();
 
+    doReturn(false).when(mockStore).isBlobTransferEnabled();
+
     doReturn(1).when(mockStore).getPartitionCount();
 
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();

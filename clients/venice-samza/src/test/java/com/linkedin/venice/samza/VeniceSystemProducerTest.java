@@ -5,18 +5,28 @@ import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
@@ -100,6 +110,7 @@ public class VeniceSystemProducerTest {
         new OutgoingMessageEnvelope(new SystemStream("venice", "storeName"), "key1", partialUpdateRecord);
 
     Assert.assertThrows(() -> producerInDC0.send("venice", envelope));
+    producerInDC0.stop();
   }
 
   @Test(dataProvider = "BatchOrStreamReprocessing")
@@ -150,6 +161,107 @@ public class VeniceSystemProducerTest {
       assertNotNull(capturedVwo.getPartitionCount());
       assertEquals((int) capturedVwo.getPartitionCount(), 2);
     }
+  }
+
+  @Test(dataProvider = "BatchOrStreamReprocessing")
+  public void testSendThrowsExceptionForError(Version.PushType pushType) {
+    VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
+        "discoveryUrl",
+        "test_store",
+        pushType,
+        "push-job-id-1",
+        "dc-0",
+        true,
+        null,
+        Optional.empty(),
+        Optional.empty(),
+        SystemTime.INSTANCE);
+    VeniceSystemProducer mockveniceSystemProducer = spy(producerInDC0);
+    doNothing().when(mockveniceSystemProducer).setupClientsAndReInitProvider();
+    doNothing().when(mockveniceSystemProducer).refreshSchemaCache();
+    doNothing().when(mockveniceSystemProducer).getKeySchema();
+    ControllerClient mockControllerClient = mock(ControllerClient.class);
+
+    VersionCreationResponse mockVersionCreationResponse = new VersionCreationResponse();
+    // set correct topicName for different pushType
+    if (pushType == Version.PushType.BATCH) {
+      mockVersionCreationResponse.setKafkaTopic("test_store_v1");
+    } else if (pushType == Version.PushType.STREAM_REPROCESSING) {
+      mockVersionCreationResponse.setKafkaTopic("test_store_v1_sr");
+    }
+    when(
+        mockControllerClient.requestTopicForWrites(
+            anyString(),
+            anyLong(),
+            any(),
+            anyString(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            anyBoolean(),
+            anyLong())).thenReturn(mockVersionCreationResponse);
+
+    StoreResponse mockStoreResponse = new StoreResponse();
+    StoreInfo mockStoreInfo = new StoreInfo();
+    List<Version> versions = new ArrayList<>();
+    versions.add(new VersionImpl("test_store", 0, "test_store_v1"));
+    mockStoreInfo.setVersions(versions);
+    mockStoreResponse.setStore(mockStoreInfo);
+    when(mockControllerClient.getStore(anyString())).thenReturn(mockStoreResponse);
+
+    VeniceWriter<byte[], byte[], byte[]> mockVeniceWriter = mock(VeniceWriter.class);
+    doReturn(mockVeniceWriter).when(mockveniceSystemProducer).getVeniceWriter(any());
+    mockveniceSystemProducer.setControllerClient(mockControllerClient);
+    mockveniceSystemProducer.start();
+    RouterBasedPushMonitor mockPushMonitor = mock(RouterBasedPushMonitor.class);
+    mockveniceSystemProducer.setPushMonitor(mockPushMonitor);
+
+    when(mockPushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.ERROR);
+    doAnswer(invocation -> null).when(mockveniceSystemProducer).send((Object) any(), (Object) any());
+    try {
+      mockveniceSystemProducer.send(
+          "test",
+          new OutgoingMessageEnvelope(new SystemStream("venice", "test_store"), "key1", new byte[] { 1, 2, 3 }));
+      if (pushType == Version.PushType.STREAM_REPROCESSING) {
+        fail();
+      }
+    } catch (Exception e) {
+      if (pushType != Version.PushType.STREAM_REPROCESSING) {
+        fail();
+      }
+      assertTrue(e.getMessage().contains("is in error state"));
+    }
+
+    when(mockPushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
+    doAnswer(invocation -> null).when(mockveniceSystemProducer).send((Object) any(), (Object) any());
+    try {
+      mockveniceSystemProducer.send(
+          "test",
+          new OutgoingMessageEnvelope(new SystemStream("venice", "test_store"), "key1", new byte[] { 1, 2, 3 }));
+      if (pushType == Version.PushType.STREAM_REPROCESSING) {
+        fail();
+      }
+    } catch (Exception e) {
+      if (pushType != Version.PushType.STREAM_REPROCESSING) {
+        fail();
+      }
+      assertTrue(e.getMessage().contains("is in error state"));
+    }
+
+    when(mockPushMonitor.getCurrentStatus()).thenReturn(ExecutionStatus.COMPLETED);
+    doAnswer(invocation -> null).when(mockveniceSystemProducer).send((Object) any(), (Object) any());
+    try {
+      mockveniceSystemProducer.send(
+          "test",
+          new OutgoingMessageEnvelope(new SystemStream("venice", "test_store"), "key1", new byte[] { 1, 2, 3 }));
+    } catch (Exception e) {
+      fail();
+    }
+
+    mockveniceSystemProducer.stop();
   }
 
   @DataProvider(name = "BatchOrStreamReprocessing")

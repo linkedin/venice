@@ -77,11 +77,13 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.security.Permission;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -102,6 +104,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.FileUtils;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -469,7 +472,7 @@ public class TestUtils {
       JobStatusQueryResponse jobStatusQueryResponse =
           assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
-      if (executionStatus == ExecutionStatus.ERROR) {
+      if (executionStatus.isError()) {
         throw new VeniceException("Unexpected push failure for topic: " + topicName + ": " + jobStatusQueryResponse);
       }
       assertEquals(
@@ -862,6 +865,60 @@ public class TestUtils {
     } catch (AvroRuntimeException e) {
       // But in Avro 1.10+, it throws instead...
       assertEquals(e.getMessage(), "Not a valid schema field: " + fieldName);
+    }
+  }
+
+  public static List<String> findFoldersWithFileExtension(File directory, String fileExtension) {
+    List<String> result = new ArrayList<>();
+
+    if (!directory.exists() || !directory.isDirectory()) {
+      return result;
+    }
+    return searchForFileExtension(directory, fileExtension.toLowerCase());
+  }
+
+  public static List<String> searchForFileExtension(File directory, String fileExtension) {
+    List<String> result = new ArrayList<>();
+    if (!directory.canRead()) {
+      LOGGER.error("Cannot read directory: ", directory.getAbsolutePath());
+      return result;
+    }
+    File[] files = directory.listFiles();
+    if (files == null) {
+      LOGGER.error("Error reading directory ", directory.getAbsolutePath());
+      return result;
+    }
+    for (File file: files) {
+      if (file.isDirectory() && !file.isHidden()) {
+        result.addAll(searchForFileExtension(file, fileExtension)); // Recursively search subdirectories
+      } else if (file.isFile() && !file.isHidden() && file.getName().toLowerCase().endsWith(fileExtension)) {
+        result.add(file.getParent()); // Add the parent directory to the result list
+        break; // Stop searching this directory once we find a file with the desired extension
+      }
+    }
+    return result;
+  }
+
+  public static boolean directoryContainsFolder(String directoryPath, String folderName) {
+    File directory = new File(directoryPath);
+    if (directory.isDirectory()) {
+      File[] files = directory.listFiles();
+      if (files != null) {
+        for (File file: files) {
+          if (file.isDirectory() && file.getName().equals(folderName)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  public static void deleteDirectory(File fileToDelete) {
+    try {
+      FileUtils.deleteDirectory(fileToDelete);
+    } catch (IOException e) {
+      throw new VeniceException("Could not delete directory: " + fileToDelete, e);
     }
   }
 }

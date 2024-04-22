@@ -202,8 +202,8 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getDisabledRoutes();
   }
 
-  public int getUnusedSchemaCleanupIntervalMinutes() {
-    return getCommonConfig().getUnusedSchemaCleanupIntervalMinutes();
+  public int getUnusedSchemaCleanupIntervalSeconds() {
+    return getCommonConfig().getUnusedSchemaCleanupIntervalSeconds();
   }
 
   public int getMinSchemaCountToKeep() {

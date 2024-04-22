@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -75,10 +76,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   protected final WriteOptions writeOptions;
   private final String fullPathForTempSSTFileDir;
+  private final String fullPathForTempSnapshotFileDir;
 
   private final EnvOptions envOptions;
 
   protected final String storeName;
+  protected final boolean blobTransferEnabled;
   private final String storeNameWithoutVersionSuffix;
   protected final int partitionId;
   private final String fullPathForPartitionDB;
@@ -141,7 +144,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
   protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
-
   private RocksDBSstFileWriter rocksDBSstFileWriter = null;
 
   protected RocksDBStoragePartition(
@@ -151,7 +153,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBThrottler rocksDbThrottler,
       RocksDBServerConfig rocksDBServerConfig,
-      List<byte[]> columnFamilyNameList) {
+      List<byte[]> columnFamilyNameList,
+      VeniceStoreVersionConfig storeConfig) {
     super(storagePartitionConfig.getPartitionId());
     this.factory = factory;
     this.rocksDBServerConfig = rocksDBServerConfig;
@@ -160,6 +163,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.storeNameWithoutVersionSuffix = Version.parseStoreFromVersionTopic(storeName);
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.aggStatistics = factory.getAggStatistics();
+    this.blobTransferEnabled = storeConfig.isBlobTransferEnabled();
 
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
     // restart,
@@ -194,6 +198,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.expectedChecksumSupplier = Optional.empty();
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
+    this.fullPathForTempSnapshotFileDir =
+        blobTransferEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId) : null;
+
     if (deferredWrite) {
       this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
           storeName,
@@ -203,7 +210,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           options,
           fullPathForTempSSTFileDir,
           false,
-          rocksDBServerConfig);
+          rocksDBServerConfig,
+          blobTransferEnabled);
     }
 
     /**
@@ -267,7 +275,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBThrottler rocksDbThrottler,
-      RocksDBServerConfig rocksDBServerConfig) {
+      RocksDBServerConfig rocksDBServerConfig,
+      VeniceStoreVersionConfig storeConfig) {
     // If not specified, RocksDB inserts values into DEFAULT_COLUMN_FAMILY.
     this(
         storagePartitionConfig,
@@ -276,7 +285,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         rocksDBMemoryStats,
         rocksDbThrottler,
         rocksDBServerConfig,
-        Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY));
+        Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY),
+        storeConfig);
   }
 
   private void checkMemoryLimit(long memoryLimit, SstFileManager sstFileManager, String dbPath) {
@@ -329,6 +339,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected EnvOptions getEnvOptions() {
     return envOptions;
+  }
+
+  protected Boolean getBlobTransferEnabled() {
+    return blobTransferEnabled;
   }
 
   private Options getStoreOptions(StoragePartitionConfig storagePartitionConfig, boolean isRMD) {
@@ -453,6 +467,17 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * the last SST file written is finished.
      */
     rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
+
+    if (blobTransferEnabled) {
+      createSnapshot();
+    }
+  }
+
+  @Override
+  public synchronized void createSnapshot() {
+    if (blobTransferEnabled) {
+      rocksDBSstFileWriter.createSnapshot(rocksDB);
+    }
   }
 
   private void checkAndThrowMemoryLimitException(RocksDBException e) {
@@ -758,6 +783,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public void deleteFilesInDirectory(String fullPath) {
+    if (fullPath == null || fullPath.isEmpty()) {
+      return;
+    }
+
     File dir = new File(fullPath);
     if (dir.exists()) {
       // Remove the files inside
@@ -796,6 +825,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      */
     // Remove extra SST files first
     deleteFilesInDirectory(fullPathForTempSSTFileDir);
+    // remove snapshots files
+    deleteFilesInDirectory(fullPathForTempSnapshotFileDir);
     // Remove partition directory
     deleteDirectory(fullPathForPartitionDB);
     LOGGER.info("RocksDB for store: {}, partition: {} was dropped.", storeName, partitionId);

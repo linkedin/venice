@@ -162,6 +162,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setIncrementalPushEnabled(boolean incrementalPushEnabled);
 
+  boolean isBlobTransferEnabled();
+
+  void setBlobTransferEnabled(boolean blobTransferEnabled);
+
   boolean isUseVersionLevelIncrementalPushEnabled();
 
   void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled);

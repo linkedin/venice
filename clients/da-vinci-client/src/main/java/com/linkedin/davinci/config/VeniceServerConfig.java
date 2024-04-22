@@ -129,6 +129,7 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
+import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
@@ -458,6 +459,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int nonExistingTopicCheckRetryIntervalSecond;
   private final boolean dedicatedConsumerPoolForAAWCLeaderEnabled;
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
+  private final boolean useDaVinciSpecificExecutionStatusForError;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -754,6 +756,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED, false);
     dedicatedConsumerPoolSizeForAAWCLeader =
         serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
+    useDaVinciSpecificExecutionStatusForError =
+        serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
   }
 
   long extractIngestionMemoryLimit(
@@ -1338,5 +1342,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getTopicManagerMetadataFetcherThreadPoolSize() {
     return topicManagerMetadataFetcherThreadPoolSize;
+  }
+
+  public boolean useDaVinciSpecificExecutionStatusForError() {
+    return useDaVinciSpecificExecutionStatusForError;
   }
 }

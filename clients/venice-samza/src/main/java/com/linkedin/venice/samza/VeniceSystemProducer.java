@@ -27,7 +27,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
@@ -158,6 +157,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
   private Map<String, String> additionalWriterConfigs = new HashMap<>();
+
+  private TransportClient transportClient;
+  private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
 
   @Deprecated
   public VeniceSystemProducer(
@@ -412,15 +414,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return new VeniceWriterFactory(finalWriterConfigs).createVeniceWriter(writerOptions);
   }
 
-  @Override
-  public synchronized void start() {
-    if (this.isStarted) {
-      return;
-    }
-    this.isStarted = true;
-
-    final TransportClient transportClient;
-    RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
+  protected void setupClientsAndReInitProvider() {
     if (discoveryUrl.isPresent()) {
       this.controllerClient =
           ControllerClientFactory.discoverAndConstructControllerClient(storeName, discoveryUrl.get(), sslFactory, 1);
@@ -507,6 +501,24 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         return new D2TransportClient(d2DiscoveryResponse.getD2Service(), childColoD2Client);
       };
     }
+  }
+
+  void getKeySchema() {
+    SchemaResponse keySchemaResponse =
+        (SchemaResponse) controllerRequestWithRetry(() -> this.controllerClient.getKeySchema(this.storeName), 2);
+    LOGGER.info("Got [store: {}] SchemaResponse for key schema: {}", storeName, keySchemaResponse);
+    this.keySchema = parseSchemaFromJSONStrictValidation(keySchemaResponse.getSchemaStr());
+    this.canonicalKeySchemaStr = AvroCompatibilityHelper.toParsingForm(this.keySchema);
+  }
+
+  @Override
+  public synchronized void start() {
+    if (this.isStarted) {
+      return;
+    }
+    this.isStarted = true;
+
+    setupClientsAndReInitProvider();
 
     // Request all the necessary info from Venice Controller
     VersionCreationResponse versionCreationResponse = (VersionCreationResponse) controllerRequestWithRetry(
@@ -534,11 +546,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     boolean hybridStoreDiskQuotaEnabled = storeResponse.getStore().isHybridStoreDiskQuotaEnabled();
 
-    SchemaResponse keySchemaResponse =
-        (SchemaResponse) controllerRequestWithRetry(() -> this.controllerClient.getKeySchema(this.storeName), 2);
-    LOGGER.info("Got [store: {}] SchemaResponse for key schema: {}", storeName, keySchemaResponse);
-    this.keySchema = parseSchemaFromJSONStrictValidation(keySchemaResponse.getSchemaStr());
-    this.canonicalKeySchemaStr = AvroCompatibilityHelper.toParsingForm(this.keySchema);
+    getKeySchema();
 
     // Load Schemas from Venice
     refreshSchemaCache();
@@ -569,8 +577,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       /**
        * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
        */
-      ExecutionStatus currentStatus = pushMonitor.get().getCurrentStatus();
-      if (ExecutionStatus.ERROR.equals(currentStatus)) {
+      if (pushMonitor.get().getCurrentStatus().isError()) {
         throw new VeniceException(
             "Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
       }
@@ -585,7 +592,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   // Grabs all Venice schemas and their associated ID's and caches them
-  private void refreshSchemaCache() {
+  void refreshSchemaCache() {
     MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse) controllerRequestWithRetry(
         () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName),
         2);
@@ -609,7 +616,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
     if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      switch (pushMonitor.get().getCurrentStatus()) {
+      switch (pushMonitor.get().getCurrentStatus().getRootStatus()) {
         case COMPLETED:
           LOGGER.info("Push job for {} is COMPLETED.", topicName);
           break;
@@ -626,12 +633,12 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
            * the containers send kill requests to controller at the same time to avoid hammering on controller.
            */
           Utils.sleep(ThreadLocalRandom.current().nextInt(30000));
-          controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
+          this.controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
           LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
       }
       Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
     }
-    Utils.closeQuietlyWithErrorLogged(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(this.controllerClient);
     hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
     d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
   }
@@ -654,8 +661,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     if (pushMonitor.isPresent() && Version.PushType.STREAM_REPROCESSING.equals(pushType)) {
-      ExecutionStatus currentStatus = pushMonitor.get().getCurrentStatus();
-      switch (currentStatus) {
+      switch (pushMonitor.get().getCurrentStatus().getRootStatus()) {
         case ERROR:
           /**
            * If there are multiple stream reprocessing SystemProducer in one Samza job, one failed push will
@@ -938,5 +944,14 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         LOGGER.info("Error in cleaning up: {}", fsBasePath);
       }
     }
+  }
+
+  void setControllerClient(ControllerClient controllerClient) {
+    this.controllerClient = controllerClient;
+  }
+
+  // used only for testing
+  void setPushMonitor(RouterBasedPushMonitor pushMonitor) {
+    this.pushMonitor = Optional.of(pushMonitor);
   }
 }

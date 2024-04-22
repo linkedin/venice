@@ -257,7 +257,7 @@ public enum Arg {
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
   BLOB_TRANSFER_ENABLED(
-      "blob.transfer.enabled", "bt", false, "Flag to indicate if the blob transfer is allowed or not"
+      "blob-transfer-enabled", "bt", false, "Flag to indicate if the blob transfer is allowed or not"
   );
 
   private final String argName;

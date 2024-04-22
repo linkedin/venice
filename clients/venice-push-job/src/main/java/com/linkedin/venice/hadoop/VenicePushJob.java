@@ -249,7 +249,9 @@ public class VenicePushJob implements AutoCloseable {
     VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED(7), QUOTA_EXCEEDED(-1), WRITE_ACL_FAILED(-2),
     DUP_KEY_WITH_DIFF_VALUE(-3), INPUT_DATA_SCHEMA_VALIDATION_FAILED(-4),
     EXTENDED_INPUT_DATA_SCHEMA_VALIDATION_FAILED(-5), RECORD_TOO_LARGE_FAILED(-6), CONCURRENT_BATCH_PUSH(-7),
-    DATASET_CHANGED(-8), INVALID_INPUT_FILE(-9), ZSTD_DICTIONARY_CREATION_FAILED(-10);
+    DATASET_CHANGED(-8), INVALID_INPUT_FILE(-9), ZSTD_DICTIONARY_CREATION_FAILED(-10),
+    DVC_INGESTION_ERROR_DISK_FULL(-11), DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED(-12),
+    DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES(-13), DVC_INGESTION_ERROR_OTHER(-14);
 
     private final int value;
 
@@ -594,7 +596,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for testing
-  protected void setSentPushJobDetailsTracker(SentPushJobDetailsTracker sentPushJobDetailsTracker) {
+  public void setSentPushJobDetailsTracker(SentPushJobDetailsTracker sentPushJobDetailsTracker) {
     this.sentPushJobDetailsTracker = sentPushJobDetailsTracker;
   }
 
@@ -626,7 +628,7 @@ public class VenicePushJob implements AutoCloseable {
     return computeJob;
   }
 
-  private DataWriterComputeJob getDataWriterComputeJob() {
+  DataWriterComputeJob getDataWriterComputeJob() {
     if (dataWriterComputeJob != null) {
       return dataWriterComputeJob;
     }
@@ -2338,6 +2340,22 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
+  static ExecutionStatus getExecutionStatusFromControllerResponse(JobStatusQueryResponse response) {
+    ExecutionStatus status;
+    try {
+      status = ExecutionStatus.valueOf(response.getStatus());
+    } catch (IllegalArgumentException e) {
+      StringBuilder errorMsg = new StringBuilder().append("Invalid ExecutionStatus returned from backend. status: ")
+          .append(response.getStatus());
+      if (response.getOptionalExtraDetails().isPresent()) {
+        errorMsg.append(", extra details: ").append(response.getOptionalExtraDetails().get());
+      }
+      LOGGER.error(errorMsg.toString());
+      throw new VeniceException(errorMsg.toString(), e);
+    }
+    return status;
+  }
+
   /**
    * High level, we want to poll the consumption job status until it errors or is complete. This is more complicated
    * because we might be dealing with multiple destination clusters and we might not be able to reach all of them. We
@@ -2405,17 +2423,16 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
-      ExecutionStatus overallStatus = ExecutionStatus.valueOf(response.getStatus());
+      ExecutionStatus overallStatus = getExecutionStatusFromControllerResponse(response);
       Map<String, String> regionSpecificInfo = response.getExtraInfo();
       // Note that it's intended to update the push job details before updating the completed datacenter set.
       updatePushJobDetailsWithColoStatus(regionSpecificInfo, completedDatacenters);
       regionSpecificInfo.forEach((region, regionStatus) -> {
         ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(regionStatus);
-        if (datacenterStatus.isTerminal() && !datacenterStatus.equals(ExecutionStatus.ERROR)) {
+        if (datacenterStatus.isTerminal() && !datacenterStatus.isError()) {
           completedDatacenters.add(region);
         }
       });
-
       if (overallStatus.isTerminal()) {
         if (completedDatacenters.size() != regionSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
           // 1) For regular push, one or more DC could have an UNKNOWN status and never successfully reported a
@@ -2428,7 +2445,10 @@ public class VenicePushJob implements AutoCloseable {
               .append(pushJobSetting.veniceControllerUrl)
               .append("\ncontroller response: ")
               .append(response);
-
+          if (overallStatus.isDVCIngestionError()) {
+            this.pushJobDetails.pushJobLatestCheckpoint =
+                PushJobCheckpoints.valueOf(overallStatus.toString()).getValue();
+          }
           throw new VeniceException(errorMsg.toString());
         }
 
@@ -2885,5 +2905,10 @@ public class VenicePushJob implements AutoCloseable {
     try (VenicePushJob job = new VenicePushJob(jobId, props)) {
       job.run();
     }
+  }
+
+  // used only for testing
+  void setDataWriterComputeJob(DataWriterComputeJob dataWriterComputeJob) {
+    this.dataWriterComputeJob = dataWriterComputeJob;
   }
 }

@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
-import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -30,7 +30,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
       Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("UnusedValueSchemaCleanupService"));
   private final VeniceControllerMultiClusterConfig multiClusterConfig;
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
-  private final int scheduleIntervalMinutes;
+  private final int scheduleIntervalSeconds;
   private boolean stop = false;
   public final int minSchemaCountToKeep;
 
@@ -38,7 +38,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
       VeniceControllerMultiClusterConfig multiClusterConfig,
       VeniceParentHelixAdmin parentHelixAdmin) {
     this.multiClusterConfig = multiClusterConfig;
-    this.scheduleIntervalMinutes = multiClusterConfig.getUnusedSchemaCleanupIntervalMinutes();
+    this.scheduleIntervalSeconds = multiClusterConfig.getUnusedSchemaCleanupIntervalSeconds();
     this.minSchemaCountToKeep = multiClusterConfig.getMinSchemaCountToKeep();
     this.veniceParentHelixAdmin = parentHelixAdmin;
   }
@@ -79,11 +79,12 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
               continue;
             }
 
-            Set<Integer> schemasToDelete = findSchemaIdsToDelete(
-                allSchemas,
-                store,
-                veniceParentHelixAdmin.getReadOnlyZKSharedSchemaRepository(),
-                inUseValueSchemaIds);
+            VeniceHelixAdmin veniceHelixAdmin = veniceParentHelixAdmin.getVeniceHelixAdmin();
+            ReadWriteSchemaRepository schemaRepository =
+                veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+
+            Set<Integer> schemasToDelete =
+                findSchemaIdsToDelete(allSchemas, store, schemaRepository, inUseValueSchemaIds);
 
             if (!schemasToDelete.isEmpty()) {
               LOGGER.info(
@@ -119,17 +120,17 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
   Set<Integer> findSchemaIdsToDelete(
       List<SchemaEntry> allSchemas,
       Store store,
-      HelixReadOnlyZKSharedSchemaRepository schemaRepository,
+      ReadWriteSchemaRepository schemaRepository,
       Set<Integer> inUseValueSchemaIds) {
     Set<Integer> schemasToDelete = new HashSet<>();
 
     // sort in ascending schema ids so that the older schemas are deleted first
     allSchemas.sort(Comparator.comparingInt(SchemaEntry::getId));
-
+    int latestOrSuperSchemaSchemaId = schemaRepository.getSupersetOrLatestValueSchema(store.getName()).getId();
     for (SchemaEntry schemaEntry: allSchemas) {
       int schemaId = schemaEntry.getId();
       // skip latest value schema or super-set schema id
-      if (schemaRepository.getSupersetOrLatestValueSchema(store.getName()).getId() == schemaId) {
+      if (latestOrSuperSchemaSchemaId == schemaId) {
         continue;
       }
 
@@ -147,7 +148,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    executor.scheduleAtFixedRate(getRunnableForSchemaCleanup(), 0, scheduleIntervalMinutes, TimeUnit.MINUTES);
+    executor.scheduleAtFixedRate(getRunnableForSchemaCleanup(), 0, scheduleIntervalSeconds, TimeUnit.SECONDS);
     return true;
   }
 

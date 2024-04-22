@@ -427,7 +427,7 @@ public class TestDataRecoveryClient {
       jobResponse.setUncompletedPartitions(partitions);
     }
 
-    if (status == ExecutionStatus.ERROR) {
+    if (status.isError()) {
       jobResponse.setStatusDetails(
           "too many ERROR replicas in partition: x for offlinePushStrategy: WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION");
     }
@@ -474,7 +474,7 @@ public class TestDataRecoveryClient {
       return;
     }
 
-    if (status == ExecutionStatus.ERROR) {
+    if (status.isError()) {
       // Verify all stores are in error state.
       for (int i = 0; i < numOfStores; i++) {
         Assert.assertTrue(monitor.getTasks().get(i).getTaskResult().isError());

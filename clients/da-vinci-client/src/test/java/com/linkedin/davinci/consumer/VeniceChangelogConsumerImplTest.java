@@ -127,8 +127,9 @@ public class VeniceChangelogConsumerImplTest {
             .setViewName("changeCaptureView");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
-    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
 
+    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
@@ -204,6 +205,8 @@ public class VeniceChangelogConsumerImplTest {
         mockPubSubConsumer,
         Lazy.of(() -> mockInternalSeekConsumer));
     veniceChangelogConsumer.versionSwapDetectionIntervalTimeInMs = 1;
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
+
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
@@ -253,6 +256,8 @@ public class VeniceChangelogConsumerImplTest {
             .setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
+
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");

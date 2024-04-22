@@ -2,6 +2,9 @@ package com.linkedin.davinci;
 
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
@@ -31,6 +34,8 @@ import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
+import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -100,6 +105,7 @@ public class DaVinciBackend implements Closeable {
   private final Optional<ObjectCacheBackend> cacheBackend;
   private DaVinciIngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
+  private final boolean useDaVinciSpecificExecutionStatusForError;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -111,6 +117,7 @@ public class DaVinciBackend implements Closeable {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
+      useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       this.configLoader = configLoader;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
           .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
@@ -659,7 +666,8 @@ public class DaVinciBackend implements Closeable {
           /**
            * Report push status needs to be executed before deleting the {@link VersionBackend}.
            */
-          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
+          ExecutionStatus status = getDaVinciErrorStatus(e, useDaVinciSpecificExecutionStatusForError);
+          reportPushStatus(kafkaTopic, partitionId, status);
 
           versionBackend.completePartitionExceptionally(partitionId, e);
           versionBackend.tryStopHeartbeat();
@@ -733,4 +741,23 @@ public class DaVinciBackend implements Closeable {
       });
     }
   };
+
+  static ExecutionStatus getDaVinciErrorStatus(Exception e, boolean useDaVinciSpecificExecutionStatusForError) {
+    ExecutionStatus status;
+    if (useDaVinciSpecificExecutionStatusForError) {
+      status = DVC_INGESTION_ERROR_OTHER;
+      if (e instanceof VeniceException) {
+        if (e instanceof MemoryLimitExhaustedException
+            || (e.getCause() != null && e.getCause() instanceof MemoryLimitExhaustedException)) {
+          status = DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
+        } else if (e instanceof DiskLimitExhaustedException
+            || (e.getCause() != null && e.getCause() instanceof DiskLimitExhaustedException)) {
+          status = DVC_INGESTION_ERROR_DISK_FULL;
+        }
+      }
+    } else {
+      status = ExecutionStatus.ERROR;
+    }
+    return status;
+  }
 }

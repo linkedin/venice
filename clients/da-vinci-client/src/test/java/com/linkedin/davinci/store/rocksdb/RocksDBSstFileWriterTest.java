@@ -1,8 +1,18 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertThrows;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -12,8 +22,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.io.FileUtils;
+import org.rocksdb.Checkpoint;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.Options;
+import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -24,6 +36,7 @@ public class RocksDBSstFileWriterTest {
   private static final int PARTITION_ID = 0;
   private static final String DB_DIR = Utils.getUniqueTempPath("sstTest");
   private static final boolean IS_RMD = false;
+  private static final boolean IS_BLOB_TRANSFER_ENABLED = false;
   private static final RocksDBServerConfig ROCKS_DB_SERVER_CONFIG = new RocksDBServerConfig(VeniceProperties.empty());
 
   @Test
@@ -38,7 +51,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Expect false as that file is not found
@@ -62,7 +76,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint that 1 sst file should be found
@@ -95,7 +110,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint that 2 sst file should be found
@@ -122,7 +138,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint -1: invalid
@@ -148,7 +165,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint that 6 sst file should be found
@@ -181,7 +199,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint that 6 sst file should be found
@@ -216,7 +235,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint that 6 sst file should be found
@@ -247,7 +267,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint that 6 sst file should be found
@@ -269,6 +290,108 @@ public class RocksDBSstFileWriterTest {
   }
 
   @Test
+  public void testCreateSnapshotWithBlobTransferDisabled() throws RocksDBException {
+    RocksDBSstFileWriter rocksDBSstFileWriter = null;
+    try {
+      rocksDBSstFileWriter = spy(
+          new RocksDBSstFileWriter(
+              STORE_NAME,
+              PARTITION_ID,
+              "/db",
+              new EnvOptions(),
+              new Options(),
+              DB_DIR,
+              IS_RMD,
+              ROCKS_DB_SERVER_CONFIG,
+              IS_BLOB_TRANSFER_ENABLED));
+
+      String checkpointPath = RocksDBUtils.composeSnapshotDir("/db", STORE_NAME, PARTITION_ID);
+      RocksDB rocksdb = mock(RocksDB.class);
+      Checkpoint checkpoint = mock(Checkpoint.class);
+
+      doReturn(checkpoint).when(rocksDBSstFileWriter).createCheckpoint(rocksdb);
+      doNothing().when(checkpoint).createCheckpoint(checkpointPath);
+
+      // if blob transfer is disabled in configurations, should not create snapshots
+      rocksDBSstFileWriter.createSnapshot(rocksdb);
+      verify(checkpoint, times(0)).createCheckpoint(checkpointPath);
+
+    } finally {
+      if (rocksDBSstFileWriter != null) {
+        rocksDBSstFileWriter.close();
+      }
+    }
+  }
+
+  @Test
+  public void testCreateSnapshotWithBlobTransferEnabled() throws RocksDBException {
+    RocksDBSstFileWriter rocksDBSstFileWriter = null;
+
+    try {
+      rocksDBSstFileWriter = spy(
+          new RocksDBSstFileWriter(
+              STORE_NAME,
+              PARTITION_ID,
+              "/db",
+              new EnvOptions(),
+              new Options(),
+              DB_DIR,
+              IS_RMD,
+              ROCKS_DB_SERVER_CONFIG,
+              true));
+
+      String checkpointPath = RocksDBUtils.composeSnapshotDir("/db", STORE_NAME, PARTITION_ID);
+      RocksDB rocksdb = mock(RocksDB.class);
+      Checkpoint checkpoint = mock(Checkpoint.class);
+
+      doReturn(checkpoint).when(rocksDBSstFileWriter).createCheckpoint(rocksdb);
+      doNothing().when(checkpoint).createCheckpoint(checkpointPath);
+
+      // if blob transfer is enabled in configurations, should create snapshots
+      rocksDBSstFileWriter.createSnapshot(rocksdb);
+      verify(checkpoint, times(1)).createCheckpoint(checkpointPath);
+
+    } finally {
+      if (rocksDBSstFileWriter != null) {
+        rocksDBSstFileWriter.close();
+      }
+    }
+  }
+
+  @Test
+  public void testCreateSnapshotThrowsVeniceExceptionOnRocksDBException() throws RocksDBException {
+    RocksDBSstFileWriter rocksDBSstFileWriter = null;
+
+    try {
+      rocksDBSstFileWriter = spy(
+          new RocksDBSstFileWriter(
+              STORE_NAME,
+              PARTITION_ID,
+              "/db",
+              new EnvOptions(),
+              new Options(),
+              DB_DIR,
+              IS_RMD,
+              ROCKS_DB_SERVER_CONFIG,
+              true));
+
+      String checkpointPath = RocksDBUtils.composeSnapshotDir("/db", STORE_NAME, PARTITION_ID);
+      RocksDB rocksdb = mock(RocksDB.class);
+      Checkpoint checkpoint = mock(Checkpoint.class);
+
+      doReturn(checkpoint).when(rocksDBSstFileWriter).createCheckpoint(rocksdb);
+      doThrow(new RocksDBException("Test exception")).when(checkpoint).createCheckpoint(checkpointPath);
+
+      RocksDBSstFileWriter finalRocksDBSstFileWriter = rocksDBSstFileWriter;
+      assertThrows(VeniceException.class, () -> finalRocksDBSstFileWriter.createSnapshot(rocksdb));
+    } finally {
+      if (rocksDBSstFileWriter != null) {
+        rocksDBSstFileWriter.close();
+      }
+    }
+  }
+
+  @Test
   public void testSyncWithCorrectChecksum() throws IOException, RocksDBException {
     RocksDBSstFileWriter rocksDBSstFileWriter = null;
     try {
@@ -280,7 +403,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint that 1 sst file should be found
@@ -320,7 +444,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint that 1 sst file should be found
@@ -360,7 +485,8 @@ public class RocksDBSstFileWriterTest {
           new Options(),
           DB_DIR,
           IS_RMD,
-          ROCKS_DB_SERVER_CONFIG);
+          ROCKS_DB_SERVER_CONFIG,
+          IS_BLOB_TRANSFER_ENABLED);
       Map<String, String> checkpointedInfo = new HashMap<>();
 
       // Checkpoint that 6 sst file should be found

@@ -221,6 +221,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setRmdVersion(store.getRmdVersion());
     setViewConfigs(store.getViewConfigs());
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
 

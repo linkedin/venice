@@ -184,6 +184,11 @@ public class ConfigKeys {
       "enable.active.active.replication.as.default.for.hybrid.store";
 
   /**
+   * Store-level config to enable blob transfers (feature flag)
+   */
+  public static final String ENABLE_BLOB_TRANSFER = "enable.blob.transfer";
+
+  /**
    * Sets the default for whether or not do schema validation for all stores
    */
   public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";
@@ -468,8 +473,8 @@ public class ConfigKeys {
   public static final String CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED =
       "controller.unused.value.schema.cleanup.enabled";
 
-  public static final String CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS =
-      "controller.unused.schema.cleanup.interval.mins";
+  public static final String CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS =
+      "controller.unused.schema.cleanup.interval.seconds";
 
   public static final String CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP = "controller.min.schema.count.keep";
 
@@ -1755,9 +1760,11 @@ public class ConfigKeys {
       "push.status.store.heartbeat.expiration.seconds";
 
   /**
-   * Whether to throttle SSL connections between router and client.
+   * when enabled, Da Vinci Clients returns specific status codes to indicate the type of ingestion failure
+   * rather than a generic {@link com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR}
    */
-  public static final String ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES = "router.throttle.client.ssl.handshakes";
+  public static final String USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR =
+      "use.da.vinci.specific.execution.status.for.error";
 
   /**
    * The number of threads that will be used to perform SSL handshakes between clients and a router.
@@ -1765,19 +1772,9 @@ public class ConfigKeys {
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
-   * The maximum number of concurrent SSL handshakes between clients and a router.
+   * Config to control the queue capacity for the thread pool executor used for ssl handshake between clients and a router.
    */
-  public static final String ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES = "router.max.concurrent.ssl.handshakes";
-
-  /**
-   * The number of attempts of SSL handshakes between clients and a router.
-   */
-  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_ATTEMPTS = "router.client.ssl.handshake.attempts";
-
-  /**
-   * The delay between attempts of SSL handshakes between clients and a router.
-   */
-  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS = "router.client.ssl.handshake.backoff.ms";
+  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY = "router.client.ssl.handshake.queue.capacity";
 
   /**
    * Lease timeout for leaving quota disabled for a router. If quota was disabled through an API, it will be reset after

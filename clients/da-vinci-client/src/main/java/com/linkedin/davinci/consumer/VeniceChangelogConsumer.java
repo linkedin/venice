@@ -18,6 +18,11 @@ import java.util.concurrent.CompletableFuture;
 @Experimental
 public interface VeniceChangelogConsumer<K, V> {
   /**
+   * @return total number of store partitions
+  */
+  int getPartitionCount();
+
+  /**
    * Subscribe a set of partitions for a store to this VeniceChangelogConsumer. The VeniceChangelogConsumer should try
    * to consume messages from all partitions that are subscribed to it.
    *
