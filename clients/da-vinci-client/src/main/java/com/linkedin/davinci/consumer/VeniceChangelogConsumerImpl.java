@@ -530,7 +530,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
       }
     }
-    changeCaptureStats.recordRecordsConsumed(pubSubMessages.size());
+    if (changeCaptureStats != null) {
+      changeCaptureStats.recordRecordsConsumed(pubSubMessages.size());
+    }
     return pubSubMessages;
   }
 
