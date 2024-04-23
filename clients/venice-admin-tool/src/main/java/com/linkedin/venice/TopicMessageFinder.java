@@ -55,6 +55,11 @@ public class TopicMessageFinder {
     int partitionCount = storeInfo.getPartitionCount();
     // Parse key string and figure out the right partition
     byte[] serializedKey = serializeKey(keyString, keySchemaStr);
+
+    // Partition assignment is always based on the non-chunked key.
+    int assignedPartition = new DefaultVenicePartitioner().getPartitionId(serializedKey, partitionCount);
+    LOGGER.info("Assigned partition: {} for key: {}", assignedPartition, keyString);
+
     if (version != -1) {
       if (storeInfo.getVersion(version).isPresent()) {
         if (storeInfo.getVersion(version).get().isChunkingEnabled()) {
@@ -69,9 +74,6 @@ public class TopicMessageFinder {
       throw new VeniceException("Invalid partition count: " + partitionCount);
     }
     LOGGER.info("Got partition count: {}", partitionCount);
-
-    int assignedPartition = new DefaultVenicePartitioner().getPartitionId(serializedKey, partitionCount);
-    LOGGER.info("Assigned partition: {} for key: {}", assignedPartition, keyString);
 
     long startOffset;
     long endOffset;
