@@ -43,7 +43,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -63,7 +62,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChangelogConsumerImpl<K, V>
+class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfterImageConsumerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(InternalLocalBootstrappingVeniceChangelogConsumer.class);
   private static final String CHANGE_CAPTURE_COORDINATE = "ChangeCaptureCoordinatePosition";
@@ -478,7 +477,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       while (bootstrapStateMap.entrySet()
           .stream()
           .anyMatch(s -> s.getValue().bootstrapState.equals(PollState.CATCHING_UP))) {
-        pollAndCatchup(5000L, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+        pollAndCatchup(5000L, "");
       }
 
       LOGGER.info("Bootstrap completed!");
