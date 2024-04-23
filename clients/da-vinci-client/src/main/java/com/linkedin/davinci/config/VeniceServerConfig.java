@@ -98,6 +98,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED;
@@ -460,6 +461,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean dedicatedConsumerPoolForAAWCLeaderEnabled;
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
   private final boolean useDaVinciSpecificExecutionStatusForError;
+  private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -758,6 +760,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
     useDaVinciSpecificExecutionStatusForError =
         serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
+    recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
+        serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
   }
 
   long extractIngestionMemoryLimit(
@@ -1346,5 +1350,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean useDaVinciSpecificExecutionStatusForError() {
     return useDaVinciSpecificExecutionStatusForError;
+  }
+
+  public boolean isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled() {
+    return recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   }
 }
