@@ -3,18 +3,25 @@ package com.linkedin.davinci.consumer.stats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 
 
 public class BasicConsumerStats extends AbstractVeniceStats {
+  private final Sensor maxLagSensor;
+  private final Sensor recordsConsumed;
+
   public BasicConsumerStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
     maxLagSensor = registerSensor("max_partition_lag", new Max());
+    recordsConsumed = registerSensor("records_consumed", new Avg(), new Max());
   }
-
-  private final Sensor maxLagSensor;
 
   public void recordLag(Long lag) {
     maxLagSensor.record(lag);
+  }
+
+  public void recordRecordsConsumed(int count) {
+    recordsConsumed.record(count);
   }
 }
