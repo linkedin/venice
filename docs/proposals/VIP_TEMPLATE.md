@@ -1,7 +1,8 @@
 ---
 layout: default
-title: VIP-`$VIP_Number` `$VIP_Title`
+title: VIP Template # Replace this with "VIP-{VIP_Number} {VIP_Title}"
 parent: Proposals
+
 permalink: /docs/proposals/vip_template
 ---
 
