@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.ENFORCE_SECURE_ROUTER;
 import static com.linkedin.venice.ConfigKeys.HEARTBEAT_CYCLE;
 import static com.linkedin.venice.ConfigKeys.HEARTBEAT_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
+import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
@@ -93,6 +94,7 @@ import static com.linkedin.venice.helix.HelixInstanceConfigRepository.ZONE_FIELD
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
 import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
 
+import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
@@ -203,6 +205,7 @@ public class VeniceRouterConfig {
   private int routerIOWorkerCount;
   private double perStoreRouterQuotaBuffer;
   private boolean httpClientOpensslEnabled;
+  private String identityParserClassName;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -377,6 +380,7 @@ public class VeniceRouterConfig {
     routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, 24);
     perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
     httpClientOpensslEnabled = props.getBoolean(ROUTER_HTTP_CLIENT_OPENSSL_ENABLED, true);
+    identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
   }
 
   public double getPerStoreRouterQuotaBuffer() {
@@ -806,5 +810,9 @@ public class VeniceRouterConfig {
 
   public boolean isHttpClientOpensslEnabled() {
     return httpClientOpensslEnabled;
+  }
+
+  public String getIdentityParserClassName() {
+    return identityParserClassName;
   }
 }
