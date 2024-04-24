@@ -11,6 +11,7 @@ import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -66,6 +67,7 @@ public class ListenerServiceTest {
     doReturn(10).when(serverConfig).getSslHandshakeQueueCapacity();
     doReturn(false).when(serverConfig).isRestServiceEpollEnabled();
     doReturn(10).when(serverConfig).getNettyWorkerThreadCount();
+    doReturn(DefaultIdentityParser.class.getName()).when(serverConfig).getIdentityParserClassName();
   }
 
   @Test

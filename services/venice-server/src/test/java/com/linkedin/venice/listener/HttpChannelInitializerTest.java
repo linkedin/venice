@@ -51,7 +51,6 @@ public class HttpChannelInitializerTest {
     requestHandler = mock(StorageReadRequestHandler.class);
     serverConfig = mock(VeniceServerConfig.class);
     customizedViewRepository = new CompletableFuture<>();
-
     doReturn(DefaultIdentityParser.class.getName()).when(serverConfig).getIdentityParserClassName();
   }
 
