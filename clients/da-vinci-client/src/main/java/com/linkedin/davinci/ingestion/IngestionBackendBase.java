@@ -4,8 +4,6 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.StorageService;
 import java.io.Closeable;
 import java.util.Map;
 import java.util.Optional;
@@ -58,11 +56,7 @@ public interface IngestionBackendBase extends Closeable {
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine);
 
-  StorageMetadataService getStorageMetadataService();
-
   KafkaStoreIngestionService getStoreIngestionService();
-
-  StorageService getStorageService();
 
   /**
    * Get currently loaded store partition mappings.

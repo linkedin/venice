@@ -34,12 +34,9 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 public class ChangeCaptureViewWriter extends VeniceViewWriter {
-  private static final Logger LOGGER = LogManager.getLogger(ChangeCaptureViewWriter.class);
   final private ChangeCaptureView internalView;
   private VeniceWriter veniceWriter;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;

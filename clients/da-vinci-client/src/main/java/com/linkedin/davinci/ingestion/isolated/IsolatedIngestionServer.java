@@ -138,7 +138,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
-  private VeniceConfigLoader configLoader;
+  private final VeniceConfigLoader configLoader;
   private ReadOnlyStoreRepository storeRepository = null;
   private ReadOnlyLiveClusterConfigRepository liveConfigRepository = null;
   private StorageService storageService = null;
@@ -273,35 +273,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     repairService.stop();
   }
 
-  public void setConfigLoader(VeniceConfigLoader configLoader) {
-    this.configLoader = configLoader;
-  }
-
-  public void setStoreRepository(ReadOnlyStoreRepository storeRepository) {
-    this.storeRepository = storeRepository;
-  }
-
-  public void setStorageService(StorageService storageService) {
-    this.storageService = storageService;
-  }
-
-  public void setStorageMetadataService(StorageMetadataService storageMetadataService) {
-    this.storageMetadataService = storageMetadataService;
-  }
-
-  public void setMetricsRepository(MetricsRepository metricsRepository) {
-    this.metricsRepository = metricsRepository;
-  }
-
-  public void setPartitionStateSerializer(InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
-    this.partitionStateSerializer = partitionStateSerializer;
-  }
-
-  public void setStoreVersionStateSerializer(
-      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer) {
-    this.storeVersionStateSerializer = storeVersionStateSerializer;
-  }
-
   public boolean isInitiated() {
     return isInitiated;
   }
@@ -336,10 +307,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   public InternalAvroSpecificSerializer<PartitionState> getPartitionStateSerializer() {
     return partitionStateSerializer;
-  }
-
-  public InternalAvroSpecificSerializer<StoreVersionState> getStoreVersionStateSerializer() {
-    return storeVersionStateSerializer;
   }
 
   public int getStopConsumptionTimeoutInSeconds() {

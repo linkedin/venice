@@ -188,7 +188,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final AvroStoreDeserializerCache storeDeserializerCache;
 
-  private AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
+  private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -2182,7 +2182,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int kafkaClusterId,
       long beforeProcessingPerRecordTimestampNs,
       long beforeProcessingBatchRecordsTimestampMs) {
-    boolean produceToLocalKafka = false;
     try {
       KafkaKey kafkaKey = consumerRecord.getKey();
       KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
@@ -2200,7 +2199,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // The partition is likely unsubscribed, will skip these messages.
         return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
       }
-      produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
+      boolean produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
       // UPDATE message is only expected in LEADER which must be produced to kafka.
       MessageType msgType = MessageType.valueOf(kafkaValue);
       if (msgType == MessageType.UPDATE && !produceToLocalKafka) {
@@ -3462,27 +3461,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  CompletableFuture<PubSubProduceResult> sendIngestionHeartbeatToRT(
-      PubSubTopicPartition topicPartition,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper) {
+  CompletableFuture<PubSubProduceResult> sendIngestionHeartbeatToRT(PubSubTopicPartition topicPartition) {
     return sendIngestionHeartbeat(
         topicPartition,
-        callback,
-        leaderMetadataWrapper,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
         false, // maybeSendIngestionHeartbeat logs for this case
         false,
         LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN,
         System.currentTimeMillis());
   }
 
-  private CompletableFuture<PubSubProduceResult> sendIngestionHeartbeatToVT(
+  private void sendIngestionHeartbeatToVT(
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
-    return sendIngestionHeartbeat(
+    sendIngestionHeartbeat(
         topicPartition,
         callback,
         leaderMetadataWrapper,
@@ -3565,10 +3561,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           continue;
         }
         int partition = pcs.getUserPartition();
-        CompletableFuture<PubSubProduceResult> heartBeatFuture = sendIngestionHeartbeatToRT(
-            new PubSubTopicPartitionImpl(leaderTopic, partition),
-            null,
-            DEFAULT_LEADER_METADATA_WRAPPER);
+        CompletableFuture<PubSubProduceResult> heartBeatFuture =
+            sendIngestionHeartbeatToRT(new PubSubTopicPartitionImpl(leaderTopic, partition));
         heartBeatFuture.whenComplete((ignore, throwable) -> {
           if (throwable != null) {
             completionException.set(new CompletionException(throwable));
