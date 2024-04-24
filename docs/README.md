@@ -146,7 +146,7 @@ Feel free to engage with the community using our:
 - [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [GitHub issues](https://github.com/linkedin/venice/issues)
 - [Contributor's guide](https://venicedb.org/docs/dev_guide/how_to)
-- [Contributor's agreement](dev_guide/how_to/contribution_agreement)
+- [Contributor's agreement](https://venicedb.org/docs/dev_guide/how_to/contribution_agreement)
 
 Follow us to hear more about the progress of the Venice project and community:
 - [Official blog](https://blog.venicedb.org)
