@@ -3,13 +3,18 @@ package com.linkedin.venice;
 import static com.linkedin.venice.chunking.ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.chunking.RawKeyBytesAndChunkedKeySuffix;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.VeniceKafkaDecodedRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -36,6 +41,7 @@ import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.ChangeCaptureView;
@@ -48,6 +54,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -92,6 +99,8 @@ public class KafkaTopicDumper implements AutoCloseable {
   private final Schema[] allValueSchemas;
   private final Map<Integer, ValueAndDerivedSchemaData> schemaDataMap = new VeniceConcurrentHashMap<>();
   private final boolean isChunkingEnabled;
+  private final CompressorFactory compressorFactory;
+  private final VeniceCompressor compressor;
   private final String parentDirectory;
   private final PubSubConsumerAdapter consumer;
   private final long messageCount;
@@ -126,16 +135,36 @@ public class KafkaTopicDumper implements AutoCloseable {
       boolean logRmdRecord) {
     this.consumer = consumer;
     this.maxConsumeAttempts = maxConsumeAttempts;
+
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+          "Failed to get store info for store: " + storeName + " with error: " + storeResponse.getError());
+    }
+
+    StoreInfo storeInfo = storeResponse.getStore();
+    this.compressorFactory = new CompressorFactory();
     if (Version.isATopicThatIsVersioned(topic)) {
       int version = Version.parseVersionFromKafkaTopicName(topic);
-      if (!storeInfo.getVersion(version).isPresent()) {
+      Optional<Version> optionalVersion = storeInfo.getVersion(version);
+      if (!optionalVersion.isPresent()) {
         throw new VeniceException("Version: " + version + " does not exist for store: " + storeName);
       }
-      this.isChunkingEnabled = storeInfo.getVersion(version).get().isChunkingEnabled();
+      this.isChunkingEnabled = optionalVersion.get().isChunkingEnabled();
+      CompressionStrategy compressionStrategy = optionalVersion.get().getCompressionStrategy();
+      if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+        ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(topic, consumer, pubSubTopicRepository);
+        compressor = compressorFactory
+            .createCompressorWithDictionary(ByteUtils.extractByteArray(dictionary), Zstd.maxCompressionLevel());
+      } else {
+        compressor = compressorFactory.getCompressor(compressionStrategy);
+      }
     } else {
       this.isChunkingEnabled = false;
+      this.compressor = compressorFactory.getCompressor(CompressionStrategy.NO_OP);
     }
     this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
     this.keySchema = AvroCompatibilityHelper.parse(keySchemaStr);
@@ -202,7 +231,6 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
     }
 
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopicPartition partition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partitionNumber);
 
@@ -375,7 +403,8 @@ public class KafkaTopicDumper implements AutoCloseable {
       switch (MessageType.valueOf(kafkaMessageEnvelope)) {
         case PUT:
           Put put = (Put) kafkaMessageEnvelope.payloadUnion;
-          Decoder valueDecoder = decoderFactory.binaryDecoder(ByteUtils.extractByteArray(put.putValue), null);
+          Decoder valueDecoder =
+              decoderFactory.binaryDecoder(ByteUtils.extractByteArray(compressor.decompress(put.putValue)), null);
           valueRecord = schemaDataMap.get(put.schemaId).getValueRecordReader().read(null, valueDecoder);
           valuePayloadSchemaId = String.valueOf(put.schemaId);
           if (logReplicationMetadata && put.replicationMetadataPayload != null
@@ -554,5 +583,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     if (dataFileWriter != null) {
       dataFileWriter.close();
     }
+    Utils.closeQuietlyWithErrorLogged(compressor);
+    Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 }
