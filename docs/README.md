@@ -145,8 +145,8 @@ Feel free to engage with the community using our:
   - Archived and publicly searchable on [Linen](http://linen.venicedb.org)
 - [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [GitHub issues](https://github.com/linkedin/venice/issues)
-- [Contributor's guide](https://venicedb.org/docs/dev_guide/how_to)
-- [Contributor's agreement](https://venicedb.org/docs/dev_guide/how_to/contribution_agreement)
+- [Contributor's guide](./dev_guide/how_to/how_to.md)
+- [Contributor's agreement](./dev_guide/how_to/CONTRIBUTING.md)
 
 Follow us to hear more about the progress of the Venice project and community:
 - [Official blog](https://blog.venicedb.org)
