@@ -17,7 +17,7 @@ license.
 
 # Responsible Disclosure of Security Vulnerabilities
 
-Please refer to our [Security Policy](SECURITY.md) for our policy on
+Please refer to our [Security Policy](./SECURITY.md) for our policy on
 responsibly reporting security vulnerabilities.
 
 # Contribution Process
@@ -33,7 +33,7 @@ For any PR, a GitHub issue is required.
 If you want to contribute something new, and it's not tracked in existing GitHub issues, please create a new 
 GitHub issue and the community will help review the idea. Please state `why` in your GitHub issue. 
 If you already have a short design in mind or change is not small please check the 
-[Venice Improvement Proposal](design_doc.md) 
+[Venice Improvement Proposal](./design_doc.md) 
 
 If you have any feature request, please create a new GitHub issue and the community will collect your feature request and work on it.
 
@@ -41,8 +41,8 @@ If you have any user feedback, please create a new GitHub issue and the communit
 
 ## For New Contributors
 
-Please follow [Venice Workspace Setup](workspace_setup.md) and
-[Venice Recommended Development Workflow](recommended_development_workflow.md)
+Please follow [Venice Workspace Setup](./workspace_setup.md) and
+[Venice Recommended Development Workflow](./recommended_development_workflow.md)
 
 ## Tips for Getting Your Pull Request Accepted
 
@@ -68,4 +68,4 @@ Venice does Contributor sync meeting for the contributors to come togather in a 
 
 ## Code of Conduct
 
-This project and everyone who participates in it is governed by the [Venice Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior on [Slack](https://venicedb.slack.com/archives/C03SLQWRSLF).
+This project and everyone who participates in it is governed by the [Venice Code of Conduct](./CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior on [Slack](https://venicedb.slack.com/archives/C03SLQWRSLF).

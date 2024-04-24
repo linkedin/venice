@@ -13,7 +13,7 @@ permalink: /docs/dev_guide/how_to/recommended_development_workflow
 If your change is relatively minor, you can skip this step. If you are adding new major functionality, we suggest that 
 you add a design document and solicit comments from the community before submitting any code.
 
-Please follow the [Design Document Guide](design_doc.md). 
+Please follow the [Design Document Guide](./design_doc.md). 
 
 
 ## Creating GitHub issue
