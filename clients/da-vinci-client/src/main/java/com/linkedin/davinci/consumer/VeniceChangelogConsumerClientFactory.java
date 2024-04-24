@@ -69,6 +69,7 @@ public class VeniceChangelogConsumerClientFactory {
   public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId) {
     return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
+      newStoreChangelogClientConfig.setConsumerName(name);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
       if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {

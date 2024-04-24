@@ -24,6 +24,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -1334,6 +1335,43 @@ public abstract class StoreIngestionTaskTest {
         aaConfig,
         amplificationFactor,
         Collections.singletonMap(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 3L));
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testRecordLevelMetricForCurrentVersion(boolean enableRecordLevelMetricForCurrentVersionBootstrapping)
+      throws Exception {
+    Map<String, Object> extraProps = new HashMap();
+    extraProps.put(
+        SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED,
+        enableRecordLevelMetricForCurrentVersionBootstrapping);
+
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        -1,
+        100,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+
+    VeniceWriter vtWriter = getVeniceWriter(new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
+    vtWriter.broadcastStartOfPush(Collections.emptyMap());
+    vtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID).get();
+    vtWriter.broadcastEndOfPush(Collections.emptyMap());
+    // Write more messages after EOP
+    vtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID).get();
+    vtWriter.put(putKeyFoo2, putValue, EXISTING_SCHEMA_ID).get();
+
+    isCurrentVersion = () -> true;
+
+    runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+          .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
+      // Verify host-level metrics
+      if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
+        verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
+      } else {
+        verify(mockStoreIngestionStats, times(2)).recordTotalRecordsConsumed();
+      }
+    }, Optional.of(hybridStoreConfig), false, Optional.empty(), AA_OFF, 1, extraProps);
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -4425,11 +4463,8 @@ public abstract class StoreIngestionTaskTest {
     // Non-hybrid store should throw
     assertThrows(
         VeniceException.class,
-        () -> StoreIngestionTask.getOffsetToOnlineLagThresholdPerPartition(
-            Optional.empty(),
-            storeRepository,
-            storeName,
-            subPartitionCount));
+        () -> StoreIngestionTask
+            .getOffsetToOnlineLagThresholdPerPartition(Optional.empty(), storeName, subPartitionCount));
 
     // Negative threshold
     HybridStoreConfigImpl hybridStoreConfig1 = new HybridStoreConfigImpl(
@@ -4439,11 +4474,8 @@ public abstract class StoreIngestionTaskTest {
         DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_SOP);
     assertEquals(
-        StoreIngestionTask.getOffsetToOnlineLagThresholdPerPartition(
-            Optional.of(hybridStoreConfig1),
-            storeRepository,
-            storeName,
-            subPartitionCount),
+        StoreIngestionTask
+            .getOffsetToOnlineLagThresholdPerPartition(Optional.of(hybridStoreConfig1), storeName, subPartitionCount),
         -1l);
 
     // For current version, the partition-level offset lag threshold should be divided by partition count
@@ -4457,11 +4489,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(10).when(store).getCurrentVersion();
     doReturn(store).when(storeRepository).getStore(storeName);
     assertEquals(
-        StoreIngestionTask.getOffsetToOnlineLagThresholdPerPartition(
-            Optional.of(hybridStoreConfig2),
-            storeRepository,
-            storeName,
-            subPartitionCount),
+        StoreIngestionTask
+            .getOffsetToOnlineLagThresholdPerPartition(Optional.of(hybridStoreConfig2), storeName, subPartitionCount),
         10l);
   }
 

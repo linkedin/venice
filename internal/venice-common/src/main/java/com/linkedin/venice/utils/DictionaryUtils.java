@@ -54,7 +54,7 @@ public class DictionaryUtils {
    * @return The compression dictionary wrapped in a ByteBuffer, or null if no dictionary was present in the
    * Start Of Push message.
    */
-  static ByteBuffer readDictionaryFromKafka(
+  public static ByteBuffer readDictionaryFromKafka(
       String topicName,
       PubSubConsumerAdapter pubSubConsumer,
       PubSubTopicRepository pubSubTopicRepository) {

@@ -84,6 +84,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -163,6 +164,16 @@ public class TestActiveActiveIngestion {
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
     TestView.resetCounters();
+  }
+
+  private void pollChangeEventsFromChangeCaptureConsumerToList(
+      List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
+      VeniceChangelogConsumer veniceChangelogConsumer) {
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
+        veniceChangelogConsumer.poll(1000);
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
+      polledChangeEvents.add(pubSubMessage);
+    }
   }
 
   private void pollChangeEventsFromChangeCaptureConsumer(
@@ -1466,6 +1477,83 @@ public class TestActiveActiveIngestion {
         MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
         Assert.assertFalse(storeTopicsResponse.isError());
         Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
+      });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAfterImageChangelogConsumer() throws Exception {
+    int batchRecordCount = 100;
+    int hybridRecordCount = 10;
+    int hybridRecordStartIndex = 100;
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(1);
+    MetricsRepository metricsRepository = new MetricsRepository();
+    ControllerClient setupControllerClient =
+        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    setupControllerClient
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
+    TestWriteUtils.runPushJob("Run push job", props);
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+
+    TestMockTime testMockTime = new TestMockTime();
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    try (PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
+        new PubSubBrokerConfigs.Builder().setZkWrapper(localZkServer)
+            .setMockTime(testMockTime)
+            .setRegionName("local-pubsub")
+            .build())) {
+      Properties consumerProperties = new Properties();
+      String localKafkaUrl = localKafka.getAddress();
+      consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+      consumerProperties.put(CLUSTER_NAME, clusterName);
+      consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+      ChangelogClientConfig globalChangelogClientConfig =
+          new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+              .setControllerD2ServiceName(D2_SERVICE_NAME)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setLocalD2ZkHosts(localZkServer.getAddress())
+              .setControllerRequestRetryCount(3)
+              .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+
+      VeniceChangelogConsumer<Utf8, Utf8> changelogConsumer =
+          veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
+      try (VeniceSystemProducer veniceProducer =
+          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+        veniceProducer.start();
+        // Run Samza job to send PUT
+        runSamzaStreamJob(veniceProducer, storeName, null, hybridRecordCount, 0, hybridRecordStartIndex);
+      }
+
+      try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(clusterWrapper.getRandomRouterURL())
+              .setMetricsRepository(metricsRepository))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          Assert.assertNotNull(client.get(Integer.toString(hybridRecordStartIndex + hybridRecordCount - 1)).get());
+        });
+      }
+      changelogConsumer.subscribe(Collections.singleton(0)).get();
+
+      List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> changedEventList = new ArrayList<>();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        pollChangeEventsFromChangeCaptureConsumerToList(changedEventList, changelogConsumer);
+        Assert.assertEquals(changedEventList.size(), batchRecordCount + hybridRecordCount);
       });
     }
   }

@@ -24,7 +24,7 @@ public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Int
     this.originalSchema = schema;
   }
 
-  public Integer put(Lazy<Integer> value) {
+  public Integer put(Lazy<Integer> key, Lazy<Integer> value) {
     return value.get() * 100;
   }
 

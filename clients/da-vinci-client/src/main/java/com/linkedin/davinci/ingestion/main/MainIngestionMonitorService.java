@@ -154,20 +154,12 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     this.metricsRepository = metricsRepository;
   }
 
-  public MetricsRepository getMetricsRepository() {
-    return metricsRepository;
-  }
-
   public void setStorageMetadataService(MainIngestionStorageMetadataService storageMetadataService) {
     this.storageMetadataService = storageMetadataService;
   }
 
   public MainIngestionStorageMetadataService getStorageMetadataService() {
     return storageMetadataService;
-  }
-
-  public VeniceConfigLoader getConfigLoader() {
-    return configLoader;
   }
 
   public void setStoreIngestionService(KafkaStoreIngestionService storeIngestionService) {
@@ -180,10 +172,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   public void setStoreRepository(ReadOnlyStoreRepository storeRepository) {
     this.storeRepository = storeRepository;
-  }
-
-  public ReadOnlyStoreRepository getStoreRepository() {
-    return storeRepository;
   }
 
   public boolean isTopicPartitionInLeaderState(String topicName, int partitionId) {

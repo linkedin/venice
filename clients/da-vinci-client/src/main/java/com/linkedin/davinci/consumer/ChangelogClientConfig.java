@@ -12,6 +12,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private Properties consumerProperties;
   private SchemaReader schemaReader;
   private String viewName;
+
+  private String consumerName = "";
   private ClientConfig<T> innerClientConfig;
   private D2ControllerClient d2ControllerClient;
 
@@ -72,8 +74,17 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public ChangelogClientConfig<T> setConsumerName(String consumerName) {
+    this.consumerName = consumerName;
+    return this;
+  }
+
   public String getViewName() {
     return viewName;
+  }
+
+  public String getConsumerName() {
+    return consumerName;
   }
 
   public ChangelogClientConfig<T> setControllerD2ServiceName(String controllerD2ServiceName) {
@@ -190,6 +201,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setBootstrapFileSystemPath(config.getBootstrapFileSystemPath())
         .setVersionSwapDetectionIntervalTimeInMs(config.getVersionSwapDetectionIntervalTimeInMs())
         .setRocksDBBlockCacheSizeInBytes(config.getRocksDBBlockCacheSizeInBytes())
+        .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval());
     return newConfig;
   }

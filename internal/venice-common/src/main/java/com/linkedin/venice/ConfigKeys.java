@@ -2107,4 +2107,11 @@ public class ConfigKeys {
       "server.dedicated.consumer.pool.for.aa.wc.leader.enabled";
   public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER =
       "server.dedicated.consumer.pool.size.for.aa.wc.leader";
+
+  /**
+   * Whether to enable record-level metrics when bootstrapping current version.
+   * This feature will be mainly used by DaVinci to speed up bootstrapping.
+   */
+  public static final String SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED =
+      "server.record.level.metrics.when.bootstrapping.current.version.enabled";
 }
