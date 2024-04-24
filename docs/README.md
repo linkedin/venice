@@ -54,14 +54,14 @@ Venice is a system which straddles the offline, nearline and online worlds, as i
 The Venice write path can be broken down into three granularities: full dataset swap, insertion of many rows into an 
 existing dataset, and updates of some columns of some rows. All three granularities are supported by Hadoop and Samza.
 In addition, any service can asynchronously produce single row inserts and updates as well, using the 
-[Online Producer](user_guide/write_api/online_producer.md) library. The table below summarizes the write operations 
+[Online Producer](./user_guide/write_api/online_producer.md) library. The table below summarizes the write operations 
 supported by each platform:
 
-|                                                  | [Hadoop](user_guide/write_api/push_job.md) | [Samza](user_guide/write_api/stream_processor.md) | [Any Service](user_guide/write_api/online_producer.md) |
-|-------------------------------------------------:|:------------------------------------------:|:-------------------------------------------------:|:------------------------------------------------------:|
-|                                Full dataset swap |                     ✅                      |                         ✅                         |                                                        |
-|  Insertion of some rows into an existing dataset |                     ✅                      |                         ✅                         |                           ✅                            |
-|             Updates to some columns of some rows |                     ✅                      |                         ✅                         |                           ✅                            |
+|                                                  | [Hadoop](./user_guide/write_api/push_job.md) | [Samza](./user_guide/write_api/stream_processor.md) | [Any Service](./user_guide/write_api/online_producer.md) |
+|-------------------------------------------------:|:--------------------------------------------:|:---------------------------------------------------:|:--------------------------------------------------------:|
+|                                Full dataset swap |                      ✅                       |                          ✅                          |                                                          |
+|  Insertion of some rows into an existing dataset |                      ✅                       |                          ✅                          |                            ✅                             |
+|             Updates to some columns of some rows |                      ✅                       |                          ✅                          |                            ✅                             |
 
 ### Hybrid Stores
 Moreover, the three granularities of write operations can all be mixed within a single dataset. A dataset which gets 
@@ -131,11 +131,11 @@ cost/performance tradeoff without needing to rewrite their applications.
 
 The Open Sourcing Venice [blog](https://engineering.linkedin.com/blog/2022/open-sourcing-venice--linkedin-s-derived-data-platform)
 and [conference talk](https://www.youtube.com/watch?v=pJeg4V3JgYo) are good starting points to get an overview of what
-use cases and scale can Venice support. For more Venice posts, talks and podcasts, see our [Learn More](user_guide/learn_more.md)
+use cases and scale can Venice support. For more Venice posts, talks and podcasts, see our [Learn More](./user_guide/learn_more.md)
 page.
 
 ## Getting Started
-Refer to the [Venice quickstart](quickstart/quickstart.md) to create your own Venice cluster and play around with some 
+Refer to the [Venice quickstart](./quickstart/quickstart.md) to create your own Venice cluster and play around with some 
 features like creating a data store, batch push, incremental push, and single get. We recommend sticking to our latest 
 [stable release](https://blog.venicedb.org/stable-releases).
 

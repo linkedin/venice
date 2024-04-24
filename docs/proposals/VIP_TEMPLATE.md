@@ -2,7 +2,7 @@
 layout: default
 title: VIP-`$VIP_Number` `$VIP_Title`
 parent: Proposals
-permalink: /docs/proposals/VIP_TEMPLATE.md
+permalink: /docs/proposals/vip_template
 ---
 
 # VIP-`$VIP_Number`: `$VIP_Title`
