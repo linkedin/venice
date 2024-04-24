@@ -16,6 +16,7 @@ import com.linkedin.alpini.router.impl.Router;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -80,6 +81,7 @@ import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -169,6 +171,8 @@ public class RouterServer extends AbstractVeniceService {
 
   private ExecutorService workerExecutor;
   private EventThrottler routerEarlyThrottler;
+
+  private IdentityParser identityParser;
 
   // A map of optional ChannelHandlers that retains insertion order to be added at the end of the router pipeline
   private final Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
@@ -343,6 +347,10 @@ public class RouterServer extends AbstractVeniceService {
     this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
     this.accessController = accessController;
     this.sslFactory = sslFactory;
+
+    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(config.getIdentityParserClassName());
+    this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+
     verifySslOk();
   }
 
@@ -639,6 +647,7 @@ public class RouterServer extends AbstractVeniceService {
         new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
         sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
       }
+      sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
     } else {
       sslInitializer = null;
     }
