@@ -3526,17 +3526,21 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
       int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
       boolean deferredSwap = isDeferredSwap(clusterName, storeName, versionNum);
-      if (!deferredSwap && StringUtils.isEmpty(targetedRegions)) {
-        truncateTopicsOptionally(
-            clusterName,
-            kafkaTopic,
-            incrementalPushVersion,
-            currentReturnStatus,
-            currentReturnStatusDetails);
-        HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+
+      if (!deferredSwap) {
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
           ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
           Store parentStore = repository.getStore(storeName);
+          if (StringUtils.isEmpty(targetedRegions)
+              || parentStore.getVersion(versionNum).get().getHybridStoreConfig() != null) {
+            truncateTopicsOptionally(
+                clusterName,
+                kafkaTopic,
+                incrementalPushVersion,
+                currentReturnStatus,
+                currentReturnStatusDetails);
+          }
           int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
           parentStore.updateVersionStatus(version, PUSHED);
           repository.updateStore(parentStore);
