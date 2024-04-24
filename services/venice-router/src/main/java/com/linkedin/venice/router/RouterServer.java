@@ -172,7 +172,7 @@ public class RouterServer extends AbstractVeniceService {
   private ExecutorService workerExecutor;
   private EventThrottler routerEarlyThrottler;
 
-  private IdentityParser identityParser;
+  private final IdentityParser identityParser;
 
   // A map of optional ChannelHandlers that retains insertion order to be added at the end of the router pipeline
   private final Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
