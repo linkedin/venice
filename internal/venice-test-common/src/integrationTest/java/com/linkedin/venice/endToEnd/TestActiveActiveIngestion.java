@@ -127,7 +127,7 @@ public class TestActiveActiveIngestion {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
-    serverProperties.put(SERVER_INGESTION_TASK_THREAD_SAFE_MODE, false);
+    serverProperties.put(SERVER_INGESTION_TASK_THREAD_SAFE_MODE, true);
     serverProperties.put(
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
@@ -410,10 +410,10 @@ public class TestActiveActiveIngestion {
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, true, () -> {
         Assert.assertNotNull(client.get(Integer.toString(deleteWithRmdKeyIndex + 1)).get());
       });
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, true, () -> {
         Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }

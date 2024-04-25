@@ -82,6 +82,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitio
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
@@ -323,6 +324,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
+
+  private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
 
   protected final boolean runInThreadSafeMode;
 
@@ -2879,6 +2882,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           LOGGER.error("Failed to record Record heartbeat with message: ", e);
         }
       } else {
+        // TODO: This is a hack. Today the code kind of does a backdoor change to a key in the leaderProducer callback.
+        // However, we need to persist before
+        // producing in thread safe mode. Keys which need to be
+        if (this.isChunked && this.runInThreadSafeMode && leaderProducedRecordContext != null
+            && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+          leaderProducedRecordContext
+              .setKeyBytes(keyWithChunkingSuffixSerializer.serializeNonChunkedKey(consumerRecord.getKey().getKey()));
+        }
         updateLatestInMemoryProcessedOffset(
             partitionConsumptionState,
             consumerRecord,
