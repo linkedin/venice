@@ -199,10 +199,6 @@ public class StoreBufferServiceTest {
       }
     }
 
-    for (int i = 0; i < drainerNum; i++) {
-      Assert.assertNotNull(bufferService.getDrainerQueueMemoryUsage(i));
-    }
-
     int avgPartitionCountPerDrainer = partitionCount / drainerNum;
     for (int i = 0; i < drainerNum; ++i) {
       Assert.assertEquals(drainerPartitionCount[i], avgPartitionCountPerDrainer);

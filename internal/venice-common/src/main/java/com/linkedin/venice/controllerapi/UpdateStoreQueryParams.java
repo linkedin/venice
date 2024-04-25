@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
@@ -131,6 +132,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setStorageNodeReadQuotaEnabled(srcStore.isStorageNodeReadQuotaEnabled())
+            .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -670,6 +672,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getUnusedSchemaDeletionEnabled() {
     return getBoolean(UNUSED_SCHEMA_DELETION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setBlobTransferEnabled(boolean blobTransferEnabled) {
+    return putBoolean(BLOB_TRANSFER_ENABLED, blobTransferEnabled);
+  }
+
+  public Optional<Boolean> getBlobTransferEnabled() {
+    return getBoolean(BLOB_TRANSFER_ENABLED);
   }
 
   // ***************** above this line are getters and setters *****************

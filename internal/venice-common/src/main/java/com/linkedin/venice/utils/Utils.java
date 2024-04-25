@@ -453,7 +453,7 @@ public class Utils {
    * Verify that is the new status allowed to be used.
    */
   public static boolean verifyTransition(ExecutionStatus newStatus, ExecutionStatus... allowed) {
-    return Arrays.asList(allowed).contains(newStatus);
+    return Arrays.asList(allowed).contains(newStatus.getRootStatus());
   }
 
   public static List<String> parseCommaSeparatedStringToList(String rawString) {

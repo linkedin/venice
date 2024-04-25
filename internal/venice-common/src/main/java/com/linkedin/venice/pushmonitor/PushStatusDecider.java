@@ -66,7 +66,7 @@ public abstract class PushStatusDecider {
             partition.getInstanceToHelixStateMap(),
             callback);
 
-        if (executionStatus == ERROR) {
+        if (executionStatus.isError()) {
           return new ExecutionStatusWithDetails(
               executionStatus,
               "too many ERROR replicas in partition: " + partitionStatus.getPartitionId() + " for offlinePushStrategy: "
@@ -200,7 +200,7 @@ public abstract class PushStatusDecider {
           isLeaderCompleted = false;
         }
         // Disable replica only if error is not from killjob and its not already disabled
-        if (currentStatus.equals(ERROR) && callback != null
+        if (currentStatus.isError() && callback != null
             && !callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())
             && !isPushjobKilled(snapshotList)) {
           callback.disableReplica(entry.getKey().getNodeId(), partitionStatus.getPartitionId());
@@ -213,7 +213,7 @@ public abstract class PushStatusDecider {
           continue; // Dont add disabled replica to status map
         }
       }
-      executionStatusMap.merge(currentStatus, 1, Integer::sum);
+      executionStatusMap.merge(currentStatus.getRootStatus(), 1, Integer::sum);
     }
 
     Integer statusCount = executionStatusMap.get(COMPLETED);
@@ -240,7 +240,7 @@ public abstract class PushStatusDecider {
 
   boolean isPushjobKilled(List<StatusSnapshot> snapshotList) {
     for (StatusSnapshot snapshot: snapshotList) {
-      if (snapshot.getStatus() == ERROR && snapshot.getIncrementalPushVersion().contains(KILLED_JOB_MESSAGE)) {
+      if (snapshot.getStatus().isError() && snapshot.getIncrementalPushVersion().contains(KILLED_JOB_MESSAGE)) {
         return true;
       }
     }

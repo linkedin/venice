@@ -61,10 +61,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    * A gauge reporting the total the percentage of hybrid quota used.
    */
   private double hybridQuotaUsageGauge;
-  /**
-   * A gauge reporting the disk capacity allowed for a store
-   */
-  private long diskQuotaAllowedGauge;
   // Measure the avg/max time we need to spend on waiting for the leader producer
   private final Sensor leaderProducerSynchronizeLatencySensor;
   // Measure the avg/max latency for data lookup and deserialization
@@ -434,12 +430,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     totalBytesReadFromKafkaAsUncompressedSizeRate.record(bytes);
   }
 
-  public void recordStorageQuotaUsed(double quotaUsed, long currentTimeMs) {
+  public void recordStorageQuotaUsed(double quotaUsed) {
     hybridQuotaUsageGauge = quotaUsed;
-  }
-
-  public void recordDiskQuotaAllowed(long quotaAllowed, long currentTimeMs) {
-    diskQuotaAllowedGauge = quotaAllowed;
   }
 
   public void recordConsumerRecordsQueuePutLatency(double latency, long currentTimeMs) {

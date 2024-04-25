@@ -83,7 +83,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
 
   @Override
   public void removeStorageEngine(String topicName) {
-    getStorageService().removeStorageEngine(topicName);
+    this.storageService.removeStorageEngine(topicName);
   }
 
   @Override
@@ -97,7 +97,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
     // Drops corresponding data partition from storage.
-    getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
+    this.storageService.dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
   }
 
   @Override
@@ -145,18 +145,8 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public StorageMetadataService getStorageMetadataService() {
-    return storageMetadataService;
-  }
-
-  @Override
   public KafkaStoreIngestionService getStoreIngestionService() {
     return storeIngestionService;
-  }
-
-  @Override
-  public StorageService getStorageService() {
-    return storageService;
   }
 
   @Override

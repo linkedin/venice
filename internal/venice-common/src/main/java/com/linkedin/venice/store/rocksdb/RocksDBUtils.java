@@ -18,6 +18,7 @@ public class RocksDBUtils {
   private static final String TEMP_RMD_SST_FILE_DIR = ".sst_rmd_files";
   private static final String TEMP_SST_FILE_PREFIX = "sst_file_";
   private static final String TEMP_RMD_SST_FILE_PREFIX = "sst_rmd_file_";
+  private static final String TEMP_SNAPSHOT_DIR = ".snapshot_files";
 
   public static String getPartitionDbName(String storeName, int partitionId) {
     return String.format(PARTITION_DB_NAME, storeName, partitionId);
@@ -45,6 +46,11 @@ public class RocksDBUtils {
 
   public static String composePartitionDbDir(String dbDir, String storeName, int partitionId) {
     return dbDir + File.separator + storeName + File.separator + getPartitionDbName(storeName, partitionId);
+  }
+
+  // ex. /db/directory/storeName/storeName_3/.snapshot_files
+  public static String composeSnapshotDir(String dbDir, String storeName, int partitionId) {
+    return composePartitionDbDir(dbDir, storeName, partitionId) + File.separator + TEMP_SNAPSHOT_DIR;
   }
 
   public static String composeTempSSTFileDir(String dbDir, String storeName, int partitionId) {

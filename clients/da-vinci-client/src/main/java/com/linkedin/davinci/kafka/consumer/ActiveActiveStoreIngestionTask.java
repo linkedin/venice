@@ -515,7 +515,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
          * 2. Write to the VT only after we get the ack for all views AND the previous write to VT was queued into the
          *    producer (but not necessarily acked).
          */
-        Long preprocessingTime = System.currentTimeMillis();
+        long preprocessingTime = System.currentTimeMillis();
         CompletableFuture currentVersionTopicWrite = new CompletableFuture();
         CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
         int index = 0;

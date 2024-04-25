@@ -172,6 +172,8 @@ public abstract class AbstractStore implements Store {
 
       version.setIncrementalPushEnabled(isIncrementalPushEnabled());
 
+      version.setBlobTransferEnabled(isBlobTransferEnabled());
+
       version.setUseVersionLevelIncrementalPushEnabled(true);
 
       HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();

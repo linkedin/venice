@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.extractTempSSTFileNo;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.isTempSSTFile;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -21,6 +22,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.Checkpoint;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.IngestExternalFileOptions;
@@ -77,6 +79,7 @@ public class RocksDBSstFileWriter {
   private long recordNumInCurrentSSTFile = 0;
   private long recordNumInAllSSTFiles = 0;
   private String fullPathForTempSSTFileDir;
+  private final String fullPathForPartitionDBSnapshot;
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
   private final String storeName;
   private final int partitionId;
@@ -85,7 +88,12 @@ public class RocksDBSstFileWriter {
   private final boolean isRMD;
   private final RocksDBServerConfig rocksDBServerConfig;
 
-  // Visible for testing
+  @VisibleForTesting
+  protected Checkpoint createCheckpoint(RocksDB rocksDB) {
+    return Checkpoint.create(rocksDB);
+  }
+
+  @VisibleForTesting
   public String getLastCheckPointedSSTFileNum() {
     return lastCheckPointedSSTFileNum;
   }
@@ -100,12 +108,15 @@ public class RocksDBSstFileWriter {
       Options options,
       String fullPathForTempSSTFileDir,
       boolean isRMD,
-      RocksDBServerConfig rocksDBServerConfig) {
+      RocksDBServerConfig rocksDBServerConfig,
+      boolean blobTransferEnabled) {
     this.storeName = storeName;
     this.partitionId = partitionId;
     this.envOptions = envOptions;
     this.options = options;
     this.fullPathForTempSSTFileDir = fullPathForTempSSTFileDir;
+    this.fullPathForPartitionDBSnapshot =
+        blobTransferEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId) : null;
     this.isRMD = isRMD;
     this.lastCheckPointedSSTFileNum = isRMD ? ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO : ROCKSDB_LAST_FINISHED_SST_FILE_NO;
     this.rocksDBServerConfig = rocksDBServerConfig;
@@ -487,6 +498,25 @@ public class RocksDBSstFileWriter {
           sstFilePaths);
     } catch (RocksDBException e) {
       throw new VeniceException("Received exception during RocksDB#ingestExternalFile", e);
+    }
+  }
+
+  public void createSnapshot(RocksDB rocksDB) {
+    if (fullPathForPartitionDBSnapshot == null || fullPathForPartitionDBSnapshot.isEmpty()) {
+      return;
+    }
+
+    try {
+      Checkpoint checkpoint = createCheckpoint(rocksDB);
+
+      LOGGER.info("Start creating snapshots in directory: {}", this.fullPathForPartitionDBSnapshot);
+      checkpoint.createCheckpoint(this.fullPathForPartitionDBSnapshot);
+
+      LOGGER.info("Finished creating snapshots in directory: {}", this.fullPathForPartitionDBSnapshot);
+    } catch (RocksDBException e) {
+      throw new VeniceException(
+          "Received exception during RocksDB's snapshot creation in directory " + this.fullPathForPartitionDBSnapshot,
+          e);
     }
   }
 

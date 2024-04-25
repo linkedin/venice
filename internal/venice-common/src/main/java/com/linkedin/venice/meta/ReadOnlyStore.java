@@ -482,6 +482,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isBlobTransferEnabled() {
+      return this.delegate.isBlobTransferEnabled();
+    }
+
+    @Override
+    public void setBlobTransferEnabled(boolean blobTransferEnabled) {
+      throw new UnsupportedOperationException("Blob transfer not supported");
+    }
+
+    @Override
     public boolean isUseVersionLevelIncrementalPushEnabled() {
       return this.delegate.isUseVersionLevelIncrementalPushEnabled();
     }
@@ -1331,6 +1341,16 @@ public class ReadOnlyStore implements Store {
   @Override
   public boolean isUnusedSchemaDeletionEnabled() {
     return this.delegate.isUnusedSchemaDeletionEnabled();
+  }
+
+  @Override
+  public void setBlobTransferEnabled(boolean blobTransferEnabled) {
+    throw new UnsupportedOperationException("Blob transfer not supported");
+  }
+
+  @Override
+  public boolean isBlobTransferEnabled() {
+    return this.delegate.isBlobTransferEnabled();
   }
 
   @Override

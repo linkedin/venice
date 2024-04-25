@@ -221,6 +221,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setRmdVersion(store.getRmdVersion());
     setViewConfigs(store.getViewConfigs());
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
 
@@ -856,6 +857,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isUnusedSchemaDeletionEnabled() {
     return this.storeProperties.unusedSchemaDeletionEnabled;
+  }
+
+  @Override
+  public void setBlobTransferEnabled(boolean blobTransferEnabled) {
+    this.storeProperties.blobTransferEnabled = blobTransferEnabled;
+  }
+
+  @Override
+  public boolean isBlobTransferEnabled() {
+    return this.storeProperties.blobTransferEnabled;
   }
 
   /**

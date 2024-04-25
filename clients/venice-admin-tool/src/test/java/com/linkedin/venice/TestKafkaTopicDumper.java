@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.chunking.TestChunkingUtils;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -66,6 +67,7 @@ public class TestKafkaTopicDumper {
     StoreInfo storeInfo = mock(StoreInfo.class);
 
     Version version = mock(Version.class);
+    when(version.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     when(version.isChunkingEnabled()).thenReturn(true);
 
     when(storeInfo.getPartitionCount()).thenReturn(2);
@@ -188,6 +190,7 @@ public class TestKafkaTopicDumper {
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = mock(StoreInfo.class);
     Version version = mock(Version.class);
+    when(version.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     when(version.isChunkingEnabled()).thenReturn(false);
     when(storeInfo.getPartitionCount()).thenReturn(1);
     when(storeInfo.isActiveActiveReplicationEnabled()).thenReturn(true);

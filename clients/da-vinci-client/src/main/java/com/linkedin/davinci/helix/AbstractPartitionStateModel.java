@@ -3,7 +3,6 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
@@ -382,10 +381,6 @@ public abstract class AbstractPartitionStateModel extends StateModel {
 
   protected ReadOnlyStoreRepository getStoreRepo() {
     return storeRepository;
-  }
-
-  protected StorageService getStorageService() {
-    return ingestionBackend.getStorageService();
   }
 
   protected VeniceStoreVersionConfig getStoreAndServerConfigs() {

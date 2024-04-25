@@ -129,24 +129,6 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
     unsortedServiceDelegate.stopInner();
   }
 
-  public int getDrainerCount() {
-    return unsortedServiceDelegate.getDrainerCount() + sortedServiceDelegate.getDrainerCount();
-  }
-
-  /**
-   * This get called from StoreBufferServiceStats to track the mem usage in a drainer,
-   * in separated drainer case, we can assume first sortedPoolSize indices belong to sortedPoolSize
-   * and indices more than sortedPoolSize belong to unsorted ingestions.
-   * @param index
-   * @return
-   */
-  public long getDrainerQueueMemoryUsage(int index) {
-    if (index < sortedPoolSize) {
-      return sortedServiceDelegate.getDrainerQueueMemoryUsage(index);
-    }
-    return unsortedServiceDelegate.getDrainerQueueMemoryUsage(index - sortedPoolSize);
-  }
-
   public long getTotalMemoryUsage() {
     return unsortedServiceDelegate.getTotalMemoryUsage() + sortedServiceDelegate.getTotalMemoryUsage();
   }

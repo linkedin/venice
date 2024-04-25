@@ -13,6 +13,7 @@ import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT_STORE_LIST;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MLOCK_ENABLED;
@@ -99,6 +100,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED;
@@ -130,6 +132,7 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
+import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
@@ -137,6 +140,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
@@ -461,6 +465,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int nonExistingTopicCheckRetryIntervalSecond;
   private final boolean dedicatedConsumerPoolForAAWCLeaderEnabled;
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
+  private final boolean useDaVinciSpecificExecutionStatusForError;
+  private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
+  private final String identityParserClassName;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -758,6 +765,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED, false);
     dedicatedConsumerPoolSizeForAAWCLeader =
         serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
+    useDaVinciSpecificExecutionStatusForError =
+        serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
+    recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
+        serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
+    identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
   }
 
   long extractIngestionMemoryLimit(
@@ -1346,5 +1358,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getTopicManagerMetadataFetcherThreadPoolSize() {
     return topicManagerMetadataFetcherThreadPoolSize;
+  }
+
+  public boolean useDaVinciSpecificExecutionStatusForError() {
+    return useDaVinciSpecificExecutionStatusForError;
+  }
+
+  public boolean isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled() {
+    return recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
+  }
+
+  public String getIdentityParserClassName() {
+    return identityParserClassName;
   }
 }

@@ -14,6 +14,7 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -25,6 +26,7 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -160,7 +162,14 @@ public class AbstractTestVeniceParentHelixAdmin {
         authorizerService);
     ControllerClient mockControllerClient = mock(ControllerClient.class);
     doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
-    doReturn(new StoreResponse()).when(mockControllerClient).getStore(anyString());
+    StoreResponse storeResponse = mock(StoreResponse.class);
+    doReturn(storeResponse).when(mockControllerClient).getStore(anyString());
+    StoreInfo storeInfo = mock(StoreInfo.class);
+    doReturn(storeInfo).when(storeResponse).getStore();
+    MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
+    doReturn(Collections.emptyMap()).when(storeStatusResponse).getStoreStatusMap();
+    doReturn(storeStatusResponse).when(mockControllerClient).getFutureVersions(anyString(), anyString());
+
     parentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
         .getFabricToControllerClientsMap()

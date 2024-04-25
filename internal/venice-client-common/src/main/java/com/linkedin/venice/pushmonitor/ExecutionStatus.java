@@ -40,14 +40,14 @@ public enum ExecutionStatus {
   PROGRESS(false, true, false, false, 3),
 
   /** Tasks belonging to a Hybrid Store emits this instead of {@link ExecutionStatus#COMPLETED} when it consumes a EOP message */
-  END_OF_PUSH_RECEIVED(true, true, true, false, 4),
+  END_OF_PUSH_RECEIVED(true, true, false, false, 4),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a SOBR message */
   @Deprecated
-  START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false, 5),
+  START_OF_BUFFER_REPLAY_RECEIVED(false, true, false, false, 5),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a TS message */
-  TOPIC_SWITCH_RECEIVED(false, true, true, false, 6),
+  TOPIC_SWITCH_RECEIVED(false, true, false, false, 6),
 
   /** An incremental push job/task is started*/
   START_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, false, 7),
@@ -72,7 +72,7 @@ public enum ExecutionStatus {
   /** Job/task met error when processing the data. */
   ERROR(true, true, false, true, 12),
 
-  CATCH_UP_BASE_TOPIC_OFFSET_LAG(false, true, true, false, 13),
+  CATCH_UP_BASE_TOPIC_OFFSET_LAG(false, true, false, false, 13),
 
   /**
    * Job is terminated and be removed from repository. Should be archived to historic data storage.
@@ -88,25 +88,54 @@ public enum ExecutionStatus {
   /** Job/Task is created but ingestion haven't started yet */
   NOT_STARTED(false, true, false, false, 16),
 
-  DATA_RECOVERY_COMPLETED(false, true, false, false, 17);
+  DATA_RECOVERY_COMPLETED(false, true, false, false, 17),
+
+  /** DaVinci client specific ERRORS: rootStatus => ERROR */
+  /** DaVinci client fails ingestion due to disk reaching the threshold in the host */
+  DVC_INGESTION_ERROR_DISK_FULL(true, false, true, true, ERROR, 18),
+
+  /** DaVinci client fails ingestion due to reaching the configured memory limit in the host */
+  DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED(true, false, true, true, ERROR, 19),
+
+  /** There are too many dead DaVinci instances leading to failed push job */
+  DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES(true, false, true, true, ERROR, 20),
+
+  /** Other uncategorized DaVinci Client errors */
+  DVC_INGESTION_ERROR_OTHER(true, false, true, true, ERROR, 21);
 
   final boolean isJobStatus;
   final boolean isTaskStatus;
-  final boolean isUsedByHybridStoresOnly;
+  final boolean isUsedByDaVinciClientOnly;
   final boolean isTerminal;
-
+  final ExecutionStatus rootStatus;
   final int value;
 
   ExecutionStatus(
       boolean isJobStatus,
       boolean isTaskStatus,
-      boolean isUsedByHybridStoresOnly,
+      boolean isUsedByDaVinciClientOnly,
       boolean isTerminal,
       int value) {
     this.isJobStatus = isJobStatus;
     this.isTaskStatus = isTaskStatus;
-    this.isUsedByHybridStoresOnly = isUsedByHybridStoresOnly;
+    this.isUsedByDaVinciClientOnly = isUsedByDaVinciClientOnly;
     this.isTerminal = isTerminal;
+    this.value = value;
+    this.rootStatus = this;
+  }
+
+  ExecutionStatus(
+      boolean isJobStatus,
+      boolean isTaskStatus,
+      boolean isUsedByDaVinciClientOnly,
+      boolean isTerminal,
+      ExecutionStatus rootStatus,
+      int value) {
+    this.isJobStatus = isJobStatus;
+    this.isTaskStatus = isTaskStatus;
+    this.isUsedByDaVinciClientOnly = isUsedByDaVinciClientOnly;
+    this.isTerminal = isTerminal;
+    this.rootStatus = rootStatus;
     this.value = value;
   }
 
@@ -116,8 +145,9 @@ public enum ExecutionStatus {
    * and whether a host is ready to serve read requests.
    */
   public static boolean isDeterminedStatus(ExecutionStatus status) {
-    return status == STARTED || status == COMPLETED || status == ERROR || status == DROPPED
-        || status == END_OF_PUSH_RECEIVED;
+    ExecutionStatus rootStatus = status.getRootStatus();
+    return rootStatus == STARTED || rootStatus == COMPLETED || rootStatus == ERROR || rootStatus == DROPPED
+        || rootStatus == END_OF_PUSH_RECEIVED;
   }
 
   public boolean isJobStatus() {
@@ -128,8 +158,8 @@ public enum ExecutionStatus {
     return this.isTaskStatus;
   }
 
-  public boolean isUsedByHybridStoresOnly() {
-    return this.isUsedByHybridStoresOnly;
+  public boolean isUsedByDaVinciClientOnly() {
+    return this.isUsedByDaVinciClientOnly;
   }
 
   /**
@@ -166,5 +196,25 @@ public enum ExecutionStatus {
       return ExecutionStatus.UNKNOWN;
     }
     return status;
+  }
+
+  public ExecutionStatus getRootStatus() {
+    return this.rootStatus;
+  }
+
+  public boolean isDVCIngestionError() {
+    return (this.getRootStatus() == ERROR && this.isUsedByDaVinciClientOnly());
+  }
+
+  public boolean isError() {
+    return (this.getRootStatus() == ERROR);
+  }
+
+  public static boolean isError(String errorString) {
+    try {
+      return (ExecutionStatus.valueOf(errorString.toUpperCase()).getRootStatus() == ERROR);
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
   }
 }

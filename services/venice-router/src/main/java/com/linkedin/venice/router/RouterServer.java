@@ -2,6 +2,7 @@ package com.linkedin.venice.router;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.utils.concurrent.BlockingQueueType.LINKED_BLOCKING_QUEUE;
 
 import com.linkedin.alpini.base.concurrency.AsyncFuture;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
@@ -15,6 +16,7 @@ import com.linkedin.alpini.router.impl.Router;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -74,13 +76,16 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.netty.channel.AbstractChannel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelPipeline;
@@ -102,6 +107,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -162,10 +168,11 @@ public class RouterServer extends AbstractVeniceService {
 
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
-  private MultithreadEventLoopGroup sslResolverEventLoopGroup;
 
   private ExecutorService workerExecutor;
   private EventThrottler routerEarlyThrottler;
+
+  private final IdentityParser identityParser;
 
   // A map of optional ChannelHandlers that retains insertion order to be added at the end of the router pipeline
   private final Map<String, ChannelHandler> optionalChannelHandlers = new LinkedHashMap<>();
@@ -340,6 +347,10 @@ public class RouterServer extends AbstractVeniceService {
     this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
     this.accessController = accessController;
     this.sslFactory = sslFactory;
+
+    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(config.getIdentityParserClassName());
+    this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+
     verifySslOk();
   }
 
@@ -415,13 +426,11 @@ public class RouterServer extends AbstractVeniceService {
     }
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
     Class<? extends AbstractChannel> serverSocketChannelClass;
-    boolean useEpoll = true;
     try {
       serverEventLoopGroup = new EpollEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
       workerEventLoopGroup = new EpollEventLoopGroup(config.getRouterIOWorkerCount(), workerExecutor);
       serverSocketChannelClass = EpollServerSocketChannel.class;
     } catch (LinkageError error) {
-      useEpoll = false;
       LOGGER.info("Epoll is only supported on Linux; switching to NIO");
       serverEventLoopGroup = new NioEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
       workerEventLoopGroup = new NioEventLoopGroup(config.getRouterIOWorkerCount(), workerExecutor);
@@ -629,26 +638,16 @@ public class RouterServer extends AbstractVeniceService {
     final SslInitializer sslInitializer;
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
-      if (config.isThrottleClientSslHandshakesEnabled()) {
-        ExecutorService sslHandshakeExecutor = registry.factory(ShutdownableExecutors.class)
-            .newFixedThreadPool(
-                config.getClientSslHandshakeThreads(),
-                new DefaultThreadFactory("RouterSSLHandshakeThread", true, Thread.NORM_PRIORITY));
-        int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
-        int maxConcurrentClientSslHandshakes = config.getMaxConcurrentClientSslHandshakes();
-        int clientSslHandshakeAttempts = config.getClientSslHandshakeAttempts();
-        long clientSslHandshakeBackoffMs = config.getClientSslHandshakeBackoffMs();
-        if (useEpoll) {
-          sslResolverEventLoopGroup = new EpollEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
-        } else {
-          sslResolverEventLoopGroup = new NioEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
-        }
-        sslInitializer.enableResolveBeforeSSL(
-            sslResolverEventLoopGroup,
-            clientSslHandshakeAttempts,
-            clientSslHandshakeBackoffMs,
-            maxConcurrentClientSslHandshakes);
+      if (config.getClientSslHandshakeThreads() > 0) {
+        ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
+            config.getClientSslHandshakeThreads(),
+            "SSLHandShakeThread",
+            config.getClientSslHandshakeQueueCapacity(),
+            LINKED_BLOCKING_QUEUE);
+        new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
+        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
       }
+      sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
     } else {
       sslInitializer = null;
     }
@@ -784,9 +783,6 @@ public class RouterServer extends AbstractVeniceService {
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
-    if (sslResolverEventLoopGroup != null) {
-      sslResolverEventLoopGroup.shutdownGracefully();
-    }
 
     dispatcher.stop();
 

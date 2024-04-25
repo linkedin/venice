@@ -104,6 +104,7 @@ public class TestSystemStore {
     assertFalse(systemStore.isMigrationDuplicateStore());
     assertEquals(systemStore.getNativeReplicationSourceFabric(), "");
     assertFalse(systemStore.isDaVinciPushStatusStoreEnabled());
+    assertFalse(systemStore.isBlobTransferEnabled());
 
     // All the shared store-level property update should throw exception
     assertThrows(() -> systemStore.setOwner("test"));

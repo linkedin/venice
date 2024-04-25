@@ -42,6 +42,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import javax.annotation.Nonnegative;
@@ -100,6 +101,8 @@ public class SslInitializer extends ChannelInitializer<Channel> {
 
   private ResolveByAddress _resolveByAddress = InetAddress::getByAddress;
   private ResolveAllByName _resolveAllByName = InetAddress::getAllByName;
+
+  private Function<X509Certificate, String> _identityParser;
 
   public SslInitializer(SslFactory sslFactory, boolean requireSSL) {
     this(sslFactory, requireSSL, null);
@@ -243,6 +246,11 @@ public class SslInitializer extends ChannelInitializer<Channel> {
     return this;
   }
 
+  public SslInitializer setIdentityParser(Function<X509Certificate, String> identityParser) {
+    _identityParser = identityParser;
+    return this;
+  }
+
   protected SSLEngine createSslEngine(ByteBufAllocator allocator, SocketAddress remote) {
     SSLEngine engine;
     if (remote instanceof InetSocketAddress) {
@@ -300,10 +308,15 @@ public class SslInitializer extends ChannelInitializer<Channel> {
           try {
             for (Certificate cert: session.getPeerCertificates()) {
               if (cert instanceof X509Certificate) {
-                X500Principal cn = ((X509Certificate) cert).getSubjectX500Principal();
-                if (cn != null) {
-                  remoteCN = cn.getName();
+                if (_identityParser != null) {
+                  remoteCN = _identityParser.apply((X509Certificate) cert);
                   break;
+                } else {
+                  X500Principal cn = ((X509Certificate) cert).getSubjectX500Principal();
+                  if (cn != null) {
+                    remoteCN = cn.getName();
+                    break;
+                  }
                 }
               }
             }

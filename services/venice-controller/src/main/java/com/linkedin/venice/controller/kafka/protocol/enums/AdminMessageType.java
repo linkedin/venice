@@ -10,6 +10,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteUnusedValueSchemas;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
@@ -118,6 +119,8 @@ public enum AdminMessageType {
         return new DeleteStoragePersona();
       case UPDATE_STORAGE_PERSONA:
         return new UpdateStoragePersona();
+      case DELETE_UNUSED_VALUE_SCHEMA:
+        return new DeleteUnusedValueSchemas();
       case ROLLFORWARD_CURRENT_VERSION:
         return new RollForwardCurrentVersion();
       case ROLLBACK_CURRENT_VERSION:

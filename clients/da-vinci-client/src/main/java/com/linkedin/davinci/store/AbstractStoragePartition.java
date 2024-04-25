@@ -104,6 +104,11 @@ public abstract class AbstractStoragePartition {
   public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
 
   /**
+   * Creates a snapshot of the current state of the storage if the blob transfer feature is enabled via the store configuration
+   */
+  public abstract void createSnapshot();
+
+  /**
    * checks whether the current state of the database is valid
    * during the start of ingestion.
    */

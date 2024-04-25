@@ -54,12 +54,10 @@ public class AggHostLevelIngestionStatsTest {
     StoreIngestionTask task = Mockito.mock(StoreIngestionTask.class);
     Mockito.doReturn(true).when(task).isRunning();
 
-    fooStats.recordStorageQuotaUsed(0.6, time.getMilliseconds());
-    fooStats.recordStorageQuotaUsed(1, time.getMilliseconds());
+    fooStats.recordStorageQuotaUsed(0.6);
+    fooStats.recordStorageQuotaUsed(1);
     fooStats.recordTotalBytesReadFromKafkaAsUncompressedSize(100);
     barStats.recordTotalBytesReadFromKafkaAsUncompressedSize(200);
-    fooStats.recordDiskQuotaAllowed(100, time.getMilliseconds());
-    fooStats.recordDiskQuotaAllowed(200, time.getMilliseconds());
     fooStats.recordTotalRecordsConsumed();
     barStats.recordTotalRecordsConsumed();
     fooStats.recordTotalBytesConsumed(10);

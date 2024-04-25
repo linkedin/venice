@@ -188,7 +188,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final AvroStoreDeserializerCache storeDeserializerCache;
 
-  private AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
+  private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -3481,27 +3481,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  CompletableFuture<PubSubProduceResult> sendIngestionHeartbeatToRT(
-      PubSubTopicPartition topicPartition,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper) {
+  CompletableFuture<PubSubProduceResult> sendIngestionHeartbeatToRT(PubSubTopicPartition topicPartition) {
     return sendIngestionHeartbeat(
         topicPartition,
-        callback,
-        leaderMetadataWrapper,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
         false, // maybeSendIngestionHeartbeat logs for this case
         false,
         LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN,
         System.currentTimeMillis());
   }
 
-  private CompletableFuture<PubSubProduceResult> sendIngestionHeartbeatToVT(
+  private void sendIngestionHeartbeatToVT(
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
-    return sendIngestionHeartbeat(
+    sendIngestionHeartbeat(
         topicPartition,
         callback,
         leaderMetadataWrapper,
@@ -3584,10 +3581,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           continue;
         }
         int partition = pcs.getUserPartition();
-        CompletableFuture<PubSubProduceResult> heartBeatFuture = sendIngestionHeartbeatToRT(
-            new PubSubTopicPartitionImpl(leaderTopic, partition),
-            null,
-            DEFAULT_LEADER_METADATA_WRAPPER);
+        CompletableFuture<PubSubProduceResult> heartBeatFuture =
+            sendIngestionHeartbeatToRT(new PubSubTopicPartitionImpl(leaderTopic, partition));
         heartBeatFuture.whenComplete((ignore, throwable) -> {
           if (throwable != null) {
             completionException.set(new CompletionException(throwable));

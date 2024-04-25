@@ -278,16 +278,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   @Override
-  public int getDrainerCount() {
-    return blockingQueueArr.size();
-  }
-
-  @Override
-  public long getDrainerQueueMemoryUsage(int index) {
-    return blockingQueueArr.get(index).getMemoryUsage();
-  }
-
-  @Override
   public long getTotalMemoryUsage() {
     long totalUsage = 0;
     for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {

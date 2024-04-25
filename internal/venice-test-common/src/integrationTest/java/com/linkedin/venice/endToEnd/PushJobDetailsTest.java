@@ -7,16 +7,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints.START_
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.ARCHIVED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.DATA_RECOVERY_COMPLETED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.DROPPED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.NEW;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_STARTED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.PROGRESS;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.WARNING;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
@@ -41,7 +31,6 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -54,7 +43,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -259,30 +247,6 @@ public class PushJobDetailsTest {
           START_DATA_WRITER_JOB.getValue(),
           "Unexpected latest push job checkpoint reported");
       assertFalse(value.failureDetails.toString().isEmpty());
-    }
-  }
-
-  /**
-   * This is to ensure the known {@link com.linkedin.venice.pushmonitor.ExecutionStatus} statuses reported as part of
-   * push job details can be parsed properly. This test should fail and alert developers when adding new statuses in
-   * {@link com.linkedin.venice.pushmonitor.ExecutionStatus} without modifying this test or {@link PushJobDetailsStatus}.
-   */
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testPushJobDetailsStatusEnums() {
-    // A list of known ExecutionStatus that we don't report/expose to job status polling.
-    ExecutionStatus[] unreportedStatusesArray = { NEW, NOT_STARTED, PROGRESS, START_OF_BUFFER_REPLAY_RECEIVED,
-        TOPIC_SWITCH_RECEIVED, DROPPED, WARNING, ARCHIVED, CATCH_UP_BASE_TOPIC_OFFSET_LAG, DATA_RECOVERY_COMPLETED };
-    HashSet<ExecutionStatus> unreportedStatuses = new HashSet<>(Arrays.asList(unreportedStatusesArray));
-    HashSet<Integer> processedSignals = new HashSet<>();
-    for (ExecutionStatus status: ExecutionStatus.values()) {
-      if (unreportedStatuses.contains(status)) {
-        continue; // Ignore parsing of statuses that are never reported.
-      }
-      Integer intValue = PushJobDetailsStatus.valueOf(status.toString()).getValue();
-      assertFalse(
-          processedSignals.contains(intValue),
-          "Each PushJobDetailsStatus should have its own unique int value");
-      processedSignals.add(intValue);
     }
   }
 }

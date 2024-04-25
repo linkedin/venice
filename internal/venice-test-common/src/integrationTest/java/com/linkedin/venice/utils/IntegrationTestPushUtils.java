@@ -29,6 +29,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.KafkaTestUtils;
@@ -136,9 +137,18 @@ public class IntegrationTestPushUtils {
    * Blocking, waits for new version to go online
    */
   public static void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient) {
+    runVPJ(vpjProperties, expectedVersionNumber, controllerClient, Optional.empty());
+  }
+
+  public static void runVPJ(
+      Properties vpjProperties,
+      int expectedVersionNumber,
+      ControllerClient controllerClient,
+      Optional<DaVinciClientDiskFullTest.SentPushJobDetailsTrackerImpl> pushJobDetailsTracker) {
     long vpjStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("hybrid-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
+      pushJobDetailsTracker.ifPresent(job::setSentPushJobDetailsTracker);
       job.run();
       TestUtils.waitForNonDeterministicCompletion(
           5,
