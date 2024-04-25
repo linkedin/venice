@@ -32,8 +32,10 @@ import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.DefaultConnectionKeepAliveStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.protocol.HttpContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -73,7 +75,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
 
   private final CloseableHttpAsyncClient httpAsyncClient;
-
+  private final long keepAliveDurationMs = TimeUnit.HOURS.toMillis(1);
   private final Time time;
 
   public StoreBackupVersionCleanupService(
@@ -104,6 +106,12 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.httpAsyncClient = HttpAsyncClients.custom()
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(10000).build())
         .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
+        .setKeepAliveStrategy(new DefaultConnectionKeepAliveStrategy() {
+          @Override
+          public long getKeepAliveDuration(HttpResponse response, HttpContext context) {
+            return keepAliveDurationMs;
+          }
+        })
         .build();
   }
 
