@@ -410,10 +410,10 @@ public class TestActiveActiveIngestion {
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
-      TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Assert.assertNotNull(client.get(Integer.toString(deleteWithRmdKeyIndex + 1)).get());
       });
-      TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
