@@ -251,7 +251,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     ValueBytes valueBytes = new ValueBytes();
     valueBytes.schemaId = TEST_SCHEMA_ID;
     valueBytes.value = ByteBuffer.wrap(valueSerializer.serialize(TEST_NEW_VALUE_1));
-    bootstrappingVeniceChangelogConsumer.onRecordReceivedForStorage(
+    bootstrappingVeniceChangelogConsumer.onRecordReceivedFromStorage(
         testRecord.getKey().getKey(),
         ValueRecord.create(TEST_SCHEMA_ID, valueBytes.value.array()).serialize(),
         0,
@@ -282,7 +282,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     valueBytes.schemaId = TEST_SCHEMA_ID;
     valueBytes.value = ByteBuffer.wrap(valueSerializer.serialize(TEST_NEW_VALUE_2));
 
-    bootstrappingVeniceChangelogConsumer.onRecordReceivedForStorage(
+    bootstrappingVeniceChangelogConsumer.onRecordReceivedFromStorage(
         testRecord.getKey().getKey(),
         ValueRecord.create(TEST_SCHEMA_ID, valueBytes.value.array()).serialize(),
         1,

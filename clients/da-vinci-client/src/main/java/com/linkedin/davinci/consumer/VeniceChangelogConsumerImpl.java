@@ -52,6 +52,7 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -82,9 +83,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected StoreDeserializerCache<V> storeDeserializerCache;
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
-
-  protected final AbstractAvroChunkingAdapter<RecordChangeEvent> recordChangeEventChunkingAdapter =
-      new SpecificRecordChunkingAdapter<>();
 
   protected final AbstractAvroChunkingAdapter<V> userEventChunkingAdapter;
 
@@ -356,11 +354,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   private void pubSubConsumerSeek(PubSubTopicPartition topicPartition, Long offset) {
     // Offset the seek to next operation inside venice pub sub consumer adapter subscription logic.
-    if (offset == OffsetRecord.LOWEST_OFFSET) {
-      pubSubConsumer.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET);
-    } else {
-      pubSubConsumer.subscribe(topicPartition, offset - 1);
-    }
+    long targetOffset = offset == OffsetRecord.LOWEST_OFFSET ? OffsetRecord.LOWEST_OFFSET : offset - 1;
+    pubSubConsumer.subscribe(topicPartition, targetOffset);
+    LOGGER.info("Topic partition: {} consumer seek to offset: {}", topicPartition, targetOffset);
+    LOGGER.info("DEBUGGING SEEK stacktrace: {}", Arrays.toString(Thread.currentThread().getStackTrace()));
   }
 
   @Override
@@ -487,22 +484,51 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
       long timeoutInMs,
-      String topicSuffix) {
+      String topicSuffix,
+      boolean includeControlMessage) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messagesMap;
+    LOGGER.info("DEBUGGING POLLING BEGIN");
     synchronized (pubSubConsumer) {
       messagesMap = pubSubConsumer.poll(timeoutInMs);
     }
+    LOGGER.info("DEBUGGING POLLING FROM STACKTRACE: {}", Arrays.toString(Thread.currentThread().getStackTrace()));
     for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messagesMap
         .entrySet()) {
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
       List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
       for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
+        LOGGER.info(
+            "DEBUGGING POLL partition: {}, offset: {}, key: {}, TP: {}",
+            pubSubTopicPartition.getPartitionNumber(),
+            message.getOffset(),
+            message.getKey(),
+            message.getTopicPartition());
+        if (message.getKey().isControlMessage()) {
+          LOGGER.info(
+              "DEBUGGING POLL CONTROL partition: {}, offset: {}, key: {}, msg type: {}",
+              pubSubTopicPartition.getPartitionNumber(),
+              message.getOffset(),
+              message.getKey(),
+              ControlMessageType.valueOf((ControlMessage) message.getValue().payloadUnion));
+        }
         if (message.getKey().isControlMessage()) {
           ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
           if (handleControlMessage(controlMessage, pubSubTopicPartition, topicSuffix)) {
             break;
           }
+          if (includeControlMessage) {
+            pubSubMessages.add(
+                new ImmutableChangeCapturePubSubMessage<>(
+                    null,
+                    null,
+                    message.getTopicPartition(),
+                    message.getOffset(),
+                    0,
+                    0,
+                    false));
+          }
+
         } else {
           Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
               convertPubSubMessageToPubSubChangeEventMessage(message, pubSubTopicPartition);
@@ -511,6 +537,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
     }
     return pubSubMessages;
+  }
+
+  protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
+      long timeoutInMs,
+      String topicSuffix) {
+    return internalPoll(timeoutInMs, topicSuffix, false);
   }
 
   /**
@@ -621,11 +653,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           readerSchemaId,
           compressor);
       if (assembledObject == null) {
+        // LOGGER.info("DEBUGGING got null record before processing: {} {} {} {}", assembledObject,
+        // keyDeserializer.deserialize(message.getKey().getKey()), message.getOffset(), put.getPutValue());
         // bufferAndAssembleRecord may have only buffered records and not returned anything yet because
         // it's waiting for more input. In this case, just return an empty optional for now.
         return Optional.empty();
       }
-
+      // LOGGER.info("DEBUGGING before processed: {} offset={} key={} {} {} {} {}", assembledObject,
+      // message.getOffset(), keyDeserializer.deserialize(message.getKey().getKey()), assembledObject instanceof
+      // RecordChangeEvent, put.getPutValue().array(), put.getPutValue().position(), put.getPutValue().remaining());
       try {
         assembledObject = processRecordBytes(
             compressor.decompress(put.getPutValue()),
@@ -638,7 +674,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       } catch (Exception ex) {
         throw new VeniceException(ex);
       }
-
+      // LOGGER.info("DEBUGGING after processed: {} offset={} key={} {}", assembledObject, message.getOffset(),
+      // keyDeserializer.deserialize(message.getKey().getKey()), assembledObject instanceof RecordChangeEvent);
       if (assembledObject instanceof RecordChangeEvent) {
         recordChangeEvent = (RecordChangeEvent) assembledObject;
         replicationCheckpoint = recordChangeEvent.replicationCheckpointVector;
