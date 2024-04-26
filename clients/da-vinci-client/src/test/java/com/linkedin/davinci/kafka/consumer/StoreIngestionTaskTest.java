@@ -1367,10 +1367,12 @@ public abstract class StoreIngestionTaskTest {
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
       // Verify host-level metrics
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
-        verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
+        verify(mockStoreIngestionStats, times(3)).recordTotalBytesConsumed(anyLong());
       } else {
-        verify(mockStoreIngestionStats, times(2)).recordTotalRecordsConsumed();
+        verify(mockStoreIngestionStats, times(2)).recordTotalBytesConsumed(anyLong());
       }
+      verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
+
     }, Optional.of(hybridStoreConfig), false, Optional.empty(), AA_OFF, 1, extraProps);
   }
 
