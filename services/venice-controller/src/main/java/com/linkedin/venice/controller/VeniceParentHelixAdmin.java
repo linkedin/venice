@@ -3536,8 +3536,7 @@ public class VeniceParentHelixAdmin implements Admin {
           // Truncate topic after push is in terminal state if
           // 1. Its a hybrid store or regular push
           // 3. If target push is enabled and its previously pushed by previous colo push (status == PUSHED)
-          if (!isTargetRegionPush
-              || isTargetRegionPush && parentStore.getVersion(versionNum).get().getStatus().equals(PUSHED)
+          if (!isTargetRegionPush || parentStore.getVersion(versionNum).get().getStatus().equals(PUSHED)
               || parentStore.getVersion(versionNum).get().getHybridStoreConfig() != null) {
             LOGGER
                 .info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
