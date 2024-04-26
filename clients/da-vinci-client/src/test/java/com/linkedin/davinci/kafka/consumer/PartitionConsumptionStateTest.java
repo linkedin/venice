@@ -127,12 +127,8 @@ public class PartitionConsumptionStateTest {
   @Test
   public void testIsLeaderCompleted() {
     PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false);
-    // default is LEADER_COMPLETE_STATE_UNKNOWN
-    assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN);
-    assertFalse(pcs.isLeaderCompleted());
-
-    // test with LEADER_NOT_COMPLETED
-    pcs.setLeaderCompleteState(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    // default is LEADER_NOT_COMPLETED
+    assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_NOT_COMPLETED);
     assertFalse(pcs.isLeaderCompleted());
 
     // test with LEADER_COMPLETED

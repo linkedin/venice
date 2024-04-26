@@ -216,12 +216,6 @@ public class PartitionConsumptionState {
 
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
-  /**
-   * In case of hybrid store, wait until the first HB is received, which might have the leader completed header and base the
-   * decision on that. Check {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED} for
-   * more details.
-   */
-  private boolean firstHeartBeatSOSReceived;
 
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid) {
     this.partition = partition;
@@ -270,9 +264,8 @@ public class PartitionConsumptionState {
     // On start we haven't sent anything
     this.latestRTOffsetTriedToProduceToVTMap = new HashMap<>();
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
-    this.leaderCompleteState = LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
+    this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
-    this.firstHeartBeatSOSReceived = false;
   }
 
   public int getPartition() {
@@ -879,13 +872,5 @@ public class PartitionConsumptionState {
 
   public void setLastLeaderCompleteStateUpdateInMs(long lastLeaderCompleteStateUpdateInMs) {
     this.lastLeaderCompleteStateUpdateInMs = lastLeaderCompleteStateUpdateInMs;
-  }
-
-  public boolean isFirstHeartBeatSOSReceived() {
-    return firstHeartBeatSOSReceived;
-  }
-
-  public void setFirstHeartBeatSOSReceived(boolean firstHeartBeatSOSReceived) {
-    this.firstHeartBeatSOSReceived = firstHeartBeatSOSReceived;
   }
 }
