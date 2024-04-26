@@ -3532,18 +3532,26 @@ public class VeniceParentHelixAdmin implements Admin {
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
           ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
           Store parentStore = repository.getStore(storeName);
-          if (StringUtils.isEmpty(targetedRegions)
+          boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
+          // Truncate topic after push is in terminal state if
+          // 1. Its a hybrid store or regular push
+          // 3. If target push is enabled and its previously pushed by previous colo push (status == PUSHED)
+          if (!isTargetRegionPush
+              || isTargetRegionPush && parentStore.getVersion(versionNum).get().getStatus().equals(PUSHED)
               || parentStore.getVersion(versionNum).get().getHybridStoreConfig() != null) {
+            LOGGER
+                .info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
             truncateTopicsOptionally(
                 clusterName,
                 kafkaTopic,
                 incrementalPushVersion,
                 currentReturnStatus,
                 currentReturnStatusDetails);
+          } else {
+            int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+            parentStore.updateVersionStatus(version, PUSHED);
+            repository.updateStore(parentStore);
           }
-          int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-          parentStore.updateVersionStatus(version, PUSHED);
-          repository.updateStore(parentStore);
         }
       }
     }
