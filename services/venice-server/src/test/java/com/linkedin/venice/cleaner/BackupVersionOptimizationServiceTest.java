@@ -1,6 +1,6 @@
 package com.linkedin.venice.cleaner;
 
-import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.*;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
@@ -23,7 +23,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
@@ -62,8 +61,7 @@ public class BackupVersionOptimizationServiceTest {
     versionStatusMap.forEach((version, status) -> {
       Version versionInfo = mock(Version.class);
       doReturn(status).when(versionInfo).getStatus();
-      doReturn(Optional.of(versionInfo)).when(store).getVersion(version);
-
+      doReturn(versionInfo).when(store).getVersion(version);
     });
     doReturn(store).when(storeRepository).getStore(storeName);
 
@@ -75,17 +73,19 @@ public class BackupVersionOptimizationServiceTest {
     // Construct storage engines for two versions
     String storeName = Utils.getUniqueString();
     int backupVersion = 1;
-    int newVersion = 2;
+    int currentVersion = 2;
+    int futureVersionWhichDoesNotExistAnymore = 3;
     String backupResourceName = Version.composeKafkaTopic(storeName, backupVersion);
 
-    StorageEngineRepository storageEngineRepository = mockStorageEngineRepository(storeName, backupVersion, newVersion);
+    StorageEngineRepository storageEngineRepository =
+        mockStorageEngineRepository(storeName, backupVersion, currentVersion, futureVersionWhichDoesNotExistAnymore);
     AbstractStorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
 
     Map<Integer, VersionStatus> versionStatusMap = new HashMap<>();
     versionStatusMap.put(backupVersion, ONLINE);
-    versionStatusMap.put(newVersion, ONLINE);
+    versionStatusMap.put(currentVersion, ONLINE);
 
-    ReadOnlyStoreRepository storeRepository = mockStoreRepository(storeName, newVersion, versionStatusMap);
+    ReadOnlyStoreRepository storeRepository = mockStoreRepository(storeName, currentVersion, versionStatusMap);
 
     BackupVersionOptimizationService optimizationService = new BackupVersionOptimizationService(
         storeRepository,
@@ -112,19 +112,22 @@ public class BackupVersionOptimizationServiceTest {
     // Construct storage engines for two versions
     String storeName = Utils.getUniqueString();
     int backupVersion = 1;
-    int newVersion = 2;
+    int currentVersion = 2;
+    int futureVersion = 3;
     String backupResourceName = Version.composeKafkaTopic(storeName, backupVersion);
-    String newResourceName = Version.composeKafkaTopic(storeName, newVersion);
+    String newResourceName = Version.composeKafkaTopic(storeName, currentVersion);
 
-    StorageEngineRepository storageEngineRepository = mockStorageEngineRepository(storeName, backupVersion, newVersion);
+    StorageEngineRepository storageEngineRepository =
+        mockStorageEngineRepository(storeName, backupVersion, currentVersion, futureVersion);
     AbstractStorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
     AbstractStorageEngine newStorageEngine = storageEngineRepository.getLocalStorageEngine(newResourceName);
 
     Map<Integer, VersionStatus> versionStatusMap = new HashMap<>();
     versionStatusMap.put(backupVersion, ONLINE);
-    versionStatusMap.put(newVersion, ONLINE);
+    versionStatusMap.put(currentVersion, ONLINE);
+    versionStatusMap.put(futureVersion, STARTED);
 
-    ReadOnlyStoreRepository storeRepository = mockStoreRepository(storeName, newVersion, versionStatusMap);
+    ReadOnlyStoreRepository storeRepository = mockStoreRepository(storeName, currentVersion, versionStatusMap);
 
     BackupVersionOptimizationService optimizationService = new BackupVersionOptimizationService(
         storeRepository,

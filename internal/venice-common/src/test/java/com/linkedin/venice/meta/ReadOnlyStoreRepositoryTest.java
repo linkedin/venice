@@ -15,7 +15,6 @@ import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.utils.Pair;
 import java.time.Duration;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 
@@ -40,7 +39,7 @@ public class ReadOnlyStoreRepositoryTest {
     verify(store, atLeast(3)).getVersion(1);
 
     Version version = mock(Version.class);
-    doReturn(Optional.of(version)).when(store).getVersion(1);
+    doReturn(version).when(store).getVersion(1);
 
     res = readOnlyStoreRepository.waitVersion("test", 1, Duration.ofMillis(5000), 10);
     assertNotNull(res);

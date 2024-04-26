@@ -631,14 +631,13 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
 
-    Optional<Version> currentVersionOptional = store.getVersion(currentVersionNumber);
-    if (!currentVersionOptional.isPresent()) {
+    Version currentVersion = store.getVersion(currentVersionNumber);
+    if (currentVersion == null) {
       setupResponseAndFlush(INTERNAL_SERVER_ERROR, REQUEST_TOPIC_ERROR_MISSING_CURRENT_VERSION.getBytes(), false, ctx);
       return;
     }
 
     final HybridStoreConfig hybridStoreConfig;
-    Version currentVersion = currentVersionOptional.get();
     if (currentVersion.isUseVersionLevelHybridConfig()) {
       if (currentVersion.getHybridStoreConfig() == null) {
         setupResponseAndFlush(BAD_REQUEST, REQUEST_TOPIC_ERROR_CURRENT_VERSION_NOT_HYBRID.getBytes(), false, ctx);

@@ -165,7 +165,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     configBuilder.setValueSerializer(valueSerializer);
 
     // Set writer properties based on the store version config
-    Version storeVersionConfig = store.getVersion(version).get();
+    Version storeVersionConfig = store.getVersionOrThrow(version);
     PartitionerConfig partitionerConfig = storeVersionConfig.getPartitionerConfig();
 
     if (partitionerConfig != null) {

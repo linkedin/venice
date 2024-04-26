@@ -941,7 +941,7 @@ public class TestMetaDataHandler {
     StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
     Store store = storeSerializer.deserialize(response.content().array(), null);
     Assert.assertEquals(store.getCurrentVersion(), 1);
-    Assert.assertEquals(store.getVersion(1).get().getPushJobId(), pushId);
+    Assert.assertEquals(store.getVersion(1).getPushJobId(), pushId);
 
     response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/" + TYPE_STORE_STATE + "/" + metaSystemStoreName,
@@ -960,7 +960,7 @@ public class TestMetaDataHandler {
         serializableSystemStore.getSystemStoreType(),
         serializableSystemStore.getVeniceStore());
     Assert.assertEquals(metaSystemStore.getCurrentVersion(), 2);
-    Assert.assertEquals(metaSystemStore.getVersion(2).get().getPushJobId(), pushId);
+    Assert.assertEquals(metaSystemStore.getVersion(2).getPushJobId(), pushId);
     Assert.assertEquals(metaSystemStore.getHybridStoreConfig(), hybridStoreConfig);
 
     FullHttpResponse notFoundResponse = passRequestToMetadataHandler(
@@ -1077,7 +1077,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(badCurrentVersionStoreConfig).when(store).getHybridStoreConfig();
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
-    Mockito.doReturn(Optional.empty()).when(store).getVersion(1);
+    Mockito.doReturn(null).when(store).getVersion(1);
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -1118,7 +1118,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(1).when(currentVersion).getNumber();
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
-    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+    Mockito.doReturn(currentVersion).when(store).getVersion(1);
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -1158,7 +1158,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(1).when(currentVersion).getNumber();
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
-    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+    Mockito.doReturn(currentVersion).when(store).getVersion(1);
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -1205,7 +1205,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(true).when(currentVersion).isUseVersionLevelHybridConfig();
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
-    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+    Mockito.doReturn(currentVersion).when(store).getVersion(1);
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -1258,7 +1258,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(10).when(currentVersion).getPartitionCount();
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
-    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+    Mockito.doReturn(currentVersion).when(store).getVersion(1);
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -1314,7 +1314,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(10).when(currentVersion).getPartitionCount();
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
-    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+    Mockito.doReturn(currentVersion).when(store).getVersion(1);
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -1366,7 +1366,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(10).when(currentVersion).getPartitionCount();
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
-    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+    Mockito.doReturn(currentVersion).when(store).getVersion(1);
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
 

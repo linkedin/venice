@@ -1,7 +1,7 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.chunking.ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE;
+import static com.linkedin.venice.pubsub.PubSubConstants.*;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -235,7 +235,7 @@ public class KafkaTopicDumper implements AutoCloseable {
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partitionNumber);
 
     Long partitionBeginningOffset =
-        consumer.beginningOffset(partition, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+        consumer.beginningOffset(partition, getPubsubOffsetApiTimeoutDurationDefaultValue());
     long computedStartingOffset = Math.max(partitionBeginningOffset, startingOffset);
     LOGGER.info("Starting from offset: {}", computedStartingOffset);
     consumer.subscribe(partition, computedStartingOffset - 1);

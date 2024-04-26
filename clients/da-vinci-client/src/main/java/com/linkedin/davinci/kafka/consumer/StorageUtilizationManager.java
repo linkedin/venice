@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -120,8 +119,8 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.pausePartition = pausePartition;
     this.resumePartition = resumePartition;
     setStoreQuota(store);
-    Optional<Version> version = store.getVersion(storeVersion);
-    versionIsOnline = version.isPresent() && isVersionOnline(version.get());
+    Version version = store.getVersion(storeVersion);
+    versionIsOnline = isVersionOnline(version);
   }
 
   @Override
@@ -163,15 +162,15 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     if (!store.getName().equals(storeName)) {
       return;
     }
-    Optional<Version> version = store.getVersion(storeVersion);
-    if (!version.isPresent()) {
+    Version version = store.getVersion(storeVersion);
+    if (version == null) {
       LOGGER.debug(
           "Version: {}  doesn't exist in the store: {}",
           Version.parseVersionFromKafkaTopicName(versionTopic),
           storeName);
       return;
     }
-    versionIsOnline = isVersionOnline(version.get());
+    versionIsOnline = isVersionOnline(version);
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
       LOGGER.info(
           "Store: {} changed, updated quota from {} to {} and store quota is {}enabled, "
@@ -331,7 +330,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   }
 
   private boolean isVersionOnline(Version version) {
-    return version.getStatus().equals(VersionStatus.ONLINE);
+    return version != null && version.getStatus().equals(VersionStatus.ONLINE);
   }
 
   /**

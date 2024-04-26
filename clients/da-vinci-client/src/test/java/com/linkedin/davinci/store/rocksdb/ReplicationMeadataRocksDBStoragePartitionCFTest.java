@@ -22,7 +22,6 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.testng.annotations.AfterClass;
@@ -45,7 +44,7 @@ public class ReplicationMeadataRocksDBStoragePartitionCFTest extends Replication
     Version mockVersion = mock(Version.class);
     when(mockVersion.isActiveActiveReplicationEnabled()).thenReturn(true);
     Store mockStore = mock(Store.class);
-    when(mockStore.getVersion(versionNumber)).thenReturn(Optional.of(mockVersion));
+    when(mockStore.getVersion(versionNumber)).thenReturn(mockVersion);
     when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
 
     Properties properties = new Properties();

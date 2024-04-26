@@ -13,7 +13,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
 import org.mockito.ArgumentMatcher;
 import org.testng.Assert;
@@ -58,7 +57,7 @@ public class StorageUtilizationManagerTest {
     when(store.getName()).thenReturn(storeName);
     when(store.getStorageQuotaInByte()).thenReturn(storeQuotaInBytes);
     when(store.getPartitionCount()).thenReturn(storePartitionCount);
-    when(store.getVersion(storeVersion)).thenReturn(Optional.of(version));
+    when(store.getVersion(storeVersion)).thenReturn(version);
     when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(true);
     when(version.getStatus()).thenReturn(VersionStatus.STARTED);
 

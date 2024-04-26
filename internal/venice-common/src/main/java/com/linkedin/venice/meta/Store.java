@@ -2,12 +2,14 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 
 /**
@@ -172,14 +174,6 @@ public interface Store {
 
   void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours);
 
-  default boolean isLeaderFollowerModelEnabled() {
-    return true;
-  }
-
-  @Deprecated
-  default void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-  }
-
   String getPushStreamSourceAddress();
 
   void setPushStreamSourceAddress(String sourceAddress);
@@ -262,10 +256,6 @@ public interface Store {
 
   void setVersions(List<Version> versions);
 
-  Optional<CompressionStrategy> getVersionCompressionStrategy(int versionNumber);
-
-  void setBufferReplayForHybridForVersion(int versionNum, boolean enabled);
-
   void addVersion(Version version);
 
   void addVersion(Version version, boolean isClonedVersion);
@@ -282,7 +272,15 @@ public interface Store {
 
   Version peekNextVersion();
 
-  Optional<Version> getVersion(int versionNumber);
+  /**
+   * @param versionNumber for which to get the {@link Version}
+   * @return the {@link Version} corresponding to the provided {@param versionNumber}, or null if no such version exists
+   */
+  @Nullable
+  Version getVersion(int versionNumber);
+
+  @Nonnull
+  Version getVersionOrThrow(int versionNumber) throws StoreVersionNotFoundException;
 
   VersionStatus getVersionStatus(int versionNumber);
 

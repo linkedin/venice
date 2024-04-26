@@ -1446,21 +1446,21 @@ public class VeniceParentHelixAdmin implements Admin {
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
       Store store = getStore(clusterName, storeName);
-      Optional<Version> version = store.getVersion(currentPushVersion);
-      if (!version.isPresent()) {
+      Version version = store.getVersion(currentPushVersion);
+      if (version == null) {
         throw new VeniceException(
             "A corresponding version should exist with the ongoing push with topic " + currentPushTopic);
       }
-      String existingPushJobId = version.get().getPushJobId();
+      String existingPushJobId = version.getPushJobId();
       if (existingPushJobId.equals(pushJobId)) {
-        return version.get();
+        return version;
       }
 
       boolean isExistingPushJobARepush = Version.isPushIdRePush(existingPushJobId);
       boolean isIncomingPushJobARepush = Version.isPushIdRePush(pushJobId);
 
       if (getLingeringStoreVersionChecker()
-          .isStoreVersionLingering(store, version.get(), timer, this, requesterCert, identityParser)) {
+          .isStoreVersionLingering(store, version, timer, this, requesterCert, identityParser)) {
         if (pushType.isIncremental()) {
           /**
            * Incremental push shouldn't kill the previous full push, there could be a transient issue that parents couldn't
@@ -1470,7 +1470,7 @@ public class VeniceParentHelixAdmin implements Admin {
            * instead of running incremental push.
            */
           throw new VeniceException(
-              "Version " + version.get().getNumber() + " is not healthy in Venice backend; please "
+              "Version " + version.getNumber() + " is not healthy in Venice backend; please "
                   + "consider running a full batch push for your store: " + storeName
                   + " before running incremental push, " + "or reach out to Venice team.");
         } else {
@@ -1479,7 +1479,7 @@ public class VeniceParentHelixAdmin implements Admin {
               "Found lingering topic: {} with push id: {}. Killing the lingering version that was created at: {}",
               currentPushTopic.get(),
               existingPushJobId,
-              version.get().getCreatedTime());
+              version.getCreatedTime());
           killOfflinePush(clusterName, currentPushTopic.get(), true);
         }
       } else if (isExistingPushJobARepush && !pushType.isIncremental() && !isIncomingPushJobARepush) {
@@ -3550,10 +3550,9 @@ public class VeniceParentHelixAdmin implements Admin {
           Store parentStore = repository.getStore(storeName);
           // targetedRegions is non-empty for target region push of batch store
           boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
-          boolean isVersionPushed =
-              parentStore.getVersion(versionNum).map(v -> v.getStatus().equals(PUSHED)).orElse(false);
-          boolean isHybridStore =
-              parentStore.getVersion(versionNum).map(Version::getHybridStoreConfig).orElse(null) != null;
+          Version storeVersion = parentStore.getVersion(versionNum);
+          boolean isVersionPushed = storeVersion != null && storeVersion.getStatus().equals(PUSHED);
+          boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
           // Truncate topic after push is in terminal state if
           // 1. Its a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush is
           // false)
@@ -3681,18 +3680,18 @@ public class VeniceParentHelixAdmin implements Admin {
        */
       Store store = getVeniceHelixAdmin().getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
       boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus.isError();
-      Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
+      Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
 
       boolean incPushEnabledBatchPushSuccess = !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
       boolean nonIncPushBatchSuccess = !store.isIncrementalPushEnabled() && !currentReturnStatus.isError();
-      boolean isDeferredVersionSwap = version.map(Version::isVersionSwapDeferred).orElse(false);
+      boolean isDeferredVersionSwap = version != null && version.isVersionSwapDeferred();
 
       if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess)
           && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
         LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
         truncateKafkaTopic(kafkaTopic);
-        if (version.isPresent() && version.get().getPushType().isStreamReprocessing()) {
-          truncateKafkaTopic(Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()));
+        if (version != null && version.getPushType().isStreamReprocessing()) {
+          truncateKafkaTopic(Version.composeStreamReprocessingTopic(store.getName(), version.getNumber()));
         }
         currentReturnStatusDetails.append("Parent Kafka topic truncated");
       }

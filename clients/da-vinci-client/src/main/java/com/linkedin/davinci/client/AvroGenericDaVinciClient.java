@@ -199,9 +199,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   public int getPartitionCount() {
     throwIfNotReady();
     Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
-    return store.getVersion(store.getCurrentVersion())
-        .map(Version::getPartitionCount)
-        .orElseGet(store::getPartitionCount);
+    Version currentVersion = store.getVersion(store.getCurrentVersion());
+    return currentVersion == null ? store.getPartitionCount() : currentVersion.getPartitionCount();
   }
 
   @Override

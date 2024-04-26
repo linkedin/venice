@@ -231,9 +231,9 @@ public class TestActiveActiveReplicationForIncPush {
       for (int i = 0; i < childDatacenters.size(); i++) {
         VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(i);
         // Verify the current version should be 1.
-        Optional<Version> version =
+        Version version =
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-        Assert.assertTrue(version.isPresent(), "Version 1 is not present for DC: " + dcNames[i]);
+        Assert.assertNotNull(version, "Version 1 is not present for DC: " + dcNames[i]);
       }
       NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 

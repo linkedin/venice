@@ -136,12 +136,10 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       // For versions that have been retired, delete dictionary.
       downloadingDictionaryFutures.keySet()
           .stream()
-          .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(store.getName())) // Those topics which
-                                                                                                // belong to the current
-                                                                                                // store
-          .filter(topic -> !store.getVersion(Version.parseVersionFromKafkaTopicName(topic)).isPresent()) // Those topics
-                                                                                                         // which are
-                                                                                                         // retired
+          // Filter those topics which belong to the current store
+          .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(store.getName()))
+          // Filter those topics which are retired
+          .filter(topic -> store.getVersion(Version.parseVersionFromKafkaTopicName(topic)) != null)
           .forEach(topic -> handleVersionRetirement(topic, "Version retired"));
     }
   };
@@ -359,8 +357,6 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
                 metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(topic))))
         .filter(entry -> entry.getValue() != null)
         .map(entry -> entry.getValue().getVersion(Version.parseVersionFromKafkaTopicName(entry.getKey())))
-        .filter(Optional::isPresent)
-        .map(Optional::get)
         .filter(Objects::nonNull)
         .collect(Collectors.toList());
 

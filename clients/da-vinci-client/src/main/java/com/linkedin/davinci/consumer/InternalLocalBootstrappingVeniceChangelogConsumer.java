@@ -9,7 +9,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE;
+import static com.linkedin.venice.pubsub.PubSubConstants.*;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
@@ -158,7 +158,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
 
         PubSubTopicPartition topicPartition = getTopicPartition(partition);
         Long earliestOffset =
-            pubSubConsumer.beginningOffset(topicPartition, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+            pubSubConsumer.beginningOffset(topicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
         VeniceChangeCoordinate earliestCheckpoint = earliestOffset == null
             ? null
             : new VeniceChangeCoordinate(

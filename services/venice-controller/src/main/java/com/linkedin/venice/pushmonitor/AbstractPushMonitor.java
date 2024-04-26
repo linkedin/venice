@@ -915,9 +915,8 @@ public abstract class AbstractPushMonitor
     }
 
     if (store.isHybrid()) {
-      Optional<Version> version =
-          store.getVersion(Version.parseVersionFromKafkaTopicName(offlinePushStatus.getKafkaTopic()));
-      boolean isDataRecovery = version.isPresent() && version.get().getDataRecoveryVersionConfig() != null;
+      Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(offlinePushStatus.getKafkaTopic()));
+      boolean isDataRecovery = version != null && version.getDataRecoveryVersionConfig() != null;
       if (offlinePushStatus.isReadyToStartBufferReplay(isDataRecovery)) {
         LOGGER.info("{} is ready to start buffer replay.", offlinePushStatus.getKafkaTopic());
         RealTimeTopicSwitcher realTimeTopicSwitcher = getRealTimeTopicSwitcher();
@@ -1073,8 +1072,8 @@ public abstract class AbstractPushMonitor
        * The offline push job for this version has been killed by {@link com.linkedin.venice.controller.Admin#killOfflinePush}.
        * Don't set the status to ONLINE or swap current version.
        */
-      Optional<Version> version = store.getVersion(versionNumber);
-      if (version.isPresent() && VersionStatus.isVersionKilled(version.get().getStatus())) {
+      Version version = store.getVersion(versionNumber);
+      if (version != null && VersionStatus.isVersionKilled(version.getStatus())) {
         if (newStatus == VersionStatus.ONLINE) {
           /**
            * When a version is first killed and then completed, don't continue to update overall push status to complete
@@ -1103,7 +1102,8 @@ public abstract class AbstractPushMonitor
         if (versionNumber > store.getCurrentVersion()) {
           // Here we'll check if version swap is deferred. If so, we don't perform the setCurrentVersion. We'll continue
           // on and wait for an admin command to mark the version to 'current' OR just let the next push cycle it out.
-          if (!store.getVersion(versionNumber).isPresent()) {
+          version = store.getVersion(versionNumber);
+          if (version == null) {
             // This shouldn't be possible, but putting a check here just in case things go pear shaped
             throw new VeniceException(
                 String.format(
@@ -1111,7 +1111,7 @@ public abstract class AbstractPushMonitor
                     storeName,
                     versionNumber));
           }
-          if (store.getVersion(versionNumber).get().isVersionSwapDeferred()) {
+          if (version.isVersionSwapDeferred()) {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {}. Skipping version swap.",
                 store.getName(),

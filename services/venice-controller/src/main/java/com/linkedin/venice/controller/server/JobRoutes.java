@@ -23,7 +23,6 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -90,8 +89,7 @@ public class JobRoutes extends AbstractRoute {
       String targetedRegions) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
-    Version version = new VersionImpl(store, versionNumber);
-    String kafkaTopicName = version.kafkaTopicName();
+    String kafkaTopicName = Version.composeKafkaTopic(store, versionNumber);
 
     Admin.OfflinePushStatusInfo offlineJobStatus =
         admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region, targetedRegions);

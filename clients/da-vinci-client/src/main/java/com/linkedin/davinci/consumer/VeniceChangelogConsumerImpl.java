@@ -244,7 +244,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected VeniceCompressor getVersionCompressor(PubSubTopicPartition topicPartition) {
     Store store = storeRepository.getStore(storeName);
     String topicName = topicPartition.getPubSubTopic().getName();
-    Version version = store.getVersion(Version.parseVersionFromVersionTopicName(topicName)).get();
+    Version version = store.getVersionOrThrow(Version.parseVersionFromVersionTopicName(topicName));
     VeniceCompressor compressor;
     if (CompressionStrategy.ZSTD_WITH_DICT.equals(version.getCompressionStrategy())) {
       compressor = compressorFactory.getVersionSpecificCompressor(topicName);
