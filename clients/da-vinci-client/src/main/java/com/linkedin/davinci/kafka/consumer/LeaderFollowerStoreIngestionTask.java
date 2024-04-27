@@ -10,7 +10,6 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDB
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
-import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static java.lang.Long.max;
@@ -49,6 +48,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -1961,63 +1961,71 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
+   * For non AA hybrid stores with AGGREGATE DRP, SIT reads from parent RT while the HB is written to the child RTs.
+   * Once all hybrid stores are either AA for cross colo replication and non AA otherwise, DRP and this extra
+   * check can also be removed.
+   */
+  protected boolean shouldCheckLeaderCompleteStateInFollower() {
+    return (getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled() && this.hybridStoreConfig.isPresent()
+        && this.hybridStoreConfig.get().getDataReplicationPolicy() != DataReplicationPolicy.AGGREGATE);
+  }
+
+  /**
    * Checks whether the lag is acceptable for hybrid stores
    * <p>
-   * leaderCompleteStateCheckEnabled is not used for non AA stores: as SIT reads from parent RT for non AA
-   * stores but HB is written to local RT. This should be enabled once all hybrid stores are made AA.
+   * If the instance is a hybrid standby or DaVinciClient: Also check if <br>
+   * 1. checkLeaderCompleteStateInFollower feature is enabled based on configs <br>
+   * 2. leaderCompleteStatus has the leader state=completed and <br>
+   * 3. the last update time was within the configured time interval to not use the stale leader state: check
+   *    {@link com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS}
    */
   @Override
   protected boolean checkAndLogIfLagIsAcceptableForHybridStore(
       PartitionConsumptionState pcs,
-      long offsetLag,
-      long offsetThreshold,
+      long lag,
+      long threshold,
       boolean shouldLogLag,
       LagType lagType,
       long latestConsumedProducerTimestamp) {
-    boolean isLagAcceptable = offsetLag <= offsetThreshold;
+    boolean isLagAcceptable = lag <= threshold;
+    boolean isHybridFollower = isHybridFollower(pcs);
+
+    // if lag is acceptable and is a hybrid standby or DaVinciClient: check and
+    // override it based on leader follower state
+    if (isLagAcceptable && isHybridFollower && shouldCheckLeaderCompleteStateInFollower()) {
+      isLagAcceptable = pcs.isLeaderCompleted()
+          && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
+              .getLeaderCompleteStateCheckInFollowerValidIntervalMs());
+    }
 
     if (shouldLogLag) {
-      logLag(
-          lagType,
+      StringBuilder leaderCompleteHeaderDetails = new StringBuilder();
+      if (isHybridFollower) {
+        leaderCompleteHeaderDetails.append("Leader Complete State: {")
+            .append(pcs.getLeaderCompleteState().toString())
+            .append("}, Last update In Ms: {")
+            .append(pcs.getLastLeaderCompleteStateUpdateInMs())
+            .append("}.");
+      }
+      LOGGER.info(
+          "{} [{} lag] partition {} is {}. {}Lag: [{}] {} Threshold [{}]. {}",
+          this.ingestionTaskName,
+          lagType.prettyString(),
           pcs.getPartition(),
-          isLagAcceptable,
-          latestConsumedProducerTimestamp,
-          offsetLag,
-          offsetThreshold,
-          "");
+          (isLagAcceptable ? "not lagging" : "lagging"),
+          (lagType == OFFSET_LAG ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
+          lag,
+          lag <= threshold ? "<=" : ">",
+          threshold,
+          leaderCompleteHeaderDetails.toString());
     }
 
     return isLagAcceptable;
   }
 
-  protected void logLag(
-      LagType lagType,
-      int partition,
-      boolean isLagAcceptable,
-      long latestConsumedProducerTimestamp,
-      long lag,
-      long threshold,
-      String lagLogFooter) {
-    LOGGER.info(
-        "{} [{} lag] partition {} is {}. {}Lag: [{}] {} Threshold [{}]. {}",
-        this.ingestionTaskName,
-        lagType.prettyString(),
-        partition,
-        (isLagAcceptable ? "not lagging" : "lagging"),
-        (lagType == OFFSET_LAG ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
-        lag,
-        (isLagAcceptable ? "<" : ">"),
-        threshold,
-        lagLogFooter);
-  }
-
   /**
    * HeartBeat SOS messages carry the leader completion state in the header. This function extracts the leader completion
-   * state from that header and updates the {@param partitionConsumptionState} accordingly. <p>
-   * If there is no leader completion state header, reset the leader completion state to
-   * {@link LeaderCompleteState#LEADER_COMPLETE_STATE_UNKNOWN} as the leader don't know about this header
-   * (using old version of the code) or the leader may have rolled back to a version that doesn't support this header or
-   * this topic partition gets a new leader which doesn't support this header yet.
+   * state from that header and updates the {@param partitionConsumptionState} accordingly.
    */
   protected void getAndUpdateLeaderCompletedState(
       KafkaKey kafkaKey,
@@ -2029,7 +2037,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
       if (controlMessageType == ControlMessageType.START_OF_SEGMENT
           && Arrays.equals(kafkaKey.getKey(), KafkaKey.HEART_BEAT.getKey())) {
-        boolean isLeaderCompleteHeaderFound = false;
         LeaderCompleteState oldState = partitionConsumptionState.getLeaderCompleteState();
         LeaderCompleteState newState = oldState;
         for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
@@ -2037,14 +2044,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             newState = LeaderCompleteState.valueOf(header.value()[0]);
             partitionConsumptionState
                 .setLastLeaderCompleteStateUpdateInMs(kafkaValue.producerMetadata.messageTimestamp);
-            isLeaderCompleteHeaderFound = true;
             break; // only interested in this header here
           }
-        }
-        if (!isLeaderCompleteHeaderFound) {
-          // reset LeaderCompleteState: If a leader originally sent this header but later is rolled back to a version
-          // that doesn't support this header or this TP gets a new leader which doesn't support this header yet.
-          newState = LEADER_COMPLETE_STATE_UNKNOWN;
         }
 
         if (oldState != newState) {
@@ -2064,9 +2065,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               partitionConsumptionState.getPartition(),
               newState);
         }
-        if (!partitionConsumptionState.isFirstHeartBeatSOSReceived()) {
-          partitionConsumptionState.setFirstHeartBeatSOSReceived(true);
-        }
       }
     }
   }
@@ -2077,7 +2075,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Adding the headers during this phase instead of adding it to RT directly simplifies the logic
    * of how to identify the HB SOS from the correct version or whether the HB SOS is from the local
    * colo or remote colo, as the header inherited from an incorrect version or remote colos might
-   * provide incorrect information about the support of the header and the leader state.
+   * provide incorrect information about the leader state.
    */
   private void propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
       PartitionConsumptionState partitionConsumptionState,
@@ -3468,7 +3466,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
         false, // maybeSendIngestionHeartbeat logs for this case
         false,
-        LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN,
+        LeaderCompleteState.LEADER_NOT_COMPLETED,
         System.currentTimeMillis());
   }
 
@@ -3530,7 +3528,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * its latest processed upstream RT topic offset. At this point, the offset reflects the correct position, regardless of trailing
    * CMs or skippable data records due to DCR.
    * <p>
-   * This heartbeat message does not include a leader completion header. This maintains the leader completion states only in VTs and not
+   * This heartbeat message does not send a leader completion header. This results in having the leader completion states only in VTs and not
    * in the RT, avoiding the need to differentiate between heartbeats from leaders of different versions (backup/current/future) and colos.
    *
    * @return the set of partitions that failed to send heartbeat (used for tests)
