@@ -3502,6 +3502,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Topic should also be considered to get cleaned up if:
+   * retention is less than the configured {@linkplain ConfigKeys#DEPRECATED_TOPIC_MAX_RETENTION_MS} value.
+   * or
+   * 1. Topic retention equals fatalDataValidationFailureRetentionMs.
+   * 2. Topic is a version topic.
+   * 3. fatalDataValidationFailureRetentionMs has already passed since its creation.
+   */
+  @Override
+  public boolean isTopicTruncatedBasedOnRetention(String kafkaTopicName, long retentionTime) {
+    if (isTopicTruncatedBasedOnRetention(retentionTime)) {
+      return true;
+    }
+
+    if (retentionTime == fatalDataValidationFailureRetentionMs && Version.isVersionTopic(kafkaTopicName)) {
+      PushJobStatusRecordKey storeVersionKey = new PushJobStatusRecordKey();
+      storeVersionKey.storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+      storeVersionKey.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopicName);
+      try {
+        PushJobDetails jobDetails = getPushJobDetails(storeVersionKey);
+        if (jobDetails != null) {
+          /** Use {@link PushJobDetails.reportTimestamp} to approximate time of topic creation.*/
+          if (LatencyUtils.getElapsedTimeInMs(jobDetails.reportTimestamp) > fatalDataValidationFailureRetentionMs) {
+            return true;
+          }
+        }
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Failed to get push job details for store: {}, version: {}",
+            storeVersionKey.storeName,
+            storeVersionKey.versionNumber,
+            e);
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * @return the controller configuration value for MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE.
    * @see ConfigKeys#MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE
    */
@@ -8228,5 +8266,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // Visible for testing
   VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
+  }
+
+  // Only for testing
+  public void setPushJobDetailsStoreClient(AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client) {
+    pushJobDetailsStoreClient = client;
   }
 }

@@ -682,6 +682,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   boolean isTopicTruncatedBasedOnRetention(long retention);
 
+  boolean isTopicTruncatedBasedOnRetention(String topicName, long retention);
+
   int getMinNumberOfUnusedKafkaTopicsToPreserve();
 
   /**

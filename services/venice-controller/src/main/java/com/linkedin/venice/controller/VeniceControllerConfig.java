@@ -422,7 +422,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
 
     this.fatalDataValidationFailureRetentionMs =
-        props.getLong(FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS, TimeUnit.DAYS.toMillis(5));
+        props.getLong(FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS, TimeUnit.DAYS.toMillis(2));
 
     this.topicCleanupSleepIntervalBetweenTopicListFetchMs =
         props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30
