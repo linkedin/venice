@@ -168,6 +168,7 @@ public class RouterServer extends AbstractVeniceService {
 
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
+  private MultithreadEventLoopGroup sslResolverEventLoopGroup;
 
   private ExecutorService workerExecutor;
   private EventThrottler routerEarlyThrottler;
@@ -426,11 +427,13 @@ public class RouterServer extends AbstractVeniceService {
     }
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
     Class<? extends AbstractChannel> serverSocketChannelClass;
+    boolean useEpoll = true;
     try {
       serverEventLoopGroup = new EpollEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
       workerEventLoopGroup = new EpollEventLoopGroup(config.getRouterIOWorkerCount(), workerExecutor);
       serverSocketChannelClass = EpollServerSocketChannel.class;
     } catch (LinkageError error) {
+      useEpoll = false;
       LOGGER.info("Epoll is only supported on Linux; switching to NIO");
       serverEventLoopGroup = new NioEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
       workerEventLoopGroup = new NioEventLoopGroup(config.getRouterIOWorkerCount(), workerExecutor);
@@ -639,15 +642,37 @@ public class RouterServer extends AbstractVeniceService {
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (config.getClientSslHandshakeThreads() > 0) {
-        ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
-            config.getClientSslHandshakeThreads(),
-            "SSLHandShakeThread",
-            config.getClientSslHandshakeQueueCapacity(),
-            LINKED_BLOCKING_QUEUE);
-        new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
-        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+        if (!config.isResolveBeforeSSL()) {
+          ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
+              config.getClientSslHandshakeThreads(),
+              "SSLHandShakeThread",
+              config.getClientSslHandshakeQueueCapacity(),
+              LINKED_BLOCKING_QUEUE);
+          new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
+          sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+        } else {
+          ExecutorService sslHandshakeExecutor = registry.factory(ShutdownableExecutors.class)
+              .newFixedThreadPool(
+                  config.getClientSslHandshakeThreads(),
+                  new DefaultThreadFactory("RouterDNSBeforeSSLThread", true, Thread.NORM_PRIORITY));
+          int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
+          int maxConcurrentResolution = config.getMaxConcurrentResolutions();
+          int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
+          long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
+          if (useEpoll) {
+            sslResolverEventLoopGroup = new EpollEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
+          } else {
+            sslResolverEventLoopGroup = new NioEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
+          }
+          sslInitializer.enableResolveBeforeSSL(
+              sslResolverEventLoopGroup,
+              clientResolutionRetryAttempts,
+              clientResolutionRetryBackoffMs,
+              maxConcurrentResolution);
+        }
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
+      securityStats.registerSslHandshakeSensors(sslInitializer);
     } else {
       sslInitializer = null;
     }

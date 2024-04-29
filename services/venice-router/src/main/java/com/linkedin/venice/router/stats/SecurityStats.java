@@ -1,8 +1,10 @@
 package com.linkedin.venice.router.stats;
 
+import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
@@ -48,5 +50,17 @@ public class SecurityStats extends AbstractVeniceStats {
    */
   private void recordLiveConnectionCount() {
     this.sslLiveConnectionCount.record(secureConnectionCountSupplier.getAsInt());
+  }
+
+  public void registerSslHandshakeSensors(SslInitializer sslInitializer) {
+    registerSensor(
+        new AsyncGauge(
+            (ignored1, ignored2) -> sslInitializer.getHandshakesStarted()
+                - (sslInitializer.getHandshakesSuccessful() + sslInitializer.getHandshakesFailed()),
+            "pending_ssl_handshake_count"));
+    registerSensor(
+        new AsyncGauge(
+            (ignored1, ignored2) -> sslInitializer.getHandshakesFailed(),
+            "total_failed_ssl_handshake_count"));
   }
 }
