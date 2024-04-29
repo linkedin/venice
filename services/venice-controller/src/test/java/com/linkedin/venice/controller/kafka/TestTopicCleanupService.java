@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka;
 
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
@@ -109,8 +110,8 @@ public class TestTopicCleanupService {
   public void testExtractVeniceTopicsToCleanup() {
     final long LOW_RETENTION_POLICY = 1000L;
     final long HIGH_RETENTION_POLICY = Long.MAX_VALUE;
-    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(LOW_RETENTION_POLICY);
-    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(HIGH_RETENTION_POLICY);
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(LOW_RETENTION_POLICY));
+    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(HIGH_RETENTION_POLICY));
     Map<PubSubTopic, Long> topicRetentions1 = new HashMap<>();
     topicRetentions1.put(pubSubTopicRepository.getTopic("store1_v1"), LOW_RETENTION_POLICY);
     topicRetentions1.put(pubSubTopicRepository.getTopic("store1_v2"), LOW_RETENTION_POLICY);
@@ -203,6 +204,8 @@ public class TestTopicCleanupService {
     when(remoteTopicManager.listTopics()).thenReturn(remoteTopics.keySet()).thenReturn(remoteTopics2.keySet());
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
 
     topicCleanupService.cleanupVeniceTopics();
@@ -266,6 +269,8 @@ public class TestTopicCleanupService {
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
     doReturn(true).when(admin).isLeaderControllerOfControllerCluster();
     // Resource is still alive
     doReturn(true).when(admin).isResourceStillAlive(storeName2 + "_v2");
@@ -306,6 +311,8 @@ public class TestTopicCleanupService {
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
     when(admin.isLeaderControllerOfControllerCluster()).thenReturn(true).thenReturn(false);
 
     topicCleanupService.start();
@@ -337,6 +344,8 @@ public class TestTopicCleanupService {
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
     when(admin.isLeaderControllerOfControllerCluster()).thenReturn(false).thenReturn(true);
 
     topicCleanupService.start();
@@ -365,7 +374,8 @@ public class TestTopicCleanupService {
     topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2)), Long.MAX_VALUE);
     topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 3)), Long.MAX_VALUE);
 
-    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000);
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
     doReturn(false).when(admin).isResourceStillAlive(anyString());
 
     List<PubSubTopic> deletableTopics = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions, 2, 0);
@@ -390,6 +400,8 @@ public class TestTopicCleanupService {
     storeTopics.put(getPubSubTopic(storeName, "_rt"), 1000L);
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
     doReturn(storeTopics).when(remoteTopicManager).getAllTopicRetentions();
     doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
@@ -408,6 +420,8 @@ public class TestTopicCleanupService {
     storeTopics.put(getPubSubTopic(storeName, "_rt"), 1000L);
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
     doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     when(remoteTopicManager.listTopics()).thenThrow(new VeniceException("test")).thenReturn(storeTopics.keySet());
@@ -436,6 +450,8 @@ public class TestTopicCleanupService {
     storeTopics2.put(getPubSubTopic(storeName, "_v2"), 1000L);
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
     when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1).thenReturn(storeTopics2);
     doReturn(storeTopics2).when(remoteTopicManager).getAllTopicRetentions();
 
