@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub.manager;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -490,5 +491,41 @@ public class TopicMetadataFetcherTest {
     when(consumerMock.offsetForTime(eq(tp0), eq(ts), any(Duration.class))).thenReturn(null);
     assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), latestOffset);
     assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testConsumerIsReleasedBackToPoolWhenThreadIsTerminated() {
+    PubSubTopicPartitionInfo tp0Info = new PubSubTopicPartitionInfo(pubSubTopic, 0, true);
+    PubSubTopicPartitionInfo tp1Info = new PubSubTopicPartitionInfo(pubSubTopic, 1, true);
+    List<PubSubTopicPartitionInfo> partitionInfo = Arrays.asList(tp0Info, tp1Info);
+
+    doAnswer(invocation -> {
+      Thread.sleep(Integer.MAX_VALUE);
+      return partitionInfo;
+    }).when(consumerMock).partitionsFor(pubSubTopic);
+
+    Thread asyncThread = new Thread(() -> {
+      try {
+        topicMetadataFetcher.getTopicPartitionInfo(pubSubTopic);
+      } catch (Exception e) {
+        fail("Should not throw exception");
+      }
+    });
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+    asyncThread.start();
+
+    waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      assertTrue(
+          asyncThread.getState().equals(Thread.State.WAITING)
+              || asyncThread.getState().equals(Thread.State.TIMED_WAITING)
+              || asyncThread.getState().equals(Thread.State.BLOCKED)
+              || asyncThread.getState().equals(Thread.State.TERMINATED));
+    });
+    assertEquals(pubSubConsumerPool.size(), 0);
+    asyncThread.interrupt();
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertEquals(pubSubConsumerPool.size(), 1);
+    });
   }
 }

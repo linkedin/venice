@@ -212,11 +212,6 @@ class TopicMetadataFetcher implements Closeable {
     }
     long waitUntil = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
     while (System.currentTimeMillis() <= waitUntil && !closeables.isEmpty()) {
-      LOGGER.info(
-          "Waiting for {} consumers to be closed for pubSubClusterAddress: {} remainingTime: {} ms",
-          closeables.size(),
-          pubSubClusterAddress,
-          waitUntil - System.currentTimeMillis());
       PubSubConsumerAdapter pubSubConsumerAdapter = null;
       try {
         pubSubConsumerAdapter = pubSubConsumerPool.poll(5, MILLISECONDS);
