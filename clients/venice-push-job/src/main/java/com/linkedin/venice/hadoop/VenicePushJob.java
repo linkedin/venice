@@ -835,7 +835,10 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
-      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
+      // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
+      if (!pushJobSetting.isTargetedRegionPushEnabled) {
+        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
+      }
       pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
       updatePushJobDetailsWithConfigs();
       updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
@@ -961,6 +964,7 @@ public class VenicePushJob implements AutoCloseable {
           RegionUtils.composeRegionList(candidateRegions),
           false);
     }
+    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
     sendPushJobDetailsToController();
   }
 
