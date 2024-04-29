@@ -161,11 +161,8 @@ class TopicMetadataFetcher implements Closeable {
 
   // release the consumer back to the pool
   private void releaseConsumer(PubSubConsumerAdapter pubSubConsumerAdapter) {
-    try {
-      pubSubConsumerPool.put(pubSubConsumerAdapter);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new VeniceException("Interrupted while releasing pubSubConsumerAdapter", e);
+    if (!pubSubConsumerPool.offer(pubSubConsumerAdapter)) {
+      LOGGER.error("Failed to release pubSubConsumerAdapter back to the pool. Closing the consumer.");
     }
   }
 
