@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.manager;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE;
+import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CONSUMER_ACQUISITION_WAIT_TIME;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CONTAINS_TOPIC;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_OFFSET_FOR_TIME;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_PARTITION_LATEST_OFFSETS;
@@ -49,6 +50,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -86,6 +88,7 @@ class TopicMetadataFetcher implements Closeable {
   private final Map<PubSubTopicPartition, ValueAndExpiryTime<Long>> lastProducerTimestampCache =
       new VeniceConcurrentHashMap<>();
   private final long cachedEntryTtlInNs;
+  private final AtomicInteger consumerWaitListSize = new AtomicInteger(0);
 
   TopicMetadataFetcher(
       String pubSubClusterAddress,
@@ -125,6 +128,8 @@ class TopicMetadataFetcher implements Closeable {
         new DaemonThreadFactory("TopicMetadataFetcherThreadPool"));
     threadPoolExecutor.allowCoreThreadTimeOut(true);
 
+    stats.registerTopicMetadataFetcherSensors(this);
+
     LOGGER.info(
         "Initialized TopicMetadataFetcher for pubSubClusterAddress: {} with consumer pool size: {} and thread pool size: {}",
         pubSubClusterAddress,
@@ -152,10 +157,16 @@ class TopicMetadataFetcher implements Closeable {
   // acquire the consumer from the pool
   private PubSubConsumerAdapter acquireConsumer() {
     try {
-      return pubSubConsumerPool.take();
+      consumerWaitListSize.incrementAndGet();
+      long startTime = System.nanoTime();
+      PubSubConsumerAdapter consumerAdapter = pubSubConsumerPool.take();
+      stats.recordLatency(CONSUMER_ACQUISITION_WAIT_TIME, startTime);
+      return consumerAdapter;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new VeniceException("Interrupted while acquiring pubSubConsumerAdapter", e);
+    } finally {
+      consumerWaitListSize.decrementAndGet();
     }
   }
 
@@ -749,6 +760,22 @@ class TopicMetadataFetcher implements Closeable {
     void setUpdateInProgressStatus(boolean status) {
       this.isUpdateInProgress.set(status);
     }
+  }
+
+  int getCurrentConsumerPoolSize() {
+    return pubSubConsumerPool.size();
+  }
+
+  int getAsyncTaskActiveThreadCount() {
+    return threadPoolExecutor.getActiveCount();
+  }
+
+  int getAsyncTaskQueueLength() {
+    return threadPoolExecutor.getQueue().size();
+  }
+
+  int getConsumerWaitListSize() {
+    return consumerWaitListSize.get();
   }
 
   @Override
