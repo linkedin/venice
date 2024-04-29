@@ -20,21 +20,22 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.DefaultConnectionKeepAliveStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.protocol.HttpContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -66,8 +67,6 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Thread cleanupThread;
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
-
-  private final Map<String, String> urlMap = new HashMap<>();
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
   private final Map<String, StoreBackupVersionCleanupServiceStats> clusterNameCleanupStatsMap =
@@ -76,7 +75,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
 
   private final CloseableHttpAsyncClient httpAsyncClient;
-
+  private final long keepAliveDurationMs = TimeUnit.HOURS.toMillis(1);
   private final Time time;
 
   public StoreBackupVersionCleanupService(
@@ -107,6 +106,12 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.httpAsyncClient = HttpAsyncClients.custom()
         .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(10000).build())
         .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
+        .setKeepAliveStrategy(new DefaultConnectionKeepAliveStrategy() {
+          @Override
+          public long getKeepAliveDuration(HttpResponse response, HttpContext context) {
+            return keepAliveDurationMs;
+          }
+        })
         .build();
   }
 
@@ -135,6 +140,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   }
 
   protected static boolean whetherStoreReadyToBeCleanup(Store store, long defaultBackupVersionRetentionMs, Time time) {
+    if (store.getCurrentVersion() == NON_EXISTING_VERSION || store.getVersions().size() < 2) {
+      return false;
+    }
     long backupVersionRetentionMs = store.getBackupVersionRetentionMs();
     if (backupVersionRetentionMs < 0) {
       backupVersionRetentionMs = defaultBackupVersionRetentionMs;
@@ -230,12 +238,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     }
 
     List<Version> versions = store.getVersions();
-    List<Version> readyToBeRemovedVersions = new ArrayList<>();
     int currentVersion = store.getCurrentVersion();
-
-    if (currentVersion == NON_EXISTING_VERSION) {
-      return false;
-    }
 
     // Do not delete version unless all routers and all servers are on same current version
     if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionMetadataFetchBasedCleanupEnabled()
@@ -246,12 +249,9 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       stats.recordBackupVersionMismatch();
       return false;
     }
+    List<Version> readyToBeRemovedVersions =
+        versions.stream().filter(v -> v.getNumber() < currentVersion).collect(Collectors.toList());
 
-    versions.forEach(v -> {
-      if (v.getNumber() < currentVersion) {
-        readyToBeRemovedVersions.add(v);
-      }
-    });
     if (readyToBeRemovedVersions.isEmpty()) {
       return false;
     }

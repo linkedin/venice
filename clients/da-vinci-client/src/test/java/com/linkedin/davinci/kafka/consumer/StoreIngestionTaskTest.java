@@ -36,7 +36,6 @@ import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicComplet
 import static com.linkedin.venice.utils.Time.MS_PER_DAY;
 import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
-import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static com.linkedin.venice.writer.VeniceWriter.generateHeartbeatMessage;
@@ -292,8 +291,9 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @DataProvider
-  public static Object[][] nodeTypeAndAAConfigProvider() {
-    return DataProviderUtils.allPermutationGenerator(NodeType.values(), AAConfig.values());
+  public static Object[][] nodeTypeAndAAConfigAndDRPProvider() {
+    return DataProviderUtils
+        .allPermutationGenerator(NodeType.values(), AAConfig.values(), DataReplicationPolicy.values());
   }
 
   @DataProvider
@@ -1367,10 +1367,12 @@ public abstract class StoreIngestionTaskTest {
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
       // Verify host-level metrics
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
-        verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
+        verify(mockStoreIngestionStats, times(3)).recordTotalBytesConsumed(anyLong());
       } else {
-        verify(mockStoreIngestionStats, times(2)).recordTotalRecordsConsumed();
+        verify(mockStoreIngestionStats, times(2)).recordTotalBytesConsumed(anyLong());
       }
+      verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
+
     }, Optional.of(hybridStoreConfig), false, Optional.empty(), AA_OFF, 1, extraProps);
   }
 
@@ -2862,8 +2864,8 @@ public abstract class StoreIngestionTaskTest {
         "Remote consumer should not poll for new records but return previously cached records");
   }
 
-  @Test(dataProvider = "nodeTypeAndAAConfigProvider")
-  public void testIsReadyToServe(NodeType nodeType, AAConfig aaConfig) {
+  @Test(dataProvider = "nodeTypeAndAAConfigAndDRPProvider")
+  public void testIsReadyToServe(NodeType nodeType, AAConfig aaConfig, DataReplicationPolicy dataReplicationPolicy) {
     int partitionCount = 2;
     int amplificationFactor = 1;
 
@@ -2872,12 +2874,8 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100,
-        100,
-        100,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig =
+        new HybridStoreConfigImpl(100, 100, 100, dataReplicationPolicy, BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -3003,16 +3001,15 @@ public abstract class StoreIngestionTaskTest {
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
     } else {
-      // case 5b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      // case 5b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
       assertEquals(
           storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp),
-          aaConfig == AA_OFF);
+          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
       // case 5c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsBufferReplayStartedLagCaughtUp).isLeaderCompleted();
-      doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isFirstHeartBeatSOSReceived();
       doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedLagCaughtUp)
           .getLastLeaderCompleteStateUpdateInMs();
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
@@ -3037,16 +3034,15 @@ public abstract class StoreIngestionTaskTest {
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
       assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
     } else {
-      // case 6b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      // case 6b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
       assertEquals(
           storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
-          aaConfig == AA_OFF);
+          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
       // case 6c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsBufferReplayStartedRemoteLagging).isLeaderCompleted();
-      doReturn(true).when(mockPcsBufferReplayStartedRemoteLagging).isFirstHeartBeatSOSReceived();
       doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedRemoteLagging)
           .getLastLeaderCompleteStateUpdateInMs();
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
@@ -3073,16 +3069,15 @@ public abstract class StoreIngestionTaskTest {
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
       assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
     } else {
-      // case 7b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      // case 7b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
       assertEquals(
           storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging),
-          aaConfig == AA_OFF);
+          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
       // case 7c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsOffsetLagCaughtUpTimestampLagging).isLeaderCompleted();
-      doReturn(true).when(mockPcsOffsetLagCaughtUpTimestampLagging).isFirstHeartBeatSOSReceived();
       doReturn(System.currentTimeMillis()).when(mockPcsOffsetLagCaughtUpTimestampLagging)
           .getLastLeaderCompleteStateUpdateInMs();
       Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
@@ -3188,7 +3183,6 @@ public abstract class StoreIngestionTaskTest {
       doReturn(STANDBY).when(mockPcsMultipleSourceKafkaServers).getLeaderFollowerState();
       doReturn(LEADER_COMPLETED).when(mockPcsMultipleSourceKafkaServers).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsMultipleSourceKafkaServers).isLeaderCompleted();
-      doReturn(true).when(mockPcsMultipleSourceKafkaServers).isFirstHeartBeatSOSReceived();
       doReturn(System.currentTimeMillis()).when(mockPcsMultipleSourceKafkaServers)
           .getLastLeaderCompleteStateUpdateInMs();
     }
@@ -3206,7 +3200,8 @@ public abstract class StoreIngestionTaskTest {
         LagType.values(),
         new NodeType[] { DA_VINCI, FOLLOWER },
         AAConfig.values(),
-        LeaderCompleteCheck.values());
+        LeaderCompleteCheck.values(),
+        DataReplicationPolicy.values());
   }
 
   /**
@@ -3220,7 +3215,8 @@ public abstract class StoreIngestionTaskTest {
       LagType lagType,
       NodeType nodeType,
       AAConfig aaConfig,
-      LeaderCompleteCheck leaderCompleteCheck) {
+      LeaderCompleteCheck leaderCompleteCheck,
+      DataReplicationPolicy dataReplicationPolicy) {
     int partitionCount = 2;
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(1);
@@ -3228,12 +3224,8 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100,
-        100,
-        100,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig =
+        new HybridStoreConfigImpl(100, 100, 100, dataReplicationPolicy, BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -3326,9 +3318,7 @@ public abstract class StoreIngestionTaskTest {
     }
 
     // Case 4: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has not been received
     doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
-    doReturn(false).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
     assertEquals(
         storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
             mockPartitionConsumptionState,
@@ -3337,24 +3327,11 @@ public abstract class StoreIngestionTaskTest {
             false,
             lagType,
             0),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
+            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
     // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has been received and leaderCompleteState is unknown
-    doReturn(true).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
-    doReturn(LEADER_COMPLETE_STATE_UNKNOWN).when(mockPartitionConsumptionState).getLeaderCompleteState();
-    assertTrue(
-        storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
-            mockPartitionConsumptionState,
-            offsetLag,
-            offsetThreshold,
-            false,
-            lagType,
-            0));
-
-    // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
-    // and last update time is within threshold
+    // and leaderCompleteState is LEADER_COMPLETED and last update time is within threshold
     doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
     doReturn(LEADER_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
     doReturn(System.currentTimeMillis() - 1000).when(mockPartitionConsumptionState)
@@ -3368,9 +3345,8 @@ public abstract class StoreIngestionTaskTest {
             lagType,
             0));
 
-    // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
-    // and last update time is more than threshold
+    // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient.
+    // and leaderCompleteState is LEADER_COMPLETED and last update time is more than threshold
     doReturn(System.currentTimeMillis() - 6000).when(mockPartitionConsumptionState)
         .getLastLeaderCompleteStateUpdateInMs();
     assertEquals(
@@ -3381,11 +3357,11 @@ public abstract class StoreIngestionTaskTest {
             false,
             lagType,
             0),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
+            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
-    // Case 8: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has been received and leaderCompleteState is LEADER_NOT_COMPLETED
-    // and leader is not completed
+    // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
+    // and leaderCompleteState is LEADER_NOT_COMPLETED and leader is not completed
     doReturn(LEADER_NOT_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
     assertEquals(
         storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
@@ -3395,23 +3371,17 @@ public abstract class StoreIngestionTaskTest {
             false,
             lagType,
             0),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
+            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
   }
 
   @DataProvider
   public static Object[][] testGetAndUpdateLeaderCompletedStateProvider() {
-    return DataProviderUtils.allPermutationGenerator(
-        HybridConfig.values(),
-        new NodeType[] { DA_VINCI, FOLLOWER },
-        DataProviderUtils.BOOLEAN);
+    return DataProviderUtils.allPermutationGenerator(HybridConfig.values(), new NodeType[] { DA_VINCI, FOLLOWER });
   }
 
   @Test(dataProvider = "testGetAndUpdateLeaderCompletedStateProvider")
-  public void testGetAndUpdateLeaderCompletedState(
-      HybridConfig hybridConfig,
-      NodeType nodeType,
-      boolean leaderCompletedHeaderFound) {
-
+  public void testGetAndUpdateLeaderCompletedState(HybridConfig hybridConfig, NodeType nodeType) {
     int partitionCount = 2;
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(1);
@@ -3468,9 +3438,7 @@ public abstract class StoreIngestionTaskTest {
         getHeartbeatKME(producerTimestamp, mockLeaderMetadataWrapper, generateHeartbeatMessage(CheckSumType.NONE), "0");
 
     PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
-    if (leaderCompletedHeaderFound) {
-      pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
-    }
+    pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
@@ -3480,8 +3448,8 @@ public abstract class StoreIngestionTaskTest {
         0,
         pubSubMessageHeaders);
 
-    assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
-    assertFalse(partitionConsumptionState.isFirstHeartBeatSOSReceived());
+    assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_NOT_COMPLETED);
+    assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
 
     KafkaKey kafkaKey = pubSubMessage.getKey();
     KafkaMessageEnvelope kafkaValue = pubSubMessage.getValue();
@@ -3495,8 +3463,7 @@ public abstract class StoreIngestionTaskTest {
           controlMessage,
           pubSubMessage.getPubSubMessageHeaders(),
           partitionConsumptionState);
-      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
-      assertFalse(partitionConsumptionState.isFirstHeartBeatSOSReceived());
+      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_NOT_COMPLETED);
       assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
     }
 
@@ -3507,19 +3474,13 @@ public abstract class StoreIngestionTaskTest {
         controlMessage,
         pubSubMessage.getPubSubMessageHeaders(),
         partitionConsumptionState);
-    if (leaderCompletedHeaderFound) {
-      if (hybridConfig == HYBRID) {
-        assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
-        assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), producerTimestamp);
-      } else {
-        assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
-        assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
-      }
+    if (hybridConfig == HYBRID) {
+      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
+      assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), producerTimestamp);
     } else {
-      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
+      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_NOT_COMPLETED);
       assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
     }
-    assertEquals(partitionConsumptionState.isFirstHeartBeatSOSReceived(), hybridConfig == HYBRID);
   }
 
   @DataProvider

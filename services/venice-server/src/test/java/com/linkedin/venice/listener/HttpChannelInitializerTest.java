@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -50,6 +51,7 @@ public class HttpChannelInitializerTest {
     requestHandler = mock(StorageReadRequestHandler.class);
     serverConfig = mock(VeniceServerConfig.class);
     customizedViewRepository = new CompletableFuture<>();
+    doReturn(DefaultIdentityParser.class.getName()).when(serverConfig).getIdentityParserClassName();
   }
 
   @Test

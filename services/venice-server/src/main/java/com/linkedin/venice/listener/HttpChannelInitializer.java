@@ -6,6 +6,7 @@ import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.grpc.handlers.GrpcOutboundResponseHandler;
@@ -23,6 +24,7 @@ import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.AggServerQuotaTokenBucketStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerConnectionStats;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import io.grpc.ServerInterceptor;
@@ -62,6 +64,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
   List<ServerInterceptor> aclInterceptors;
+  private final IdentityParser identityParser;
 
   private boolean isDaVinciClient;
 
@@ -153,6 +156,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     this.http2PipelineInitializerBuilder = new VeniceHttp2PipelineInitializerBuilder(serverConfig);
 
     serverConnectionStats = new ServerConnectionStats(metricsRepository, "server_connection_stats");
+
+    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(serverConfig.getIdentityParserClassName());
+    this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
   }
 
   /*
@@ -173,6 +179,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       if (sslHandshakeExecutor != null) {
         sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
       }
+      sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       ch.pipeline().addLast(sslInitializer);
     }
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {

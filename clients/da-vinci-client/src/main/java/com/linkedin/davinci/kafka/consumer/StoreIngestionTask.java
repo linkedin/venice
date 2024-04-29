@@ -786,13 +786,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
 
+  protected abstract boolean shouldCheckLeaderCompleteStateInFollower();
+
   /**
    * Checks whether the lag is acceptable for hybrid stores
    */
   protected abstract boolean checkAndLogIfLagIsAcceptableForHybridStore(
       PartitionConsumptionState partitionConsumptionState,
-      long offsetLag,
-      long offsetThreshold,
+      long lag,
+      long threshold,
       boolean shouldLogLag,
       LagType lagType,
       long latestConsumedProducerTimestamp);
@@ -2216,6 +2218,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Report ingestion throughput metric based on the store version
      */
     if (!record.getKey().isControlMessage()) { // skip control messages
+      // Still track record throughput to understand the performance benefits of disabling other record-level metrics.
+      hostLevelIngestionStats.recordTotalRecordsConsumed();
       if (recordLevelMetricEnabled.get()) {
         versionedIngestionStats.recordBytesConsumed(storeName, versionNumber, recordSize);
         versionedIngestionStats.recordRecordsConsumed(storeName, versionNumber);
@@ -2224,7 +2228,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * all store versions.
          */
         hostLevelIngestionStats.recordTotalBytesConsumed(recordSize);
-        hostLevelIngestionStats.recordTotalRecordsConsumed();
         /*
          * Also update this stats separately for Leader and Follower.
          */
@@ -3958,6 +3961,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void mayResumeRecordLevelMetricsForCurrentVersion() {
     if (recordLevelMetricEnabled.get()) {
+      return;
+    }
+    if (partitionConsumptionStateMap.isEmpty()) {
       return;
     }
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {

@@ -87,9 +87,11 @@ public class TestStoreBackupVersionCleanupService {
 
   @Test
   public void testWhetherStoreReadyToBeCleanup() {
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ONLINE);
     long defaultBackupVersionRetentionMs = TimeUnit.DAYS.toMillis(7);
-    Store storeNotReadyForCleanupWithDefaultRetentionPolicy =
-        mockStore(-1, System.currentTimeMillis(), Collections.emptyMap(), -1);
+    Store storeNotReadyForCleanupWithDefaultRetentionPolicy = mockStore(-1, System.currentTimeMillis(), versions, -1);
     Assert.assertFalse(
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeNotReadyForCleanupWithDefaultRetentionPolicy,
@@ -97,7 +99,7 @@ public class TestStoreBackupVersionCleanupService {
             new SystemTime()));
 
     Store storeReadyForCleanupWithDefaultRetentionPolicy =
-        mockStore(-1, System.currentTimeMillis() - 2 * defaultBackupVersionRetentionMs, Collections.emptyMap(), -1);
+        mockStore(-1, System.currentTimeMillis() - 2 * defaultBackupVersionRetentionMs, versions, -1);
     Assert.assertTrue(
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeReadyForCleanupWithDefaultRetentionPolicy,
@@ -106,18 +108,15 @@ public class TestStoreBackupVersionCleanupService {
 
     long storeBackupRetentionMs = TimeUnit.DAYS.toMillis(3);
     Store storeNotReadyForCleanupWithSpecifiedRetentionPolicy =
-        mockStore(storeBackupRetentionMs, System.currentTimeMillis(), Collections.emptyMap(), -1);
+        mockStore(storeBackupRetentionMs, System.currentTimeMillis(), versions, -1);
     Assert.assertFalse(
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeNotReadyForCleanupWithSpecifiedRetentionPolicy,
             defaultBackupVersionRetentionMs,
             new SystemTime()));
 
-    Store storeReadyForCleanupWithSpecifiedRetentionPolicy = mockStore(
-        storeBackupRetentionMs,
-        System.currentTimeMillis() - 2 * storeBackupRetentionMs,
-        Collections.emptyMap(),
-        -1);
+    Store storeReadyForCleanupWithSpecifiedRetentionPolicy =
+        mockStore(storeBackupRetentionMs, System.currentTimeMillis() - 2 * storeBackupRetentionMs, versions, -1);
     Assert.assertTrue(
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeReadyForCleanupWithSpecifiedRetentionPolicy,
@@ -126,7 +125,7 @@ public class TestStoreBackupVersionCleanupService {
 
     long storeBackupRetentionMsZero = 0;
     Store storeNotReadyForCleanupWithZeroRetentionPolicy1 =
-        mockStore(storeBackupRetentionMsZero, System.currentTimeMillis(), Collections.emptyMap(), -1);
+        mockStore(storeBackupRetentionMsZero, System.currentTimeMillis(), versions, -1);
     Assert.assertFalse(
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeNotReadyForCleanupWithZeroRetentionPolicy1,
@@ -134,18 +133,15 @@ public class TestStoreBackupVersionCleanupService {
             new SystemTime()));
 
     Store storeNotReadyForCleanupWithZeroRetentionPolicy2 =
-        mockStore(storeBackupRetentionMsZero, System.currentTimeMillis() - 10, Collections.emptyMap(), -1);
+        mockStore(storeBackupRetentionMsZero, System.currentTimeMillis() - 10, versions, -1);
     Assert.assertFalse(
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeNotReadyForCleanupWithZeroRetentionPolicy2,
             defaultBackupVersionRetentionMs,
             new SystemTime()));
 
-    Store storeReadyForCleanupWithZeroRetentionPolicy = mockStore(
-        storeBackupRetentionMsZero,
-        System.currentTimeMillis() - 2 * storeBackupRetentionMs,
-        Collections.emptyMap(),
-        -1);
+    Store storeReadyForCleanupWithZeroRetentionPolicy =
+        mockStore(storeBackupRetentionMsZero, System.currentTimeMillis() - 2 * storeBackupRetentionMs, versions, -1);
     Assert.assertTrue(
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeReadyForCleanupWithZeroRetentionPolicy,
