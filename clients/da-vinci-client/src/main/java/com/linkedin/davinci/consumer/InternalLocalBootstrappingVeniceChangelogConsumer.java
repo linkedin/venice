@@ -243,7 +243,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         return resultSet;
       }
     }
-    LOGGER.info("DEBUGGING: POLLING NEW RECORD");
     return super.internalPoll(timeoutInMs, topicSuffix);
   }
 
@@ -308,12 +307,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         0,
         value.length * 8,
         false);
-    LOGGER.info(
-        "DEBUGGING RECEIVED RECORD FROM STORAGE: {} {} {}",
-        keyDeserializer.deserialize(key),
-        changeEvent.getCurrentValue(),
-        record.getOffset());
-
     resultSet.add(record);
   }
 
@@ -355,9 +348,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   private void pollAndCatchup(long timeoutInMs, String topicSuffix) {
     Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> polledResults =
         super.internalPoll(timeoutInMs, topicSuffix, true);
-    LOGGER.info("DEBUGGING POOL RESULT SET SIZE: {}", polledResults.size());
     for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> record: polledResults) {
-      LOGGER.info("DEBUGGING pollAndCatchup received a record with offset: {}", record.getOffset().getPosition());
       BootstrapState currentPartitionState = bootstrapStateMap.get(record.getPartition());
       currentPartitionState.currentPubSubPosition = record.getOffset();
       if (currentPartitionState.bootstrapState.equals(PollState.CATCHING_UP)) {
@@ -367,18 +358,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
               record.getPartition(),
               getOffset(record.getOffset()));
           currentPartitionState.bootstrapState = PollState.BOOTSTRAPPING;
-        } else {
-          LOGGER.info(
-              "pollAndCatchup not completed for partition: {}, current offset: {}, target offset: {}",
-              record.getPartition(),
-              record.getOffset().getPosition(),
-              currentPartitionState.targetPubSubPosition.getPosition());
-          LOGGER.info(
-              "DEBUG message for partition: {}, current offset: {}, key: {}, value: {}",
-              record.getPartition(),
-              record.getOffset().getPosition(),
-              record.getKey(),
-              record.getValue() == null ? null : record.getValue().getCurrentValue());
         }
       }
     }
@@ -398,11 +377,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       if (recordChangeEvent.currentValue == null) {
         storageService.getStorageEngine(localStateTopicName).delete(partition.getPartitionNumber(), key);
       } else {
-        LOGGER.info(
-            "DEBUGGING PUT CHANGE EVENT: {} {} {}",
-            recordChangeEvent,
-            recordChangeEvent.currentValue.value.array(),
-            recordChangeEvent.currentValue.schemaId);
         storageService.getStorageEngine(localStateTopicName)
             .put(
                 partition.getPartitionNumber(),
@@ -456,7 +430,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         try {
           if (StringUtils.isEmpty(offsetString)) {
             LOGGER.info(
-                "No local checkpoint found for partition: {}， will intilize checkpoint to offset: {}",
+                "No local checkpoint found for partition: {}， will initialize checkpoint to offset: {}",
                 partition,
                 offsetRecord.getLocalVersionTopicOffset());
             localCheckpoint = new VeniceChangeCoordinate(
@@ -505,7 +479,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       while (bootstrapStateMap.entrySet()
           .stream()
           .anyMatch(s -> s.getValue().bootstrapState.equals(PollState.CATCHING_UP))) {
-        // pollAndCatchup(5000L, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
         pollAndCatchup(5000L, "");
       }
 
