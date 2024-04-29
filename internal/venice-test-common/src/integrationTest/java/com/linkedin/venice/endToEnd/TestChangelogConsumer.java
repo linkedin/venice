@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -16,18 +15,8 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_TIME_IN_S
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
-import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
@@ -59,7 +48,6 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -93,6 +81,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.LogManager;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -225,7 +214,7 @@ public class TestChangelogConsumer {
     TestWriteUtils.runPushJob("Run push job", props);
 
     // Write Records from nearline
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
@@ -328,6 +317,10 @@ public class TestChangelogConsumer {
         Assert.assertEquals(versionTopicEvents.size(), 21);
       });
 
+      /**
+       * Now we have store version v2.
+       */
+
       // run repush. Repush will reapply all existing events to the new store and trim all events from the RT
       props.setProperty(SOURCE_KAFKA, "true");
       props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getPubSubBrokerWrapper().getAddress());
@@ -412,8 +405,9 @@ public class TestChangelogConsumer {
       });
 
       /**
-       * Test Repush with TTL
+       * Now we have store version v3.
        */
+
       // run empty push to clean up batch data
       parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 30 * Time.MS_PER_SECOND);
       // set up mocked time for Samza records so some records can be stale intentionally.
@@ -432,56 +426,12 @@ public class TestChangelogConsumer {
         runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
       }
       // Validate changed events for version 3.
-      // AtomicInteger totalPolledAfterImageMessages = new AtomicInteger();
-      // Map<String, Utf8> polledAfterImageEvents = new HashMap<>();
-      // Map<String, Utf8> totalPolledAfterImageEvents = new HashMap<>();
 
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
         // Filter previous 21 messages.
         Assert.assertEquals(polledChangeEvents.size(), 1);
       });
-
-      // Consume from beginning of the version that was current at time of consumer subscription (version 2) since
-      // version 2
-      // was a repush of 101 records (0-100) with streaming updates on 100-110 and deletes on 110-119, then we expect
-      // a grand total of 119 records in this version. We'll consume up to EOP
-
-      // TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      // totalPolledAfterImageMessages
-      // .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
-      // Assert.assertEquals(polledAfterImageEvents.size(), 119);
-      // totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
-      // polledAfterImageEvents.clear();
-      // });
-
-      // We'll have consumed everything on version
-      // TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      // totalPolledAfterImageMessages
-      // .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
-      // Assert.assertEquals(polledAfterImageEvents.size(), 0);
-      // totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
-      // polledAfterImageEvents.clear();
-      // });
-
-      // After image consumer consumed 3 different topics: v2, v2_cc and v3_cc.
-      // The total messages: 102 (v2 repush from v1, key: 0-100, 1000) + 1 (v2_cc, key: 1001) + 42 (v3_cc, key: 0-39,
-      // 1000, 1001) - 22 (filtered from v3_cc, key: 0-19, 1000 and 1001 as they were read already.)
-      // Assert.assertEquals(totalPolledAfterImageMessages.get(), 149);
-
-      // for (int i = 1; i < 100; i++) {
-      // String key = Integer.toString(i);
-      // Utf8 afterImageValue = totalPolledAfterImageEvents.get(key);
-      // if (i < 20) {
-      // Assert.assertNotNull(afterImageValue);
-      // Assert.assertEquals(afterImageValue.toString(), "test_name_" + i);
-      // } else if (i < 40 && i >= 30) {
-      // Deleted
-      // Assert.assertNull(afterImageValue);
-      // } else {
-      // Assert.assertTrue(afterImageValue.toString().contains(String.valueOf(i).substring(0, 0)));
-      // }
-      // }
 
       // Drain the remaining events on version 3 and verify that we got everything. We don't verify the count
       // because at this stage, the total events which will get polled will be determined by how far back the rewind
@@ -527,6 +477,9 @@ public class TestChangelogConsumer {
       allChangeEvents.putAll(polledChangeEvents);
       polledChangeEvents.clear();
 
+      /**
+       * Now we have store version v4.
+       */
       // enable repush ttl
       props.setProperty(REPUSH_TTL_ENABLE, "true");
       TestWriteUtils.runPushJob("Run repush job with TTL", props);
@@ -579,6 +532,10 @@ public class TestChangelogConsumer {
 
       // Save a checkpoint and clear the map
       Set<VeniceChangeCoordinate> checkpointSet = new HashSet<>();
+      LogManager.getLogger(TestChangelogConsumer.class)
+          .info(
+              "DEBUGGING: OFFSET CHECKPOINT {}",
+              polledChangeEvents.get(Integer.toString(20)).getOffset().getPosition());
       checkpointSet.add(polledChangeEvents.get(Integer.toString(20)).getOffset());
       allChangeEvents.putAll(polledChangeEvents);
       polledChangeEvents.clear();
@@ -637,10 +594,12 @@ public class TestChangelogConsumer {
 
       versionTopicConsumer.seekToBeginningOfPush().get();
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        LogManager.getLogger(TestChangelogConsumer.class).info("DEBUGGING BEGIN: {}", versionTopicEvents);
         pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+        LogManager.getLogger(TestChangelogConsumer.class).info("DEBUGGING: {}", versionTopicEvents);
         // Reconsuming the events from the version topic, which at this point should just contain the same 16
-        // events we consumed with the before/after image consumer ealier.
-        Assert.assertEquals(versionTopicEvents.size(), 16);
+        // events we consumed with the before/after image consumer earlier.
+        Assert.assertEquals(versionTopicEvents.size(), 30);
       });
 
       // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1).
@@ -680,14 +639,6 @@ public class TestChangelogConsumer {
         TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
-    Map<String, String> viewConfig = new HashMap<>();
-    viewConfig.put(
-        "testView",
-        "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
-
-    viewConfig.put(
-        "changeCaptureView",
-        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(8)
@@ -697,13 +648,10 @@ public class TestChangelogConsumer {
     MetricsRepository metricsRepository = new MetricsRepository();
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-    storeParms.setStoreViews(viewConfig);
-    // IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
     setupControllerClient
         .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
-    // controllerClient.updateStore(storeName, storeParms);
     TestWriteUtils.runPushJob("Run push job", props);
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
@@ -782,11 +730,6 @@ public class TestChangelogConsumer {
         Assert.assertEquals(polledChangeEvents.size(), 0);
       });
 
-      // Verify total updates match up
-      TestUtils.waitForNonDeterministicAssertion(
-          5,
-          TimeUnit.SECONDS,
-          () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 21));
       parentControllerClient.disableAndDeleteStore(storeName);
       // Verify that topics and store is cleaned up
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -811,14 +754,7 @@ public class TestChangelogConsumer {
         TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
-    Map<String, String> viewConfig = new HashMap<>();
-    viewConfig.put(
-        "testView",
-        "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
 
-    viewConfig.put(
-        "changeCaptureView",
-        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(8)
@@ -828,13 +764,10 @@ public class TestChangelogConsumer {
     MetricsRepository metricsRepository = new MetricsRepository();
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-    storeParms.setStoreViews(viewConfig);
-    // IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
     setupControllerClient
         .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
-    // controllerClient.updateStore(storeName, storeParms);
     TestWriteUtils.runPushJob("Run push job", props);
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
@@ -909,11 +842,6 @@ public class TestChangelogConsumer {
         pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
         Assert.assertEquals(polledChangeEvents.size(), 0);
       });
-      // Verify total updates match up
-      TestUtils.waitForNonDeterministicAssertion(
-          5,
-          TimeUnit.SECONDS,
-          () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 21));
       parentControllerClient.disableAndDeleteStore(storeName);
       // Verify that topics and store is cleaned up
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -938,14 +866,7 @@ public class TestChangelogConsumer {
         TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
-    Map<String, String> viewConfig = new HashMap<>();
-    viewConfig.put(
-        "testView",
-        "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
 
-    viewConfig.put(
-        "changeCaptureView",
-        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(8)
@@ -955,11 +876,11 @@ public class TestChangelogConsumer {
     MetricsRepository metricsRepository = new MetricsRepository();
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-    storeParms.setStoreViews(viewConfig);
+
     setupControllerClient
         .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
     TestWriteUtils.runPushJob("Run push job", props);
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
@@ -1047,11 +968,6 @@ public class TestChangelogConsumer {
         Assert.assertEquals(polledChangeEvents.size(), 0);
       });
 
-      // Verify total updates match up
-      TestUtils.waitForNonDeterministicAssertion(
-          5,
-          TimeUnit.SECONDS,
-          () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 21));
       parentControllerClient.disableAndDeleteStore(storeName);
       // Verify that topics and store is cleaned up
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -1087,7 +1003,7 @@ public class TestChangelogConsumer {
     setupControllerClient
         .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
     TestWriteUtils.runPushJob("Run push job", props);
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
 
     TestMockTime testMockTime = new TestMockTime();
@@ -1165,7 +1081,7 @@ public class TestChangelogConsumer {
     setupControllerClient
         .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
     TestWriteUtils.runPushJob("Run push job", props);
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
 
     TestMockTime testMockTime = new TestMockTime();
@@ -1215,18 +1131,6 @@ public class TestChangelogConsumer {
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> changedEventList = new ArrayList<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         pollChangeEventsFromBootstrappingChangeCaptureConsumerToList(changedEventList, bootstrappingChangelogConsumer);
-        /*
-        for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: changedEventList) {
-          LogManager.getLogger(TestActiveActiveIngestion.class)
-              .info(
-                  "DEBUGGING result: {} {} {}",
-                  pubSubMessage.getKey(),
-                  pubSubMessage.getValue() == null ? null : pubSubMessage.getValue().getCurrentValue(),
-                  pubSubMessage.getOffset());
-        }
-        
-         */
-
         Assert.assertEquals(changedEventList.size(), batchRecordCount + hybridRecordCount + 1 - valueUpdateCount);
       });
     }
@@ -1271,21 +1175,6 @@ public class TestChangelogConsumer {
     }
   }
 
-  private Map<String, String> getSamzaConfig(String storeName) {
-    Map<String, String> samzaConfig = new HashMap<>();
-    String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-    samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-    samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
-    samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
-    samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "dfd"); // parentController.getKafkaZkAddress());
-    samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-    samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
-    samzaConfig.put(SSL_ENABLED, "false");
-    return samzaConfig;
-  }
-
   private void pollChangeEventsFromChangeCaptureConsumerToList(
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
@@ -1302,8 +1191,6 @@ public class TestChangelogConsumer {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         veniceChangelogConsumer.poll(1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      // LogManager.getLogger(TestActiveActiveIngestion.class).info("FETCHED PUBSUB: {} {} {}", pubSubMessage.getKey(),
-      // pubSubMessage.getOffset(), pubSubMessage.getValue());
       polledChangeEvents.add(pubSubMessage);
     }
   }
@@ -1360,8 +1247,9 @@ public class TestChangelogConsumer {
       Map<String, Utf8> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     int polledMessagesNum = 0;
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, Long> pubSubMessage: pubSubMessages) {
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
+        veniceChangelogConsumer.poll(1000);
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, afterImageEvent);

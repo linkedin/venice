@@ -492,7 +492,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     synchronized (pubSubConsumer) {
       messagesMap = pubSubConsumer.poll(timeoutInMs);
     }
-    LOGGER.info("DEBUGGING POLLING FROM STACKTRACE: {}", Arrays.toString(Thread.currentThread().getStackTrace()));
+    // LOGGER.info("DEBUGGING POLLING FROM STACKTRACE: {}", Arrays.toString(Thread.currentThread().getStackTrace()));
     for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messagesMap
         .entrySet()) {
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
@@ -502,8 +502,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             "DEBUGGING POLL partition: {}, offset: {}, key: {}, TP: {}",
             pubSubTopicPartition.getPartitionNumber(),
             message.getOffset(),
-            message.getKey(),
-            message.getTopicPartition());
+            message.getKey().isControlMessage()
+                ? message.getKey()
+                : keyDeserializer.deserialize(message.getKey().getKey()),
+            message.getTopicPartition().getTopicName());
         if (message.getKey().isControlMessage()) {
           LOGGER.info(
               "DEBUGGING POLL CONTROL partition: {}, offset: {}, key: {}, msg type: {}",
@@ -714,6 +716,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
     // Determine if the event should be filtered or not
     if (filterRecordByVersionSwapHighWatermarks(replicationCheckpoint, pubSubTopicPartition)) {
+      LOGGER.info(
+          "DEBUGGING POLL FILTER: key={}, offset={}, topicName={}, partition={}, rmdCheckpoint={}",
+          keyDeserializer.deserialize(keyBytes),
+          message.getOffset(),
+          pubSubTopicPartition.getTopicName(),
+          pubSubTopicPartition.getPartitionNumber(),
+          replicationCheckpoint);
       return Optional.empty();
     }
 
