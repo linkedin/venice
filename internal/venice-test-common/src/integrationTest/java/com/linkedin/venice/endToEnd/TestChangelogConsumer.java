@@ -83,7 +83,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
-import org.apache.logging.log4j.LogManager;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -591,9 +590,7 @@ public class TestChangelogConsumer {
 
       versionTopicConsumer.seekToBeginningOfPush().get();
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-        LogManager.getLogger(TestChangelogConsumer.class).info("DEBUGGING BEGIN: {}", versionTopicEvents);
         pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
-        LogManager.getLogger(TestChangelogConsumer.class).info("DEBUGGING: {}", versionTopicEvents);
         // Reconsuming the events from the version topic, which at this point should just contain the same 16
         // events we consumed with the before/after image consumer earlier.
         Assert.assertEquals(versionTopicEvents.size(), 30);
