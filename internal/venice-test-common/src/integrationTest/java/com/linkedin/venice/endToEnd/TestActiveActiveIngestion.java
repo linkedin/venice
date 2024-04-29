@@ -134,7 +134,7 @@ public class TestActiveActiveIngestion {
     TestView.resetCounters();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testLeaderLagWithIgnoredData() throws Exception {
     // We want to verify in this test if pushes will go through even if the tail end of the RT is full of data which we
     // drop

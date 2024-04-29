@@ -73,6 +73,13 @@ public class DataProviderUtils {
     return new Object[][] { { defaultDaVinciConfig }, { cachingDaVinciConfig } };
   }
 
+  @DataProvider(name = "changelogConsumer")
+  public static Object[][] changelogConsumer() {
+    return new Object[][] {
+        // { false, false, 1 },
+        { false, 1 }, { true, 1 }, { false, 3 }, { false, 3 } };
+  }
+
   @DataProvider(name = "AmplificationFactor-and-ObjectCache", parallel = false)
   public static Object[][] amplificationFactorAndObjectCacheConfigProvider() {
     List<Object[]> ampFactorCases = Lists.newArrayList();
