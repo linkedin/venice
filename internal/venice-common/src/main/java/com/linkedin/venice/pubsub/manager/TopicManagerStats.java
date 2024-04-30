@@ -61,7 +61,7 @@ class TopicManagerStats extends AbstractVeniceStats {
     sensorsByTypes.get(sensorType).record(LatencyUtils.getLatencyInMS(startTimeInNs));
   }
 
-  void registerTopicMetadataFetcherSensors(TopicMetadataFetcher topicMetadataFetcher) {
+  final void registerTopicMetadataFetcherSensors(TopicMetadataFetcher topicMetadataFetcher) {
     if (metricsRepository == null) {
       return;
     }
