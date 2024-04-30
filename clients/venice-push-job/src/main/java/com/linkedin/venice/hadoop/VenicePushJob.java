@@ -472,10 +472,18 @@ public class VenicePushJob implements AutoCloseable {
 
     pushJobSettingToReturn.extendedSchemaValidityCheckEnabled =
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
-    pushJobSettingToReturn.compressionMetricCollectionEnabled =
-        props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
-    pushJobSettingToReturn.useMapperToBuildDict =
-        props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
+
+    if (pushJobSettingToReturn.isSourceKafka) {
+      // KIF uses a different code-path to build a dictionary, and we also don't need schema validations for KIF
+      pushJobSettingToReturn.useMapperToBuildDict = false;
+      pushJobSettingToReturn.compressionMetricCollectionEnabled = false;
+    } else {
+      pushJobSettingToReturn.useMapperToBuildDict =
+          props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
+      pushJobSettingToReturn.compressionMetricCollectionEnabled =
+          props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
+    }
+
     if (pushJobSettingToReturn.useMapperToBuildDict) {
       pushJobSettingToReturn.useMapperToBuildDictOutputPath = props
           .getString(MAPPER_OUTPUT_DIRECTORY, VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT);
@@ -1136,14 +1144,6 @@ public class VenicePushJob implements AutoCloseable {
   protected static boolean shouldBuildZstdCompressionDictionary(
       PushJobSetting pushJobSetting,
       boolean inputFileHasRecords) {
-    if (pushJobSetting.isSourceKafka) {
-      /**
-       * Currently, KIF repush will use a different code path for dict buid.
-       * If later, we add the support to build the dict in a MR job, we need to revist this logic.
-       */
-      return false;
-    }
-
     if (pushJobSetting.isIncrementalPush) {
       LOGGER.info("No compression dictionary will be generated as the push type is incremental push");
       return false;
@@ -1195,11 +1195,6 @@ public class VenicePushJob implements AutoCloseable {
 
     if (!inputFileHasRecords) {
       LOGGER.info("No compression related metrics will be generated as there are no records");
-      return false;
-    }
-
-    if (pushJobSetting.isSourceKafka) {
-      LOGGER.info("No compression related metrics will be generated as the push type is repush");
       return false;
     }
 
