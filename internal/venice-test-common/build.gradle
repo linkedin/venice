@@ -130,7 +130,9 @@ def integrationTestBuckets = [
   "C": [
       "com.linkedin.venice.endToEnd.ActiveActive*"],
   "D": [
-      "com.linkedin.venice.endToEnd.TestActiveActive*"],
+      "com.linkedin.venice.endToEnd.TestActiveActive*",
+      "com.linkedin.venice.endToEnd.TestChangelogConsumer",
+      "com.linkedin.venice.endToEnd.TestBootstrappingChangelogConsumer"],
   "E": [
       "com.linkedin.venice.helix.*",
       "com.linkedin.venice.helixrebalance.*"],
