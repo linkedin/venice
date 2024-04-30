@@ -479,6 +479,11 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       while (bootstrapStateMap.entrySet()
           .stream()
           .anyMatch(s -> s.getValue().bootstrapState.equals(PollState.CATCHING_UP))) {
+        /**
+         * TODO: For now we change to support after-image only use case for bootstrapping changelog consumer.
+         * We will subscribe to version topic for now. If there is support for different use case in the future, we need
+         * to further tweak it based on config.
+         */
         pollAndCatchup(5000L, "");
       }
 
