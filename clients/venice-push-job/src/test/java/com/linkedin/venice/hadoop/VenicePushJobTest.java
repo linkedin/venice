@@ -522,21 +522,19 @@ public class VenicePushJobTest {
     new VenicePushJob(PUSH_JOB_ID, props);
   }
 
-  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testShouldBuildZstdCompressionDictionary(
       boolean compressionMetricCollectionEnabled,
-      boolean isSourceKafka,
       boolean isIncrementalPush,
       boolean inputFileHasRecords) {
     PushJobSetting pushJobSetting = new PushJobSetting();
     pushJobSetting.compressionMetricCollectionEnabled = compressionMetricCollectionEnabled;
-    pushJobSetting.isSourceKafka = isSourceKafka;
     pushJobSetting.isIncrementalPush = isIncrementalPush;
 
     for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
       pushJobSetting.storeCompressionStrategy = compressionStrategy;
 
-      if (isSourceKafka || isIncrementalPush) {
+      if (isIncrementalPush) {
         assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, inputFileHasRecords));
       } else if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, inputFileHasRecords));
@@ -560,14 +558,6 @@ public class VenicePushJobTest {
     // reset settings for the below tests
     pushJobSetting.compressionMetricCollectionEnabled = true;
     assertFalse(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, false));
-
-    // Test with isSourceKafka == true
-    pushJobSetting.isSourceKafka = true;
-    assertFalse(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, true));
-    assertFalse(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, false));
-
-    // reset settings for the below tests
-    pushJobSetting.isSourceKafka = false;
 
     // Test with isIncrementalPush == true
     pushJobSetting.isIncrementalPush = true;
