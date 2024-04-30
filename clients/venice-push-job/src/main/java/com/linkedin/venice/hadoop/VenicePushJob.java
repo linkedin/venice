@@ -952,6 +952,7 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       // perform data recovery for BATCH stores
       for (String region: candidateRegions) {
+        LOGGER.info("Pushing from {} to {}", pushJobSetting.kafkaSourceRegion, region);
         ControllerResponse response = controllerClient.dataRecovery(
             pushJobSetting.kafkaSourceRegion,
             region,

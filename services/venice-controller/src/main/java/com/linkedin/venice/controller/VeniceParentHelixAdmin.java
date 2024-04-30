@@ -3537,7 +3537,7 @@ public class VeniceParentHelixAdmin implements Admin {
               parentStore.getVersion(versionNum).map(v -> v.getStatus().equals(PUSHED)).orElse(false);
           // Truncate topic after push is in terminal state if
           // 1. Its a hybrid store or regular push
-          // 3. If target push is enabled and its previously pushed by previous colo push (status == PUSHED)
+          // 2. If target push is enabled and its previously pushed by previous target colo push (status == PUSHED)
           if (!isTargetRegionPush || isVersionPushed
               || parentStore.getVersion(versionNum).get().getHybridStoreConfig() != null) {
             LOGGER
@@ -3548,10 +3548,13 @@ public class VeniceParentHelixAdmin implements Admin {
                 incrementalPushVersion,
                 currentReturnStatus,
                 currentReturnStatusDetails);
-            if (!isVersionPushed) {
-              parentStore.updateVersionStatus(versionNum, PUSHED);
-              repository.updateStore(parentStore);
-            }
+          }
+          if (isTargetRegionPush && !isVersionPushed) {
+            parentStore.updateVersionStatus(versionNum, PUSHED);
+            repository.updateStore(parentStore);
+          } else {
+            parentStore.updateVersionStatus(versionNum, ONLINE);
+            repository.updateStore(parentStore);
           }
         }
       }
