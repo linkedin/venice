@@ -19,6 +19,7 @@ import java.util.EnumMap;
 class TopicManagerStats extends AbstractVeniceStats {
   private static final String TOPIC_MANAGER_STATS_PREFIX = "TopicManagerStats_";
   private EnumMap<SENSOR_TYPE, Sensor> sensorsByTypes = null;
+  private final MetricsRepository metricsRepository;
 
   enum SENSOR_TYPE {
     CREATE_TOPIC, DELETE_TOPIC, LIST_ALL_TOPICS, SET_TOPIC_CONFIG, GET_ALL_TOPIC_RETENTIONS, GET_TOPIC_CONFIG,
@@ -29,6 +30,7 @@ class TopicManagerStats extends AbstractVeniceStats {
 
   TopicManagerStats(MetricsRepository metricsRepository, String pubSubAddress) {
     super(metricsRepository, TOPIC_MANAGER_STATS_PREFIX + TehutiUtils.fixMalformedMetricName(pubSubAddress));
+    this.metricsRepository = metricsRepository;
     if (metricsRepository == null) {
       return;
     }
@@ -60,6 +62,9 @@ class TopicManagerStats extends AbstractVeniceStats {
   }
 
   void registerTopicMetadataFetcherSensors(TopicMetadataFetcher topicMetadataFetcher) {
+    if (metricsRepository == null) {
+      return;
+    }
     registerSensorIfAbsent(
         new AsyncGauge(
             (ignored, ignored2) -> topicMetadataFetcher.getCurrentConsumerPoolSize(),
