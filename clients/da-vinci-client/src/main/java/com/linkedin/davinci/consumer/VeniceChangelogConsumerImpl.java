@@ -375,11 +375,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   private void pubSubConsumerSeek(PubSubTopicPartition topicPartition, Long offset) {
     // Offset the seek to next operation inside venice pub sub consumer adapter subscription logic.
-    if (offset == OffsetRecord.LOWEST_OFFSET) {
-      pubSubConsumer.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET);
-    } else {
-      pubSubConsumer.subscribe(topicPartition, offset - 1);
-    }
+    long targetOffset = offset == OffsetRecord.LOWEST_OFFSET ? OffsetRecord.LOWEST_OFFSET : offset - 1;
+    pubSubConsumer.subscribe(topicPartition, targetOffset);
+    LOGGER.info("Topic partition: {} consumer seek to offset: {}", topicPartition, targetOffset);
   }
 
   @Override
@@ -507,7 +505,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
       long timeoutInMs,
-      String topicSuffix) {
+      String topicSuffix,
+      boolean includeControlMessage) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messagesMap;
     synchronized (pubSubConsumer) {
@@ -528,6 +527,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               message.getValue().getProducerMetadata().getMessageTimestamp())) {
             break;
           }
+          if (includeControlMessage) {
+            pubSubMessages.add(
+                new ImmutableChangeCapturePubSubMessage<>(
+                    null,
+                    null,
+                    message.getTopicPartition(),
+                    message.getOffset(),
+                    0,
+                    0,
+                    false));
+          }
+
         } else {
           Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
               convertPubSubMessageToPubSubChangeEventMessage(message, pubSubTopicPartition);
@@ -539,6 +550,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       changeCaptureStats.recordRecordsConsumed(pubSubMessages.size());
     }
     return pubSubMessages;
+  }
+
+  protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
+      long timeoutInMs,
+      String topicSuffix) {
+    return internalPoll(timeoutInMs, topicSuffix, false);
   }
 
   /**
@@ -659,7 +676,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         // it's waiting for more input. In this case, just return an empty optional for now.
         return Optional.empty();
       }
-
       try {
         assembledObject = processRecordBytes(
             compressor.decompress(put.getPutValue()),
@@ -672,7 +688,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       } catch (Exception ex) {
         throw new VeniceException(ex);
       }
-
       if (assembledObject instanceof RecordChangeEvent) {
         recordChangeEvent = (RecordChangeEvent) assembledObject;
         replicationCheckpoint = recordChangeEvent.replicationCheckpointVector;

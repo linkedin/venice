@@ -252,6 +252,7 @@
       <Class name="com.linkedin.venice.fastclient.schema.TestValueSchema"/>
       <Class name="com.linkedin.venice.utils.TestMockTime"/>
       <Class name="com.linkedin.davinci.ingestion.IsolatedIngestionBackend"/>
+      <Class name="com.linkedin.venice.endToEnd.TestChangelogValue"/>
     </Or>
   </Match>
   <Match>

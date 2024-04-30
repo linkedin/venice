@@ -86,14 +86,11 @@ public class VeniceChangeCoordinate implements Externalizable {
   public static String convertVeniceChangeCoordinateToStringAndEncode(VeniceChangeCoordinate veniceChangeCoordinate)
       throws IOException {
     ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-    ObjectOutputStream outputStream = new ObjectOutputStream(byteArrayOutputStream);
-    try {
+    try (ObjectOutputStream outputStream = new ObjectOutputStream(byteArrayOutputStream)) {
       veniceChangeCoordinate.writeExternal(outputStream);
       outputStream.flush();
       byte[] data = byteArrayOutputStream.toByteArray();
       return Base64.getEncoder().encodeToString(data);
-    } finally {
-      outputStream.close();
     }
   }
 
