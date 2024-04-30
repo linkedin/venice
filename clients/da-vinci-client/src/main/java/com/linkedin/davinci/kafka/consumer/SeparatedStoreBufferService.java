@@ -3,13 +3,9 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -26,7 +22,6 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   protected final StoreBufferService unsortedServiceDelegate;
   private final int sortedPoolSize;
   private final int unsortedPoolSize;
-  private final Map<PubSubTopic, Boolean> topicToSortedIngestionMode = new VeniceConcurrentHashMap<>();
 
   SeparatedStoreBufferService(VeniceServerConfig serverConfig, MetricsRepository metricsRepository) {
     this(
@@ -71,36 +66,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) throws InterruptedException {
-    PartitionConsumptionState partitionConsumptionState = ingestionTask.getPartitionConsumptionState(subPartition);
-    boolean sortedInput = false;
-    if (partitionConsumptionState != null) {
-
-      // there is could be cases the following flag does not represent actual message's ingestion state as control
-      // message
-      // which updates the `isDeferredWrite` flag may not yet be processed. This might cause inefficiency but not
-      // logical incorrectness.
-      sortedInput = partitionConsumptionState.isDeferredWrite();
-      Boolean currentState = topicToSortedIngestionMode.get(consumerRecord.getTopicPartition().getPubSubTopic());
-
-      if (currentState != null) {
-        // If there is a change in deferredWrite mode, drain the buffers
-        if (currentState != sortedInput) {
-          LOGGER.info(
-              "Switching drainer buffer for topic {} to use {}",
-              consumerRecord.getTopicPartition().getPubSubTopic().getName(),
-              sortedInput ? "sorted queue." : "unsorted queue.");
-          PubSubTopicPartition pubSubTopicPartition =
-              consumerRecord.getTopicPartition().getPartitionNumber() != subPartition
-                  ? new PubSubTopicPartitionImpl(consumerRecord.getTopicPartition().getPubSubTopic(), subPartition)
-                  : consumerRecord.getTopicPartition();
-          drainBufferedRecordsFromTopicPartition(pubSubTopicPartition);
-          topicToSortedIngestionMode.put(consumerRecord.getTopicPartition().getPubSubTopic(), sortedInput);
-        }
-      } else {
-        topicToSortedIngestionMode.put(consumerRecord.getTopicPartition().getPubSubTopic(), sortedInput);
-      }
-    }
-    StoreBufferService chosenSBS = sortedInput ? sortedServiceDelegate : unsortedServiceDelegate;
+    StoreBufferService chosenSBS = ingestionTask.isHybridMode() ? unsortedServiceDelegate : sortedServiceDelegate;
     chosenSBS.putConsumerRecord(
         consumerRecord,
         ingestionTask,
