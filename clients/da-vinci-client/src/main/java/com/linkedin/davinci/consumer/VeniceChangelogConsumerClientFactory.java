@@ -100,10 +100,12 @@ public class VeniceChangelogConsumerClientFactory {
    */
   public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
       String storeName,
-      String consumerId) {
+      String consumerId,
+      Class clazz) {
     return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap
         .computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
-          ChangelogClientConfig newStoreChangelogClientConfig = getNewStoreChangelogClientConfig(storeName);
+          ChangelogClientConfig newStoreChangelogClientConfig =
+              getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
           String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
           String consumerName =
               suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
@@ -114,6 +116,12 @@ public class VeniceChangelogConsumerClientFactory {
                   : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
               consumerId);
         });
+  }
+
+  public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
+      String storeName,
+      String consumerId) {
+    return getBootstrappingChangelogConsumer(storeName, consumerId, null);
   }
 
   private ChangelogClientConfig getNewStoreChangelogClientConfig(String storeName) {

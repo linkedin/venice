@@ -176,6 +176,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public ChangelogClientConfig setSpecificValue(Class<T> specificValue) {
+    this.innerClientConfig.setSpecificValueClass(specificValue);
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
