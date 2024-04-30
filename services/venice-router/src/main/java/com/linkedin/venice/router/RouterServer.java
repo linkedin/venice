@@ -642,15 +642,7 @@ public class RouterServer extends AbstractVeniceService {
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (config.getClientSslHandshakeThreads() > 0) {
-        if (!config.isResolveBeforeSSL()) {
-          ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
-              config.getClientSslHandshakeThreads(),
-              "SSLHandShakeThread",
-              config.getClientSslHandshakeQueueCapacity(),
-              LINKED_BLOCKING_QUEUE);
-          new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
-          sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
-        } else {
+        if (config.isResolveBeforeSSL()) {
           ExecutorService sslHandshakeExecutor = registry.factory(ShutdownableExecutors.class)
               .newFixedThreadPool(
                   config.getClientSslHandshakeThreads(),
@@ -669,6 +661,14 @@ public class RouterServer extends AbstractVeniceService {
               clientResolutionRetryAttempts,
               clientResolutionRetryBackoffMs,
               maxConcurrentResolution);
+        } else {
+          ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
+              config.getClientSslHandshakeThreads(),
+              "SSLHandShakeThread",
+              config.getClientSslHandshakeQueueCapacity(),
+              LINKED_BLOCKING_QUEUE);
+          new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
+          sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
         }
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
