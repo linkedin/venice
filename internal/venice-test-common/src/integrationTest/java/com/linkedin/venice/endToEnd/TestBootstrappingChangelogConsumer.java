@@ -129,7 +129,7 @@ public class TestBootstrappingChangelogConsumer {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "changelogConsumer", dataProviderClass = DataProviderUtils.class, priority = 3)
-  public void testVeniceChangelogConsumer(boolean withPollAndCatchup, int consumerCount) throws Exception {
+  public void testVeniceChangelogConsumer(int consumerCount) throws Exception {
     ControllerClient childControllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     File inputDir = getTempDataDirectory();
@@ -184,16 +184,7 @@ public class TestBootstrappingChangelogConsumer {
         bootstrappingVeniceChangelogConsumerList.add(
             veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName, Integer.toString(i)));
       }
-      // Without poll and catchup, we will bootstrap consumer here.
-      if (!withPollAndCatchup) {
-        if (consumerCount == 1) {
-          bootstrappingVeniceChangelogConsumerList.get(0).start().get();
-        } else {
-          for (int i = 0; i < consumerCount; i++) {
-            bootstrappingVeniceChangelogConsumerList.get(i).start(Collections.singleton(i)).get();
-          }
-        }
-      }
+
       try (VeniceSystemProducer veniceProducer =
           factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
         veniceProducer.start();
@@ -214,13 +205,11 @@ public class TestBootstrappingChangelogConsumer {
 
       // Wait for 10 seconds so bootstrap can load results from kafka
       Utils.sleep(10000);
-      if (withPollAndCatchup) {
-        if (consumerCount == 1) {
-          bootstrappingVeniceChangelogConsumerList.get(0).start().get();
-        } else {
-          for (int i = 0; i < consumerCount; i++) {
-            bootstrappingVeniceChangelogConsumerList.get(i).start(Collections.singleton(i)).get();
-          }
+      if (consumerCount == 1) {
+        bootstrappingVeniceChangelogConsumerList.get(0).start().get();
+      } else {
+        for (int i = 0; i < consumerCount; i++) {
+          bootstrappingVeniceChangelogConsumerList.get(i).start(Collections.singleton(i)).get();
         }
       }
 
@@ -234,7 +223,7 @@ public class TestBootstrappingChangelogConsumer {
             polledChangeEventsList,
             bootstrappingVeniceChangelogConsumerList);
         // 21 events for near-line events
-        int expectedRecordCount = withPollAndCatchup ? 109 + consumerCount : 121 + consumerCount;
+        int expectedRecordCount = 109 + consumerCount;
         Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
 
         for (int i = 100; i < 110; i++) {
@@ -247,17 +236,51 @@ public class TestBootstrappingChangelogConsumer {
         for (int i = 110; i < 120; i++) {
           String key = Integer.toString(i);
           PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = polledChangeEventsMap.get((key));
-          if (withPollAndCatchup) {
-            Assert.assertNull(message);
-          } else {
-            ChangeEvent<Utf8> changeEvent = message.getValue();
-            Assert.assertNotNull(changeEvent);
-            Assert.assertNull(changeEvent.getPreviousValue());
-            Assert.assertNull(changeEvent.getCurrentValue());
-          }
+          Assert.assertNull(message);
         }
       });
+      polledChangeEventsList.clear();
+      polledChangeEventsMap.clear();
 
+      try (VeniceSystemProducer veniceProducer =
+          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+        veniceProducer.start();
+        // Run Samza job to send PUT and DELETE requests.
+        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 120);
+      }
+
+      try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(clusterWrapper.getRandomRouterURL())
+              .setMetricsRepository(metricsRepository))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          Assert.assertNotNull(client.get(Integer.toString(129)).get());
+        });
+      }
+
+      // 20 changes in near-line. 10 puts, 10 deletes
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        pollChangeEventsFromChangeCaptureConsumer(
+            polledChangeEventsMap,
+            polledChangeEventsList,
+            bootstrappingVeniceChangelogConsumerList);
+        Assert.assertEquals(polledChangeEventsList.size(), 20);
+        for (int i = 120; i < 130; i++) {
+          String key = Integer.toString(i);
+          ChangeEvent<Utf8> changeEvent = polledChangeEventsMap.get(key).getValue();
+          Assert.assertNotNull(changeEvent);
+          Assert.assertNull(changeEvent.getPreviousValue());
+          Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+        }
+        for (int i = 130; i < 140; i++) {
+          String key = Integer.toString(i);
+          PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = polledChangeEventsMap.get((key));
+          ChangeEvent<Utf8> changeEvent = message.getValue();
+          Assert.assertNotNull(changeEvent);
+          Assert.assertNull(changeEvent.getPreviousValue());
+          Assert.assertNull(changeEvent.getCurrentValue());
+        }
+      });
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
@@ -276,7 +299,7 @@ public class TestBootstrappingChangelogConsumer {
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> changedEventList = new ArrayList<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         pollChangeEventsFromChangeCaptureConsumerToList(changedEventList, afterImageChangelogConsumer);
-        Assert.assertEquals(changedEventList.size(), 121);
+        Assert.assertEquals(changedEventList.size(), 141);
       });
 
       parentControllerClient.disableAndDeleteStore(storeName);
@@ -352,5 +375,4 @@ public class TestBootstrappingChangelogConsumer {
           mockedTime == null ? null : mockedTime.getMilliseconds());
     }
   }
-
 }

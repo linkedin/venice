@@ -75,7 +75,7 @@ public class DataProviderUtils {
 
   @DataProvider(name = "changelogConsumer")
   public static Object[][] changelogConsumer() {
-    return new Object[][] { { false, 1 }, { true, 3 } };
+    return new Object[][] { { 1 }, { 3 } };
   }
 
   @DataProvider(name = "AmplificationFactor-and-ObjectCache", parallel = false)
