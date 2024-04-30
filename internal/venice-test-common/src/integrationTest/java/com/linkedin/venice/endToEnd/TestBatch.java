@@ -626,8 +626,8 @@ public abstract class TestBatch {
     testRepush(storeName, validator);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testKafkaInputBatchJobWithZstdCompression() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testKafkaInputBatchJobWithZstdCompression(boolean sendDirectControlMessage) throws Exception {
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 100; i++) {
@@ -637,7 +637,7 @@ public abstract class TestBatch {
     String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
-          properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(true));
+          properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
         },
         validator,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
@@ -649,7 +649,7 @@ public abstract class TestBatch {
           properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
           properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
           properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-          properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(true));
+          properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(true));
         },
         validator,
