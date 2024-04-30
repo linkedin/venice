@@ -57,7 +57,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -82,7 +84,7 @@ public class TopicMetadataFetcherTest {
   @BeforeMethod(alwaysRun = true)
   public void setUp() throws InterruptedException {
     consumerMock = mock(PubSubConsumerAdapter.class);
-    pubSubConsumerPool = new LinkedBlockingQueue<>(2);
+    pubSubConsumerPool = new LinkedBlockingQueue<>(1);
     pubSubConsumerPool.put(consumerMock);
     threadPoolExecutor = (ThreadPoolExecutor) Executors.newFixedThreadPool(2);
     adminMock = mock(PubSubAdminAdapter.class);
@@ -495,35 +497,30 @@ public class TopicMetadataFetcherTest {
 
   @Test
   public void testConsumerIsReleasedBackToPoolWhenThreadIsTerminated() {
-    PubSubTopicPartitionInfo tp0Info = new PubSubTopicPartitionInfo(pubSubTopic, 0, true);
-    PubSubTopicPartitionInfo tp1Info = new PubSubTopicPartitionInfo(pubSubTopic, 1, true);
-    List<PubSubTopicPartitionInfo> partitionInfo = Arrays.asList(tp0Info, tp1Info);
-
-    doAnswer(invocation -> {
-      Thread.sleep(Integer.MAX_VALUE);
-      return partitionInfo;
-    }).when(consumerMock).partitionsFor(pubSubTopic);
-
-    Thread asyncThread = new Thread(() -> {
+    CountDownLatch signalReceiver = new CountDownLatch(1);
+    assertEquals(pubSubConsumerPool.size(), 1);
+    ExecutorService executorService = Executors.newSingleThreadExecutor();
+    Future future = executorService.submit(() -> {
+      PubSubConsumerAdapter consumerAdapter = topicMetadataFetcher.acquireConsumer();
       try {
-        topicMetadataFetcher.getTopicPartitionInfo(pubSubTopic);
-      } catch (Exception e) {
-        fail("Should not throw exception");
+        signalReceiver.countDown();
+        Thread.sleep(Integer.MAX_VALUE);
+        System.out.println(pubSubConsumerPool.size());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Thread interrupted");
+      } finally {
+        topicMetadataFetcher.releaseConsumer(consumerAdapter);
       }
     });
 
-    assertEquals(pubSubConsumerPool.size(), 1);
-    asyncThread.start();
-
-    waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      assertTrue(
-          asyncThread.getState().equals(Thread.State.WAITING)
-              || asyncThread.getState().equals(Thread.State.TIMED_WAITING)
-              || asyncThread.getState().equals(Thread.State.BLOCKED)
-              || asyncThread.getState().equals(Thread.State.TERMINATED));
-    });
+    try {
+      signalReceiver.await();
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
     assertEquals(pubSubConsumerPool.size(), 0);
-    asyncThread.interrupt();
+    future.cancel(true);
     waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       assertEquals(pubSubConsumerPool.size(), 1);
     });

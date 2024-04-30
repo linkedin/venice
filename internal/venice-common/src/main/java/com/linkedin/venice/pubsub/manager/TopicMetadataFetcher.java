@@ -155,7 +155,7 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   // acquire the consumer from the pool
-  private PubSubConsumerAdapter acquireConsumer() {
+  PubSubConsumerAdapter acquireConsumer() {
     try {
       consumerWaitListSize.incrementAndGet();
       long startTime = System.nanoTime();
@@ -171,7 +171,7 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   // release the consumer back to the pool
-  private void releaseConsumer(PubSubConsumerAdapter pubSubConsumerAdapter) {
+  void releaseConsumer(PubSubConsumerAdapter pubSubConsumerAdapter) {
     if (!pubSubConsumerPool.offer(pubSubConsumerAdapter)) {
       LOGGER.error("Failed to release pubSubConsumerAdapter back to the pool. Closing the consumer.");
     }
