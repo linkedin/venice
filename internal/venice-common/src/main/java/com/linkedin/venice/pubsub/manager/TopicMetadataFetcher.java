@@ -173,7 +173,7 @@ class TopicMetadataFetcher implements Closeable {
   // release the consumer back to the pool
   void releaseConsumer(PubSubConsumerAdapter pubSubConsumerAdapter) {
     if (!pubSubConsumerPool.offer(pubSubConsumerAdapter)) {
-      LOGGER.error("Failed to release pubSubConsumerAdapter back to the pool. Closing the consumer.");
+      LOGGER.error("Failed to release pubSubConsumerAdapter back to the pool.");
     }
   }
 
