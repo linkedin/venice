@@ -203,8 +203,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
     PubSubTopic changeCaptureTopic =
         pubSubTopicRepository.getTopic(versionTopic.getName() + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
-    PubSubTopicPartition topicPartition_0 = new PubSubTopicPartitionImpl(changeCaptureTopic, 0);
-    PubSubTopicPartition topicPartition_1 = new PubSubTopicPartitionImpl(changeCaptureTopic, 1);
+    PubSubTopicPartition topicPartition_0 = new PubSubTopicPartitionImpl(versionTopic, 0);
+    PubSubTopicPartition topicPartition_1 = new PubSubTopicPartitionImpl(versionTopic, 1);
     Set<PubSubTopicPartition> assignments = ImmutableSet.of(topicPartition_0, topicPartition_1);
     doReturn(assignments).when(pubSubConsumer).getAssignment();
     doReturn(0L).when(pubSubConsumer).getLatestOffset(topicPartition_0);
