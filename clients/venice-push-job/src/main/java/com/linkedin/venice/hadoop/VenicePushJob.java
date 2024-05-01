@@ -55,7 +55,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
@@ -388,7 +387,6 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
-    pushJobSettingToReturn.postValidationConsumption = props.getBoolean(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
     if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
@@ -853,9 +851,10 @@ public class VenicePushJob implements AutoCloseable {
       sendPushJobDetailsToController();
 
       // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
-      if (!(pushJobSetting.isTargetedRegionPushEnabled && pushJobSetting.postValidationConsumption)) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled) {
         return;
       }
+
       /**
        * Post validation + consumption
        */
@@ -952,6 +951,7 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       // perform data recovery for BATCH stores
       for (String region: candidateRegions) {
+        LOGGER.info("Pushing from {} to {}", pushJobSetting.kafkaSourceRegion, region);
         ControllerResponse response = controllerClient.dataRecovery(
             pushJobSetting.kafkaSourceRegion,
             region,

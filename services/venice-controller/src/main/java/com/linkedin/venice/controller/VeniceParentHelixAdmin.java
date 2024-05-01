@@ -3526,13 +3526,44 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
       int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
       boolean deferredSwap = isDeferredSwap(clusterName, storeName, versionNum);
+      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+
       if (!deferredSwap) {
-        truncateTopicsOptionally(
-            clusterName,
-            kafkaTopic,
-            incrementalPushVersion,
-            currentReturnStatus,
-            currentReturnStatusDetails);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+          ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+          Store parentStore = repository.getStore(storeName);
+          // targetedRegions is non-empty for target region push of batch store
+          boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
+          boolean isVersionPushed =
+              parentStore.getVersion(versionNum).map(v -> v.getStatus().equals(PUSHED)).orElse(false);
+          boolean isHybridStore =
+              parentStore.getVersion(versionNum).map(Version::getHybridStoreConfig).orElse(null) != null;
+          // Truncate topic after push is in terminal state if
+          // 1. Its a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush is
+          // false)
+          // 2. If target region push is enabled and job to push data only to target region completed (status == PUSHED)
+          if (!isTargetRegionPush // regular push
+              || isVersionPushed // target region push
+              || isHybridStore) {
+            LOGGER
+                .info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
+            truncateTopicsOptionally(
+                clusterName,
+                kafkaTopic,
+                incrementalPushVersion,
+                currentReturnStatus,
+                currentReturnStatusDetails);
+          }
+          // status PUSHED is set when batch store's target region push is completed, but other region are yet to
+          // complete
+          if (isTargetRegionPush && !isVersionPushed) {
+            parentStore.updateVersionStatus(versionNum, PUSHED);
+            repository.updateStore(parentStore);
+          } else { // status ONLINE is set when all region finishes ingestion for either regular or target region push.
+            parentStore.updateVersionStatus(versionNum, ONLINE);
+            repository.updateStore(parentStore);
+          }
+        }
       }
     }
 

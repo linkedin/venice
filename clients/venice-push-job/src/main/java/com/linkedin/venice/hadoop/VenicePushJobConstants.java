@@ -321,11 +321,6 @@ public final class VenicePushJobConstants {
    */
   public static final String TARGETED_REGION_PUSH_LIST = "targeted.region.push.list";
 
-  /**
-   * Config to enable post validation and consumption in VPJ when {@link #TARGETED_REGION_PUSH_ENABLED} is true.
-   */
-  public static final String POST_VALIDATION_CONSUMPTION_ENABLED = "post.validation.consumption.enabled";
-
   public static final boolean DEFAULT_IS_DUPLICATED_KEY_ALLOWED = false;
 
   /**
