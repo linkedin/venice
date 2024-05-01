@@ -154,7 +154,6 @@ import org.testng.annotations.Test;
 public class TestHybrid {
   private static final Logger LOGGER = LogManager.getLogger(TestHybrid.class);
   public static final int STREAMING_RECORD_SIZE = 1024;
-  private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
   /**
    * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #cleanUp()} function
