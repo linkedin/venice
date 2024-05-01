@@ -1,7 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
@@ -95,10 +95,12 @@ public class TestActiveActiveIngestion {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
-    serverProperties.setProperty(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, "true");
+    serverProperties.put(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, true);
     serverProperties.put(
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
+    Properties controllerProps = new Properties();
+    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 20);
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         1,
@@ -107,8 +109,8 @@ public class TestActiveActiveIngestion {
         1,
         1,
         1,
-        Optional.empty(),
-        Optional.empty(),
+        Optional.of(controllerProps),
+        Optional.of(controllerProps),
         Optional.of(serverProperties),
         false);
 
@@ -501,5 +503,21 @@ public class TestActiveActiveIngestion {
           Integer.toString(i),
           mockedTime == null ? null : mockedTime.getMilliseconds());
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchPushWithSeparateDrainer() throws Exception {
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 10000);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store-batch-push");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms =
+        new UpdateStoreQueryParams().setNativeReplicationEnabled(true).setPartitionCount(10);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    TestWriteUtils.runPushJob("Run push job", props);
   }
 }

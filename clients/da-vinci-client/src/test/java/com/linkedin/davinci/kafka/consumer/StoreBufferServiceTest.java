@@ -191,10 +191,10 @@ public class StoreBufferServiceTest {
           new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
       int drainerIndex;
       if (partition < 16) {
-        drainerIndex = bufferService.sortedServiceDelegate.getDrainerIndexForConsumerRecord(cr, partition);
+        drainerIndex = bufferService.sortedStoreBufferServiceDelegate.getDrainerIndexForConsumerRecord(cr, partition);
         ++drainerPartitionCount[drainerIndex];
       } else {
-        drainerIndex = bufferService.unsortedServiceDelegate.getDrainerIndexForConsumerRecord(cr, partition);
+        drainerIndex = bufferService.unsortedStoreBufferServiceDelegate.getDrainerIndexForConsumerRecord(cr, partition);
         ++drainerPartitionCount[drainerIndex + 8];
       }
     }

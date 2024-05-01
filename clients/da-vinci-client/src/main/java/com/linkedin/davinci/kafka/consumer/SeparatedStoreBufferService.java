@@ -18,8 +18,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   private static final Logger LOGGER = LogManager.getLogger(SeparatedStoreBufferService.class);
-  protected final StoreBufferService sortedServiceDelegate;
-  protected final StoreBufferService unsortedServiceDelegate;
+  protected final StoreBufferService sortedStoreBufferServiceDelegate;
+  protected final StoreBufferService unsortedStoreBufferServiceDelegate;
   private final int sortedPoolSize;
   private final int unsortedPoolSize;
 
@@ -50,12 +50,12 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   SeparatedStoreBufferService(
       int sortedPoolSize,
       int unsortedPoolSize,
-      StoreBufferService sortedServiceDelegate,
-      StoreBufferService unsortedServiceDelegate) {
+      StoreBufferService sortedStoreBufferServiceDelegate,
+      StoreBufferService unsortedStoreBufferServiceDelegate) {
     this.sortedPoolSize = sortedPoolSize;
     this.unsortedPoolSize = unsortedPoolSize;
-    this.sortedServiceDelegate = sortedServiceDelegate;
-    this.unsortedServiceDelegate = unsortedServiceDelegate;
+    this.sortedStoreBufferServiceDelegate = sortedStoreBufferServiceDelegate;
+    this.unsortedStoreBufferServiceDelegate = unsortedStoreBufferServiceDelegate;
   }
 
   @Override
@@ -66,7 +66,8 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) throws InterruptedException {
-    StoreBufferService chosenSBS = ingestionTask.isHybridMode() ? unsortedServiceDelegate : sortedServiceDelegate;
+    StoreBufferService chosenSBS =
+        ingestionTask.isHybridMode() ? unsortedStoreBufferServiceDelegate : sortedStoreBufferServiceDelegate;
     chosenSBS.putConsumerRecord(
         consumerRecord,
         ingestionTask,
@@ -78,36 +79,40 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
 
   @Override
   public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition) throws InterruptedException {
-    sortedServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition);
-    unsortedServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition);
+    sortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition);
+    unsortedStoreBufferServiceDelegate.drainBufferedRecordsFromTopicPartition(topicPartition);
   }
 
   @Override
   public boolean startInner() throws Exception {
-    sortedServiceDelegate.startInner();
-    unsortedServiceDelegate.startInner();
+    sortedStoreBufferServiceDelegate.startInner();
+    unsortedStoreBufferServiceDelegate.startInner();
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
-    sortedServiceDelegate.stopInner();
-    unsortedServiceDelegate.stopInner();
+    sortedStoreBufferServiceDelegate.stopInner();
+    unsortedStoreBufferServiceDelegate.stopInner();
   }
 
   public long getTotalMemoryUsage() {
-    return unsortedServiceDelegate.getTotalMemoryUsage() + sortedServiceDelegate.getTotalMemoryUsage();
+    return unsortedStoreBufferServiceDelegate.getTotalMemoryUsage()
+        + sortedStoreBufferServiceDelegate.getTotalMemoryUsage();
   }
 
   public long getTotalRemainingMemory() {
-    return unsortedServiceDelegate.getTotalRemainingMemory() + sortedServiceDelegate.getTotalRemainingMemory();
+    return unsortedStoreBufferServiceDelegate.getTotalRemainingMemory()
+        + sortedStoreBufferServiceDelegate.getTotalRemainingMemory();
   }
 
   public long getMaxMemoryUsagePerDrainer() {
-    return unsortedServiceDelegate.getMaxMemoryUsagePerDrainer() + sortedServiceDelegate.getMaxMemoryUsagePerDrainer();
+    return unsortedStoreBufferServiceDelegate.getMaxMemoryUsagePerDrainer()
+        + sortedStoreBufferServiceDelegate.getMaxMemoryUsagePerDrainer();
   }
 
   public long getMinMemoryUsagePerDrainer() {
-    return sortedServiceDelegate.getMinMemoryUsagePerDrainer() + unsortedServiceDelegate.getMinMemoryUsagePerDrainer();
+    return sortedStoreBufferServiceDelegate.getMinMemoryUsagePerDrainer()
+        + unsortedStoreBufferServiceDelegate.getMinMemoryUsagePerDrainer();
   }
 }
