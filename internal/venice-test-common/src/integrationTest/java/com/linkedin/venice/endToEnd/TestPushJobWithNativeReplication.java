@@ -20,7 +20,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
@@ -991,8 +990,6 @@ public class TestPushJobWithNativeReplication {
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           props.put(TARGETED_REGION_PUSH_ENABLED, true);
-          // no need to set but add here for clarity
-          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
           try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
             job.run(); // the job should succeed
 

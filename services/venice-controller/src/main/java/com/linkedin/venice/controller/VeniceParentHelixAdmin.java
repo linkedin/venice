@@ -3532,14 +3532,19 @@ public class VeniceParentHelixAdmin implements Admin {
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
           ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
           Store parentStore = repository.getStore(storeName);
+          // targetedRegions is non-empty for target region push of batch store
           boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
           boolean isVersionPushed =
               parentStore.getVersion(versionNum).map(v -> v.getStatus().equals(PUSHED)).orElse(false);
+          boolean isHybridStore =
+              parentStore.getVersion(versionNum).map(Version::getHybridStoreConfig).orElse(null) != null;
           // Truncate topic after push is in terminal state if
-          // 1. Its a hybrid store or regular push
-          // 2. If target push is enabled and its previously pushed by previous target colo push (status == PUSHED)
-          if (!isTargetRegionPush || isVersionPushed
-              || parentStore.getVersion(versionNum).get().getHybridStoreConfig() != null) {
+          // 1. Its a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush is
+          // false)
+          // 2. If target region push is enabled and job to push data only to target region completed (status == PUSHED)
+          if (!isTargetRegionPush // regular push
+              || isVersionPushed // target region push
+              || isHybridStore) {
             LOGGER
                 .info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
             truncateTopicsOptionally(
@@ -3549,10 +3554,12 @@ public class VeniceParentHelixAdmin implements Admin {
                 currentReturnStatus,
                 currentReturnStatusDetails);
           }
+          // status PUSHED is set when batch store's target region push is completed, but other region are yet to
+          // complete
           if (isTargetRegionPush && !isVersionPushed) {
             parentStore.updateVersionStatus(versionNum, PUSHED);
             repository.updateStore(parentStore);
-          } else {
+          } else { // status ONLINE is set when all region finishes ingestion for either regular or target region push.
             parentStore.updateVersionStatus(versionNum, ONLINE);
             repository.updateStore(parentStore);
           }

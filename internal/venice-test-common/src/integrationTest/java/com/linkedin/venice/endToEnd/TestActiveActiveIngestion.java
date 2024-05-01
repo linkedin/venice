@@ -7,7 +7,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIEL
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
@@ -366,7 +365,6 @@ public class TestActiveActiveIngestion {
     props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     props.setProperty(TARGETED_REGION_PUSH_ENABLED, "true");
-    props.setProperty(POST_VALIDATION_CONSUMPTION_ENABLED, "true"); // it's true by default but set it here for clarity
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
     props.setProperty(REWIND_TIME_IN_SECONDS_OVERRIDE, "0");
     TestWriteUtils.runPushJob("Run repush job", props);
