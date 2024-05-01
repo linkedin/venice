@@ -808,6 +808,9 @@ public class RouterServer extends AbstractVeniceService {
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
+    if (sslResolverEventLoopGroup != null) {
+      sslResolverEventLoopGroup.shutdownGracefully();
+    }
 
     dispatcher.stop();
 
