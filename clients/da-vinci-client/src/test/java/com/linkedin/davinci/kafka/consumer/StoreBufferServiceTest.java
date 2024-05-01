@@ -274,6 +274,7 @@ public class StoreBufferServiceTest {
     StoreBufferService unsortedSBS = mock(StoreBufferService.class);
     SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(8, 8, sortedSBS, unsortedSBS);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    doReturn(false).when(mockTask).isHybridMode();
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;
     int partition2 = 2;
@@ -289,6 +290,7 @@ public class StoreBufferServiceTest {
         new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 1, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr4 =
         new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, 1, 0, 0);
+    doReturn(true).when(mockTask).isHybridMode();
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0);
     verify(unsortedSBS).putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0);
@@ -296,6 +298,7 @@ public class StoreBufferServiceTest {
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     when(partitionConsumptionState.isDeferredWrite()).thenReturn(true);
     when(mockTask.getPartitionConsumptionState(partition1)).thenReturn(partitionConsumptionState);
+    doReturn(false).when(mockTask).isHybridMode();
 
     bufferService.putConsumerRecord(cr2, mockTask, null, partition1, kafkaUrl, 0);
     verify(sortedSBS).putConsumerRecord(cr2, mockTask, null, partition1, kafkaUrl, 0);
@@ -306,9 +309,8 @@ public class StoreBufferServiceTest {
     verify(unsortedSBS, never()).drainBufferedRecordsFromTopicPartition(any());
 
     when(partitionConsumptionState.isDeferredWrite()).thenReturn(false);
+    doReturn(true).when(mockTask).isHybridMode();
     bufferService.putConsumerRecord(cr4, mockTask, null, partition1, kafkaUrl, 0);
     verify(unsortedSBS).putConsumerRecord(cr4, mockTask, null, partition1, kafkaUrl, 0);
-    verify(sortedSBS).drainBufferedRecordsFromTopicPartition(any());
-    verify(unsortedSBS).drainBufferedRecordsFromTopicPartition(any());
   }
 }
