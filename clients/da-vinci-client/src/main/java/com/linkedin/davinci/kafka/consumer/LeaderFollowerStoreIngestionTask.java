@@ -1500,11 +1500,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
        */
       String logMsg = String.format(
-          ingestionTask.getIngestionTaskName() + " partition %d received message with upstreamOffset: %d;"
-              + " but recorded upstreamOffset is: %d. Received message producer GUID: %s; Recorded producer GUID: %s;"
-              + " Received message producer host: %s; Recorded producer host: %s."
+          "{} partition {} received message at offset {} with upstreamOffset: {};"
+              + " but recorded upstreamOffset is: {}. Received message producer GUID: {}; Recorded producer GUID: {};"
+              + " Received message producer host: {}; Recorded producer host: {}."
               + " Multiple leaders are producing. ",
+          ingestionTask.getIngestionTaskName(),
           consumerRecord.getTopicPartition().getPartitionNumber(),
+          consumerRecord.getOffset(),
           newUpstreamOffset,
           previousUpstreamOffset,
           kafkaValue.producerMetadata.producerGUID == null
