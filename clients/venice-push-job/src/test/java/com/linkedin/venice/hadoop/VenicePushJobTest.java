@@ -15,7 +15,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_KEY_
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -597,7 +596,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
     // when targeted region push is enabled, but store doesn't have source fabric set.
     ControllerClient client = getClient(store -> {
       store.setNativeReplicationSourceFabric("");
@@ -634,7 +632,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
     props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
@@ -665,7 +662,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);
@@ -713,7 +709,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     ControllerClient client = getClient(storeInfo -> {
       storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
     }, true);
@@ -737,7 +732,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);
