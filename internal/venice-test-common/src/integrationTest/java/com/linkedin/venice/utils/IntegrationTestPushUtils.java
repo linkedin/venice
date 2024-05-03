@@ -13,9 +13,12 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_GRID_FABR
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
@@ -46,10 +49,12 @@ import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -210,6 +215,27 @@ public class IntegrationTestPushUtils {
     return samzaConfig;
   }
 
+  /**
+   *  Create Samza Producer config for multi cluster setup.
+   */
+  public static Map<String, String> getSamzaProducerConfig(
+      List<VeniceMultiClusterWrapper> dataCenters,
+      int index,
+      String storeName) {
+    Map<String, String> samzaConfig = new HashMap<>();
+    String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
+    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+    samzaConfig.put(configPrefix + VENICE_STORE, storeName);
+    samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
+    samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, dataCenters.get(index).getZkServerWrapper().getAddress());
+    samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
+    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_d2_service");
+    samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
+    samzaConfig.put(DEPLOYMENT_ID, "DC_" + index + "_" + storeName);
+    samzaConfig.put(SSL_ENABLED, "false");
+    return samzaConfig;
+  }
+
   @SafeVarargs
   public static SystemProducer getSamzaProducer(
       VeniceClusterWrapper venice,
@@ -304,6 +330,19 @@ public class IntegrationTestPushUtils {
           .getControllerClient(d2ServiceName, veniceClusterName, d2ZkHosts, Optional.empty());
     } else {
       return ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
+    }
+  }
+
+  public static void sendStreamingRecordWithLogicalTimestamp(
+      VeniceSystemProducer veniceProducer,
+      String storeName,
+      int index,
+      long logicalTimestamp,
+      boolean isDeleteOperation) {
+    if (isDeleteOperation) {
+      sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(index), logicalTimestamp);
+    } else {
+      sendStreamingRecord(veniceProducer, storeName, Integer.toString(index), "stream_" + index, logicalTimestamp);
     }
   }
 

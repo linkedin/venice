@@ -66,7 +66,6 @@ import com.linkedin.venice.hadoop.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.hadoop.spark.utils.SparkScalaUtils;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
@@ -397,7 +396,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   @Override
   public void close() throws IOException {
-    Utils.closeQuietlyWithErrorLogged(sparkSession);
+    // We don't close the SparkSession to help with reusability across multiple Spark jobs, and it will eventually be
+    // closed by SparkContext's ShutdownHook
   }
 
   private void logAccumulatorValues() {

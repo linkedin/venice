@@ -1772,6 +1772,28 @@ public class ConfigKeys {
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
+   * Config to control if DNS resolution should be done before SSL handshake between clients and a router.
+   * If this is enabled, the above SSL handshake thread pool will be used to perform DNS resolution, because
+   * DNS resolution before SSL and separate SSL handshake thread pool are mutually exclusive features.
+   */
+  public static final String ROUTER_RESOLVE_BEFORE_SSL = "router.resolve.before.ssl";
+
+  /**
+   * Config to control the maximum number of concurrent DNS resolutions that can be done by the router.
+   */
+  public static final String ROUTER_MAX_CONCURRENT_RESOLUTIONS = "router.max.concurrent.resolutions";
+
+  /**
+   * Config to control the maximum number of attempts to resolve a client host name before giving up.
+   */
+  public static final String ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS = "router.client.resolution.retry.attempts";
+
+  /**
+   * Config to control the backoff time between each resolution retry.
+   */
+  public static final String ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS = "router.client.resolution.retry.backoff.ms";
+
+  /**
    * Config to control the queue capacity for the thread pool executor used for ssl handshake between clients and a router.
    */
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY = "router.client.ssl.handshake.queue.capacity";

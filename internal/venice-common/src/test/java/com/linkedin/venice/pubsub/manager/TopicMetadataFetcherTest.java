@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub.manager;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -56,7 +57,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -81,7 +84,7 @@ public class TopicMetadataFetcherTest {
   @BeforeMethod(alwaysRun = true)
   public void setUp() throws InterruptedException {
     consumerMock = mock(PubSubConsumerAdapter.class);
-    pubSubConsumerPool = new LinkedBlockingQueue<>(2);
+    pubSubConsumerPool = new LinkedBlockingQueue<>(1);
     pubSubConsumerPool.put(consumerMock);
     threadPoolExecutor = (ThreadPoolExecutor) Executors.newFixedThreadPool(2);
     adminMock = mock(PubSubAdminAdapter.class);
@@ -490,5 +493,36 @@ public class TopicMetadataFetcherTest {
     when(consumerMock.offsetForTime(eq(tp0), eq(ts), any(Duration.class))).thenReturn(null);
     assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), latestOffset);
     assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testConsumerIsReleasedBackToPoolWhenThreadIsTerminated() {
+    CountDownLatch signalReceiver = new CountDownLatch(1);
+    assertEquals(pubSubConsumerPool.size(), 1);
+    ExecutorService executorService = Executors.newSingleThreadExecutor();
+    Future future = executorService.submit(() -> {
+      PubSubConsumerAdapter consumerAdapter = topicMetadataFetcher.acquireConsumer();
+      try {
+        signalReceiver.countDown();
+        Thread.sleep(Integer.MAX_VALUE);
+        System.out.println(pubSubConsumerPool.size());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Thread interrupted");
+      } finally {
+        topicMetadataFetcher.releaseConsumer(consumerAdapter);
+      }
+    });
+
+    try {
+      signalReceiver.await();
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+    assertEquals(pubSubConsumerPool.size(), 0);
+    future.cancel(true);
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertEquals(pubSubConsumerPool.size(), 1);
+    });
   }
 }

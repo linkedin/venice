@@ -19,6 +19,8 @@ import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_ASYNC_START_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_FAST_AVRO_ENABLED;
@@ -61,6 +63,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_LEAKED_FUTURE_CLEANUP_THRESH
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ;
+import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_CONCURRENT_RESOLUTIONS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE;
@@ -76,6 +79,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER;
 import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_BEFORE_SSL;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED;
@@ -188,6 +192,10 @@ public class VeniceRouterConfig {
   private HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
   private String systemSchemaClusterName;
   private int clientSslHandshakeThreads;
+  private boolean resolveBeforeSSL;
+  private int maxConcurrentResolutions;
+  private int clientResolutionRetryAttempts;
+  private long clientResolutionRetryBackoffMs;
   private int clientSslHandshakeQueueCapacity;
   private long readQuotaThrottlingLeaseTimeoutMs;
   private boolean routerHeartBeatEnabled;
@@ -319,6 +327,10 @@ public class VeniceRouterConfig {
         props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
     clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 0);
+    resolveBeforeSSL = props.getBoolean(ROUTER_RESOLVE_BEFORE_SSL, false);
+    maxConcurrentResolutions = props.getInt(ROUTER_MAX_CONCURRENT_RESOLUTIONS, 100);
+    clientResolutionRetryAttempts = props.getInt(ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS, 3);
+    clientResolutionRetryBackoffMs = props.getLong(ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS, 5 * Time.MS_PER_SECOND);
     clientSslHandshakeQueueCapacity = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY, Integer.MAX_VALUE);
 
     readQuotaThrottlingLeaseTimeoutMs =
@@ -746,6 +758,22 @@ public class VeniceRouterConfig {
 
   public int getClientSslHandshakeThreads() {
     return clientSslHandshakeThreads;
+  }
+
+  public boolean isResolveBeforeSSL() {
+    return resolveBeforeSSL;
+  }
+
+  public int getMaxConcurrentResolutions() {
+    return maxConcurrentResolutions;
+  }
+
+  public int getClientResolutionRetryAttempts() {
+    return clientResolutionRetryAttempts;
+  }
+
+  public long getClientResolutionRetryBackoffMs() {
+    return clientResolutionRetryBackoffMs;
   }
 
   public int getClientSslHandshakeQueueCapacity() {

@@ -15,7 +15,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_KEY_
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -522,21 +521,19 @@ public class VenicePushJobTest {
     new VenicePushJob(PUSH_JOB_ID, props);
   }
 
-  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testShouldBuildZstdCompressionDictionary(
       boolean compressionMetricCollectionEnabled,
-      boolean isSourceKafka,
       boolean isIncrementalPush,
       boolean inputFileHasRecords) {
     PushJobSetting pushJobSetting = new PushJobSetting();
     pushJobSetting.compressionMetricCollectionEnabled = compressionMetricCollectionEnabled;
-    pushJobSetting.isSourceKafka = isSourceKafka;
     pushJobSetting.isIncrementalPush = isIncrementalPush;
 
     for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
       pushJobSetting.storeCompressionStrategy = compressionStrategy;
 
-      if (isSourceKafka || isIncrementalPush) {
+      if (isIncrementalPush) {
         assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, inputFileHasRecords));
       } else if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, inputFileHasRecords));
@@ -560,14 +557,6 @@ public class VenicePushJobTest {
     // reset settings for the below tests
     pushJobSetting.compressionMetricCollectionEnabled = true;
     assertFalse(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, false));
-
-    // Test with isSourceKafka == true
-    pushJobSetting.isSourceKafka = true;
-    assertFalse(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, true));
-    assertFalse(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, false));
-
-    // reset settings for the below tests
-    pushJobSetting.isSourceKafka = false;
 
     // Test with isIncrementalPush == true
     pushJobSetting.isIncrementalPush = true;
@@ -607,7 +596,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
     // when targeted region push is enabled, but store doesn't have source fabric set.
     ControllerClient client = getClient(store -> {
       store.setNativeReplicationSourceFabric("");
@@ -644,7 +632,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
     props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
@@ -675,7 +662,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);
@@ -723,7 +709,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     ControllerClient client = getClient(storeInfo -> {
       storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
     }, true);
@@ -747,7 +732,6 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);

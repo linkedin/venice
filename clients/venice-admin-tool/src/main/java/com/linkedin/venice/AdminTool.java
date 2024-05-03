@@ -73,6 +73,7 @@ import com.linkedin.venice.datarecovery.DataRecoveryClient;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixSchemaAccessor;
@@ -2141,7 +2142,14 @@ public class AdminTool {
     }
 
     // Skip original store deletion if it has already been deleted
-    if (srcControllerClient.getStore(storeName).getStore() != null) {
+    StoreResponse srcStoreResponse = srcControllerClient.getStore(storeName);
+    if (srcStoreResponse.isError() && srcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
+      System.err.println(
+          "ERROR: failed to check store " + storeName + " existence in original cluster " + srcClusterName
+              + " due to error: " + srcStoreResponse.getError());
+    }
+
+    if (srcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
       // Delete original store
       srcControllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
@@ -2157,7 +2165,13 @@ public class AdminTool {
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
     Map<String, ControllerClient> srcChildControllerClientMap = getControllerClientMap(srcClusterName, response);
     for (Map.Entry<String, ControllerClient> entry: srcChildControllerClientMap.entrySet()) {
-      if (entry.getValue().getStore(storeName).getStore() != null) {
+      StoreResponse childSrcStoreResponse = entry.getValue().getStore(storeName);
+      if (childSrcStoreResponse.isError() && childSrcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
+        System.err.println(
+            "ERROR: failed to check store " + storeName + " existence in original cluster " + srcClusterName
+                + " in fabric " + entry.getKey() + " due to error: " + childSrcStoreResponse.getError());
+      }
+      if (childSrcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
         System.err.println(
             "ERROR: store " + storeName + " still exists in source cluster " + srcClusterName + " in fabric "
                 + entry.getKey() + ". Please try again later.");
