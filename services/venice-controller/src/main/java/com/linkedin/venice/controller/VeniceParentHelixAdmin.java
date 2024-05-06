@@ -4318,6 +4318,14 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * @see Admin#truncateKafkaTopic(String, long)
+   */
+  @Override
+  public boolean truncateKafkaTopic(String kafkaTopicName, long retentionTime) {
+    return getVeniceHelixAdmin().truncateKafkaTopic(kafkaTopicName, retentionTime);
+  }
+
+  /**
    * Unsupported operation in the parent controller.
    */
   @Override

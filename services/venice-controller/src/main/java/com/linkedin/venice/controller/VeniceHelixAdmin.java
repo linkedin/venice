@@ -3255,7 +3255,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           String versionTopicName = Version.composeKafkaTopic(storeName, deletedVersion.get().getNumber());
           if (fatalDataValidationFailureRetentionMs != -1
               && hasFatalDataValidationError(pushMonitor, versionTopicName)) {
-            truncateKafkaTopic(versionTopicName, Optional.of(fatalDataValidationFailureRetentionMs));
+            truncateKafkaTopic(versionTopicName, fatalDataValidationFailureRetentionMs);
           } else {
             truncateKafkaTopic(versionTopicName);
           }
@@ -3568,15 +3568,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  /**
+   * @see Admin#truncateKafkaTopic(String, long)
+   */
   @Override
-  public boolean truncateKafkaTopic(String topicName, Optional<Long> retentionTime) {
-    if (!retentionTime.isPresent()) {
-      return truncateKafkaTopic(topicName);
-    }
-
+  public boolean truncateKafkaTopic(String topicName, long retentionTime) {
     return multiClusterConfigs.isParent()
         ? truncateKafkaTopicInParentFabrics(topicName)
-        : truncateKafkaTopic(getTopicManager(), topicName, retentionTime.get());
+        : truncateKafkaTopic(getTopicManager(), topicName, retentionTime);
   }
 
   private boolean truncateKafkaTopic(String kafkaTopicName, Map<String, PubSubTopicConfiguration> topicConfigs) {

@@ -699,9 +699,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * @return true if truncating this topic successfully.
    *        false otherwise.
    */
-  default boolean truncateKafkaTopic(String topicName, Optional<Long> retentionTimeInMs) {
-    return false;
-  }
+  boolean truncateKafkaTopic(String topicName, long retentionTimeInMs);
 
   /**
    * Check whether the specified resource is fully removed or not.
