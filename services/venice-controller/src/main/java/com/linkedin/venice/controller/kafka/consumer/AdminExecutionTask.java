@@ -84,7 +84,7 @@ public class AdminExecutionTask implements Callable<Void> {
   private final ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
   private final long lastPersistedExecutionId;
 
-  private final Set<String> storeSet;
+  private final Map<String, AdminExecutionTask> storeToScheduledTask;
 
   AdminExecutionTask(
       Logger LOGGER,
@@ -98,7 +98,7 @@ public class AdminExecutionTask implements Callable<Void> {
       boolean isParentController,
       AdminConsumptionStats stats,
       String regionName,
-      Set<String> storeSet) {
+      Map<String, AdminExecutionTask> storeToScheduledTask) {
     this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
@@ -110,7 +110,7 @@ public class AdminExecutionTask implements Callable<Void> {
     this.isParentController = isParentController;
     this.stats = stats;
     this.regionName = regionName;
-    this.storeSet = storeSet;
+    this.storeToScheduledTask = storeToScheduledTask;
   }
 
   @Override
@@ -160,7 +160,7 @@ public class AdminExecutionTask implements Callable<Void> {
       }
       throw e;
     } finally {
-      storeSet.remove(storeName);
+      storeToScheduledTask.remove(storeName);
     }
     return null;
   }

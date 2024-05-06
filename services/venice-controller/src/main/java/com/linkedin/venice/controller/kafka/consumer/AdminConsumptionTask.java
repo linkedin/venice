@@ -44,7 +44,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -160,7 +159,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private final Map<String, Queue<AdminOperationWrapper>> storeAdminOperationsMapWithOffset;
 
-  private final Set<String> storeHasScheduledTask;
+  private final ConcurrentHashMap<String, AdminExecutionTask> storeToScheduledTask;
 
   /**
    * Map of store names that have encountered some sort of exception during consumption to {@link AdminErrorInfo}
@@ -287,7 +286,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
-    this.storeHasScheduledTask = ConcurrentHashMap.newKeySet();
+    this.storeToScheduledTask = new ConcurrentHashMap<>();
     // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
         maxWorkerThreadPoolSize,
@@ -462,7 +461,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       storeAdminOperationsMapWithOffset.clear();
       problematicStores.clear();
       undelegatedRecords.clear();
-      storeHasScheduledTask.clear();
+      storeToScheduledTask.clear();
       failingOffset = UNASSIGNED_VALUE;
       offsetToSkip = UNASSIGNED_VALUE;
       offsetToSkipDIV = UNASSIGNED_VALUE;
@@ -498,27 +497,29 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // Create a task for each store that has admin messages pending to be processed.
     boolean skipOffsetCommandHasBeenProcessed = false;
     for (Map.Entry<String, Queue<AdminOperationWrapper>> entry: storeAdminOperationsMapWithOffset.entrySet()) {
-      if (!entry.getValue().isEmpty() && !storeHasScheduledTask.contains(entry.getKey())) {
+      if (!entry.getValue().isEmpty()) {
         if (checkOffsetToSkip(entry.getValue().peek().getOffset(), false)) {
           entry.getValue().remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
-        storeHasScheduledTask.add(entry.getKey());
-        tasks.add(
-            new AdminExecutionTask(
-                LOGGER,
-                clusterName,
-                entry.getKey(),
-                lastSucceededExecutionIdMap,
-                lastPersistedExecutionId,
-                entry.getValue(),
-                admin,
-                executionIdAccessor,
-                isParentController,
-                stats,
-                regionName,
-                storeHasScheduledTask));
-        stores.add(entry.getKey());
+        AdminExecutionTask newTask = new AdminExecutionTask(
+            LOGGER,
+            clusterName,
+            entry.getKey(),
+            lastSucceededExecutionIdMap,
+            lastPersistedExecutionId,
+            entry.getValue(),
+            admin,
+            executionIdAccessor,
+            isParentController,
+            stats,
+            regionName,
+            storeToScheduledTask);
+        // Check if there is previously created scheduled task still occupying one thread from the pool.
+        if (storeToScheduledTask.putIfAbsent(entry.getKey(), newTask) == null) {
+          tasks.add(newTask);
+          stores.add(entry.getKey());
+        }
       }
     }
     if (skipOffsetCommandHasBeenProcessed) {
