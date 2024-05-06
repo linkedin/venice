@@ -373,7 +373,7 @@ public class TopicCleanupService extends AbstractVeniceService {
 
     return veniceTopics.stream()
         /** Consider only truncated topics */
-        .filter(t -> admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(t)))
+        .filter(t -> admin.isTopicTruncatedBasedOnRetention(t.getName(), topicRetentions.get(t)))
         /** Always preserve the last {@link #minNumberOfUnusedKafkaTopicsToPreserve} topics, whether they are healthy or not */
         .filter(t -> Version.parseVersionFromKafkaTopicName(t.getName()) <= maxVersionNumberToDelete)
         /**

@@ -217,4 +217,8 @@ public enum ExecutionStatus {
       return false;
     }
   }
+
+  public static boolean isError(ExecutionStatus status) {
+    return status == ERROR;
+  }
 }

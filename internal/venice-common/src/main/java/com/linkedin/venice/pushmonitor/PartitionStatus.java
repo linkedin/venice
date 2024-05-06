@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
+import static com.linkedin.venice.utils.Utils.*;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -84,6 +85,16 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
       return Collections.emptyList();
     }
     return replicaStatus.getStatusHistory();
+  }
+
+  public boolean hasFatalDataValidationError() {
+    for (ReplicaStatus replicaStatus: replicaStatusMap.values()) {
+      if (ExecutionStatus.isError(replicaStatus.getCurrentStatus())
+          && replicaStatus.getIncrementalPushVersion().contains(FATAL_DATA_VALIDATION_ERROR)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override

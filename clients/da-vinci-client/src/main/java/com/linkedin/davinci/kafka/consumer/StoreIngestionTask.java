@@ -9,6 +9,7 @@ import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABL
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -2182,11 +2183,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int faultyPartition = record.getTopicPartition().getPartitionNumber();
       String errorMessage;
       if (amplificationFactor != 1 && record.getTopicPartition().getPubSubTopic().isRealTime()) {
-        errorMessage = "Fatal data validation problem with in RT topic partition " + faultyPartition + ", offset "
+        errorMessage = FATAL_DATA_VALIDATION_ERROR + " with in RT topic partition " + faultyPartition + ", offset "
             + record.getOffset() + ", leaderSubPartition: " + subPartition;
       } else {
         errorMessage =
-            "Fatal data validation problem with partition " + faultyPartition + ", offset " + record.getOffset();
+            FATAL_DATA_VALIDATION_ERROR + " with partition " + faultyPartition + ", offset " + record.getOffset();
       }
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing

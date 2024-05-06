@@ -242,6 +242,9 @@ public class ConfigKeys {
    */
   public static final String DEPRECATED_TOPIC_RETENTION_MS = "deprecated.topic.retention.ms";
 
+  public static final String FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS =
+      "fatal.data.validation.failure.topic.retention.ms";
+
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
    * And this is used to decide whether the topic is deprecated or not during topic cleanup.

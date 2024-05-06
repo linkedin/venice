@@ -349,6 +349,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final ExecutionIdAccessor executionIdAccessor;
   private final RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final long deprecatedJobTopicRetentionMs;
+
+  private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
   private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
   private final VeniceWriterFactory veniceWriterFactory;
@@ -462,6 +464,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
     this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
     this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
+    this.fatalDataValidationFailureRetentionMs = multiClusterConfigs.getFatalDataValidationFailureRetentionMs();
     this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
     this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
 
@@ -3216,6 +3219,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Delete version from cluster, removing all related resources
    */
+  @Override
   public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
     deleteOneStoreVersion(clusterName, storeName, versionNumber, false);
   }
@@ -3224,6 +3228,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       Store store = resources.getStoreMetadataRepository().getStore(storeName);
+      PushMonitor pushMonitor = resources.getPushMonitor();
       if (store == null) {
         throwStoreDoesNotExist(clusterName, storeName);
       }
@@ -3247,7 +3252,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // In such case, the topic will be deleted after store migration, triggered by a new push job
         if (!store.isMigrating()) {
           // Not using deletedVersion.get().kafkaTopicName() because it's incorrect for Zk shared stores.
-          truncateKafkaTopic(Version.composeKafkaTopic(storeName, deletedVersion.get().getNumber()));
+          String versionTopicName = Version.composeKafkaTopic(storeName, deletedVersion.get().getNumber());
+          if (fatalDataValidationFailureRetentionMs != -1
+              && hasFatalDataValidationError(pushMonitor, versionTopicName)) {
+            truncateKafkaTopic(versionTopicName, fatalDataValidationFailureRetentionMs);
+          } else {
+            truncateKafkaTopic(versionTopicName);
+          }
+
           if (deletedVersion.get().getPushType().isStreamReprocessing()) {
             truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, versionNumber));
           }
@@ -3287,6 +3299,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store = resources.getStoreMetadataRepository().getStore(storeName);
         safeDeleteRTTopic(clusterName, storeName, store);
       }
+    }
+  }
+
+  boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
+    try {
+      OfflinePushStatus offlinePushStatus = pushMonitor.getOfflinePushOrThrow(topicName);
+      return offlinePushStatus.hasFatalDataValidationError();
+    } catch (VeniceException e) {
+      LOGGER.warn("Failed to get offline push status for topic: {}", topicName, e);
+      return false;
     }
   }
 
@@ -3480,6 +3502,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Topic should also be considered to get cleaned up if:
+   * retention is less than the configured {@linkplain ConfigKeys#DEPRECATED_TOPIC_MAX_RETENTION_MS} value.
+   * or
+   * 1. Topic retention equals fatalDataValidationFailureRetentionMs.
+   * 2. Topic is a version topic.
+   * 3. fatalDataValidationFailureRetentionMs has already passed since its creation.
+   */
+  @Override
+  public boolean isTopicTruncatedBasedOnRetention(String kafkaTopicName, long retentionTime) {
+    if (isTopicTruncatedBasedOnRetention(retentionTime)) {
+      return true;
+    }
+
+    if (retentionTime == fatalDataValidationFailureRetentionMs && Version.isVersionTopic(kafkaTopicName)) {
+      PushJobStatusRecordKey storeVersionKey = new PushJobStatusRecordKey();
+      storeVersionKey.storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+      storeVersionKey.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopicName);
+      try {
+        PushJobDetails jobDetails = getPushJobDetails(storeVersionKey);
+        if (jobDetails != null) {
+          /** Use {@link PushJobDetails.reportTimestamp} to approximate time of topic creation.*/
+          if (LatencyUtils.getElapsedTimeInMs(jobDetails.reportTimestamp) > fatalDataValidationFailureRetentionMs) {
+            return true;
+          }
+        }
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Failed to get push job details for store: {}, version: {}",
+            storeVersionKey.storeName,
+            storeVersionKey.versionNumber,
+            e);
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * @return the controller configuration value for MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE.
    * @see ConfigKeys#MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE
    */
@@ -3504,8 +3564,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (multiClusterConfigs.isParent()) {
       return truncateKafkaTopicInParentFabrics(kafkaTopicName);
     } else {
-      return truncateKafkaTopic(getTopicManager(), kafkaTopicName);
+      return truncateKafkaTopic(getTopicManager(), kafkaTopicName, this.deprecatedJobTopicRetentionMs);
     }
+  }
+
+  /**
+   * @see Admin#truncateKafkaTopic(String, long)
+   */
+  @Override
+  public boolean truncateKafkaTopic(String topicName, long retentionTime) {
+    return multiClusterConfigs.isParent()
+        ? truncateKafkaTopicInParentFabrics(topicName)
+        : truncateKafkaTopic(getTopicManager(), topicName, retentionTime);
   }
 
   private boolean truncateKafkaTopic(String kafkaTopicName, Map<String, PubSubTopicConfiguration> topicConfigs) {
@@ -3528,12 +3598,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
     for (String parentFabric: parentFabrics) {
       String kafkaBootstrapServerAddress = getNativeReplicationKafkaBootstrapServerAddress(parentFabric);
-      allTopicsAreDeleted &= truncateKafkaTopic(getTopicManager(kafkaBootstrapServerAddress), kafkaTopicName);
+      allTopicsAreDeleted &= truncateKafkaTopic(
+          getTopicManager(kafkaBootstrapServerAddress),
+          kafkaTopicName,
+          this.deprecatedJobTopicRetentionMs);
     }
     return allTopicsAreDeleted;
   }
 
-  private boolean truncateKafkaTopic(TopicManager topicManager, String kafkaTopicName) {
+  private boolean truncateKafkaTopic(
+      TopicManager topicManager,
+      String kafkaTopicName,
+      long deprecatedJobTopicRetentionMs) {
     try {
       if (topicManager
           .updateTopicRetention(pubSubTopicRepository.getTopic(kafkaTopicName), deprecatedJobTopicRetentionMs)) {
@@ -8189,5 +8265,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // Visible for testing
   VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
+  }
+
+  // Only for testing
+  public void setPushJobDetailsStoreClient(AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client) {
+    pushJobDetailsStoreClient = client;
   }
 }

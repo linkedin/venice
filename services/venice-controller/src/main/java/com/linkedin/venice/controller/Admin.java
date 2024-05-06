@@ -682,6 +682,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   boolean isTopicTruncatedBasedOnRetention(long retention);
 
+  boolean isTopicTruncatedBasedOnRetention(String topicName, long retention);
+
   int getMinNumberOfUnusedKafkaTopicsToPreserve();
 
   /**
@@ -689,6 +691,15 @@ public interface Admin extends AutoCloseable, Closeable {
    *         true if it's the first time truncating this topic.
    */
   boolean truncateKafkaTopic(String topicName);
+
+  /**
+   * Truncate a Kafka topic by setting its retention time to the input value.
+   * @param topicName the name of the topic to truncate.
+   * @param retentionTimeInMs the retention time in milliseconds to set for the topic.
+   * @return true if truncating this topic successfully.
+   *        false otherwise.
+   */
+  boolean truncateKafkaTopic(String topicName, long retentionTimeInMs);
 
   /**
    * Check whether the specified resource is fully removed or not.

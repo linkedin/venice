@@ -4296,6 +4296,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().isTopicTruncatedBasedOnRetention(retention);
   }
 
+  @Override
+  public boolean isTopicTruncatedBasedOnRetention(String kafkaTopicName, long retentionTime) {
+    return getVeniceHelixAdmin().isTopicTruncatedBasedOnRetention(kafkaTopicName, retentionTime);
+  }
+
   /**
    * @see VeniceHelixAdmin#getMinNumberOfUnusedKafkaTopicsToPreserve()
    */
@@ -4310,6 +4315,14 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public boolean truncateKafkaTopic(String kafkaTopicName) {
     return getVeniceHelixAdmin().truncateKafkaTopic(kafkaTopicName);
+  }
+
+  /**
+   * @see Admin#truncateKafkaTopic(String, long)
+   */
+  @Override
+  public boolean truncateKafkaTopic(String kafkaTopicName, long retentionTime) {
+    return getVeniceHelixAdmin().truncateKafkaTopic(kafkaTopicName, retentionTime);
   }
 
   /**
