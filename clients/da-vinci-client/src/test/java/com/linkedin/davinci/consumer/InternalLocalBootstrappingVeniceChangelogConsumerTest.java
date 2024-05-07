@@ -347,6 +347,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         ((ApacheKafkaOffsetPosition) bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition())
             .getOffset(),
         TEST_OFFSET_NEW);
+    Assert.assertEquals(bootstrapStateMap.get(TEST_PARTITION_ID_0).bootstrapTempDataCache.size(), 0);
     verify(mockStorageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
   }
 
@@ -400,10 +401,67 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         ((ApacheKafkaOffsetPosition) bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition())
             .getOffset(),
         TEST_OFFSET_NEW);
+    Assert.assertEquals(bootstrapStateMap.get(TEST_PARTITION_ID_0).bootstrapTempDataCache.size(), 0);
     verify(storageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
     verify(storageEngineReloadedFromRepo, times(1)).sync(TEST_PARTITION_ID_0);
     verify(storageMetadataService, times(1))
         .put(eq(localStateTopicName), eq(TEST_PARTITION_ID_0), any(OffsetRecord.class));
+  }
+
+  @Test
+  public void testProcessRecordBytes_CatchUpPhase_UpdateTempCacheOnly() throws IOException {
+    byte[] key = "key".getBytes();
+    byte[] valueBytes = "value".getBytes();
+    ByteBuffer value = mock(ByteBuffer.class);
+    when(value.array()).thenReturn(valueBytes);
+    RecordDeserializer deserializer = mock(RecordDeserializer.class);
+    RecordChangeEvent recordChangeEvent = new RecordChangeEvent();
+    recordChangeEvent.setCurrentValue(new ValueBytes(value, TEST_SCHEMA_ID));
+    when(deserializer.deserialize(value)).thenReturn(recordChangeEvent);
+    VeniceCompressor compressor = mock(VeniceCompressor.class);
+    when(compressor.decompress(value)).thenReturn(value);
+    PubSubTopicPartition partition = mock(PubSubTopicPartition.class);
+    when(partition.getPartitionNumber()).thenReturn(TEST_PARTITION_ID_0);
+    StorageService mockStorageService = mock(StorageService.class);
+    AbstractStorageEngine mockStorageEngine = mock(AbstractStorageEngine.class);
+    when(mockStorageService.getStorageEngine(anyString())).thenReturn(mockStorageEngine);
+    bootstrappingVeniceChangelogConsumer
+        .setStorageAndMetadataService(mockStorageService, mock(StorageMetadataService.class));
+    VeniceConcurrentHashMap<Integer, InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState> bootstrapStateMap =
+        bootstrappingVeniceChangelogConsumer.getBootstrapStateMap();
+    InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState bootstrapState =
+        new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
+    bootstrapState.bootstrapState = InternalLocalBootstrappingVeniceChangelogConsumer.PollState.CATCHING_UP;
+    bootstrapState.currentPubSubPosition =
+        new VeniceChangeCoordinate(TEST_TOPIC, new ApacheKafkaOffsetPosition(TEST_OFFSET_OLD), TEST_PARTITION_ID_0);
+    bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);
+
+    ByteBuffer decompressedBytes = compressor.decompress(value);
+    bootstrappingVeniceChangelogConsumer.processRecordBytes(
+        decompressedBytes,
+        deserializer.deserialize(decompressedBytes),
+        key,
+        value,
+        partition,
+        TEST_SCHEMA_ID,
+        TEST_OFFSET_NEW);
+
+    Assert.assertEquals(
+        ((ApacheKafkaOffsetPosition) bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition())
+            .getOffset(),
+        TEST_OFFSET_NEW);
+    Assert.assertEquals(bootstrapStateMap.get(TEST_PARTITION_ID_0).bootstrapTempDataCache.size(), 1);
+    Assert.assertTrue(bootstrapStateMap.get(TEST_PARTITION_ID_0).bootstrapTempDataCache.containsKey(key));
+    Assert.assertEquals(
+        bootstrapStateMap.get(TEST_PARTITION_ID_0).bootstrapTempDataCache.get(key).readerSchemaId,
+        TEST_SCHEMA_ID);
+    Assert.assertEquals(
+        bootstrapStateMap.get(TEST_PARTITION_ID_0).bootstrapTempDataCache.get(key).decompressedBytes,
+        decompressedBytes);
+    Assert.assertEquals(
+        bootstrapStateMap.get(TEST_PARTITION_ID_0).bootstrapTempDataCache.get(key).deserializedValue,
+        deserializer.deserialize(decompressedBytes));
+    verify(mockStorageEngine, times(0)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
   }
 
   @Test

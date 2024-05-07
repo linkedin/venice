@@ -50,6 +50,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -358,6 +359,17 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
               record.getPartition(),
               getOffset(record.getOffset()));
           currentPartitionState.bootstrapState = PollState.BOOTSTRAPPING;
+          // Save records in bootstrapTempDataCache to underlying storage
+          for (Map.Entry<byte[], BootstrapCacheRecord> entry: currentPartitionState.bootstrapTempDataCache.entrySet()) {
+            saveRecordInStorage(
+                entry.getValue().decompressedBytes,
+                entry.getValue().deserializedValue,
+                entry.getKey(),
+                record.getPartition(),
+                entry.getValue().readerSchemaId);
+          }
+
+          currentPartitionState.bootstrapTempDataCache.clear();
         }
       }
     }
@@ -372,14 +384,51 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       PubSubTopicPartition partition,
       int readerSchemaId,
       long recordOffset) {
+    BootstrapState bootstrapState = bootstrapStateMap.get(partition.getPartitionNumber());
+    // In CATCHING_UP phase, there can be lots of updates to the same key.
+    // To improve bootstrapping performance, we'll put raw data in a temp cache (hashmap) and will
+    // process save to underlying storage on CATCHING_UP completion. Besides, we'll also skip RocksDB syncOffset.
+    if (bootstrapState.bootstrapState == PollState.CATCHING_UP) {
+      bootstrapState
+          .putBootstrapRecord(key, new BootstrapCacheRecord(decompressedBytes, deserializedValue, readerSchemaId));
+    } else {
+      saveRecordInStorage(decompressedBytes, deserializedValue, key, partition.getPartitionNumber(), readerSchemaId);
+    }
+
+    // Update currentPubSubPosition for a partition
+    VeniceChangeCoordinate currentPubSubPosition = bootstrapState.currentPubSubPosition;
+    bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(
+        currentPubSubPosition.getTopic(),
+        new ApacheKafkaOffsetPosition(recordOffset),
+        currentPubSubPosition.getPartition());
+
+    if (bootstrapState.bootstrapState != PollState.CATCHING_UP) {
+      bootstrapState.incrementProcessedRecordSizeSinceLastSync(value.array().length);
+      if (bootstrapState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval) {
+        syncOffset(partition.getPartitionNumber(), bootstrapState);
+      }
+    }
+
+    return deserializedValue;
+  }
+
+  /**
+   * Saves the record in storage.
+   */
+  private <T> void saveRecordInStorage(
+      ByteBuffer decompressedBytes,
+      T deserializedValue,
+      byte[] key,
+      int partitionNumber,
+      int readerSchemaId) {
     if (deserializedValue instanceof RecordChangeEvent) {
       RecordChangeEvent recordChangeEvent = (RecordChangeEvent) deserializedValue;
       if (recordChangeEvent.currentValue == null) {
-        storageService.getStorageEngine(localStateTopicName).delete(partition.getPartitionNumber(), key);
+        storageService.getStorageEngine(localStateTopicName).delete(partitionNumber, key);
       } else {
         storageService.getStorageEngine(localStateTopicName)
             .put(
-                partition.getPartitionNumber(),
+                partitionNumber,
                 key,
                 ValueRecord
                     .create(recordChangeEvent.currentValue.schemaId, recordChangeEvent.currentValue.value.array())
@@ -388,23 +437,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     } else {
       byte[] valueBytes = ByteUtils.extractByteArray(decompressedBytes);
       storageService.getStorageEngine(localStateTopicName)
-          .put(partition.getPartitionNumber(), key, ValueRecord.create(readerSchemaId, valueBytes).serialize());
+          .put(partitionNumber, key, ValueRecord.create(readerSchemaId, valueBytes).serialize());
     }
-
-    // Update currentPubSubPosition for a partition
-    BootstrapState bootstrapState = bootstrapStateMap.get(partition.getPartitionNumber());
-    VeniceChangeCoordinate currentPubSubPosition = bootstrapState.currentPubSubPosition;
-    bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(
-        currentPubSubPosition.getTopic(),
-        new ApacheKafkaOffsetPosition(recordOffset),
-        currentPubSubPosition.getPartition());
-
-    bootstrapState.incrementProcessedRecordSizeSinceLastSync(value.array().length);
-    if (bootstrapState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval) {
-      syncOffset(partition.getPartitionNumber(), bootstrapState);
-    }
-
-    return deserializedValue;
   }
 
   public CompletableFuture<Void> seekWithBootStrap(Set<Integer> partitions) {
@@ -548,6 +582,11 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     VeniceChangeCoordinate currentPubSubPosition;
     VeniceChangeCoordinate targetPubSubPosition;
     long processedRecordSizeSinceLastSync;
+    Map<byte[], BootstrapCacheRecord> bootstrapTempDataCache;
+
+    public BootstrapState() {
+      bootstrapTempDataCache = new HashMap<>();
+    }
 
     boolean isCaughtUp() {
       return currentPubSubPosition.comparePosition(targetPubSubPosition) > -1;
@@ -572,6 +611,28 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
      */
     public void incrementProcessedRecordSizeSinceLastSync(int recordSize) {
       this.processedRecordSizeSinceLastSync += recordSize;
+    }
+
+    /**
+     * Saves the record into bootstrapTempDataCache.
+     */
+    public void putBootstrapRecord(byte[] key, BootstrapCacheRecord value) {
+      this.bootstrapTempDataCache.put(key, value);
+    }
+  }
+
+  /**
+   * The record value in the bootstrapTempDataCache of BootstrapState.
+   */
+  static class BootstrapCacheRecord<T> {
+    ByteBuffer decompressedBytes;
+    T deserializedValue;
+    int readerSchemaId;
+
+    public BootstrapCacheRecord(ByteBuffer decompressedBytes, T deserializedValue, int readerSchemaId) {
+      this.decompressedBytes = decompressedBytes;
+      this.deserializedValue = deserializedValue;
+      this.readerSchemaId = readerSchemaId;
     }
   }
 }
