@@ -146,6 +146,10 @@ public class AdminConsumptionTaskIntegrationTest {
             getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, executionId);
         writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
+        TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
+          Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, storeName));
+        });
+
         // Spin up a thread to occupy the store write lock to simulate the blocking admin execution task thread.
         Runnable infiniteLockOccupy = getRunnable(controller, storeName);
         Thread infiniteLockThread = new Thread(infiniteLockOccupy, "infiniteLockOccupy: " + storeName);
@@ -156,7 +160,8 @@ public class AdminConsumptionTaskIntegrationTest {
         for (int i = 0; i < adminConsumptionMaxWorkerPoolSize; i++) {
           Utils.sleep(5000);
           executionId++;
-          getDisableWrite(clusterName, storeName, executionId);
+          byte[] valueSchemaMessage = getDisableWrite(clusterName, storeName, executionId);
+          writer.put(new byte[0], valueSchemaMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         }
 
         // Store deletion need to disable read.
