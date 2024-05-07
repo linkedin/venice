@@ -308,17 +308,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         0,
         value.length * 8,
         false);
-    /*
-    if (partition == 459) {
-      LOGGER.info(
-          "DEBUG Partition: 459 bootstrap. key={}, value={}, offset={} schema={}",
-          keyDeserializer.deserialize(key),
-          changeEvent.getCurrentValue(),
-          record.getOffset().getPosition(),
-          valueRecord.getSchemaId());
-    }
-    
-     */
     resultSet.add(record);
   }
 

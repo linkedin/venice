@@ -664,15 +664,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         LOGGER.info("Using: {} {} {}", rmdSchema.getId(), rmdSchema.getValueSchemaID(), rmdSchema.getSchemaStr());
         throw e;
       }
-      /*
-      if (message.getPartition() == 459) {
-        LOGGER.info(
-            "DEBUG Partition: 459 consume DELETE key={}, offset={}",
-            keyDeserializer.deserialize(keyBytes),
-            message.getOffset());
-      }
-      
-       */
 
       partitionToDeleteMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
     }
@@ -682,11 +673,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Lazy deserializerProvider;
       int readerSchemaId;
       if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
-        Schema valueSchema = schemaReader.getValueSchema(put.schemaId);
-        // deserializerProvider = Lazy.of(() ->
-        // FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema));
         deserializerProvider = Lazy.of(() -> storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId));
-        // readerSchemaId = AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersion();
         readerSchemaId = put.schemaId;
       } else {
         deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
@@ -780,17 +767,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 payloadSize,
                 false));
       }
-      /*
-      if (message.getPartition() == 459) {
-        LOGGER.info(
-            "DEBUG Partition: 459 consume PUT key={}, value={}, offset={}, schema={}",
-            keyDeserializer.deserialize(keyBytes),
-            assembledObject,
-            message.getOffset(),
-            readerSchemaId);
-      }
-      
-       */
       partitionToPutMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
     }
 
@@ -806,17 +782,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       int valueSchemaId,
       int rmdProtocolId,
       ByteBuffer replicationMetadataPayload) {
-    // LOGGER.info("DEBUGGING: {} {} {}", valueSchemaId, rmdProtocolId, replicationMetadataPayload.remaining());
     if (rmdProtocolId > 0 && replicationMetadataPayload.remaining() > 0) {
-      // Schema replicationMetadataSchema =
-      // replicationMetadataSchemaRepository.getReplicationMetadataSchemaById(storeName, valueSchemaId);
-      // RecordDeserializer<GenericRecord> deserializer =
-      // SerializerDeserializerFactory.getAvroGenericDeserializer(Schema.parse(replicationMetadataSchema.getSchemaStr()));
       RecordDeserializer<GenericRecord> deserializer =
           rmdDeserializerCache.getDeserializer(valueSchemaId, valueSchemaId);
       GenericRecord replicationMetadataRecord = deserializer.deserialize(replicationMetadataPayload);
-      // LOGGER.info("DEBUGGING: {} {}", replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS),
-      // replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS) instanceof PrimitiveLongArrayList);
       GenericData.Array replicationCheckpointVector =
           (GenericData.Array) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
       List<Long> offsetVector = new ArrayList<>();

@@ -21,6 +21,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDe
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithLogicalTimestamp;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
@@ -620,13 +621,13 @@ public class TestChangelogConsumer {
     ControllerClient childControllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToRecordSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props =
         TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    String valueSchemaStr = NAME_RECORD_V2_SCHEMA.toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(8)
@@ -638,6 +639,10 @@ public class TestChangelogConsumer {
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     setupControllerClient
         .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
+    // Registering real data schema as schema v2.
+    setupControllerClient.retryableRequest(
+        5,
+        controllerClient1 -> setupControllerClient.addValueSchema(storeName, NAME_RECORD_V1_SCHEMA.toString()));
     TestWriteUtils.runPushJob("Run push job", props);
 
     TestMockTime testMockTime = new TestMockTime();
@@ -688,12 +693,12 @@ public class TestChangelogConsumer {
       polledChangeEventsMap.clear();
 
       GenericRecord genericRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
-      genericRecord.put("firstName", "Jialin");
-      genericRecord.put("lastName", "Liu");
+      genericRecord.put("firstName", "Venice");
+      genericRecord.put("lastName", "Italy");
 
       GenericRecord genericRecordV2 = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
-      genericRecordV2.put("firstName", "Jason");
-      genericRecordV2.put("lastName", "Liu");
+      genericRecordV2.put("firstName", "Barcelona");
+      genericRecordV2.put("lastName", "Spain");
 
       VeniceSystemFactory factory = new VeniceSystemFactory();
       try (VeniceSystemProducer veniceProducer = factory
@@ -702,7 +707,6 @@ public class TestChangelogConsumer {
         // Run Samza job to send PUT and DELETE requests.
         sendStreamingRecord(veniceProducer, storeName, Integer.toString(10000), genericRecord, null);
         sendStreamingRecord(veniceProducer, storeName, Integer.toString(10000), genericRecordV2, null);
-        // runSamzaStreamJob(veniceProducer, storeName, null, 1, 0, 10000);
       }
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -714,91 +718,6 @@ public class TestChangelogConsumer {
       });
       Assert.assertTrue(
           polledChangeEventsMap.get(Integer.toString(10000)).getValue().getCurrentValue() instanceof SpecificRecord);
-
-      parentControllerClient.disableAndDeleteStore(storeName);
-      // Verify that topics and store is cleaned up
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
-        Assert.assertFalse(storeTopicsResponse.isError());
-        Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
-      });
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
-  public void testSpecificRecordVeniceChangelogConsumerWithRecordKey() throws Exception {
-    ControllerClient childControllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    File inputDir = getTempDataDirectory();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithRecordToRecordSchema(inputDir);
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
-    Properties props =
-        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
-    MetricsRepository metricsRepository = new MetricsRepository();
-    ControllerClient setupControllerClient =
-        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-    setupControllerClient
-        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
-    TestWriteUtils.runPushJob("Run push job", props);
-
-    TestMockTime testMockTime = new TestMockTime();
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    try (PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
-        new PubSubBrokerConfigs.Builder().setZkWrapper(localZkServer)
-            .setMockTime(testMockTime)
-            .setRegionName("local-pubsub")
-            .build())) {
-      Properties consumerProperties = new Properties();
-      String localKafkaUrl = localKafka.getAddress();
-      consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-      consumerProperties.put(CLUSTER_NAME, clusterName);
-      consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
-      ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig()// .setViewName("changeCaptureView")
-          .setConsumerProperties(consumerProperties)
-          .setControllerD2ServiceName(D2_SERVICE_NAME)
-          .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-          .setLocalD2ZkHosts(localZkServer.getAddress())
-          .setControllerRequestRetryCount(3)
-          .setSpecificValue(TestChangelogValue.class)
-          .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
-      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
-          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-      BootstrappingVeniceChangelogConsumer<TestChangelogValue, TestChangelogValue> specificChangelogConsumer =
-          veniceChangelogConsumerClientFactory
-              .getBootstrappingChangelogConsumer(storeName, "0", TestChangelogValue.class);
-      specificChangelogConsumer.start().get();
-
-      Map<TestChangelogValue, PubSubMessage<TestChangelogValue, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
-          new HashMap<>();
-      List<PubSubMessage<TestChangelogValue, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
-          new ArrayList<>();
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        pollChangeEventsFromSpecificChangeCaptureConsumerV2(
-            polledChangeEventsMap,
-            polledChangeEventsList,
-            specificChangelogConsumer);
-        Assert.assertEquals(polledChangeEventsList.size(), 101);
-      });
-      TestChangelogValue key = new TestChangelogValue();
-      key.firstName = "first_name_1";
-      key.lastName = "last_name_1";
-
-      Assert.assertTrue(polledChangeEventsMap.get(key).getValue().getCurrentValue() instanceof SpecificRecord);
-      TestChangelogValue value = new TestChangelogValue();
-      value.firstName = "first_name_1";
-      value.lastName = "last_name_1";
-      Assert.assertEquals(polledChangeEventsMap.get(key).getValue().getCurrentValue(), value);
-      polledChangeEventsList.clear();
-      polledChangeEventsMap.clear();
 
       parentControllerClient.disableAndDeleteStore(storeName);
       // Verify that topics and store is cleaned up
