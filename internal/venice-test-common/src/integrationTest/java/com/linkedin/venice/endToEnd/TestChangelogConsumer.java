@@ -779,19 +779,6 @@ public class TestChangelogConsumer {
     polledMessageList.addAll(pubSubMessages);
   }
 
-  private void pollChangeEventsFromSpecificChangeCaptureConsumerV2(
-      Map<TestChangelogValue, PubSubMessage<TestChangelogValue, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEvents,
-      List<PubSubMessage<TestChangelogValue, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
-      BootstrappingVeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<TestChangelogValue, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<TestChangelogValue, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      TestChangelogValue key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey();
-      polledChangeEvents.put(key, pubSubMessage);
-    }
-    polledMessageList.addAll(pubSubMessages);
-  }
-
   private void pollChangeEventsFromChangeCaptureConsumer2(
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
