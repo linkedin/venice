@@ -547,7 +547,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   public List<byte[]> multiGetReplicationMetadata(int partitionId, List<byte[]> keys) {
-    System.out.println("key size in multiGetReplicationMetadata:" + keys.size());
     return executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       return partition.multiGetReplicationMetadata(keys);
