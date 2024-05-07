@@ -111,6 +111,8 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(INT_SCHEMA).setValueSchema(STRING_SCHEMA).build();
   public static final Schema STRING_TO_STRING_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
+  public static final Schema NAME_RECORD_V1_TO_NAME_RECORD_V1_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(NAME_RECORD_V1_SCHEMA).setValueSchema(NAME_RECORD_V1_SCHEMA).build();
   public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_SCHEMA).build();
 
@@ -318,6 +320,32 @@ public class TestWriteUtils {
         writer.append(keyValueRecord);
       }
     });
+  }
+
+  public static Schema writeSimpleAvroFileWithRecordToRecordSchema(File parentDir) throws IOException {
+    return writeAvroFile(
+        parentDir,
+        "string2record.avro",
+        NAME_RECORD_V1_TO_NAME_RECORD_V1_SCHEMA,
+        (recordSchema, writer) -> {
+          String firstName = "first_name_";
+          String lastName = "last_name_";
+          for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+            GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
+
+            GenericRecord keyRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+            keyRecord.put("firstName", firstName + i);
+            keyRecord.put("lastName", lastName + i);
+            keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, keyRecord); // Key
+
+            GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+            valueRecord.put("firstName", firstName + i);
+            valueRecord.put("lastName", lastName + i);
+            keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+
+            writer.append(keyValueRecord);
+          }
+        });
   }
 
   public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(File parentDir) throws IOException {
