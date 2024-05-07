@@ -36,6 +36,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -111,7 +112,7 @@ public class AdminConsumptionTaskIntegrationTest {
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testParallelAdminExecutionTasks() throws IOException {
+  public void testParallelAdminExecutionTasks() throws IOException, InterruptedException {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).setRegionName(STANDALONE_REGION_NAME).build());
@@ -146,14 +147,16 @@ public class AdminConsumptionTaskIntegrationTest {
             getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, executionId);
         writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-        TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, storeName));
         });
 
         // Spin up a thread to occupy the store write lock to simulate the blocking admin execution task thread.
-        Runnable infiniteLockOccupy = getRunnable(controller, storeName);
+        CountDownLatch lockOccupyThreadStartedSignal = new CountDownLatch(1);
+        Runnable infiniteLockOccupy = getRunnable(controller, storeName, lockOccupyThreadStartedSignal);
         Thread infiniteLockThread = new Thread(infiniteLockOccupy, "infiniteLockOccupy: " + storeName);
         infiniteLockThread.start();
+        Assert.assertTrue(lockOccupyThreadStartedSignal.await(5, TimeUnit.SECONDS));
 
         // Here we wait here to send every operation to let each consumer pool has at most one admin operation from
         // this store, as the waiting time of 5 seconds > ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS setting.
@@ -177,7 +180,7 @@ public class AdminConsumptionTaskIntegrationTest {
             getStoreCreationMessage(clusterName, otherStoreName, owner, keySchema, valueSchema, executionId);
         writer.put(new byte[0], otherStoreMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-        TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, otherStoreName));
         });
 
@@ -186,18 +189,19 @@ public class AdminConsumptionTaskIntegrationTest {
         executionId++;
         byte[] storeDeletionMessage = getStoreDeletionMessage(clusterName, storeName, executionId);
         writer.put(new byte[0], storeDeletionMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-        TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, storeName));
         });
       }
     }
   }
 
-  private Runnable getRunnable(VeniceControllerWrapper controller, String storeName) {
+  private Runnable getRunnable(VeniceControllerWrapper controller, String storeName, CountDownLatch latch) {
     VeniceHelixAdmin admin = controller.getVeniceHelixAdmin();
     return () -> {
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createStoreWriteLock(storeName)) {
+        latch.countDown();
         while (true) {
           Thread.sleep(10000);
         }
