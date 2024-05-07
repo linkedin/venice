@@ -2,9 +2,11 @@ package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static org.testng.Assert.assertFalse;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import java.nio.ByteBuffer;
@@ -48,6 +50,15 @@ public class BatchGetAvroStoreClientZstdTest extends BatchGetAvroStoreClientTest
           byte[] compressionDictionaryBytes = trainer.trainSamples();
           return ByteBuffer.wrap(compressionDictionaryBytes);
         });
+    veniceCluster
+        .useControllerClient(
+            client -> assertFalse(
+                client
+                    .updateStore(
+                        storeName,
+                        new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)
+                            .setReadComputationEnabled(true))
+                    .isError()));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
 }

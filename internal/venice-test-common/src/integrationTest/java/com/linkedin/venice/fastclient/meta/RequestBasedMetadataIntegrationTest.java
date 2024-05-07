@@ -9,6 +9,7 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
@@ -64,7 +65,10 @@ public class RequestBasedMetadataIntegrationTest {
     r2Client = ClientTestUtils.getR2Client();
     d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
     storeName = veniceCluster.createStore(KEY_COUNT);
-
+    veniceCluster.useControllerClient(
+        client -> assertFalse(
+            client.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true))
+                .isError()));
     keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
 
@@ -127,6 +131,10 @@ public class RequestBasedMetadataIntegrationTest {
   @Test(timeOut = TIME_OUT)
   public void testMetadataZstdDictionaryFetch() {
     String zstdStoreName = veniceCluster.createStoreWithZstdDictionary(KEY_COUNT);
+    veniceCluster.useControllerClient(
+        client -> assertFalse(
+            client.updateStore(zstdStoreName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true))
+                .isError()));
 
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder();
     clientConfigBuilder.setStoreName(zstdStoreName);

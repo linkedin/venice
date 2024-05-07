@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES_SMALL;
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
+import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -76,7 +77,15 @@ public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest
           storeVersionName = topic;
           return null;
         });
-    veniceCluster.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true));
+    veniceCluster
+        .useControllerClient(
+            client -> assertFalse(
+                client
+                    .updateStore(
+                        storeName,
+                        new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)
+                            .setReadComputationEnabled(true))
+                    .isError()));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
 

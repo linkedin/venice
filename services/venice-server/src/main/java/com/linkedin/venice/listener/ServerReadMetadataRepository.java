@@ -68,8 +68,9 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       Store store = storeRepository.getStoreOrThrow(storeName);
       if (!store.isStorageNodeReadQuotaEnabled()) {
         throw new UnsupportedOperationException(
-            String
-                .format("Fast client is not enabled for store: %s, please contact Venice team for support", storeName));
+            String.format(
+                "Fast client is not enabled for store: %s, please ensure storage node read quota is enabled for the given store",
+                storeName));
       }
       // Version metadata
       int currentVersionNumber = store.getCurrentVersion();
