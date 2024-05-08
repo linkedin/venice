@@ -703,7 +703,7 @@ public class VenicePushJobTest {
     }
   }
 
-  @Test(enabled = false)
+  @Test(enabled = false) // Disable till hybrid stores are supported for target region push
   public void testTargetedRegionPushPostValidationConsumptionForHybridStore() throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(KEY_FIELD_PROP, "id");
