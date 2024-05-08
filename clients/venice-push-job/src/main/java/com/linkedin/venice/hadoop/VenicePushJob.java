@@ -2063,6 +2063,11 @@ public class VenicePushJob implements AutoCloseable {
     StoreResponse storeResponse = getStoreResponse(jobSetting.storeName);
     jobSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
 
+    // Do not enable for deferred swap or hybrid store
+    if (pushJobSetting.deferVersionSwap || storeResponse.getStore().getHybridStoreConfig() != null) {
+      jobSetting.isTargetedRegionPushEnabled = false;
+    }
+
     if (jobSetting.isTargetedRegionPushEnabled && jobSetting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
       // use source grid fabric as target region to reduce data hop, else use default NR source

@@ -980,7 +980,7 @@ public class TestPushJobWithNativeReplication {
         });
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT * 2, enabled = false)
   public void testTargetedRegionPushJobFullConsumptionForHybridStore() throws Exception {
     motherOfAllTests(
         "testTargetedRegionPushJobHybridStore",
