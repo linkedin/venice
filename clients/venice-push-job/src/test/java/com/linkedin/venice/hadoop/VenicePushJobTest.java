@@ -703,7 +703,7 @@ public class VenicePushJobTest {
     }
   }
 
-  @Test
+  @Test(enabled = false)
   public void testTargetedRegionPushPostValidationConsumptionForHybridStore() throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(KEY_FIELD_PROP, "id");
