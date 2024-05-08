@@ -2065,6 +2065,9 @@ public class VenicePushJob implements AutoCloseable {
 
     // Do not enable for deferred swap or hybrid store
     if (pushJobSetting.deferVersionSwap || storeResponse.getStore().getHybridStoreConfig() != null) {
+      LOGGER.warn(
+          "target region is not available for {} as it hybrid or deferred version swap enabled.",
+          jobSetting.storeName);
       jobSetting.isTargetedRegionPushEnabled = false;
     }
 
