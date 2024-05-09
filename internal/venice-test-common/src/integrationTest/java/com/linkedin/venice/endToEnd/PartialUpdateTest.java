@@ -30,8 +30,8 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToRecordSchema;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -354,7 +354,7 @@ public class PartialUpdateTest {
     final String storeName = Utils.getUniqueString("inc_push_update_new_format");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir);
+    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties vpjProperties =
@@ -425,7 +425,7 @@ public class PartialUpdateTest {
     final String storeName = Utils.getUniqueString("updateBatch");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir);
+    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -1192,7 +1192,7 @@ public class PartialUpdateTest {
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       String parentControllerURL = parentController.getControllerUrl();
       // Records 1-100, id string to name record
-      Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir);
+      Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       Properties vpjProperties =
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
@@ -1409,7 +1409,7 @@ public class PartialUpdateTest {
     File inputDir = getTempDataDirectory();
     String parentControllerURL = parentController.getControllerUrl();
     // Records 1-100, id string to name record
-    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir);
+    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
     try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL)) {
 

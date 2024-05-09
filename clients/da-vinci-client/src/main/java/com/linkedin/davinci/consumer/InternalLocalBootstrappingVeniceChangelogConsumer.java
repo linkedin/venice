@@ -56,6 +56,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
@@ -354,9 +355,11 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       if (currentPartitionState.bootstrapState.equals(PollState.CATCHING_UP)) {
         if (currentPartitionState.isCaughtUp()) {
           LOGGER.info(
-              "pollAndCatchup completed for partition: {} with offset: {}",
+              "pollAndCatchup completed for partition: {} with offset: {}, put message: {}, delete message: {}",
               record.getPartition(),
-              getOffset(record.getOffset()));
+              getOffset(record.getOffset()),
+              partitionToPutMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get(),
+              partitionToDeleteMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get());
           currentPartitionState.bootstrapState = PollState.BOOTSTRAPPING;
         }
       }

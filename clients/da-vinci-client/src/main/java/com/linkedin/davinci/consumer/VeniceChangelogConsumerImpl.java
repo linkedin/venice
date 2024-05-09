@@ -16,7 +16,6 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -39,6 +38,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
@@ -46,9 +46,9 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.IOException;
@@ -66,6 +66,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -84,6 +85,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
   protected StoreDeserializerCache<V> storeDeserializerCache;
+  protected StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
+  protected Class specificValueClass;
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
 
@@ -92,6 +95,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final SchemaReader schemaReader;
   private final String viewClassName;
   protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
+  protected final Map<Integer, AtomicLong> partitionToPutMessageCount = new VeniceConcurrentHashMap<>();
+  protected final Map<Integer, AtomicLong> partitionToDeleteMessageCount = new VeniceConcurrentHashMap<>();
 
   protected final RecordDeserializer<K> keyDeserializer;
   private final D2ControllerClient d2ControllerClient;
@@ -149,15 +155,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         changelogClientConfig.getInnerClientConfig(),
         VeniceProperties.empty(),
         null);
-
+    this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
       Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
       this.userEventChunkingAdapter = new SpecificRecordChunkingAdapter();
       this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(storeRepository, storeName, valueClass);
+      this.specificValueClass = valueClass;
+      LOGGER.info("Using specific value deserializer: {}", valueClass.getName());
     } else {
       this.userEventChunkingAdapter = GenericChunkingAdapter.INSTANCE;
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
+      this.specificValueClass = null;
+      LOGGER.info("Using generic value deserializer");
+
     }
 
     LOGGER.info(
@@ -354,7 +365,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return seekToTail(
         pubSubConsumer.getAssignment()
             .stream()
-            .map(topicPartition -> topicPartition.getPartitionNumber())
+            .map(PubSubTopicPartition::getPartitionNumber)
             .collect(Collectors.toSet()));
   }
 
@@ -634,9 +645,27 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               message.getPayloadSize(),
               false));
 
-      replicationCheckpoint = extractOffsetVectorFromMessage(
-          delete.getReplicationMetadataVersionId(),
-          delete.getReplicationMetadataPayload());
+      try {
+        replicationCheckpoint = extractOffsetVectorFromMessage(
+            delete.getSchemaId(),
+            delete.getReplicationMetadataVersionId(),
+            delete.getReplicationMetadataPayload());
+      } catch (Exception e) {
+        LOGGER.info(
+            "Encounter RMD extraction exception for delete OP. partition={}, offset={}, key={}, rmd={}, rmd_id={}",
+            message.getPartition(),
+            message.getOffset(),
+            keyDeserializer.deserialize(keyBytes),
+            delete.getReplicationMetadataPayload(),
+            delete.getReplicationMetadataVersionId(),
+            e);
+        RmdSchemaEntry rmdSchema =
+            replicationMetadataSchemaRepository.getReplicationMetadataSchemaById(storeName, delete.getSchemaId());
+        LOGGER.info("Using: {} {} {}", rmdSchema.getId(), rmdSchema.getValueSchemaID(), rmdSchema.getSchemaStr());
+        throw e;
+      }
+
+      partitionToDeleteMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
     }
     if (messageType.equals(MessageType.PUT)) {
       Put put = (Put) message.getValue().payloadUnion;
@@ -644,10 +673,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Lazy deserializerProvider;
       int readerSchemaId;
       if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
-        Schema valueSchema = schemaReader.getValueSchema(put.schemaId);
-        deserializerProvider =
-            Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema));
-        readerSchemaId = AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersion();
+        deserializerProvider = Lazy.of(() -> storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId));
+        readerSchemaId = put.schemaId;
       } else {
         deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
         readerSchemaId = this.schemaReader.getLatestValueSchemaId();
@@ -692,8 +719,26 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         recordChangeEvent = (RecordChangeEvent) assembledObject;
         replicationCheckpoint = recordChangeEvent.replicationCheckpointVector;
       } else {
-        replicationCheckpoint =
-            extractOffsetVectorFromMessage(put.getReplicationMetadataVersionId(), put.getReplicationMetadataPayload());
+        try {
+          replicationCheckpoint = extractOffsetVectorFromMessage(
+              put.getSchemaId(),
+              put.getReplicationMetadataVersionId(),
+              put.getReplicationMetadataPayload());
+        } catch (Exception e) {
+          LOGGER.info(
+              "Encounter RMD extraction exception for PUT OP. partition={}, offset={}, key={}, value={}, rmd={}, rmd_id={}",
+              message.getPartition(),
+              message.getOffset(),
+              keyDeserializer.deserialize(keyBytes),
+              assembledObject,
+              put.getReplicationMetadataPayload(),
+              put.getReplicationMetadataVersionId(),
+              e);
+          RmdSchemaEntry rmdSchema =
+              replicationMetadataSchemaRepository.getReplicationMetadataSchemaById(storeName, put.getSchemaId());
+          LOGGER.info("Using: {} {} {}", rmdSchema.getId(), rmdSchema.getValueSchemaID(), rmdSchema.getSchemaStr());
+          throw e;
+        }
       }
 
       // Now that we've assembled the object, we need to extract the replication vector depending on if it's from VT
@@ -722,6 +767,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 payloadSize,
                 false));
       }
+      partitionToPutMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
     }
 
     // Determine if the event should be filtered or not
@@ -733,13 +779,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected List<Long> extractOffsetVectorFromMessage(
-      int replicationMetadataVersionId,
+      int valueSchemaId,
+      int rmdProtocolId,
       ByteBuffer replicationMetadataPayload) {
-    if (replicationMetadataVersionId > 0) {
-      MultiSchemaResponse.Schema replicationMetadataSchema =
-          replicationMetadataSchemaRepository.getReplicationMetadataSchemaById(storeName, replicationMetadataVersionId);
-      RecordDeserializer<GenericRecord> deserializer = SerializerDeserializerFactory
-          .getAvroGenericDeserializer(Schema.parse(replicationMetadataSchema.getSchemaStr()));
+    if (rmdProtocolId > 0 && replicationMetadataPayload.remaining() > 0) {
+      RecordDeserializer<GenericRecord> deserializer =
+          rmdDeserializerCache.getDeserializer(valueSchemaId, valueSchemaId);
       GenericRecord replicationMetadataRecord = deserializer.deserialize(replicationMetadataPayload);
       GenericData.Array replicationCheckpointVector =
           (GenericData.Array) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);

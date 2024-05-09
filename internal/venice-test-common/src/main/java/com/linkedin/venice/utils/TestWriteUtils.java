@@ -113,6 +113,8 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
   public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V2_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V2_SCHEMA).build();
 
   public static final Schema STRING_TO_NAME_RECORD_V3_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V3_SCHEMA).build();
@@ -304,7 +306,7 @@ public class TestWriteUtils {
     });
   }
 
-  public static Schema writeSimpleAvroFileWithStringToRecordSchema(File parentDir) throws IOException {
+  public static Schema writeSimpleAvroFileWithStringToNameRecordV1Schema(File parentDir) throws IOException {
     return writeAvroFile(parentDir, "string2record.avro", STRING_TO_NAME_RECORD_V1_SCHEMA, (recordSchema, writer) -> {
       String firstName = "first_name_";
       String lastName = "last_name_";

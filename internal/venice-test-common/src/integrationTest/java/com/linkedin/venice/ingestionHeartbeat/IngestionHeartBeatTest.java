@@ -9,7 +9,7 @@ import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToRecordSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -141,7 +141,7 @@ public class IngestionHeartBeatTest {
     storeName = Utils.getUniqueString("ingestionHeartBeatTest");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir);
+    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties vpjProperties =
