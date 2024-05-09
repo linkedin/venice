@@ -389,7 +389,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
     if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
-      throw new VeniceException("Incremental push is not supported while using targeted region push mode");
+      LOGGER.warn("Incremental push is not supported while using targeted region push mode");
+      pushJobSettingToReturn.isTargetedRegionPushEnabled = false;
     }
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
       if (pushJobSettingToReturn.isTargetedRegionPushEnabled) {
