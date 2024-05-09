@@ -980,7 +980,7 @@ public class TestPushJobWithNativeReplication {
         });
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(enabled = false) // Disable till hybrid stores are supported for target region push
   public void testTargetedRegionPushJobFullConsumptionForHybridStore() throws Exception {
     motherOfAllTests(
         "testTargetedRegionPushJobHybridStore",
