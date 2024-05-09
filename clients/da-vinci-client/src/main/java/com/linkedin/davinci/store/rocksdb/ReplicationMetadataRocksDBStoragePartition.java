@@ -10,12 +10,15 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.WriteBatch;
@@ -143,6 +146,24 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       makeSureRocksDBIsStillOpen();
       return rocksDB
           .get(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), READ_OPTIONS_DEFAULT, key);
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+    } finally {
+      readCloseRWLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public List<byte[]> multiGetReplicationMetadata(List<byte[]> keys) {
+    readCloseRWLock.readLock().lock();
+    try {
+      makeSureRocksDBIsStillOpen();
+      ColumnFamilyHandle rmdHandle = columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX);
+      List cfHandleList = new ArrayList<>(keys.size());
+      for (int i = 0; i < keys.size(); ++i) {
+        cfHandleList.add(rmdHandle);
+      }
+      return rocksDB.multiGetAsList(getReadOptionsForMultiGet(), cfHandleList, keys);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {
