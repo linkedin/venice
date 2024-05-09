@@ -31,6 +31,7 @@ import org.apache.avro.generic.GenericRecord;
  * This class is used to maintain internal state for consumption of each partition.
  */
 public class PartitionConsumptionState {
+  private final String replicaId;
   private final int partition;
   private final int amplificationFactor;
   private final int userPartition;
@@ -217,7 +218,13 @@ public class PartitionConsumptionState {
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
 
-  public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid) {
+  public PartitionConsumptionState(
+      String replicaId,
+      int partition,
+      int amplificationFactor,
+      OffsetRecord offsetRecord,
+      boolean hybrid) {
+    this.replicaId = replicaId;
     this.partition = partition;
     this.amplificationFactor = amplificationFactor;
     this.userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
@@ -382,9 +389,9 @@ public class PartitionConsumptionState {
 
   @Override
   public String toString() {
-    return new StringBuilder().append("PartitionConsumptionState{")
-        .append("partition=")
-        .append(partition)
+    return new StringBuilder().append("PCS{")
+        .append("replicaId=")
+        .append(replicaId)
         .append(", hybrid=")
         .append(hybrid)
         .append(", latestProcessedLocalVersionTopicOffset=")
@@ -872,5 +879,9 @@ public class PartitionConsumptionState {
 
   public void setLastLeaderCompleteStateUpdateInMs(long lastLeaderCompleteStateUpdateInMs) {
     this.lastLeaderCompleteStateUpdateInMs = lastLeaderCompleteStateUpdateInMs;
+  }
+
+  public String getReplicaId() {
+    return replicaId;
   }
 }

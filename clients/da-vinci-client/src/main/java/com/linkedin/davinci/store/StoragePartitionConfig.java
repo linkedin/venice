@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store;
 
+import com.linkedin.venice.utils.Utils;
 import java.util.Objects;
 
 
@@ -112,7 +113,7 @@ public class StoragePartitionConfig {
 
   @Override
   public String toString() {
-    return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite
+    return "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: " + deferredWrite
         + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", read-write leader for default CF: "
         + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: " + readWriteLeaderForRMDCF;
   }

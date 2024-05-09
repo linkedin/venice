@@ -43,7 +43,6 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class AbstractPartitionStateModel extends StateModel {
   protected final Logger logger = LogManager.getLogger(getClass());
-  private static final String STORE_PARTITION_DESCRIPTION_FORMAT = "%s-%d";
   private static final int RETRY_COUNT = 5;
   private static final int RETRY_DURATION_MS = 1000;
   private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = (int) TimeUnit.MINUTES.toMillis(5);
@@ -69,8 +68,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     this.storeRepository = storeRepository;
     this.storeAndServerConfigs = storeAndServerConfigs;
     this.partition = partition;
-    this.storePartitionDescription =
-        String.format(STORE_PARTITION_DESCRIPTION_FORMAT, storeAndServerConfigs.getStoreVersionName(), partition);
+    this.storePartitionDescription = Utils.getReplicaId(storeAndServerConfigs.getStoreVersionName(), partition);
     /**
      * We cannot block here because helix manager connection depends on the state model constructing in helix logic.
      * If we block here in the constructor, it will cause deadlocks.

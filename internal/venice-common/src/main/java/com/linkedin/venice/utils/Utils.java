@@ -20,6 +20,8 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -901,5 +903,20 @@ public class Utils {
    */
   public static String getSanitizedStringForLogger(String orig) {
     return orig.replace('.', '_');
+  }
+
+  /**
+   * Standard logging format for TopicPartition
+   */
+  public static String getReplicaId(PubSubTopicPartition topicPartition) {
+    return getReplicaId(topicPartition.getPubSubTopic(), topicPartition.getPartitionNumber());
+  }
+
+  public static String getReplicaId(String topic, int partition) {
+    return topic + "-" + partition;
+  }
+
+  public static String getReplicaId(PubSubTopic topic, int partition) {
+    return topic + "-" + partition;
   }
 }

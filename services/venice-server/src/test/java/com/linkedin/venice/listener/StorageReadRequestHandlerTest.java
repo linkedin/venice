@@ -89,6 +89,7 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -379,6 +380,7 @@ public class StorageReadRequestHandlerTest {
     // Mock the AdminResponse from ingestion task
     AdminResponse expectedAdminResponse = new AdminResponse();
     PartitionConsumptionState state = new PartitionConsumptionState(
+        Utils.getReplicaId(topic, expectedPartitionId),
         expectedPartitionId,
         1,
         new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),

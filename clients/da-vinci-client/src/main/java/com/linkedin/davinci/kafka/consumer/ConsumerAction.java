@@ -120,9 +120,8 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   @Override
   public String toString() {
-    return "KafkaTaskMessage{" + "type=" + type + ", topic='" + getTopic() + '\'' + ", partition=" + getPartition()
-        + ", attempts=" + attempts + ", sequenceNumber=" + sequenceNumber + ", createdTimestampInMs="
-        + createTimestampInMs + '}';
+    return "KafkaTaskMessage{" + "type=" + type + ", topicPartition=" + topicPartition + ", attempts=" + attempts
+        + ", sequenceNumber=" + sequenceNumber + ", createdTimestampInMs=" + createTimestampInMs + '}';
   }
 
   @Override

@@ -12,6 +12,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -85,9 +86,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   private final EnvOptions envOptions;
 
+  protected final String replicaId;
   protected final String storeName;
+  protected final String storeNameAndVersion;
   protected final boolean blobTransferEnabled;
-  private final String storeNameWithoutVersionSuffix;
   protected final int partitionId;
   private final String fullPathForPartitionDB;
 
@@ -166,10 +168,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     super(storagePartitionConfig.getPartitionId());
     this.factory = factory;
     this.rocksDBServerConfig = rocksDBServerConfig;
-    // Create the folder for storage partition if it doesn't exist
-    this.storeName = storagePartitionConfig.getStoreName();
-    this.storeNameWithoutVersionSuffix = Version.parseStoreFromVersionTopic(storeName);
+    this.storeNameAndVersion = storagePartitionConfig.getStoreName();
+    this.storeName = Version.parseStoreFromVersionTopic(storeNameAndVersion);
     this.partitionId = storagePartitionConfig.getPartitionId();
+    this.replicaId = Utils.getReplicaId(storagePartitionConfig.getStoreName(), partitionId);
     this.aggStatistics = factory.getAggStatistics();
     this.blobTransferEnabled = storeConfig.isBlobTransferEnabled();
 
@@ -196,7 +198,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.writeOnly = storagePartitionConfig.isWriteOnlyConfig();
     this.readWriteLeaderForDefaultCF = storagePartitionConfig.isReadWriteLeaderForDefaultCF();
     this.readWriteLeaderForRMDCF = storagePartitionConfig.isReadWriteLeaderForRMDCF();
-    this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeName, partitionId);
+    this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeNameAndVersion, partitionId);
     this.options = options;
     /**
      * TODO: check whether we should tune any config with {@link EnvOptions}.
@@ -207,13 +209,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.expectedChecksumSupplier = Optional.empty();
     this.rocksDBThrottler = rocksDbThrottler;
-    this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
+    this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeNameAndVersion, partitionId);
     this.fullPathForTempSnapshotFileDir =
-        blobTransferEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeName, partitionId) : null;
+        blobTransferEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeNameAndVersion, partitionId) : null;
 
     if (deferredWrite) {
-      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
-          storeName,
+      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(storeNameAndVersion,
           partitionId,
           dbDir,
           envOptions,
@@ -251,12 +252,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
               rocksDbThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
         }
       } catch (RocksDBException | InterruptedException e) {
-        throw new VeniceException(
-            "Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId,
-            e);
+        throw new VeniceException("Failed to open RocksDB for replica: " + replicaId, e);
       }
     };
-    if (factory.enforceMemoryLimit(storeNameWithoutVersionSuffix)) {
+    if (factory.enforceMemoryLimit(storeName)) {
       /**
        * We need to put a lock when calculating the memory usage since multiple threads can open different databases concurrently.
        *
@@ -272,9 +271,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     registerDBStats();
     LOGGER.info(
-        "Opened RocksDB for store: {}, partition: {}, in {} and {} mode",
-        storeName,
-        partitionId,
+        "Opened RocksDB: {} for replica: {} in {} and {} mode",
+        fullPathForPartitionDB,
+        replicaId,
         this.readOnly ? "read-only" : "read-write",
         this.deferredWrite ? "deferred write" : "non-deferred write");
   }
@@ -333,7 +332,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       long currentSSTFileUsage = sstFileManager.getTotalSize();
       if (currentSSTFileUsage + storeSize >= memoryLimit) {
         throw new MemoryLimitExhaustedException(
-            "Failed to open up RocksDB store: " + storeName + ", memory limit: " + memoryLimit
+            "Failed to open up RocksDB for replica: " + replicaId + ", memory limit: " + memoryLimit
                 + " and the current memory usage: " + currentSSTFileUsage + ", new store size: " + storeSize);
       }
     }
@@ -342,7 +341,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected void makeSureRocksDBIsStillOpen() {
     if (isClosed) {
       throw new VeniceException(
-          "RocksDB has been closed for store: " + storeName + ", partition id: " + partitionId
+          "RocksDB has been closed for replica: " + replicaId + ", partition id: " + partitionId
               + ", any further operation is disallowed");
     }
   }
@@ -360,7 +359,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
     options.setEnv(factory.getEnv());
     options.setRateLimiter(factory.getRateLimiter());
-    if (factory.enforceMemoryLimit(storeNameWithoutVersionSuffix)) {
+    if (factory.enforceMemoryLimit(storeName)) {
       options.setSstFileManager(factory.getSstFileManagerForMemoryLimiter());
     } else {
       options.setSstFileManager(factory.getSstFileManager());
@@ -504,8 +503,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   private void checkAndThrowMemoryLimitException(RocksDBException e) {
     if (e.getMessage().contains(ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_SPACE_QUOTA)) {
-      throw new MemoryLimitExhaustedException(
-          storeName,
+      throw new MemoryLimitExhaustedException(storeNameAndVersion,
           partitionId,
           factory.getSstFileManagerForMemoryLimiter().getTotalSize());
     }
@@ -521,8 +519,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException(
-          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_"
-              + partitionId);
+          "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
     try {
       if (deferredWrite) {
@@ -539,9 +536,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       }
     } catch (RocksDBException e) {
       checkAndThrowMemoryLimitException(e);
-      throw new VeniceException(
-          "Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId,
-          e);
+      throw new VeniceException("Failed to store the key/value pair in the RocksDB: " + replicaId, e);
     }
   }
 
@@ -557,7 +552,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       makeSureRocksDBIsStillOpen();
       return rocksDB.get(key);
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+      throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
     } finally {
       readCloseRWLock.readLock().unlock();
     }
@@ -583,7 +578,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       valueToBePopulated.limit(size);
       return valueToBePopulated;
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+      throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
     } finally {
       readCloseRWLock.readLock().unlock();
     }
@@ -601,7 +596,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       makeSureRocksDBIsStillOpen();
       return rocksDB.get(keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining());
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+      throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
     } finally {
       readCloseRWLock.readLock().unlock();
     }
@@ -621,7 +616,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       makeSureRocksDBIsStillOpen();
       return rocksDB.multiGetAsList(getReadOptionsForMultiGet(), keys);
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+      throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
     } finally {
       readCloseRWLock.readLock().unlock();
     }
@@ -639,13 +634,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       int valueCnt = values.size();
       if (keyCnt != statusCnt) {
         throw new VeniceException(
-            "RocksDB returns inconsistent number of statuses, key count: " + keys.size() + ", but returns: " + statusCnt
-                + " in store: " + storeName + ", partition: " + partitionId);
+            "RocksDB: " + replicaId + " returns inconsistent number of statuses, key count: " + keys.size()
+                + ", but returns: " + statusCnt);
       }
       if (keyCnt != valueCnt) {
         throw new VeniceException(
-            "RocksDB returns inconsistent number of results, key count: " + keys.size() + ", but returns: " + valueCnt
-                + " in store: " + storeName + ", partition: " + partitionId);
+            "RocksDB: " + replicaId + " returns inconsistent number of results, key count: " + keys.size()
+                + ", but returns: " + valueCnt);
       }
 
       List<ByteBuffer> resultList = new ArrayList<>(keys.size());
@@ -683,15 +678,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         } else if (statusCode.equals(Status.Code.NotFound)) {
           resultList.add(null);
         } else {
-          throw new VeniceException(
-              "Received unexpected code from RocksDB: " + statusCode + " in store: " + storeName + ", partition: "
-                  + partitionId);
+          throw new VeniceException("Received unexpected code: " + statusCode + " from RocksDB: " + replicaId);
         }
       }
 
       return resultList;
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+      throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
     } finally {
       readCloseRWLock.readLock().unlock();
     }
@@ -763,8 +756,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException(
-          "Cannot make deletion while partition is opened in read-only mode" + ", partition=" + storeName + "_"
-              + partitionId);
+          "Cannot make deletion while database is opened in read-only mode for replica: " + replicaId);
     }
     try {
       if (deferredWrite) {
@@ -774,9 +766,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       }
     } catch (RocksDBException e) {
       checkAndThrowMemoryLimitException(e);
-      throw new VeniceException(
-          "Failed to delete entry from store: " + storeName + ", partition id: " + partitionId,
-          e);
+      throw new VeniceException("Failed to delete entry from RocksDB: " + replicaId, e);
     }
   }
 
@@ -784,7 +774,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public synchronized Map<String, String> sync() {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
-      LOGGER.debug("Flush memtable to disk for store: {}, partition id: {}", storeName, partitionId);
+      LOGGER.debug("Flush memtable to disk for RocksDB: {}", replicaId);
 
       if (this.readOnly) {
         /**
@@ -803,9 +793,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList);
         } catch (RocksDBException e) {
           checkAndThrowMemoryLimitException(e);
-          throw new VeniceException(
-              "Failed to flush memtable to disk for store: " + storeName + ", partition id: " + partitionId,
-              e);
+          throw new VeniceException("Failed to flush memtable to disk for RocksDB: " + replicaId, e);
         }
       }
       return Collections.emptyMap();
@@ -845,11 +833,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public synchronized void drop() {
     close();
     try {
-      Options storeOptions = getStoreOptions(new StoragePartitionConfig(storeName, partitionId), false);
+      Options storeOptions = getStoreOptions(new StoragePartitionConfig(storeNameAndVersion, partitionId), false);
       RocksDB.destroyDB(fullPathForPartitionDB, storeOptions);
       storeOptions.close();
     } catch (RocksDBException e) {
-      LOGGER.error("Failed to destroy DB for store: {}, partition: {}", storeName, partitionId);
+      LOGGER.error("Failed to destroy DB for replica: {}", replicaId);
     }
     /**
      * To avoid resource leaking, we will clean up all the database files anyway.
@@ -860,7 +848,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     deleteFilesInDirectory(fullPathForTempSnapshotFileDir);
     // Remove partition directory
     deleteDirectory(fullPathForPartitionDB);
-    LOGGER.info("RocksDB for store: {}, partition: {} was dropped.", storeName, partitionId);
+    LOGGER.info("RocksDB for replica:{} was dropped.", replicaId);
   }
 
   @Override
@@ -890,11 +878,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (writeOptions != null) {
       writeOptions.close();
     }
-    LOGGER.info(
-        "RocksDB close for store: {}, partition {} took {} ms.",
-        storeName,
-        partitionId,
-        LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
+    LOGGER.info("RocksDB close for replica: {} took {} ms.", replicaId, LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
   }
 
   /**
@@ -906,12 +890,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       long startTimeInMs = System.currentTimeMillis();
       rocksDB.close();
-      LOGGER.info(
-          "RocksDB close for store: {}, partition {} took {} ms.",
-          storeName,
-          partitionId,
-          LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
-
+      LOGGER
+          .info("RocksDB close for replica: {} took {} ms.", replicaId, LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
       if (this.readOnly) {
         this.rocksDB = rocksDBThrottler
             .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
@@ -919,9 +899,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         this.rocksDB =
             rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       }
-      LOGGER.info("Reopened RocksDB for store: {}, partition: {}", storeName, partitionId);
+      LOGGER.info("Reopened RocksDB for replica: {}", replicaId);
     } catch (Exception e) {
-      throw new VeniceException("Failed to reopen RocksDB for store: " + storeName + " partition: " + partitionId);
+      throw new VeniceException("Failed to reopen RocksDB for replica: " + replicaId);
     } finally {
       readCloseRWLock.writeLock().unlock();
     }
@@ -929,13 +909,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   private void registerDBStats() {
     if (rocksDBMemoryStats != null) {
-      rocksDBMemoryStats.registerPartition(RocksDBUtils.getPartitionDbName(storeName, partitionId), this);
+      rocksDBMemoryStats.registerPartition(RocksDBUtils.getPartitionDbName(storeNameAndVersion, partitionId), this);
     }
   }
 
   private void deRegisterDBStats() {
     if (rocksDBMemoryStats != null) {
-      rocksDBMemoryStats.deregisterPartition(RocksDBUtils.getPartitionDbName(storeName, partitionId));
+      rocksDBMemoryStats.deregisterPartition(RocksDBUtils.getPartitionDbName(storeNameAndVersion, partitionId));
     }
   }
 
@@ -946,8 +926,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       return rocksDB.getLongProperty(statName);
     } catch (RocksDBException e) {
       throw new VeniceException(
-          "Failed to get property value from store: " + storeName + ", partition id: " + partitionId + " for property: "
-              + statName,
+          "Failed to get property value from RocksDB: " + replicaId + " for property: " + statName,
           e);
     } finally {
       readCloseRWLock.readLock().unlock();
