@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.davinci.listener.response.BlobDiscoveryResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.davinci.stats.ServerMetadataServiceStats;
@@ -7,6 +8,7 @@ import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.meta.BlobTransferManager;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -36,6 +38,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   private final ServerMetadataServiceStats serverMetadataServiceStats;
   private final ReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
+  private final BlobTransferManager blobTransferManager;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private HelixInstanceConfigRepository helixInstanceConfigRepository;
 
@@ -43,11 +46,13 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository storeRepository,
       ReadOnlySchemaRepository schemaRepository,
+      BlobTransferManager blobTransferManager,
       Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
       Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture) {
     this.serverMetadataServiceStats = new ServerMetadataServiceStats(metricsRepository);
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
+    this.blobTransferManager = blobTransferManager;
 
     customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
     helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
@@ -155,6 +160,21 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
                 + ". Please push data to the store before consuming");
       }
       response.setCurrentVersion(currentVersionNumber);
+    } catch (VeniceException e) {
+      response.setMessage("Failed to get current version for store: " + storeName + " due to: " + e.getMessage());
+      response.setError(true);
+    }
+    return response;
+  }
+
+  @Override
+  public BlobDiscoveryResponse getBlobDiscoveryResponse(String storeName, int storeVersion, int storePartition) {
+    BlobDiscoveryResponse response = new BlobDiscoveryResponse();
+
+    try {
+      List<String> blobTransferURLs =
+          blobTransferManager.getLiveNodeHostNamesForTransfer(storeName, storeVersion, storePartition);
+      response.setLiveNodeNames(blobTransferURLs);
     } catch (VeniceException e) {
       response.setMessage("Failed to get current version for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);

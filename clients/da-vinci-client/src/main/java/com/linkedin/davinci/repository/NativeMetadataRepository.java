@@ -1,11 +1,13 @@
 package com.linkedin.davinci.repository;
 
+import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static java.lang.Thread.currentThread;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -14,6 +16,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.BlobTransferManager;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStore;
@@ -21,6 +24,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -49,6 +53,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -61,8 +66,8 @@ import org.apache.logging.log4j.Logger;
  * stores' metadata. Callers are served by the cache and the cache is refreshed periodically by updating it with methods
  * provided by the implementers.
  */
-public abstract class NativeMetadataRepository
-    implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository, ClusterInfoProvider {
+public abstract class NativeMetadataRepository implements SubscriptionBasedReadOnlyStoreRepository,
+    ReadOnlySchemaRepository, ClusterInfoProvider, BlobTransferManager {
   protected static final int THIN_CLIENT_RETRY_COUNT = 3;
   protected static final long THIN_CLIENT_RETRY_BACKOFF_MS = 10000;
 
@@ -579,5 +584,46 @@ public abstract class NativeMetadataRepository
     String regularStoreName = systemStoreType == null ? storeName : systemStoreType.extractRegularStoreName(storeName);
     StoreConfig storeConfig = storeConfigMap.get(regularStoreName);
     return storeConfig == null ? null : storeConfig.getCluster();
+  }
+
+  /**
+   * Retrieves the host names for live DVC nodes ready to transfer blobs based on the specified store settings.
+   * Only returns host names from nodes that have completed a full push and are active.
+   *
+   * @param storeName   the name of the store
+   * @param version     the version of the store
+   * @param partitionID the partition ID of store's partition
+   * @return a list of host names for live DVC nodes; returns an empty list if no live nodes are found or if conditions are not met
+   */
+  @Override
+  public List<String> getLiveNodeHostNamesForTransfer(String storeName, int version, int partitionID) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+
+    if (systemStoreType == null || !systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
+      return Collections.emptyList();
+    }
+
+    Store store = getStoreOrThrow(storeName);
+    if (!store.isBlobTransferEnabled() || store.isHybrid()) {
+      LOGGER.warn("Blob transfer not enabled or store is hybrid for store: {}", storeName);
+      return Collections.emptyList();
+    }
+
+    D2Client d2Client = clientConfig.getD2Client();
+    String d2ServiceName = clientConfig.getD2ServiceName();
+    PushStatusStoreReader statusStoreReader = new PushStatusStoreReader(
+        d2Client,
+        d2ServiceName,
+        DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS);
+
+    // gets the instances for a FULL_PUSH for the store's version and partitionId
+    // gets the instance's hostnames from its keys & filter to include only live instances
+    Map<CharSequence, Integer> instances = statusStoreReader.getPartitionStatus(storeName, version, partitionID, null);
+    return instances.entrySet()
+        .stream()
+        .map(Map.Entry::getKey)
+        .map(CharSequence::toString)
+        .filter(instanceHostName -> statusStoreReader.isInstanceAlive(storeName, instanceHostName))
+        .collect(Collectors.toList());
   }
 }

@@ -26,5 +26,8 @@ public enum QueryAction {
   CURRENT_VERSION,
 
   // TOPIC_PARTITION_INGESTION_CONTEXT is a GET request to /version topic/topic/partition from server admin tool
-  TOPIC_PARTITION_INGESTION_CONTEXT
+  TOPIC_PARTITION_INGESTION_CONTEXT,
+
+  // BLOB_DISCOVERY is a GET request to blob_discovery/storeName/version/partition to find a node(s) with blobs
+  BLOB_DISCOVERY
 }

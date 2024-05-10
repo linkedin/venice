@@ -43,6 +43,7 @@ import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.ServerReadMetadataRepository;
 import com.linkedin.venice.listener.ServerStoreAclHandler;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
+import com.linkedin.venice.meta.BlobTransferManager;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -107,6 +108,7 @@ public class VeniceServer {
   private DiskHealthCheckService diskHealthCheckService;
   private MetricsRepository metricsRepository;
   private ReadOnlyStoreRepository metadataRepo;
+  private BlobTransferManager blobTransferManager;
   private ReadOnlySchemaRepository schemaRepo;
   private ReadOnlyLiveClusterConfigRepository liveClusterConfigRepo;
   private Optional<HelixReadOnlyZKSharedSchemaRepository> readOnlyZKSharedSchemaRepository;
@@ -294,6 +296,7 @@ public class VeniceServer {
         icProvider,
         false);
     zkClient = veniceMetadataRepositoryBuilder.getZkClient();
+    blobTransferManager = veniceMetadataRepositoryBuilder.getBlobTransferManager();
     metadataRepo = veniceMetadataRepositoryBuilder.getStoreRepo();
     schemaRepo = veniceMetadataRepositoryBuilder.getSchemaRepo();
     liveClusterConfigRepo = veniceMetadataRepositoryBuilder.getLiveClusterConfigRepo();
@@ -447,6 +450,7 @@ public class VeniceServer {
         metricsRepository,
         metadataRepo,
         schemaRepo,
+        blobTransferManager,
         Optional.of(customizedViewFuture),
         Optional.of(helixInstanceFuture));
 

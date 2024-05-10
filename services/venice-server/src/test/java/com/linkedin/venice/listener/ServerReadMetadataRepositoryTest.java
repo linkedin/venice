@@ -7,6 +7,7 @@ import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.meta.BlobTransferManager;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
@@ -36,6 +37,7 @@ import org.testng.annotations.Test;
 public class ServerReadMetadataRepositoryTest {
   private ReadOnlyStoreRepository mockMetadataRepo;
   private ReadOnlySchemaRepository mockSchemaRepo;
+  private BlobTransferManager mockBlobTransferManager;
   private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
   private HelixInstanceConfigRepository mockHelixInstanceConfigRepository;
 
@@ -43,6 +45,7 @@ public class ServerReadMetadataRepositoryTest {
   public void setUp() {
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
+    mockBlobTransferManager = mock(BlobTransferManager.class);
     mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     mockHelixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
   }
@@ -54,6 +57,7 @@ public class ServerReadMetadataRepositoryTest {
         metricsRepository,
         mockMetadataRepo,
         mockSchemaRepo,
+        mockBlobTransferManager,
         Optional.of(CompletableFuture.completedFuture(mockCustomizedViewRepository)),
         Optional.of(CompletableFuture.completedFuture(mockHelixInstanceConfigRepository)));
     String storeName = "test-store";

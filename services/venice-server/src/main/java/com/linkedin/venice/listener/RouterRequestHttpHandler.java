@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.AdminRequest;
+import com.linkedin.venice.listener.request.BlobDiscoveryRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -137,6 +138,16 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setStoreName(
               Version.parseStoreFromVersionTopic(topicPartitionIngestionContextRequest.getVersionTopic()));
           ctx.fireChannelRead(topicPartitionIngestionContextRequest);
+        case BLOB_DISCOVERY: // GET /blob_discovery/storename/version/partition
+          if (req.method().equals(HttpMethod.GET)) {
+            BlobDiscoveryRequest blobDiscoveryRequest = BlobDiscoveryRequest.parseGetHttpRequest(req);
+            setupRequestTimeout(blobDiscoveryRequest);
+            statsHandler.setRequestInfo(blobDiscoveryRequest);
+            ctx.fireChannelRead(blobDiscoveryRequest);
+          } else {
+            throw new VeniceException("Only support GET method for " + QueryAction.BLOB_DISCOVERY);
+          }
+          break;
         default:
           throw new VeniceException("Unrecognized query action");
       }
