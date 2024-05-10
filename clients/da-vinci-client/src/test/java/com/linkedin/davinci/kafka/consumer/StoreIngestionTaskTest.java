@@ -2649,10 +2649,6 @@ public abstract class StoreIngestionTaskTest {
             "Only one partition should be failed");
       });
     }, aaConfig);
-    // for (int i = 0; i < 10000; ++i) {
-    // storeIngestionTaskUnderTest
-    // .setIngestionException(0, new VeniceException("new fake looooooooooooooooong exception"));
-    // }
   }
 
   private VeniceServerConfig buildVeniceServerConfig(Map<String, Object> extraProperties) {
