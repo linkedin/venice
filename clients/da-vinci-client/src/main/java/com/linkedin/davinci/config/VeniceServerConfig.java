@@ -118,7 +118,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND;
-import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
@@ -457,9 +456,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long leaderCompleteStateCheckInFollowerValidIntervalMs;
   private final boolean stuckConsumerRepairEnabled;
   private final int stuckConsumerRepairIntervalSecond;
-  private final int stuckConsumerDetectionRepairThresholdSecond;
-  private final int nonExistingTopicIngestionTaskKillThresholdSecond;
-  private final int nonExistingTopicCheckRetryIntervalSecond;
+  private final int stuckIngestionTaskKillThresholdMs;
+  private final int stuckIngestionTaskKillRetryIntervalMs;
   private final boolean dedicatedConsumerPoolForAAWCLeaderEnabled;
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
   private final boolean useDaVinciSpecificExecutionStatusForError;
@@ -741,17 +739,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     stuckConsumerRepairEnabled = serverProperties.getBoolean(SERVER_STUCK_CONSUMER_REPAIR_ENABLED, true);
     stuckConsumerRepairIntervalSecond = serverProperties.getInt(SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND, 60);
-    stuckConsumerDetectionRepairThresholdSecond =
-        serverProperties.getInt(SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND, 5 * 60); // 5 mins
-    if (stuckConsumerRepairEnabled && stuckConsumerDetectionRepairThresholdSecond < stuckConsumerRepairIntervalSecond) {
-      throw new VeniceException(
-          "Config for " + SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND + ": "
-              + stuckConsumerDetectionRepairThresholdSecond + " should be equal to or larger than "
-              + SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND + ": " + stuckConsumerRepairIntervalSecond);
-    }
-    nonExistingTopicIngestionTaskKillThresholdSecond =
+    stuckIngestionTaskKillThresholdMs =
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_INGESTION_TASK_KILL_THRESHOLD_SECOND, 15 * 60); // 15 mins
-    nonExistingTopicCheckRetryIntervalSecond =
+    stuckIngestionTaskKillRetryIntervalMs =
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND, 60); // 1min
     leaderCompleteStateCheckInFollowerEnabled =
         serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, false);
@@ -1324,16 +1314,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return stuckConsumerRepairIntervalSecond;
   }
 
-  public int getStuckConsumerDetectionRepairThresholdSecond() {
-    return stuckConsumerDetectionRepairThresholdSecond;
+  public int getStuckIngestionTaskKillThresholdMs() {
+    return stuckIngestionTaskKillThresholdMs;
   }
 
-  public int getNonExistingTopicIngestionTaskKillThresholdSecond() {
-    return nonExistingTopicIngestionTaskKillThresholdSecond;
-  }
-
-  public int getNonExistingTopicCheckRetryIntervalSecond() {
-    return nonExistingTopicCheckRetryIntervalSecond;
+  public int getStuckIngestionTaskKillRetryIntervalMs() {
+    return stuckIngestionTaskKillRetryIntervalMs;
   }
 
   public boolean isDedicatedConsumerPoolForAAWCLeaderEnabled() {

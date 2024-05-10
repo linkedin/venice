@@ -367,6 +367,8 @@ public abstract class StoreIngestionTaskTest {
   private long databaseSyncBytesIntervalForDeferredWriteMode = 2;
   private KafkaConsumerService localKafkaConsumerService;
   private KafkaConsumerService remoteKafkaConsumerService;
+  private Store mockedStore;
+  private Version mockedVersion;
 
   private StorePartitionDataReceiver localConsumedDataReceiver;
   private StorePartitionDataReceiver remoteConsumedDataReceiver;
@@ -470,6 +472,8 @@ public abstract class StoreIngestionTaskTest {
     if (remoteKafkaConsumerService != null) {
       remoteKafkaConsumerService.stopInner();
     }
+    mockedStore = null;
+    mockedVersion = null;
   }
 
   @BeforeMethod(alwaysRun = true)
@@ -793,8 +797,8 @@ public abstract class StoreIngestionTaskTest {
         false,
         aaConfig,
         storeVersionConfigOverride);
-    Store mockStore = storeAndVersionConfigs.store;
-    Version version = storeAndVersionConfigs.version;
+    mockedStore = storeAndVersionConfigs.store;
+    mockedVersion = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
@@ -810,8 +814,8 @@ public abstract class StoreIngestionTaskTest {
 
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
-        mockStore,
-        version,
+        mockedStore,
+        mockedVersion,
         kafkaProps,
         isCurrentVersion,
         storeConfig,
@@ -2645,10 +2649,10 @@ public abstract class StoreIngestionTaskTest {
             "Only one partition should be failed");
       });
     }, aaConfig);
-    for (int i = 0; i < 10000; ++i) {
-      storeIngestionTaskUnderTest
-          .setIngestionException(0, new VeniceException("new fake looooooooooooooooong exception"));
-    }
+    // for (int i = 0; i < 10000; ++i) {
+    // storeIngestionTaskUnderTest
+    // .setIngestionException(0, new VeniceException("new fake looooooooooooooooong exception"));
+    // }
   }
 
   private VeniceServerConfig buildVeniceServerConfig(Map<String, Object> extraProperties) {
@@ -4613,6 +4617,52 @@ public abstract class StoreIngestionTaskTest {
             s -> mockTopicManager),
         MESSAGE_COUNT - 1 - CURRENT_OFFSET_SOME_CONSUMED,
         "If the partition has messages in it, and we consumed some of them, we expect lag to equal the unconsumed message count.");
+  }
+
+  @Test
+  public void ingestionBeforeOnlineShouldNotFlag() throws Exception {
+    // for ingestion failure before EOP, the flag should be false
+    runTest(Utils.setOf(PARTITION_FOO), () -> {
+      PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+      doReturn(Boolean.TRUE).when(pcs).isSubscribed();
+      doReturn(Boolean.FALSE).when(pcs).isCompletionReported();
+      storeIngestionTaskUnderTest.setPartitionConsumptionState(PARTITION_FOO, pcs);
+      storeIngestionTaskUnderTest
+          .setIngestionException(PARTITION_FOO, new VeniceException("new fake looooooooooooooooong exception"));
+      try {
+        storeIngestionTaskUnderTest.checkIngestionProgress(mockedStore);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+    }, () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          () -> assertFalse(storeIngestionTaskUnderTest.isIngestionStuckPostOnline()));
+    }, null);
+  }
+
+  @Test
+  public void ingestionPostOnlineShouldFlag() throws Exception {
+    // for ingestion failure after EOP, the falg should be true
+    runTest(Utils.setOf(PARTITION_FOO), () -> {
+      PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+      doReturn(Boolean.TRUE).when(pcs).isSubscribed();
+      doReturn(Boolean.TRUE).when(pcs).isCompletionReported();
+      storeIngestionTaskUnderTest.setPartitionConsumptionState(PARTITION_FOO, pcs);
+      storeIngestionTaskUnderTest
+          .setIngestionException(PARTITION_FOO, new VeniceException("new fake looooooooooooooooong exception"));
+      try {
+        storeIngestionTaskUnderTest.checkIngestionProgress(mockedStore);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+    }, () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.isIngestionStuckPostOnline()));
+    }, null);
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

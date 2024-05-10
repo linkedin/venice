@@ -9,14 +9,12 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 public class StuckConsumerRepairStats extends AbstractVeniceStats {
   private Sensor stuckConsumerFound;
   private Sensor ingestionTaskRepair;
-  private Sensor repairFailure;
 
   public StuckConsumerRepairStats(MetricsRepository metricsRepository) {
     super(metricsRepository, "StuckConsumerRepair");
 
     this.stuckConsumerFound = registerSensor("stuck_consumer_found", new OccurrenceRate());
     this.ingestionTaskRepair = registerSensor("ingestion_task_repair", new OccurrenceRate());
-    this.repairFailure = registerSensor("repair_failure", new OccurrenceRate());
   }
 
   public void recordStuckConsumerFound() {
@@ -25,9 +23,5 @@ public class StuckConsumerRepairStats extends AbstractVeniceStats {
 
   public void recordIngestionTaskRepair() {
     ingestionTaskRepair.record();
-  }
-
-  public void recordRepairFailure() {
-    repairFailure.record();
   }
 }

@@ -323,6 +323,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
 
+  /**
+   * This flag indicates whether this task has issues to ingest after being online.
+   * In Venice, replicas don't go to ERROR state after it reports COMPLETED. However, for cases when replicas do have
+   * issues to ingest after being online, sometimes replicas can be stuck forever unless there's a restart or re-balance event.
+   * In order to implement an auto-recovery mechanism while keeping the semantic, exposing this flag to {@link AggKafkaConsumerService}
+   */
+  private boolean ingestionStuckPostOnline = false;
+
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -1218,11 +1226,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             reportError(partitionException.getMessage(), exceptionPartition, partitionException);
 
           } else {
+            ingestionStuckPostOnline = true;
             LOGGER.error(
-                "Ignoring exception for partition {} for store version {} since this partition is already online. "
-                    + "Please engage Venice DEV team immediately.",
-                exceptionPartition,
+                "The store version {} ignored the exception for partition {} and has data staleness risk." + ""
+                    + "Please engage the developer team immediately.",
                 kafkaVersionTopic,
+                exceptionPartition,
                 partitionException);
           }
           // Unsubscribe the partition to avoid more damages.
@@ -3987,5 +3996,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return true;
     }
     return topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic);
+  }
+
+  public boolean isIngestionStuckPostOnline() {
+    return ingestionStuckPostOnline;
   }
 }
