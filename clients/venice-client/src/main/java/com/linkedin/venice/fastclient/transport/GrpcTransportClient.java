@@ -11,7 +11,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.grpc.GrpcErrorCodes;
-import com.linkedin.venice.grpc.GrpcSslUtils;
+import com.linkedin.venice.grpc.GrpcUtils;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
@@ -64,8 +64,8 @@ public class GrpcTransportClient extends InternalTransportClient {
   private void initChannelCredentials() {
     try {
       TlsChannelCredentials.Builder tlsBuilder = TlsChannelCredentials.newBuilder()
-          .keyManager(GrpcSslUtils.getKeyManagers(sslFactory))
-          .trustManager(GrpcSslUtils.getTrustManagers(sslFactory));
+          .keyManager(GrpcUtils.getKeyManagers(sslFactory))
+          .trustManager(GrpcUtils.getTrustManagers(sslFactory));
       channelCredentials = tlsBuilder.build();
     } catch (Exception e) {
       throw new VeniceClientException(

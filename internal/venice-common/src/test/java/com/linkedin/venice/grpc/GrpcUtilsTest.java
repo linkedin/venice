@@ -11,7 +11,7 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 
-public class GrpcSslUtilsTest {
+public class GrpcUtilsTest {
   private static SSLFactory sslFactory;
 
   @BeforeTest
@@ -21,7 +21,7 @@ public class GrpcSslUtilsTest {
 
   @Test
   public void testGetTrustManagers() throws Exception {
-    TrustManager[] trustManagers = GrpcSslUtils.getTrustManagers(sslFactory);
+    TrustManager[] trustManagers = GrpcUtils.getTrustManagers(sslFactory);
 
     assertNotNull(trustManagers);
     assertTrue(trustManagers.length > 0);
@@ -29,7 +29,7 @@ public class GrpcSslUtilsTest {
 
   @Test
   public void testGetKeyManagers() throws Exception {
-    KeyManager[] keyManagers = GrpcSslUtils.getKeyManagers(sslFactory);
+    KeyManager[] keyManagers = GrpcUtils.getKeyManagers(sslFactory);
 
     assertNotNull(keyManagers);
     assertTrue(keyManagers.length > 0);

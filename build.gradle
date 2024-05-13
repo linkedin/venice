@@ -82,6 +82,7 @@ ext.libraries = [
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
     grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
+    grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     helix: 'org.apache.helix:helix-core:1.1.0',
@@ -266,6 +267,7 @@ subprojects {
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
     implementation libraries.grpcNettyShaded
     implementation libraries.grpcProtobuf
+    implementation libraries.grpcServices
     implementation libraries.grpcStub
     compileOnly libraries.tomcatAnnotations
   }
