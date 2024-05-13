@@ -4,8 +4,7 @@ import static com.linkedin.venice.VeniceConstants.TYPE_PUSH_STATUS;
 import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static com.linkedin.venice.router.api.RouterResourceType.*;
@@ -24,6 +23,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.BlobDiscoveryResponse;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
@@ -32,6 +32,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -49,6 +50,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.router.api.RouterResourceType;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
@@ -79,6 +81,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -104,6 +107,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final SystemStoreJSONSerializer SYSTEM_STORE_SERIALIZER = new SystemStoreJSONSerializer();
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
+
+  private final PushStatusStoreReader pushStatusStoreReader;
 
   private final HelixCustomizedViewOfflinePushRepository routingDataRepository;
   private final ReadOnlySchemaRepository schemaRepo;
@@ -145,7 +150,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String zkAddress,
       String kafkaBootstrapServers,
       boolean isSslToKafka,
-      VeniceVersionFinder versionFinder) {
+      VeniceVersionFinder versionFinder,
+      PushStatusStoreReader pushStatusStoreReader) {
     super();
     this.routingDataRepository = routingDataRepository;
     this.schemaRepo = schemaRepo;
@@ -159,6 +165,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.kafkaBootstrapServers = kafkaBootstrapServers;
     this.isSslToKafka = isSslToKafka;
     this.veniceVersionFinder = versionFinder;
+    this.pushStatusStoreReader = pushStatusStoreReader;
   }
 
   @Override
@@ -226,6 +233,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           break;
         case TYPE_CURRENT_VERSION:
           handleCurrentVersionLookup(ctx, helper);
+          break;
+        case TYPE_BLOB_DISCOVERY:
+          handleBlobDiscovery(ctx, helper, req);
           break;
         default:
           // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
@@ -474,6 +484,50 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     int currentVersion = veniceVersionFinder.getVersion(storeName, null);
     CurrentVersionResponse response = new CurrentVersionResponse();
     response.setCurrentVersion(currentVersion);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
+  }
+
+  /**
+   * Retrieves the host names for live DVC nodes ready to transfer blobs based on the specified store settings.
+   * Only returns host names from nodes that have completed a full push and are active.
+   *
+   * @return a response with a list of host names for live DVC nodes; returns an empty list if no live nodes are found or if conditions are not met
+   */
+  private void handleBlobDiscovery(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request)
+      throws IOException {
+
+    // i.e. /blob_discovery?store_name=storeName&version=22&partition=2
+    Map<String, String> queryParams = helper.extractQueryParameters(request);
+    String storeName = queryParams.get(NAME);
+    String storeVersion = queryParams.get(VERSION);
+    String storePartition = queryParams.get(STORE_PARTITION);
+
+    if (StringUtils.isEmpty(storeName) || StringUtils.isEmpty(storeVersion) || StringUtils.isEmpty(storePartition)) {
+      byte[] errBody = ("Blob Discovery: missing storeName, storeVersion, or storePartition" + storeName + storeVersion
+          + storePartition).getBytes();
+      setupResponseAndFlush(BAD_REQUEST, errBody, false, ctx);
+      return;
+    }
+
+    BlobDiscoveryResponse response = new BlobDiscoveryResponse();
+
+    try {
+      // gets the instances for a FULL_PUSH for the store's version and partitionId
+      // gets the instance's hostnames from its keys & filter to include only live instances
+      Map<CharSequence, Integer> instances = pushStatusStoreReader
+          .getPartitionStatus(storeName, Integer.parseInt(storeVersion), Integer.parseInt(storePartition), null);
+      List<String> liveNodeHostNames = instances.entrySet()
+          .stream()
+          .map(Map.Entry::getKey)
+          .map(CharSequence::toString)
+          .filter(instanceHostName -> pushStatusStoreReader.isInstanceAlive(storeName, instanceHostName))
+          .collect(Collectors.toList());
+      response.setLiveNodeNames(liveNodeHostNames);
+    } catch (VeniceException e) {
+      response.setError(
+          "Blob Discovery: failed to get the live node hostNames for " + storeName + storePartition + storePartition);
+    }
+
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
   }
 

@@ -4,7 +4,6 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
-import com.linkedin.davinci.listener.response.BlobDiscoveryResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
@@ -30,7 +29,6 @@ import com.linkedin.venice.exceptions.OperationNotAllowedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.listener.request.AdminRequest;
-import com.linkedin.venice.listener.request.BlobDiscoveryRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -388,9 +386,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       TopicPartitionIngestionContextResponse response =
           handleTopicPartitionIngestionContextRequest((TopicPartitionIngestionContextRequest) message);
       context.writeAndFlush(response);
-    } else if (message instanceof BlobDiscoveryRequest) {
-      BlobDiscoveryResponse response = handleBlobDiscoveryRequest((BlobDiscoveryRequest) message);
-      context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
           new HttpShortcutResponse(
@@ -723,11 +718,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private ServerCurrentVersionResponse handleCurrentVersionRequest(CurrentVersionRequest request) {
     return readMetadataRetriever.getCurrentVersionResponse(request.getStoreName());
-  }
-
-  private BlobDiscoveryResponse handleBlobDiscoveryRequest(BlobDiscoveryRequest request) {
-    return readMetadataRetriever
-        .getBlobDiscoveryResponse(request.getStoreName(), request.getVersion(), request.getPartition());
   }
 
   private Schema getComputeResultSchema(ComputeRequest computeRequest, Schema valueSchema) {

@@ -1,6 +1,7 @@
 package com.linkedin.venice.router;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.utils.concurrent.BlockingQueueType.LINKED_BLOCKING_QUEUE;
 
@@ -13,11 +14,13 @@ import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.alpini.router.api.LongTailRetrySupplier;
 import com.linkedin.alpini.router.api.ScatterGatherHelper;
 import com.linkedin.alpini.router.impl.Router;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -36,6 +39,7 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.DictionaryRetrievalService;
 import com.linkedin.venice.router.api.MetaStoreShadowReader;
@@ -145,6 +149,8 @@ public class RouterServer extends AbstractVeniceService {
   private ReadOnlyStoreRepository metadataRepository;
   private RouterStats<AggRouterHttpRequestStats> routerStats;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
+
+  private PushStatusStoreReader pushStatusStoreReader;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
   private HelixInstanceConfigRepository instanceConfigRepository;
   private HelixGroupSelector helixGroupSelector;
@@ -318,6 +324,13 @@ public class RouterServer extends AbstractVeniceService {
         config.getRefreshAttemptsForZkReconnect(),
         config.getRefreshIntervalForZkReconnectInMs());
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
+
+    D2Client d2Client = D2ClientFactory.getD2Client(config.getZkConnection(), Optional.empty());
+    String d2ServiceName = config.getClusterToServerD2Map().get(config.getClusterName());
+    this.pushStatusStoreReader = new PushStatusStoreReader(
+        d2Client,
+        d2ServiceName,
+        DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS);
   }
 
   /**
@@ -525,7 +538,8 @@ public class RouterServer extends AbstractVeniceService {
         config.getZkConnection(),
         config.getKafkaBootstrapServers(),
         config.isSslToKafka(),
-        versionFinder);
+        versionFinder,
+        pushStatusStoreReader);
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);

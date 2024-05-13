@@ -157,6 +157,7 @@ public class TestMetaDataHandler {
         ZK_ADDRESS,
         KAFKA_BOOTSTRAP_SERVERS,
         false,
+        null,
         null);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
@@ -892,6 +893,7 @@ public class TestMetaDataHandler {
         ZK_ADDRESS,
         KAFKA_BOOTSTRAP_SERVERS,
         false,
+        null,
         null);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler

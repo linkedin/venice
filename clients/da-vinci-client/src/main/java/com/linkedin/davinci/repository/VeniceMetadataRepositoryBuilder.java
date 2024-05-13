@@ -12,7 +12,6 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.meta.BlobTransferManager;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -40,7 +39,6 @@ public class VeniceMetadataRepositoryBuilder {
   private final VeniceConfigLoader configLoader;
   private final ClientConfig clientConfig;
   private final MetricsRepository metricsRepository;
-  private BlobTransferManager blobTransferManager;
   private final boolean isIngestionIsolation;
   private final ICProvider icProvider;
 
@@ -81,10 +79,6 @@ public class VeniceMetadataRepositoryBuilder {
     return storeRepo;
   }
 
-  public BlobTransferManager getBlobTransferManager() {
-    return blobTransferManager;
-  }
-
   public ReadOnlySchemaRepository getSchemaRepo() {
     return schemaRepo;
   }
@@ -113,7 +107,6 @@ public class VeniceMetadataRepositoryBuilder {
     clusterInfoProvider = systemStoreBasedRepository;
     storeRepo = systemStoreBasedRepository;
     schemaRepo = systemStoreBasedRepository;
-    blobTransferManager = systemStoreBasedRepository;
     liveClusterConfigRepo = null;
   }
 
@@ -165,7 +158,5 @@ public class VeniceMetadataRepositoryBuilder {
     liveClusterConfigRepo.refresh();
 
     clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
-
-    blobTransferManager = null;
   }
 }

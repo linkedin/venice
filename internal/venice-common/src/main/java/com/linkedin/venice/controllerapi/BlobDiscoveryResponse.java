@@ -1,0 +1,20 @@
+package com.linkedin.venice.controllerapi;
+
+import java.util.List;
+
+
+public class BlobDiscoveryResponse extends ControllerResponse {
+  private boolean isError;
+  private List<String> liveNodeHostNames;
+
+  public BlobDiscoveryResponse() {
+  }
+
+  public void setLiveNodeNames(List<String> liveNodeHostNames) {
+    this.liveNodeHostNames = liveNodeHostNames;
+  }
+
+  public List<String> getLiveNodeHostNames() {
+    return liveNodeHostNames;
+  }
+}
