@@ -19,6 +19,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.TYPE_VALUE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
+import static io.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
@@ -491,7 +492,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   }
 
   /**
-   * Retrieves the host names for live DVC nodes ready to transfer blobs based on the specified store settings.
+   * Handles the discovery of blob transfer nodes based on store settings.
+   * Retrieves host names for live DVC nodes ready to transfer blobs.
    * Only returns host names from nodes that have completed a full push and are active.
    *
    * @return a response with a list of host names for live DVC nodes; returns an empty list if no live nodes are found or if conditions are not met
@@ -506,14 +508,29 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     String storePartition = queryParams.get(STORE_PARTITION);
 
     if (StringUtils.isEmpty(storeName) || StringUtils.isEmpty(storeVersion) || StringUtils.isEmpty(storePartition)) {
-      byte[] errBody = ("Blob Discovery: missing storeName, storeVersion, or storePartition" + storeName + storeVersion
+      byte[] errBody = ("Blob Discovery: missing storeName, storeVersion, or storePartition " + storeName + storeVersion
           + storePartition).getBytes();
       setupResponseAndFlush(BAD_REQUEST, errBody, false, ctx);
       return;
     }
 
-    BlobDiscoveryResponse response = new BlobDiscoveryResponse();
+    Store store = storeRepository.getStore(storeName);
+    if (store == null || !store.isBlobTransferEnabled() || store.isHybrid()) {
+      byte[] errBody =
+          ("Blob Discovery: store: " + storeName + " could not be found in cluster: " + clusterName).getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
 
+    if (!store.isBlobTransferEnabled() || store.isHybrid()) {
+      byte[] errBody =
+          ("Blob Discovery: blob transfer is not enabled or store: " + storeName + " is not batch-only store")
+              .getBytes();
+      setupResponseAndFlush(FORBIDDEN, errBody, false, ctx);
+      return;
+    }
+
+    BlobDiscoveryResponse response = new BlobDiscoveryResponse();
     try {
       // gets the instances for a FULL_PUSH for the store's version and partitionId
       // gets the instance's hostnames from its keys & filter to include only live instances

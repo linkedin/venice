@@ -7,9 +7,6 @@ public class BlobDiscoveryResponse extends ControllerResponse {
   private boolean isError;
   private List<String> liveNodeHostNames;
 
-  public BlobDiscoveryResponse() {
-  }
-
   public void setLiveNodeNames(List<String> liveNodeHostNames) {
     this.liveNodeHostNames = liveNodeHostNames;
   }
