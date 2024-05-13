@@ -1,7 +1,7 @@
 package com.linkedin.venice.router;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.utils.concurrent.BlockingQueueType.LINKED_BLOCKING_QUEUE;
 
