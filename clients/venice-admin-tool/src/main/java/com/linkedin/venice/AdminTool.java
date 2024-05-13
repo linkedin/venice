@@ -186,7 +186,7 @@ public class AdminTool {
       "zookeeper.ssl.trustStore.password",
       "zookeeper.ssl.trustStore.type");
 
-  public static void main(String args[]) throws Exception {
+  public static void main(String[] args) throws Exception {
     // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
     PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(new VeniceProperties(System.getProperties()));
     CommandLine cmd = getCommandLine(args);
@@ -195,7 +195,7 @@ public class AdminTool {
 
       // Variables used within the switch case need to be defined in advance
       String veniceUrl = null;
-      String clusterName;
+      String clusterName = null;
       String storeName;
       String versionString;
       String topicName;
@@ -213,11 +213,31 @@ public class AdminTool {
        */
       buildSslFactory(cmd);
 
-      if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL)
-          && Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER)) {
+      boolean hasUrlArg = Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL);
+      if (hasUrlArg) {
         veniceUrl = getRequiredArgument(cmd, Arg.URL);
-        clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-        controllerClient = ControllerClient.constructClusterControllerClient(clusterName, veniceUrl, sslFactory);
+
+        boolean hasRequiredClusterArg = Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER);
+        boolean hasOptionalClusterArg = Arrays.asList(foundCommand.getOptionalArgs()).contains(Arg.CLUSTER);
+        String optionalClusterArgValue = getOptionalArgument(cmd, Arg.CLUSTER);
+        if (hasRequiredClusterArg) {
+          clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+        } else if (hasOptionalClusterArg && optionalClusterArgValue != null) {
+          clusterName = optionalClusterArgValue;
+        } else if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.STORE) && hasOptionalClusterArg) {
+          storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
+          D2ServiceDiscoveryResponse serviceDiscoveryResponse =
+              ControllerClient.discoverCluster(veniceUrl, storeName, sslFactory, 1);
+          if (serviceDiscoveryResponse.isError()) {
+            throw new VeniceException(serviceDiscoveryResponse.getError());
+          }
+          clusterName = serviceDiscoveryResponse.getCluster();
+          System.out.printf("Store %s is discovered in cluster %s%n", storeName, clusterName);
+        }
+
+        if (clusterName != null) {
+          controllerClient = ControllerClientFactory.getControllerClient(clusterName, veniceUrl, sslFactory);
+        }
       }
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())) {

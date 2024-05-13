@@ -141,48 +141,61 @@ public enum Command {
   LIST_STORES(
       "list-stores", "List all stores present in the given cluster", new Arg[] { URL, CLUSTER },
       new Arg[] { INCLUDE_SYSTEM_STORES }
-  ), DESCRIBE_STORE("describe-store", "Get store details", new Arg[] { URL, CLUSTER, STORE }),
+  ), DESCRIBE_STORE("describe-store", "Get store details", new Arg[] { URL, STORE }, new Arg[] { CLUSTER }),
   DESCRIBE_STORES("describe-stores", "", new Arg[] { URL, CLUSTER }, new Arg[] { INCLUDE_SYSTEM_STORES }),
   DISABLE_STORE_WRITE(
-      "disable-store-write", "Prevent a store from accepting new versions", new Arg[] { URL, CLUSTER, STORE }
+      "disable-store-write", "Prevent a store from accepting new versions", new Arg[] { URL, STORE },
+      new Arg[] { CLUSTER }
   ),
   ENABLE_STORE_WRITE(
       "enable-store-write", "Allow a store to accept new versions again after being writes have been disabled",
-      new Arg[] { URL, CLUSTER, STORE }
+      new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
   ),
   DISABLE_STORE_READ(
-      "disable-store-read", "Prevent a store from serving read requests", new Arg[] { URL, CLUSTER, STORE }
+      "disable-store-read", "Prevent a store from serving read requests", new Arg[] { URL, STORE },
+      new Arg[] { CLUSTER }
   ),
   ENABLE_STORE_READ(
       "enable-store-read", "Allow a store to serve read requests again after reads have been disabled",
-      new Arg[] { URL, CLUSTER, STORE }
-  ), DISABLE_STORE("disable-store", "Disable store in both read and write path", new Arg[] { URL, CLUSTER, STORE }),
-  ENABLE_STORE("enable-store", "Enable a store in both read and write path", new Arg[] { URL, CLUSTER, STORE }),
+      new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
+  ),
+  DISABLE_STORE(
+      "disable-store", "Disable store in both read and write path", new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
+  ),
+  ENABLE_STORE(
+      "enable-store", "Enable a store in both read and write path", new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
+  ),
   JOB_STATUS(
       "job-status",
       "Query the ingest status of a running push job. If a version is not specified, the job status of the last job will be printed.",
-      new Arg[] { URL, CLUSTER, STORE }, new Arg[] { VERSION }
-  ), KILL_JOB("kill-job", "Kill a running push job", new Arg[] { URL, CLUSTER, STORE, VERSION }),
+      new Arg[] { URL, STORE }, new Arg[] { CLUSTER, VERSION }
+  ), KILL_JOB("kill-job", "Kill a running push job", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }),
   SKIP_ADMIN("skip-admin", "Skip an admin message", new Arg[] { URL, CLUSTER, OFFSET }, new Arg[] { SKIP_DIV }),
   NEW_STORE(
       "new-store", "", new Arg[] { URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA }, new Arg[] { OWNER, VSON_STORE }
   ),
   DELETE_STORE(
       "delete-store", "Delete the given store including both metadata and all versions in this store",
-      new Arg[] { URL, CLUSTER, STORE }
+      new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
   ),
   BACKFILL_SYSTEM_STORES(
       "backfill-system-stores", "Create system stores of a given type for user stores in a cluster",
       new Arg[] { URL, CLUSTER, SYSTEM_STORE_TYPE }
-  ), SET_VERSION("set-version", "Set the version that will be served", new Arg[] { URL, CLUSTER, STORE, VERSION }),
-  ADD_SCHEMA("add-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA }),
+  ),
+  SET_VERSION(
+      "set-version", "Set the version that will be served", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }
+  ), ADD_SCHEMA("add-schema", "", new Arg[] { URL, STORE, VALUE_SCHEMA }, new Arg[] { CLUSTER }),
   ADD_SCHEMA_TO_ZK(
       "add-schema-to-zk", "",
-      new Arg[] { VENICE_ZOOKEEPER_URL, CLUSTER, STORE, VALUE_SCHEMA, VALUE_SCHEMA_ID, ZK_SSL_CONFIG_FILE }
-  ), ADD_DERIVED_SCHEMA("add-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA }),
+      new Arg[] { VENICE_ZOOKEEPER_URL, STORE, VALUE_SCHEMA, VALUE_SCHEMA_ID, ZK_SSL_CONFIG_FILE },
+      new Arg[] { CLUSTER }
+  ),
+  ADD_DERIVED_SCHEMA(
+      "add-derived-schema", "", new Arg[] { URL, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA }, new Arg[] { CLUSTER }
+  ),
   REMOVE_DERIVED_SCHEMA(
       "remove-derived-schema", "remove derived schema for a given store by the value and derived schema Ids",
-      new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID }
+      new Arg[] { URL, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID }, new Arg[] { CLUSTER }
   ), LIST_STORAGE_NODES("list-storage-nodes", "", new Arg[] { URL, CLUSTER }),
   CLUSTER_HEALTH_INSTANCES(
       "cluster-health-instances", "List the status for every instance", new Arg[] { URL, CLUSTER },
@@ -200,39 +213,47 @@ public enum Command {
   ), REMOVE_NODE("remove-node", "Remove a storage node from the cluster", new Arg[] { URL, CLUSTER, STORAGE_NODE }),
   REPLICAS_OF_STORE(
       "replicas-of-store", "List the location and status of all replicas for a store",
-      new Arg[] { URL, CLUSTER, STORE, VERSION }
+      new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }
   ),
   REPLICAS_ON_STORAGE_NODE(
       "replicas-on-storage-node", "List the store and status of all replicas on a storage node",
       new Arg[] { URL, CLUSTER, STORAGE_NODE }
   ),
   QUERY(
-      "query", "Query a store that has a simple key schema", new Arg[] { URL, CLUSTER, STORE, KEY },
-      new Arg[] { VSON_STORE, VENICE_CLIENT_SSL_CONFIG_FILE }
-  ), SHOW_SCHEMAS("schemas", "Show the key and value schemas for a store", new Arg[] { URL, CLUSTER, STORE }),
-  DELETE_ALL_VERSIONS("delete-all-versions", "Delete all versions in given store", new Arg[] { URL, CLUSTER, STORE }),
+      "query", "Query a store that has a simple key schema", new Arg[] { URL, STORE, KEY },
+      new Arg[] { CLUSTER, VSON_STORE, VENICE_CLIENT_SSL_CONFIG_FILE }
+  ),
+  SHOW_SCHEMAS(
+      "schemas", "Show the key and value schemas for a store", new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
+  ),
+  DELETE_ALL_VERSIONS(
+      "delete-all-versions", "Delete all versions in given store", new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
+  ),
   DELETE_OLD_VERSION(
       "delete-old-version", "Delete the given version(non current version) in the given store",
-      new Arg[] { URL, CLUSTER, STORE, VERSION }
+      new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }
   ),
   GET_EXECUTION(
       "get-execution", "Get the execution status for an async admin command", new Arg[] { URL, CLUSTER, EXECUTION }
-  ), SET_OWNER("set-owner", "Update owner info of an existing store", new Arg[] { URL, CLUSTER, STORE, OWNER }),
+  ),
+  SET_OWNER(
+      "set-owner", "Update owner info of an existing store", new Arg[] { URL, STORE, OWNER }, new Arg[] { CLUSTER }
+  ),
   SET_PARTITION_COUNT(
       "set-partition-count", "Update the number of partitions of an existing store",
-      new Arg[] { URL, CLUSTER, STORE, PARTITION_COUNT }
+      new Arg[] { URL, STORE, PARTITION_COUNT }, new Arg[] { CLUSTER }
   ),
   UPDATE_STORE(
-      "update-store", "update store metadata", new Arg[] { URL, CLUSTER, STORE },
-      new Arg[] { OWNER, VERSION, LARGEST_USED_VERSION_NUMBER, PARTITION_COUNT, PARTITIONER_CLASS, PARTITIONER_PARAMS,
-          AMPLIFICATION_FACTOR, READABILITY, WRITEABILITY, STORAGE_QUOTA, STORAGE_NODE_READ_QUOTA_ENABLED,
-          HYBRID_STORE_OVERHEAD_BYPASS, READ_QUOTA, HYBRID_REWIND_SECONDS, HYBRID_OFFSET_LAG, HYBRID_TIME_LAG,
-          HYBRID_DATA_REPLICATION_POLICY, HYBRID_BUFFER_REPLAY_POLICY, ACCESS_CONTROL, COMPRESSION_STRATEGY,
-          CLIENT_DECOMPRESSION_ENABLED, CHUNKING_ENABLED, RMD_CHUNKING_ENABLED, BATCH_GET_LIMIT,
-          NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED, READ_COMPUTATION_ENABLED, BACKUP_STRATEGY,
-          AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
-          HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED,
-          ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
+      "update-store", "update store metadata", new Arg[] { URL, STORE },
+      new Arg[] { CLUSTER, OWNER, VERSION, LARGEST_USED_VERSION_NUMBER, PARTITION_COUNT, PARTITIONER_CLASS,
+          PARTITIONER_PARAMS, AMPLIFICATION_FACTOR, READABILITY, WRITEABILITY, STORAGE_QUOTA,
+          STORAGE_NODE_READ_QUOTA_ENABLED, HYBRID_STORE_OVERHEAD_BYPASS, READ_QUOTA, HYBRID_REWIND_SECONDS,
+          HYBRID_OFFSET_LAG, HYBRID_TIME_LAG, HYBRID_DATA_REPLICATION_POLICY, HYBRID_BUFFER_REPLAY_POLICY,
+          ACCESS_CONTROL, COMPRESSION_STRATEGY, CLIENT_DECOMPRESSION_ENABLED, CHUNKING_ENABLED, RMD_CHUNKING_ENABLED,
+          BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED, READ_COMPUTATION_ENABLED,
+          BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
+          BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
+          FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
@@ -244,7 +265,8 @@ public enum Command {
           CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED }
   ),
   EMPTY_PUSH(
-      "empty-push", "Do an empty push into an existing store", new Arg[] { URL, CLUSTER, STORE, PUSH_ID, STORE_SIZE }
+      "empty-push", "Do an empty push into an existing store", new Arg[] { URL, STORE, PUSH_ID, STORE_SIZE },
+      new Arg[] { CLUSTER }
   ),
   ENABLE_THROTTLING(
       "enable-throttling", "Enable the feature that throttling read request on all routers", new Arg[] { URL, CLUSTER }
@@ -315,13 +337,11 @@ public enum Command {
       "Dump a Kafka topic for a Venice cluster.  If start offset and message count are not specified, the entire partition will be dumped.  PLEASE REFRAIN FROM USING SERVER CERTIFICATES, IT IS A GDPR VIOLATION, GET ADDED TO THE STORE ACL'S OR GET FAST ACCESS TO THE KAFKA TOPIC!!",
       new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL }
   ),
-
   QUERY_KAFKA_TOPIC(
       "query-kafka-topic", "Query some specific keys from the Venice Topic",
       new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL, START_DATE,
           END_DATE, PROGRESS_INTERVAL, KEY }
   ),
-
   MIGRATE_STORE(
       "migrate-store", "Migrate store from one cluster to another within the same fabric",
       new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST }
@@ -343,28 +363,31 @@ public enum Command {
   ),
   SEND_END_OF_PUSH(
       "send-end-of-push", "Send this message after Samza reprocessing job to close offline batch push",
-      new Arg[] { URL, CLUSTER, STORE, VERSION }
+      new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }
   ),
   NEW_STORE_ACL(
       "new-store-acl", "Create a new store with ACL permissions set",
-      new Arg[] { URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA, ACL_PERMS }, new Arg[] { OWNER, VSON_STORE }
+      new Arg[] { URL, STORE, KEY_SCHEMA, VALUE_SCHEMA, ACL_PERMS }, new Arg[] { CLUSTER, OWNER, VSON_STORE }
   ),
   UPDATE_STORE_ACL(
-      "update-store-acl", "Update ACL's for an existing store", new Arg[] { URL, CLUSTER, STORE, ACL_PERMS }
-  ), GET_STORE_ACL("get-store-acl", "Get ACL's for an existing store", new Arg[] { URL, CLUSTER, STORE }),
-  DELETE_STORE_ACL("delete-store-acl", "Delete ACL's for an existing store", new Arg[] { URL, CLUSTER, STORE }),
+      "update-store-acl", "Update ACL's for an existing store", new Arg[] { URL, STORE, ACL_PERMS },
+      new Arg[] { CLUSTER }
+  ), GET_STORE_ACL("get-store-acl", "Get ACL's for an existing store", new Arg[] { URL, STORE }, new Arg[] { CLUSTER }),
+  DELETE_STORE_ACL(
+      "delete-store-acl", "Delete ACL's for an existing store", new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
+  ),
   ADD_TO_STORE_ACL(
-      "add-to-store-acl", "Add a principal to ACL's for an existing store",
-      new Arg[] { URL, CLUSTER, STORE, PRINCIPAL }, new Arg[] { READABILITY, WRITEABILITY }
+      "add-to-store-acl", "Add a principal to ACL's for an existing store", new Arg[] { URL, STORE, PRINCIPAL },
+      new Arg[] { CLUSTER, READABILITY, WRITEABILITY }
   ),
   REMOVE_FROM_STORE_ACL(
       "remove-from-store-acl", "Remove a principal from ACL's for an existing store",
-      new Arg[] { URL, CLUSTER, STORE, PRINCIPAL }, new Arg[] { READABILITY, WRITEABILITY }
+      new Arg[] { URL, STORE, PRINCIPAL }, new Arg[] { CLUSTER, READABILITY, WRITEABILITY }
   ),
   ENABLE_NATIVE_REPLICATION_FOR_CLUSTER(
       "enable-native-replication-for-cluster",
       "enable native replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC }
+      new Arg[] { URL, STORE_TYPE }, new Arg[] { CLUSTER, REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC }
   ),
   DISABLE_NATIVE_REPLICATION_FOR_CLUSTER(
       "disable-native-replication-for-cluster",
@@ -395,7 +418,8 @@ public enum Command {
       new Arg[] { URL, CLUSTER, STORAGE_NODE }
   ),
   COMPARE_STORE(
-      "compare-store", "Compare a store between two fabrics", new Arg[] { URL, CLUSTER, STORE, FABRIC_A, FABRIC_B }
+      "compare-store", "Compare a store between two fabrics", new Arg[] { URL, STORE, FABRIC_A, FABRIC_B },
+      new Arg[] { CLUSTER }
   ),
   REPLICATE_META_DATA(
       "replicate-meta-data",
@@ -407,7 +431,7 @@ public enum Command {
   ),
   LIST_STORE_PUSH_INFO(
       "list-store-push-info", "List information about current pushes and push history for a specific store.",
-      new Arg[] { URL, CLUSTER, STORE }, new Arg[] { PARTITION_DETAIL_ENABLED }
+      new Arg[] { URL, STORE }, new Arg[] { CLUSTER, PARTITION_DETAIL_ENABLED }
   ),
   GET_KAFKA_TOPIC_CONFIGS(
       "get-kafka-topic-configs", "Get configs of a topic through controllers", new Arg[] { URL, KAFKA_TOPIC_NAME }
@@ -454,7 +478,7 @@ public enum Command {
   ),
   GET_STORAGE_PERSONA_FOR_STORE(
       "get-storage-persona-for-store", "Gets the storage persona associated with a store name.",
-      new Arg[] { URL, CLUSTER, STORE }
+      new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
   ),
   LIST_CLUSTER_STORAGE_PERSONAS(
       "list-cluster-storage-personas", "Lists all storage personas in a cluster.", new Arg[] { URL, CLUSTER }
@@ -494,10 +518,9 @@ public enum Command {
       new Arg[] { SERVER_URL, STORE, VERSION, KAFKA_TOPIC_NAME, KAFKA_TOPIC_PARTITION }
   ),
   CONFIGURE_STORE_VIEW(
-      "configure-store-view", "Configure store view of a certain store", new Arg[] { URL, CLUSTER, STORE, VIEW_NAME },
-      new Arg[] { VIEW_CLASS, VIEW_PARAMS, REMOVE_VIEW }
+      "configure-store-view", "Configure store view of a certain store", new Arg[] { URL, STORE, VIEW_NAME },
+      new Arg[] { CLUSTER, VIEW_CLASS, VIEW_PARAMS, REMOVE_VIEW }
   ),
-
   RECOVER_STORE_METADATA(
       "recover-store-metadata", "Recover store metadata in EI",
       new Arg[] { URL, STORE, VENICE_ZOOKEEPER_URL, KAFKA_BOOTSTRAP_SERVERS, GRAVEYARD_CLUSTERS },
