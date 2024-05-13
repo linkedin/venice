@@ -66,6 +66,12 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
     MetadataResponse response = new MetadataResponse();
     try {
       Store store = storeRepository.getStoreOrThrow(storeName);
+      if (!store.isStorageNodeReadQuotaEnabled()) {
+        throw new UnsupportedOperationException(
+            String.format(
+                "Fast client is not enabled for store: %s, please ensure storage node read quota is enabled for the given store",
+                storeName));
+      }
       // Version metadata
       int currentVersionNumber = store.getCurrentVersion();
       if (currentVersionNumber == Store.NON_EXISTING_VERSION) {

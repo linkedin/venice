@@ -14,6 +14,7 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
@@ -40,6 +41,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -420,5 +422,24 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     assertNull(clientMetric.getMetric(singleGetLongTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge"));
     assertNull(clientMetric.getMetric(singleGetLongTailRetryManagerStatsPrefix + "retries_remaining.Gauge"));
     assertNull(clientMetric.getMetric(singleGetLongTailRetryManagerStatsPrefix + "rejected_retry.OccurrenceRate"));
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testSNQuotaNotEnabled() {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setSpeculativeQueryEnabled(false);
+    // Update store to disable storage node read quota
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils.assertCommand(
+          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(false)));
+    });
+    Assert.assertThrows(
+        ConfigurationException.class,
+        () -> getGenericFastClient(
+            clientConfigBuilder,
+            new MetricsRepository(),
+            StoreMetadataFetchMode.SERVER_BASED_METADATA));
   }
 }

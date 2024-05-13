@@ -235,10 +235,15 @@ public abstract class AbstractClientEndToEndSetup {
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
-    veniceCluster.useControllerClient(
-        client -> client.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true).setReadComputationEnabled(true)));
+    veniceCluster
+        .useControllerClient(
+            client -> assertFalse(
+                client
+                    .updateStore(
+                        storeName,
+                        new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)
+                            .setReadComputationEnabled(true))
+                    .isError()));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.

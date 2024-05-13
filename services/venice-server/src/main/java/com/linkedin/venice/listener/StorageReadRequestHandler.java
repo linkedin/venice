@@ -370,8 +370,15 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       AdminResponse response = handleServerAdminRequest((AdminRequest) message);
       context.writeAndFlush(response);
     } else if (message instanceof MetadataFetchRequest) {
-      MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
-      context.writeAndFlush(response);
+      try {
+        MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
+        context.writeAndFlush(response);
+      } catch (UnsupportedOperationException e) {
+        LOGGER.warn(
+            "Metadata requested by a storage node read quota not enabled store: {}",
+            ((MetadataFetchRequest) message).getStoreName());
+        context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.FORBIDDEN));
+      }
     } else if (message instanceof CurrentVersionRequest) {
       ServerCurrentVersionResponse response = handleCurrentVersionRequest((CurrentVersionRequest) message);
       context.writeAndFlush(response);

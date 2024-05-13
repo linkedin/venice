@@ -4,6 +4,7 @@ import static com.linkedin.venice.fastclient.utils.ClientTestUtils.REQUEST_TYPES
 import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static org.testng.Assert.assertFalse;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -91,7 +92,15 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
           byte[] compressionDictionaryBytes = trainer.trainSamples();
           return ByteBuffer.wrap(compressionDictionaryBytes);
         });
-    veniceCluster.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true));
+    veniceCluster
+        .useControllerClient(
+            client -> assertFalse(
+                client
+                    .updateStore(
+                        storeName,
+                        new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)
+                            .setReadComputationEnabled(true))
+                    .isError()));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
 }

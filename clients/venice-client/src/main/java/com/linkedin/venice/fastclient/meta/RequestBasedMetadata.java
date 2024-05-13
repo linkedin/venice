@@ -5,6 +5,7 @@ import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
 
 import com.linkedin.alpini.base.concurrency.NamedThreadFactory;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
@@ -14,6 +15,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.ClientConfig;
@@ -57,6 +59,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -183,7 +186,14 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     discoverD2Service();
 
     // build a base for future metadata updates then start periodic refresh
-    refresh();
+    try {
+      refresh();
+    } catch (VeniceClientHttpException clientHttpException) {
+      if (clientHttpException.getHttpStatus() == HttpStatus.SC_FORBIDDEN) {
+        LOGGER.error(clientHttpException.getMessage());
+        throw new ConfigurationException(clientHttpException.getMessage());
+      }
+    }
     try {
       // wait till metadata is fetched for the first time
       isReadyLatch.await();
@@ -483,19 +493,31 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         isReady = true;
         LOGGER.info("Metadata initial fetch completed successfully for store: {}", storeName);
       }
+    } catch (VeniceClientException clientException) {
+      if (clientException.getCause() instanceof VeniceClientHttpException) {
+        VeniceClientHttpException clientHttpException = (VeniceClientHttpException) clientException.getCause();
+        if (clientHttpException.getHttpStatus() == HttpStatus.SC_FORBIDDEN) {
+          throw clientHttpException;
+        }
+      }
+      logRefreshException(clientException);
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
-      LOGGER.error(
-          "Metadata periodic refresh for store: {} encountered unexpected error, will be retried in {} seconds",
-          storeName,
-          isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
-          e);
+      logRefreshException(e);
     } finally {
       scheduler.schedule(
           this::refresh,
           isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
           TimeUnit.SECONDS);
     }
+  }
+
+  private void logRefreshException(Exception e) {
+    LOGGER.error(
+        "Metadata periodic refresh for store: {} encountered unexpected error, will be retried in {} seconds",
+        storeName,
+        isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
+        e);
   }
 
   @Override
