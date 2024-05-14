@@ -148,7 +148,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       return false;
     }
 
-    if (store.getVersion(currentVersion).get().getRepushSourceVersion() > NON_EXISTING_VERSION
+    if (store.getVersion(currentVersion).get().getRepushSourceVersion() == currentVersion
         && store.getVersions().size() > 2) {
       return true;
     }
@@ -244,7 +244,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   protected boolean cleanupBackupVersion(Store store, String clusterName) {
     int currentVersion = store.getCurrentVersion();
 
-    if (!whetherStoreReadyToBeCleanup(store, defaultBackupVersionRetentionMs, time, -1)) {
+    if (!whetherStoreReadyToBeCleanup(store, defaultBackupVersionRetentionMs, time, currentVersion)) {
       // not ready to clean up backup versions yet
       return false;
     }
