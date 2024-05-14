@@ -88,6 +88,8 @@ public class TestAdminSparkWithMocks {
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.STREAM.toString()));
+    params.add(new BasicNameValuePair(ControllerApiConstants.REPUSH_SOURCE_VERSION, "0"));
+
     final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath());
     post.setEntity(new UrlEncodedFormEntity(params));
 
@@ -145,6 +147,8 @@ public class TestAdminSparkWithMocks {
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.STREAM.toString()));
+    params.add(new BasicNameValuePair(ControllerApiConstants.REPUSH_SOURCE_VERSION, "0"));
+
     final HttpPost post =
         new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath() + "?query=foo");
 
@@ -342,6 +346,7 @@ public class TestAdminSparkWithMocks {
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.STREAM.toString()));
+    params.add(new BasicNameValuePair(ControllerApiConstants.REPUSH_SOURCE_VERSION, "0"));
     final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath());
     post.setEntity(new UrlEncodedFormEntity(params));
 
