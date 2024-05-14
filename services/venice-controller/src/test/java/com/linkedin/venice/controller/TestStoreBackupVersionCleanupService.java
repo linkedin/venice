@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
@@ -81,7 +82,7 @@ public class TestStoreBackupVersionCleanupService {
       versionList.add(v);
     });
     doReturn(versionList).when(store).getVersions();
-
+    doReturn(Optional.of(versionList.get(versionList.size() - 1))).when(store).getVersion(currentVersion);
     return store;
   }
 

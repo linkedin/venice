@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.HOSTNAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -85,6 +86,7 @@ public class CreateVersionTest {
     queryMap.put(CLUSTER, new String[] { CLUSTER_NAME });
     queryMap.put(NAME, new String[] { STORE_NAME });
     queryMap.put(STORE_SIZE, new String[] { "0" });
+    queryMap.put(REPUSH_SOURCE_VERSION, new String[] { "0" });
     queryMap.put(PUSH_TYPE, new String[] { Version.PushType.INCREMENTAL.name() });
     queryMap.put(PUSH_JOB_ID, new String[] { JOB_ID });
     queryMap.put(HOSTNAME, new String[] { "localhost" });
@@ -138,7 +140,7 @@ public class CreateVersionTest {
   }
 
   @Test(description = "requestTopicForPushing should return an RT topic when store is hybrid and inc-push is enabled")
-  public void testRequestTopicForIncPushReturnsRTTopicWhenStoreIsHybridAndIncPushIsEnabled() throws Exception {
+  public void testRequestTopicForHybridIncPushEnabled() throws Exception {
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
@@ -165,7 +167,7 @@ public class CreateVersionTest {
             Optional.empty(),
             false,
             null,
-            -1);
+            0);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -273,7 +275,7 @@ public class CreateVersionTest {
             emergencySrcRegion,
             false,
             null,
-            -1);
+            0);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
