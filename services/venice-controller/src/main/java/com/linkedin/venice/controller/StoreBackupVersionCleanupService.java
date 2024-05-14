@@ -148,7 +148,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       return false;
     }
 
-    if (store.getVersion(currentVersion).get().getRepushSourceVersion() == currentVersion
+    if (store.getVersion(currentVersion).get().getRepushSourceVersion() > NON_EXISTING_VERSION
         && store.getVersions().size() > 2) {
       return true;
     }
@@ -260,9 +260,12 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       stats.recordBackupVersionMismatch();
       return false;
     }
-    boolean hasRepushVersion = versions.stream().anyMatch(v -> v.getRepushSourceVersion() == currentVersion);
+    int repushSourceVersion = store.getVersion(currentVersion).get().getRepushSourceVersion();
     List<Version> readyToBeRemovedVersions = versions.stream()
-        .filter(v -> hasRepushVersion ? v.getRepushSourceVersion() == currentVersion : v.getNumber() < currentVersion)
+        .filter(
+            v -> repushSourceVersion > NON_EXISTING_VERSION
+                ? v.getNumber() == repushSourceVersion
+                : v.getNumber() < currentVersion)
         .collect(Collectors.toList());
 
     if (readyToBeRemovedVersions.isEmpty()) {
