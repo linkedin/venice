@@ -1,9 +1,11 @@
 package com.linkedin.davinci.helix;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,6 +15,7 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.utils.Pair;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Optional;
@@ -23,8 +26,13 @@ import org.testng.annotations.Test;
 
 public class VeniceLeaderFollowerStateModelTest extends
     AbstractVenicePartitionStateModelTest<LeaderFollowerPartitionStateModel, LeaderFollowerIngestionProgressNotifier> {
+  private HeartbeatMonitoringService spyHeartbeatMonitoringService;
+
   @Override
   protected LeaderFollowerPartitionStateModel getParticipantStateModel() {
+    HeartbeatMonitoringService heartbeatMonitoringService =
+        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, new HashSet<>(), "local");
+    spyHeartbeatMonitoringService = spy(heartbeatMonitoringService);
     return new LeaderFollowerPartitionStateModel(
         mockIngestionBackend,
         mockStoreConfig,
@@ -34,7 +42,7 @@ public class VeniceLeaderFollowerStateModelTest extends
         CompletableFuture.completedFuture(mockPushStatusAccessor),
         null,
         mockParticipantStateTransitionStats,
-        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, new HashSet<>(), "local"));
+        spyHeartbeatMonitoringService);
   }
 
   @Override
@@ -92,5 +100,17 @@ public class VeniceLeaderFollowerStateModelTest extends
 
     verify(mockIngestionBackend).stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition));
     verify(mockPushStatusAccessor).deleteReplicaStatus(resourceName, testPartition);
+  }
+
+  @Test
+  public void testWhenBecomeOfflineFromStandbyWithVersionDeletion() {
+    when(mockStore.getVersion(1)).thenReturn(Optional.empty());
+    when(mockStore.getCurrentVersion()).thenReturn(2);
+    when(mockIngestionBackend.stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition)))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    when(mockReadOnlyStoreRepository.waitVersion(eq(storeName), eq(version), any(), anyLong()))
+        .thenReturn(Pair.create(mockStore, null));
+    testStateModel.onBecomeOfflineFromStandby(mockMessage, mockContext);
+    verify(spyHeartbeatMonitoringService).removeLagMonitor(any(), eq(testPartition));
   }
 }
