@@ -139,10 +139,20 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     return httpAsyncClient;
   }
 
-  protected static boolean whetherStoreReadyToBeCleanup(Store store, long defaultBackupVersionRetentionMs, Time time) {
+  protected static boolean whetherStoreReadyToBeCleanup(
+      Store store,
+      long defaultBackupVersionRetentionMs,
+      Time time,
+      int currentVersion) {
     if (store.getCurrentVersion() == NON_EXISTING_VERSION || store.getVersions().size() < 2) {
       return false;
     }
+
+    if (store.getVersion(currentVersion).get().getRepushSourceVersion() > NON_EXISTING_VERSION
+        && store.getVersions().size() > 2) {
+      return true;
+    }
+
     long backupVersionRetentionMs = store.getBackupVersionRetentionMs();
     if (backupVersionRetentionMs < 0) {
       backupVersionRetentionMs = defaultBackupVersionRetentionMs;
@@ -232,13 +242,14 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
    * @return whether any backup version is removed or not
    */
   protected boolean cleanupBackupVersion(Store store, String clusterName) {
-    if (!whetherStoreReadyToBeCleanup(store, defaultBackupVersionRetentionMs, time)) {
+    int currentVersion = store.getCurrentVersion();
+
+    if (!whetherStoreReadyToBeCleanup(store, defaultBackupVersionRetentionMs, time, -1)) {
       // not ready to clean up backup versions yet
       return false;
     }
 
     List<Version> versions = store.getVersions();
-    int currentVersion = store.getCurrentVersion();
 
     // Do not delete version unless all routers and all servers are on same current version
     if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionMetadataFetchBasedCleanupEnabled()
@@ -249,8 +260,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       stats.recordBackupVersionMismatch();
       return false;
     }
-    List<Version> readyToBeRemovedVersions =
-        versions.stream().filter(v -> v.getNumber() < currentVersion).collect(Collectors.toList());
+    boolean hasRepushVersion = versions.stream().allMatch(v -> v.getRepushSourceVersion() == currentVersion);
+    List<Version> readyToBeRemovedVersions = versions.stream()
+        .filter(v -> hasRepushVersion ? v.getRepushSourceVersion() == currentVersion : v.getNumber() < currentVersion)
+        .collect(Collectors.toList());
 
     if (readyToBeRemovedVersions.isEmpty()) {
       return false;

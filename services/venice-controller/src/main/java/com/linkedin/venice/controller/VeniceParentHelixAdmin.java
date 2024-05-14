@@ -984,7 +984,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#addVersionAndStartIngestion(String, String, String, int, int, Version.PushType, String, long, int, boolean)
+   * @see Admin#addVersionAndStartIngestion(String, String, String, int, int, Version.PushType, String, long, int, boolean, int)
    */
   @Override
   public void addVersionAndStartIngestion(
@@ -997,7 +997,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
       int ignoredRmdVersionID,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      int repushSourceVersion) {
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Version version = getVeniceHelixAdmin().addVersionOnly(
@@ -1015,7 +1016,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType, null);
+      sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType, null, -1);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
@@ -1437,7 +1438,8 @@ public class VeniceParentHelixAdmin implements Admin {
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      String targetedRegions) {
+      String targetedRegions,
+      int repushSourceVersion) {
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
 
@@ -1531,7 +1533,8 @@ public class VeniceParentHelixAdmin implements Admin {
           rewindTimeInSecondsOverride,
           emergencySourceRegion,
           versionSwapDeferred,
-          targetedRegions);
+          targetedRegions,
+          repushSourceVersion);
     }
     cleanupHistoricalVersions(clusterName, storeName);
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
@@ -1583,7 +1586,8 @@ public class VeniceParentHelixAdmin implements Admin {
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      String targetedRegions) {
+      String targetedRegions,
+      int repushSourceVersion) {
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,
@@ -1602,7 +1606,8 @@ public class VeniceParentHelixAdmin implements Admin {
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
-        targetedRegions);
+        targetedRegions,
+        repushSourceVersion);
     Version newVersion = result.getSecond();
     if (result.getFirst()) {
       if (newVersion.isActiveActiveReplicationEnabled()) {
@@ -1618,7 +1623,8 @@ public class VeniceParentHelixAdmin implements Admin {
             newVersion,
             numberOfPartitions,
             pushType,
-            targetedRegions);
+            targetedRegions,
+            -1);
       } finally {
         releaseAdminMessageLock(clusterName, storeName);
       }
@@ -1634,11 +1640,19 @@ public class VeniceParentHelixAdmin implements Admin {
       Version version,
       int numberOfPartitions,
       Version.PushType pushType,
-      String targetedRegions) {
+      String targetedRegions,
+      int repushSourceVersion) {
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.ADD_VERSION.getValue();
-    message.payloadUnion =
-        getAddVersionMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType, targetedRegions);
+    message.payloadUnion = getAddVersionMessage(
+        clusterName,
+        storeName,
+        pushJobId,
+        version,
+        numberOfPartitions,
+        pushType,
+        targetedRegions,
+        repushSourceVersion);
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
 
@@ -1649,7 +1663,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Version version,
       int numberOfPartitions,
       Version.PushType pushType,
-      String targetedRegions) {
+      String targetedRegions,
+      int repushSourceVersion) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
@@ -1672,6 +1687,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     addVersion.timestampMetadataVersionId = version.getRmdVersionId();
     addVersion.versionSwapDeferred = version.isVersionSwapDeferred();
+    addVersion.repushSourceVersion = repushSourceVersion;
     return addVersion;
   }
 

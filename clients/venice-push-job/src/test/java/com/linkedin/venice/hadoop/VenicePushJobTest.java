@@ -832,7 +832,8 @@ public class VenicePushJobTest {
               anyBoolean(),
               anyLong(),
               anyBoolean(),
-              any());
+              any(),
+              anyInt());
     }
 
     return versionCreationResponse;

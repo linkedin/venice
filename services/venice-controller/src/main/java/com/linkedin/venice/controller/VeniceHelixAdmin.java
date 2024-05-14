@@ -1832,11 +1832,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String pushJobId,
       int versionNumber,
       int numberOfPartitions,
-      Version.PushType pushType,
+      PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      int repushSourceVersion) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
@@ -1868,7 +1869,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           rewindTimeInSecondsOverride,
           replicationMetadataVersionId,
           Optional.empty(),
-          versionSwapDeferred);
+          versionSwapDeferred,
+          repushSourceVersion);
     }
   }
 
@@ -1979,7 +1981,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
-        null);
+        null,
+        -1);
   }
 
   /**
@@ -2003,7 +2006,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      String targetedRegions) {
+      String targetedRegions,
+      int repushSourceVersion) {
     return addVersion(
         clusterName,
         storeName,
@@ -2023,7 +2027,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
-        targetedRegions);
+        targetedRegions,
+        repushSourceVersion);
   }
 
   /**
@@ -2313,14 +2318,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean sendStartOfPush,
       boolean sorted,
       boolean useFastKafkaOperationTimeout,
-      Version.PushType pushType,
+      PushType pushType,
       String compressionDictionary,
       String remoteKafkaBootstrapServers,
       Optional<String> sourceGridFabric,
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      int repushSourceVersion) {
     return addVersion(
         clusterName,
         storeName,
@@ -2340,7 +2346,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
-        null);
+        null,
+        repushSourceVersion);
   }
 
   private Optional<Version> getVersionFromSourceCluster(
@@ -2412,7 +2419,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean sendStartOfPush,
       boolean sorted,
       boolean useFastKafkaOperationTimeout,
-      Version.PushType pushType,
+      PushType pushType,
       String compressionDictionary,
       String remoteKafkaBootstrapServers,
       Optional<String> sourceGridFabric,
@@ -2420,7 +2427,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      String targetedRegions) {
+      String targetedRegions,
+      int repushSourceVersion) {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     MaintenanceSignal maintenanceSignal =
         HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
@@ -2434,6 +2442,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Version version = null;
     OfflinePushStrategy offlinePushStrategy;
     int currentVersionBeforePush = -1;
+    boolean isRepush = Version.isPushIdRePush(pushJobId);
     VeniceControllerClusterConfig clusterConfig = resources.getConfig();
     BackupStrategy backupStrategy;
 
@@ -2606,6 +2615,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             version.setViewConfigs(store.getViewConfigs());
 
+            if (repushSourceVersion > NON_EXISTING_VERSION) {
+              version.setRepushSourceVersion(repushSourceVersion);
+            }
+
             Properties veniceViewProperties = new Properties();
             veniceViewProperties.put(SUB_PARTITION_COUNT, subPartitionCount);
             veniceViewProperties.put(USE_FAST_KAFKA_OPERATION_TIMEOUT, useFastKafkaOperationTimeout);
@@ -2705,7 +2718,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (startIngestion) {
           // Early delete backup version on start of a push, controlled by store config earlyDeleteBackupEnabled
           if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
-              && multiClusterConfigs.getControllerConfig(clusterName).isEarlyDeleteBackUpEnabled()) {
+              && multiClusterConfigs.getControllerConfig(clusterName).isEarlyDeleteBackUpEnabled() && !isRepush) {
             try {
               retireOldStoreVersions(clusterName, storeName, true, currentVersionBeforePush);
             } catch (Throwable t) {
@@ -2821,7 +2834,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String pushJobId,
       int numberOfPartitions,
       int replicationFactor,
-      Version.PushType pushType,
+      PushType pushType,
       boolean sendStartOfPush,
       boolean sorted,
       String compressionDictionary,
@@ -2830,7 +2843,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      String targetedRegions) {
+      String targetedRegions,
+      int repushSourceVersion) {
     if (StringUtils.isNotEmpty(targetedRegions)) {
       /**
        * only parent controller should handle this request. See {@link VeniceParentHelixAdmin#incrementVersionIdempotent}
@@ -2861,7 +2875,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             rewindTimeInSecondsOverride,
             replicationMetadataVersionId,
             emergencySourceRegion,
-            versionSwapDeferred).getSecond();
+            versionSwapDeferred,
+            repushSourceVersion).getSecond();
   }
 
   /**

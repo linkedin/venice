@@ -96,7 +96,8 @@ public class TestStoreBackupVersionCleanupService {
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeNotReadyForCleanupWithDefaultRetentionPolicy,
             defaultBackupVersionRetentionMs,
-            new SystemTime()));
+            new SystemTime(),
+            -1));
 
     Store storeReadyForCleanupWithDefaultRetentionPolicy =
         mockStore(-1, System.currentTimeMillis() - 2 * defaultBackupVersionRetentionMs, versions, -1);
@@ -104,7 +105,8 @@ public class TestStoreBackupVersionCleanupService {
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeReadyForCleanupWithDefaultRetentionPolicy,
             defaultBackupVersionRetentionMs,
-            new SystemTime()));
+            new SystemTime(),
+            -1));
 
     long storeBackupRetentionMs = TimeUnit.DAYS.toMillis(3);
     Store storeNotReadyForCleanupWithSpecifiedRetentionPolicy =
@@ -113,7 +115,8 @@ public class TestStoreBackupVersionCleanupService {
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeNotReadyForCleanupWithSpecifiedRetentionPolicy,
             defaultBackupVersionRetentionMs,
-            new SystemTime()));
+            new SystemTime(),
+            -1));
 
     Store storeReadyForCleanupWithSpecifiedRetentionPolicy =
         mockStore(storeBackupRetentionMs, System.currentTimeMillis() - 2 * storeBackupRetentionMs, versions, -1);
@@ -121,7 +124,8 @@ public class TestStoreBackupVersionCleanupService {
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeReadyForCleanupWithSpecifiedRetentionPolicy,
             defaultBackupVersionRetentionMs,
-            new SystemTime()));
+            new SystemTime(),
+            -1));
 
     long storeBackupRetentionMsZero = 0;
     Store storeNotReadyForCleanupWithZeroRetentionPolicy1 =
@@ -130,7 +134,8 @@ public class TestStoreBackupVersionCleanupService {
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeNotReadyForCleanupWithZeroRetentionPolicy1,
             defaultBackupVersionRetentionMs,
-            new SystemTime()));
+            new SystemTime(),
+            -1));
 
     Store storeNotReadyForCleanupWithZeroRetentionPolicy2 =
         mockStore(storeBackupRetentionMsZero, System.currentTimeMillis() - 10, versions, -1);
@@ -138,7 +143,8 @@ public class TestStoreBackupVersionCleanupService {
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeNotReadyForCleanupWithZeroRetentionPolicy2,
             defaultBackupVersionRetentionMs,
-            new SystemTime()));
+            new SystemTime(),
+            -1));
 
     Store storeReadyForCleanupWithZeroRetentionPolicy =
         mockStore(storeBackupRetentionMsZero, System.currentTimeMillis() - 2 * storeBackupRetentionMs, versions, -1);
@@ -146,7 +152,8 @@ public class TestStoreBackupVersionCleanupService {
         StoreBackupVersionCleanupService.whetherStoreReadyToBeCleanup(
             storeReadyForCleanupWithZeroRetentionPolicy,
             defaultBackupVersionRetentionMs,
-            new SystemTime()));
+            new SystemTime(),
+            -1));
   }
 
   @Test
