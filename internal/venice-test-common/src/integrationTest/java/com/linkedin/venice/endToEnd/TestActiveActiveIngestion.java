@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_COMPACTION_TUNING_FOR_READ_WRITE_LEADER_ENABLED;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
@@ -89,6 +90,10 @@ public class TestActiveActiveIngestion {
   private AvroSerializer serializer;
   private ControllerClient parentControllerClient;
 
+  protected boolean isLevel0CompactionTuningForReadWriteLeaderEnabled() {
+    return false;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     serializer = new AvroSerializer(STRING_SCHEMA);
@@ -96,6 +101,9 @@ public class TestActiveActiveIngestion {
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, true);
+    serverProperties.put(
+        ROCKSDB_LEVEL0_COMPACTION_TUNING_FOR_READ_WRITE_LEADER_ENABLED,
+        isLevel0CompactionTuningForReadWriteLeaderEnabled());
     serverProperties.put(
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());

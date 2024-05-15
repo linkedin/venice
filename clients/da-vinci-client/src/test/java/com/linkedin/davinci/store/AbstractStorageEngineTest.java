@@ -212,15 +212,21 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     String storeName = Utils.getUniqueString("dummy_store_name");
     int partitionId = 1;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
-    testStoreEngine.adjustStoragePartition(partitionConfig);
+    testStoreEngine.adjustStoragePartition(
+        partitionId,
+        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
+        partitionConfig);
   }
 
-  @Test(expectedExceptions = VeniceException.class)
+  @Test
   public void testAdjustStoragePartitionWithUnknownPartitionId() {
     String storeName = testStoreEngine.getStoreVersionName();
     int unknownPartitionId = partitionId + 10000;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, unknownPartitionId);
-    testStoreEngine.adjustStoragePartition(partitionConfig);
+    testStoreEngine.adjustStoragePartition(
+        unknownPartitionId,
+        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
+        partitionConfig);
   }
 
   @Test
@@ -237,7 +243,10 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     Assert.assertTrue(storagePartition.verifyConfig(transactionalPartitionConfig));
     Assert.assertFalse(storagePartition.verifyConfig(deferredWritePartitionConfig));
 
-    testStoreEngine.adjustStoragePartition(deferredWritePartitionConfig);
+    testStoreEngine.adjustStoragePartition(
+        newPartitionId,
+        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
+        deferredWritePartitionConfig);
 
     storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
     Assert.assertNotNull(storagePartition);
@@ -261,7 +270,10 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     Assert.assertFalse(storagePartition.verifyConfig(transactionalPartitionConfig));
     Assert.assertTrue(storagePartition.verifyConfig(deferredWritePartitionConfig));
 
-    testStoreEngine.adjustStoragePartition(transactionalPartitionConfig);
+    testStoreEngine.adjustStoragePartition(
+        newPartitionId,
+        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.END_BATCH_PUSH,
+        transactionalPartitionConfig);
 
     storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
     Assert.assertNotNull(storagePartition);

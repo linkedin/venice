@@ -1,5 +1,9 @@
 package com.linkedin.davinci.store;
 
+import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH;
+import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.CHECK_DATABASE_INTEGRITY;
+import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.END_BATCH_PUSH;
+
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
@@ -50,6 +54,10 @@ import org.apache.logging.log4j.Logger;
  * The team agreed to take (2.2) as default storage-partition model for now, and run performance tests to see if it goes well.
  */
 public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition> implements Closeable {
+  public enum StoragePartitionAdjustmentTrigger {
+    CHECK_DATABASE_INTEGRITY, BEGIN_BATCH_PUSH, END_BATCH_PUSH, PREPARE_FOR_READ, PROMOTE_TO_LEADER, DEMOTE_TO_FOLLOWER
+  }
+
   private static final Logger LOGGER = LogManager.getLogger(AbstractStorageEngine.class);
 
   private static final byte[] VERSION_METADATA_KEY = "VERSION_METADATA".getBytes();
@@ -171,26 +179,30 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return metadataPartition;
   }
 
-  public synchronized void preparePartitionForReading(int partitionId) {
-    if (!containsPartition(partitionId)) {
-      LOGGER.warn("Partition {}_{} was removed before reopening.", storeVersionName, partitionId);
-      return;
-    }
-    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeVersionName, partitionId);
-    partitionConfig.setWriteOnlyConfig(false);
-
-    adjustStoragePartition(partitionConfig);
-  }
-
   /**
    * Adjust the opened storage partition according to the provided storagePartitionConfig.
    * It will throw exception if there is no opened storage partition for the given partition id.
+   *
+   * The reason to have {@param partitionId} is mainly used to ease the unit test.
    */
-  public synchronized void adjustStoragePartition(StoragePartitionConfig partitionConfig) {
+  public synchronized void adjustStoragePartition(
+      int partitionId,
+      StoragePartitionAdjustmentTrigger mode,
+      StoragePartitionConfig partitionConfig) {
     validateStoreName(partitionConfig);
-    int partitionId = partitionConfig.getPartitionId();
+    if (partitionId != partitionConfig.getPartitionId()) {
+      throw new VeniceException(
+          "StoragePartitionConfig should contain the right partition id: " + partitionId + ", but got "
+              + partitionConfig.getPartitionId());
+    }
+    if (!containsPartition(partitionId)) {
+      LOGGER.warn("Partition {}_{} was removed before adjusting.", storeVersionName, partitionId);
+      return;
+    }
+    LOGGER.info("Storage partition got triggered by: {} with config: {}", mode, partitionConfig);
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     if (partition.verifyConfig(partitionConfig)) {
+      LOGGER.info("Store partition adjustment will be skipped as there is no difference");
       return;
     }
     // Need to re-open storage partition according to the provided partition config
@@ -375,7 +387,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       int partitionId,
       Map<String, String> checkpointedInfo,
       StoragePartitionConfig storagePartitionConfig) {
-    adjustStoragePartition(storagePartitionConfig);
+    adjustStoragePartition(partitionId, CHECK_DATABASE_INTEGRITY, storagePartitionConfig);
     return getPartitionOrThrow(partitionId).checkDatabaseIntegrity(checkpointedInfo);
   }
 
@@ -396,7 +408,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
      * We want to adjust the storage partition first since it will possibly re-open the underlying database in
      * different mode.
      */
-    adjustStoragePartition(storagePartitionConfig);
+    adjustStoragePartition(storagePartitionConfig.getPartitionId(), BEGIN_BATCH_PUSH, storagePartitionConfig);
     getPartitionOrThrow(storagePartitionConfig.getPartitionId()).beginBatchWrite(checkpointedInfo, checksumSupplier);
   }
 
@@ -410,7 +422,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     /**
      * After end of batch push, we would like to adjust the underlying database for the future ingestion, such as from streaming.
      */
-    adjustStoragePartition(storagePartitionConfig);
+    adjustStoragePartition(storagePartitionConfig.getPartitionId(), END_BATCH_PUSH, storagePartitionConfig);
 
     if (!partition.validateBatchIngestion()) {
       throw new VeniceException("Storage temp files not fully ingested for store: " + storeVersionName);
