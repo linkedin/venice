@@ -122,7 +122,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       if (isRegularStoreCurrentVersion) {
         waitConsumptionCompleted(resourceName, notifier);
       }
-      updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::addFollowerLagMonitor, false);
+      updateLagMonitor(
+          message.getResourceName(),
+          heartbeatMonitoringService::addFollowerLagMonitor,
+          false,
+          messageToString(message));
     });
   }
 
@@ -134,7 +138,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
      * where a slice doesn't have a replicating leader.  While this state transition executes, there should be no
      * other leader in the slice.
      */
-    updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::addLeaderLagMonitor, false);
+    updateLagMonitor(
+        message.getResourceName(),
+        heartbeatMonitoringService::addLeaderLagMonitor,
+        false,
+        messageToString(message));
     executeStateTransition(
         message,
         context,
@@ -144,7 +152,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::addFollowerLagMonitor, false);
+    updateLagMonitor(
+        message.getResourceName(),
+        heartbeatMonitoringService::addFollowerLagMonitor,
+        false,
+        messageToString(message));
     executeStateTransition(
         message,
         context,
@@ -153,7 +165,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    updateLagMonitor(message.getResourceName(), heartbeatMonitoringService::removeLagMonitor, true);
+    updateLagMonitor(
+        message.getResourceName(),
+        heartbeatMonitoringService::removeLagMonitor,
+        true,
+        messageToString(message));
     executeStateTransition(message, context, () -> stopConsumption(true));
   }
 
@@ -197,7 +213,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     logger.warn("unexpected state transition from ERROR to OFFLINE");
   }
 
-  void updateLagMonitor(String resourceName, BiConsumer<Version, Integer> lagMonFunction, boolean isNullVersionValid) {
+  void updateLagMonitor(
+      String resourceName,
+      BiConsumer<Version, Integer> lagMonFunction,
+      boolean isNullVersionValid,
+      String trigger) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
@@ -212,22 +232,27 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
             getPartition());
         return;
       }
+      if (version == null && !isNullVersionValid) {
+        logger.error(
+            "Failed to get version for resource: {}-{} with trigger: {}. Will not update lag monitor.",
+            resourceName,
+            getPartition(),
+            trigger);
+        return;
+      }
       if (version == null) {
-        if (isNullVersionValid) {
-          // During version deletion, the version will be deleted from ZK prior to servers perform resource deletion.
-          // It's valid to have null version when trying to remove lag monitor for the deleted resource.
-          version = new VersionImpl(storeName, storeVersion, "");
-        } else {
-          logger.error(
-              "Failed to get version for resource: {}-{}. Will not update lag monitor.",
-              resourceName,
-              getPartition());
-        }
+        // During version deletion, the version will be deleted from ZK prior to servers perform resource deletion.
+        // It's valid to have null version when trying to remove lag monitor for the deleted resource.
+        version = new VersionImpl(storeName, storeVersion, "");
       }
       lagMonFunction.accept(version, getPartition());
     } catch (Exception e) {
       logger.error("Failed to update lag monitor for resource: {}-{}", resourceName, getPartition(), e);
     }
+  }
+
+  private String messageToString(Message message) {
+    return message.getFromState() + "->" + message.getToState();
   }
 
   /**
