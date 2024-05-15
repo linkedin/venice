@@ -1010,7 +1010,7 @@ public abstract class AbstractPushMonitor
     }
     try {
       Store store = metadataRepository.getStore(storeName);
-      if (store.getVersion(versionNumber).get().getRepushSourceVersion() == NON_EXISTING_VERSION) {
+      if (store.getVersion(versionNumber).get().getRepushSourceVersion() <= NON_EXISTING_VERSION) {
         storeCleaner.retireOldStoreVersions(clusterName, storeName, false, -1);
       }
     } catch (Exception e) {
