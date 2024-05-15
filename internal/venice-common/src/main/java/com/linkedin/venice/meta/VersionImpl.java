@@ -454,6 +454,7 @@ public class VersionImpl implements Version {
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     clonedVersion.setRmdVersionId(getRmdVersionId());
     clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
+    clonedVersion.setRepushSourceVersion(getRepushSourceVersion());
     clonedVersion.setViewConfigs(getViewConfigs());
     clonedVersion.setBlobTransferEnabled(isBlobTransferEnabled());
     return clonedVersion;

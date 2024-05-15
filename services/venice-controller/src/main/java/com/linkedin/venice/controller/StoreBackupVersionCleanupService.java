@@ -94,7 +94,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     this.multiClusterConfig = multiClusterConfig;
     this.allClusters = multiClusterConfig.getClusters();
     this.cleanupThread = new Thread(new StoreBackupVersionCleanupTask(), "StoreBackupVersionCleanupTask");
-    this.sleepInterval = TimeUnit.MINUTES.toMillis(5);
+    this.sleepInterval = multiClusterConfig.getBackupVersionCleanupSleepMs();
     this.defaultBackupVersionRetentionMs = multiClusterConfig.getBackupVersionDefaultRetentionMs();
     this.time = time;
     this.metricsRepository = metricsRepository;

@@ -1624,7 +1624,7 @@ public class VeniceParentHelixAdmin implements Admin {
             numberOfPartitions,
             pushType,
             targetedRegions,
-            -1);
+            repushSourceVersion);
       } finally {
         releaseAdminMessageLock(clusterName, storeName);
       }
