@@ -9,6 +9,8 @@ import org.testng.annotations.Test;
  * to all unit and integration tests which clears the interrupt state:
  *
  * {@link com.linkedin.venice.testng.VeniceTestListener#onTestStart(ITestResult)}
+ *
+ * N.B.: The naming of the tests is important, as they get executed in lexicographical order.
  */
 public class TestInterruptContaminationClearing {
   @Test

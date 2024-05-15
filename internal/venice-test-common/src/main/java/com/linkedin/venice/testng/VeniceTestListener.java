@@ -12,6 +12,8 @@ public class VeniceTestListener extends TestListenerAdapter {
   @Override
   public void onTestStart(ITestResult result) {
     super.onTestStart(result);
+
+    /** N.B.: {@link Thread#interrupted()} not only retrieves, but also clears, the interrupt flag */
     boolean interruptCleared = Thread.interrupted();
     LOGGER.info(
         "\n\n######## TEST ######## {}({}){} - STARTED",
