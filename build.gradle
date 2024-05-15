@@ -413,7 +413,7 @@ subprojects {
 
     useTestNG {
       excludeGroups 'flaky'
-      listeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
+      listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
     }
 
     retry {
