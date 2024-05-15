@@ -7,7 +7,7 @@ import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_PARTITION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VERSION;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static com.linkedin.venice.router.api.RouterResourceType.*;
@@ -139,6 +139,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           + " data replication policy.";
   static final String REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER =
       "Expected partitioner class %s cannot be found.";
+
+  static final String REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER = "Store: %s could not be found in cluster: %s";
+
+  static final String REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS =
+      "Blob Discovery: blob transfer is not enabled or store: %s is not a batch-only store";
+
+  static final String REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS =
+      "Blob Discovery: missing storeName:%s, storeVersion:%s, or storePartition:%s";
 
   private final VeniceVersionFinder veniceVersionFinder;
 
@@ -501,31 +509,29 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private void handleBlobDiscovery(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request)
       throws IOException {
 
-    // i.e. /blob_discovery?store_name=storeName&version=22&partition=2
+    // i.e. /blob_discovery?store_name=storeName&store_version=22&store_partition=2
     Map<String, String> queryParams = helper.extractQueryParameters(request);
-    String storeName = queryParams.get(NAME);
-    String storeVersion = queryParams.get(VERSION);
-    String storePartition = queryParams.get(STORE_PARTITION);
+    String storeName = queryParams.getOrDefault(NAME, "");
+    String storeVersion = queryParams.getOrDefault(STORE_VERSION, "");
+    String storePartition = queryParams.getOrDefault(STORE_PARTITION, "");
 
     if (StringUtils.isEmpty(storeName) || StringUtils.isEmpty(storeVersion) || StringUtils.isEmpty(storePartition)) {
-      byte[] errBody = ("Blob Discovery: missing storeName, storeVersion, or storePartition " + storeName + storeVersion
-          + storePartition).getBytes();
+      byte[] errBody =
+          (String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, storeName, storeVersion, storePartition))
+              .getBytes();
       setupResponseAndFlush(BAD_REQUEST, errBody, false, ctx);
       return;
     }
 
     Store store = storeRepository.getStore(storeName);
-    if (store == null || !store.isBlobTransferEnabled() || store.isHybrid()) {
-      byte[] errBody =
-          ("Blob Discovery: store: " + storeName + " could not be found in cluster: " + clusterName).getBytes();
+    if (store == null) {
+      byte[] errBody = (String.format(REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER, storeName, clusterName)).getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
 
     if (!store.isBlobTransferEnabled() || store.isHybrid()) {
-      byte[] errBody =
-          ("Blob Discovery: blob transfer is not enabled or store: " + storeName + " is not batch-only store")
-              .getBytes();
+      byte[] errBody = (String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, storeName)).getBytes();
       setupResponseAndFlush(FORBIDDEN, errBody, false, ctx);
       return;
     }

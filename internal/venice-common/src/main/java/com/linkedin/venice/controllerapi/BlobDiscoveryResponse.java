@@ -4,7 +4,6 @@ import java.util.List;
 
 
 public class BlobDiscoveryResponse extends ControllerResponse {
-  private boolean isError;
   private List<String> liveNodeHostNames;
 
   public void setLiveNodeNames(List<String> liveNodeHostNames) {
