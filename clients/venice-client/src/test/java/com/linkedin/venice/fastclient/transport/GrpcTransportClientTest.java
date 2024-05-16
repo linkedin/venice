@@ -52,7 +52,7 @@ public class GrpcTransportClientTest {
   private GrpcTransportClient grpcTransportClient;
 
   @BeforeTest
-  public void setup() {
+  public void setUp() {
     MockitoAnnotations.openMocks(this);
     when(mockClientConfig.getR2Client()).thenReturn(mockClient);
     when(mockClientConfig.getNettyServerToGrpcAddress()).thenReturn(nettyServerToGrpcAddress);
