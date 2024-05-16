@@ -899,7 +899,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     // leader switch local or remote topic, depending on the sourceKafkaServers specified in TS
-    final int partition = partitionConsumptionState.getPartition();
     final PubSubTopic currentLeaderTopic =
         partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     final String newSourceKafkaServer = topicSwitch.sourceKafkaServers.get(0).toString();

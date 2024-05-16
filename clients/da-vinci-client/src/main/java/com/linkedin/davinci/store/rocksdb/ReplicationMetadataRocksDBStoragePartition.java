@@ -56,7 +56,8 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
         storeConfig);
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempRMDSSTFileDir(dbDir, storeNameAndVersion, partitionId);
     if (deferredWrite) {
-      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(storeNameAndVersion,
+      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
+          storeNameAndVersion,
           partitionId,
           dbDir,
           super.getEnvOptions(),

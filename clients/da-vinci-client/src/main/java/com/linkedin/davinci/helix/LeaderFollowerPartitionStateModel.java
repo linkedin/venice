@@ -108,7 +108,10 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       try {
         long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
         setupNewStorePartition();
-        logger.info("Completed setting up the replica: {}. Total elapsed time: {} ms", Utils.getReplicaId(resourceName, getPartition()), LatencyUtils.getElapsedTimeFromNSToMS(startTimeForSettingUpNewStorePartitionInNs));
+        logger.info(
+            "Completed setting up the replica: {}. Total elapsed time: {} ms",
+            Utils.getReplicaId(resourceName, getPartition()),
+            LatencyUtils.getElapsedTimeFromNSToMS(startTimeForSettingUpNewStorePartitionInNs));
       } catch (Exception e) {
         logger.error("Failed to set up the new replica: {}", Utils.getReplicaId(resourceName, getPartition()), e);
         if (isRegularStoreCurrentVersion) {

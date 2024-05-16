@@ -214,7 +214,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         blobTransferEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeNameAndVersion, partitionId) : null;
 
     if (deferredWrite) {
-      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(storeNameAndVersion,
+      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
+          storeNameAndVersion,
           partitionId,
           dbDir,
           envOptions,
@@ -503,7 +504,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   private void checkAndThrowMemoryLimitException(RocksDBException e) {
     if (e.getMessage().contains(ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_SPACE_QUOTA)) {
-      throw new MemoryLimitExhaustedException(storeNameAndVersion,
+      throw new MemoryLimitExhaustedException(
+          storeNameAndVersion,
           partitionId,
           factory.getSstFileManagerForMemoryLimiter().getTotalSize());
     }
@@ -878,7 +880,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (writeOptions != null) {
       writeOptions.close();
     }
-    LOGGER.info("RocksDB close for replica: {} took {} ms.", replicaId, LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
+    LOGGER.info(
+        "RocksDB close for replica: {} took {} ms.",
+        replicaId,
+        LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
   }
 
   /**
@@ -890,8 +895,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       long startTimeInMs = System.currentTimeMillis();
       rocksDB.close();
-      LOGGER
-          .info("RocksDB close for replica: {} took {} ms.", replicaId, LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
+      LOGGER.info(
+          "RocksDB close for replica: {} took {} ms.",
+          replicaId,
+          LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
       if (this.readOnly) {
         this.rocksDB = rocksDBThrottler
             .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
