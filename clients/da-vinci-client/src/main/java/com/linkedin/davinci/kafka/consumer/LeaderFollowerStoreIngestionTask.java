@@ -1570,9 +1570,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
 
       if (lossy) {
-        if (!partitionConsumptionState.isCompletionReported()) {
+        if (!partitionConsumptionState.isEndOfPushReceived()) {
           logMsg += Utils.NEW_LINE_CHAR;
-          logMsg += "Failing the job because lossy rewind happens before reporting completed";
+          logMsg += "Failing the job because lossy rewind happens before receiving EndOfPush.";
           LOGGER.error(logMsg);
           ingestionTask.getVersionedDIVStats()
               .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
