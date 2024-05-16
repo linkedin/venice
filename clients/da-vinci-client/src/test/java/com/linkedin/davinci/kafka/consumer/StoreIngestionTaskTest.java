@@ -4544,7 +4544,7 @@ public abstract class StoreIngestionTaskTest {
         () -> LeaderFollowerStoreIngestionTask
             .checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, 10, 11, mockTask2));
     assertTrue(
-        exception.getMessage().contains("Failing the job because lossy rewind happens before reporting completed"));
+        exception.getMessage().contains("Failing the job because lossy rewind happens before receiving EndOfPush."));
     verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
   }
 
