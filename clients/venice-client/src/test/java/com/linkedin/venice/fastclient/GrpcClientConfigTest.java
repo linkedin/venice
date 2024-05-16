@@ -29,14 +29,14 @@ public class GrpcClientConfigTest {
     assertEquals(config.getSslFactory(), sslFactory);
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class)
+  @Test(expectedExceptions = NullPointerException.class)
   public void testMissingR2Client() {
     new GrpcClientConfig.Builder().setNettyServerToGrpcAddress(new HashMap<>())
         .setSSLFactory(mock(SSLFactory.class))
         .build();
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class)
+  @Test(expectedExceptions = NullPointerException.class)
   public void testMissingAddressMap() {
     new GrpcClientConfig.Builder().setR2Client(mock(Client.class)).setSSLFactory(mock(SSLFactory.class)).build();
   }
