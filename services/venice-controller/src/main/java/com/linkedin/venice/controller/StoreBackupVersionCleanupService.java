@@ -67,6 +67,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private final Thread cleanupThread;
   private final long sleepInterval;
   private final long defaultBackupVersionRetentionMs;
+  private static long waitTimeDeleteRepushSourceVersion = TimeUnit.HOURS.toMillis(1);
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
   private final Map<String, StoreBackupVersionCleanupServiceStats> clusterNameCleanupStatsMap =
@@ -135,6 +136,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     cleanupThread.interrupt();
   }
 
+  public static void setWaitTimeDeleteRepushSourceVersion(long waitTime) {
+    waitTimeDeleteRepushSourceVersion = waitTime;
+  }
+
   CloseableHttpAsyncClient getHttpAsyncClient() {
     return httpAsyncClient;
   }
@@ -148,18 +153,16 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       return false;
     }
 
-    if (store.getVersion(currentVersion).get().getRepushSourceVersion() > NON_EXISTING_VERSION
-        && store.getVersions().size() > 2) {
-      return true;
-    }
-
     long backupVersionRetentionMs = store.getBackupVersionRetentionMs();
     if (backupVersionRetentionMs < 0) {
       backupVersionRetentionMs = defaultBackupVersionRetentionMs;
     }
-    if (backupVersionRetentionMs < MINIMAL_BACKUP_VERSION_CLEANUP_DELAY) {
+    if (store.getVersion(currentVersion).get().getRepushSourceVersion() > NON_EXISTING_VERSION) {
+      backupVersionRetentionMs = waitTimeDeleteRepushSourceVersion;
+    } else if (backupVersionRetentionMs < MINIMAL_BACKUP_VERSION_CLEANUP_DELAY) {
       backupVersionRetentionMs = MINIMAL_BACKUP_VERSION_CLEANUP_DELAY;
     }
+
     return store.getLatestVersionPromoteToCurrentTimestamp() + backupVersionRetentionMs < time.getMilliseconds();
   }
 
@@ -260,17 +263,15 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       stats.recordBackupVersionMismatch();
       return false;
     }
-    int repushSourceVersion = NON_EXISTING_VERSION;
-    for (Version version: versions) {
-      if (version.getRepushSourceVersion() > NON_EXISTING_VERSION) {
-        repushSourceVersion = version.getRepushSourceVersion();
-      }
-    }
-    int finalRepushSourceVersion = repushSourceVersion;
+
+    // If the current version is from repush, do not delete the version before previous current version,
+    // instead delete the repush source version from which it was repushed as they hold identical data.
+    // During later iteration of this thread, it will delete the older backup after threshold retention time.
+    int repushSourceVersion = store.getVersion(currentVersion).get().getRepushSourceVersion();
     List<Version> readyToBeRemovedVersions = versions.stream()
         .filter(
-            v -> finalRepushSourceVersion > NON_EXISTING_VERSION
-                ? v.getNumber() == finalRepushSourceVersion
+            v -> repushSourceVersion > NON_EXISTING_VERSION
+                ? v.getNumber() == repushSourceVersion
                 : v.getNumber() < currentVersion)
         .collect(Collectors.toList());
 

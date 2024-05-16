@@ -250,7 +250,7 @@ public class CreateVersion extends AbstractRoute {
 
         String targetedRegions = request.queryParams(TARGETED_REGIONS);
 
-        int repushSourceVersion = Integer.parseInt(request.queryParams(REPUSH_SOURCE_VERSION));
+        int repushSourceVersion = Integer.parseInt(request.queryParamOrDefault(REPUSH_SOURCE_VERSION, "-1"));
 
         switch (pushType) {
           case BATCH:
