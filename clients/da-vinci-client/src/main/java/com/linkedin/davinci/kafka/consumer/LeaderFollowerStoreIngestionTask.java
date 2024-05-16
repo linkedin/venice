@@ -1569,29 +1569,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             e);
       }
 
-      if (lossy) {
-        if (!partitionConsumptionState.isEndOfPushReceived()) {
-          logMsg += Utils.NEW_LINE_CHAR;
-          logMsg += "Failing the job because lossy rewind happens before receiving EndOfPush.";
-          LOGGER.error(logMsg);
-          ingestionTask.getVersionedDIVStats()
-              .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
-          VeniceException e = new VeniceException(logMsg);
-          ingestionTask.getStatusReportAdapter()
-              .reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
-          throw e;
-        } else {
-          logMsg += Utils.NEW_LINE_CHAR;
-          logMsg += "Don't fail the job after reporting completed";
-          LOGGER.error(logMsg);
-          ingestionTask.getVersionedDIVStats()
-              .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
-        }
-      } else {
+      /**
+       * Handles rewind scenarios as follows:
+       * 1. If the rewind does not result in data loss, there is no need to fail the job.
+       * 2. If the rewind results in data loss and occurs before the END_OF_PUSH is received, the job should be failed.
+       * 3. If the rewind results in data loss but occurs after the END_OF_PUSH is received, the job should not be failed,
+       *    as it is now in streaming ingestion mode and serving online traffic.
+       */
+      if (!lossy) {
         LOGGER.info(logMsg);
         ingestionTask.getVersionedDIVStats()
             .recordBenignLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
+        return;
       }
+
+      if (partitionConsumptionState.isEndOfPushReceived()) {
+        logMsg += Utils.NEW_LINE_CHAR;
+        logMsg += "Don't fail the job after receiving EndOfPush.";
+        LOGGER.error(logMsg);
+        ingestionTask.getVersionedDIVStats()
+            .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
+        return;
+      }
+
+      logMsg += Utils.NEW_LINE_CHAR;
+      logMsg += "Failing the job because lossy rewind happens before receiving EndOfPush.";
+      LOGGER.error(logMsg);
+      ingestionTask.getVersionedDIVStats()
+          .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
+      VeniceException e = new VeniceException(logMsg);
+      ingestionTask.getStatusReportAdapter()
+          .reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
+      throw e;
     }
   }
 
