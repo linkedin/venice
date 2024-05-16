@@ -14,24 +14,24 @@ public class GrpcClientConfigTest {
   @Test
   public void testBuilder() {
     Client r2Client = mock(Client.class);
-    Map<String, String> addressMap = new HashMap<>();
-    addressMap.put("server1", "localhost:5000");
+    Map<String, String> nettyServerToGrpcAddress = new HashMap<>();
+    nettyServerToGrpcAddress.put("server1", "localhost:5000");
 
     SSLFactory sslFactory = mock(SSLFactory.class);
 
     GrpcClientConfig config = new GrpcClientConfig.Builder().setR2Client(r2Client)
-        .setNettyServerToGrpcAddressMap(addressMap)
+        .setNettyServerToGrpcAddress(nettyServerToGrpcAddress)
         .setSSLFactory(sslFactory)
         .build();
 
     assertEquals(config.getR2Client(), r2Client);
-    assertEquals(config.getNettyServerToGrpcAddressMap(), addressMap);
+    assertEquals(config.getNettyServerToGrpcAddress(), nettyServerToGrpcAddress);
     assertEquals(config.getSslFactory(), sslFactory);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testMissingR2Client() {
-    new GrpcClientConfig.Builder().setNettyServerToGrpcAddressMap(new HashMap<>())
+    new GrpcClientConfig.Builder().setNettyServerToGrpcAddress(new HashMap<>())
         .setSSLFactory(mock(SSLFactory.class))
         .build();
   }
@@ -40,13 +40,4 @@ public class GrpcClientConfigTest {
   public void testMissingAddressMap() {
     new GrpcClientConfig.Builder().setR2Client(mock(Client.class)).setSSLFactory(mock(SSLFactory.class)).build();
   }
-
-  @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testEmptyAddressMap() {
-    new GrpcClientConfig.Builder().setR2Client(mock(Client.class))
-        .setNettyServerToGrpcAddressMap(new HashMap<>())
-        .setSSLFactory(mock(SSLFactory.class))
-        .build();
-  }
-
 }
