@@ -177,14 +177,18 @@ public class GrpcTransportClient extends InternalTransportClient {
       byte[] requestBody,
       boolean isSingleGet) {
     String[] requestParts = requestPath.split("/");
+
     if (isValidRequest(requestParts, isSingleGet)) {
       LOGGER.error("Failed to process request: {}", requestParts);
-      return CompletableFuture.failedFuture(new VeniceClientException("Invalid request"));
+      // avoiding CompletableFuture.failedFuture to keep it JDK agnostic
+      CompletableFuture<TransportClientResponse> failedFuture = new CompletableFuture<>();
+      failedFuture.completeExceptionally(new VeniceClientException("Invalid request"));
+
+      return failedFuture;
     }
 
     String queryAction = requestParts[3];
     CompletableFuture<TransportClientResponse> responseFuture;
-
     if (!STORAGE_ACTION.equalsIgnoreCase(queryAction)) {
       LOGGER.debug("Delegating unsupported query action ({}), to R2 client", queryAction);
       responseFuture = handleNonStorageQueries(requestPath, headers, requestBody, isSingleGet);
