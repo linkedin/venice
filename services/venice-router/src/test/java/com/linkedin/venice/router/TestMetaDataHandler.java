@@ -218,7 +218,7 @@ public class TestMetaDataHandler {
     Assert.assertEquals(controllerResponse.getUrl(), "http://" + leaderControllerHost + ":" + leaderControllerPort);
   }
 
-  // The deprecated non inclusive URL must also continue to work.
+  // The deprecated non-inclusive URL must also continue to work.
   @DataProvider(name = "controllerUrlProvider")
   public static Object[][] dataProvider() {
     // go/inclusivecode deprecated (alias="leader_controller")
@@ -233,211 +233,199 @@ public class TestMetaDataHandler {
         put(STORE_VERSION, "3");
         put(STORE_PARTITION, "30");
       }
-    }, // query params
-        new HashMap<String, Boolean>() {
-          {
-            put("isBlobTransferEnabled", true);
-            put("isHybrid", true);
-          }
-        }, // store settings
-        new HashMap<String, Object>() { // expected response
-          {
-            put("expectedStatus", HttpResponseStatus.BAD_REQUEST);
-            put("expectedHostNames", Collections.emptyList());
-            put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "", "3", "30"));
-          }
-        }, new HashMap<String, Object>() { // pushStatusStoreReader responses
-          {
-            put("instances", new HashMap<CharSequence, Integer>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", 1);
-              }
-            });
-            put("instancesHealth", new HashMap<CharSequence, Boolean>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", true);
-              }
-            });
-          }
-        } }, { new HashMap<String, String>() {
+    }, new HashMap<String, Boolean>() {
+      {
+        put("isBlobTransferEnabled", true);
+        put("isHybrid", true);
+      }
+    }, new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+      }
+    }, new HashMap<String, String>() {
+      {
+        put("expectedStatus", HttpResponseStatus.BAD_REQUEST.toString());
+        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "", "3", "30"));
+      }
+    }, Collections.emptyList() }, { new HashMap<String, String>() {
+      {
+        put(NAME, "store1");
+        put(STORE_VERSION, "");
+        put(STORE_PARTITION, "30");
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("isBlobTransferEnabled", true);
+        put("isHybrid", true);
+      }
+    }, new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+      }
+    }, new HashMap<String, String>() {
+      {
+        put("expectedStatus", HttpResponseStatus.BAD_REQUEST.toString());
+        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "store1", "", "30"));
+      }
+    }, Collections.emptyList() }, { new HashMap<String, String>() {
+      {
+        put(NAME, "store1");
+        put(STORE_VERSION, "3");
+        put(STORE_PARTITION, "");
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("isBlobTransferEnabled", true);
+        put("isHybrid", true);
+      }
+    }, new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+      }
+    }, new HashMap<String, String>() {
+      {
+        put("expectedStatus", HttpResponseStatus.BAD_REQUEST.toString());
+        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "store1", "3", ""));
+      }
+    }, Collections.emptyList() }, { new HashMap<String, String>() {
+      {
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("isBlobTransferEnabled", true);
+        put("isHybrid", true);
+      }
+    }, new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+      }
+    }, new HashMap<String, String>() {
+      {
+        put("expectedStatus", HttpResponseStatus.BAD_REQUEST.toString());
+        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "", "", ""));
+      }
+    }, Collections.emptyList() }, { new HashMap<String, String>() {
+      {
+        put(NAME, "invalid-store");
+        put(STORE_VERSION, "2");
+        put(STORE_PARTITION, "20");
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("isBlobTransferEnabled", true);
+        put("isHybrid", true);
+      }
+    }, new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+      }
+    }, new HashMap<String, String>() {
+      {
+        put("expectedStatus", io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND.toString());
+        put(
+            "expectedErrorMsg",
+            String.format(REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER, "invalid-store", "test-cluster"));
+      }
+    }, Collections.emptyList() }, { new HashMap<String, String>() {
+      {
+        put(NAME, "store1");
+        put(STORE_VERSION, "2");
+        put(STORE_PARTITION, "20");
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("isBlobTransferEnabled", true);
+        put("isHybrid", true);
+      }
+    }, new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+      }
+    }, new HashMap<String, String>() {
+      {
+        put("expectedStatus", io.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN.toString());
+        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, "store1"));
+      }
+    }, Collections.emptyList() }, { new HashMap<String, String>() {
+      {
+        put(NAME, "store1");
+        put(STORE_VERSION, "2");
+        put(STORE_PARTITION, "20");
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("isBlobTransferEnabled", false);
+        put("isHybrid", false);
+      }
+    }, new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+      }
+    }, new HashMap<String, String>() {
+      {
+        put("expectedStatus", io.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN.toString());
+        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, "store1"));
+      }
+    }, Collections.emptyList() }, { new HashMap<String, String>() {
+      {
+        put(NAME, "store1");
+        put(STORE_VERSION, "2");
+        put(STORE_PARTITION, "20");
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("isBlobTransferEnabled", true);
+        put("isHybrid", false);
+      }
+    }, new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+        put("ltx1-test1.prod.linkedin.com_137", 1);
+        put("ltx1-test2.prod.linkedin.com_137", 1);
+      }
+    }, new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+        put("ltx1-test1.prod.linkedin.com_137", false);
+        put("ltx1-test2.prod.linkedin.com_137", true);
+      }
+    }, new HashMap<String, String>() {
+      {
+        put("expectedStatus", HttpResponseStatus.OK.toString());
+        put("expectedErrorMsg", "");
+      }
+    }, Arrays.asList("ltx1-test.prod.linkedin.com_137", "ltx1-test2.prod.linkedin.com_137") },
+        { new HashMap<String, String>() {
           {
             put(NAME, "store1");
-            put(STORE_VERSION, "");
-            put(STORE_PARTITION, "30");
-          }
-        }, new HashMap<String, Boolean>() {
-          {
-            put("isBlobTransferEnabled", true);
-            put("isHybrid", true);
-          }
-        }, new HashMap<String, Object>() { // expected response
-          {
-            put("expectedStatus", HttpResponseStatus.BAD_REQUEST);
-            put("expectedHostNames", Collections.emptyList());
-            put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "store1", "", "30"));
-          }
-        }, new HashMap<String, Object>() {
-          {
-            put("instances", new HashMap<CharSequence, Integer>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", 1);
-              }
-            });
-            put("instancesHealth", new HashMap<CharSequence, Boolean>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", true);
-              }
-            });
-          }
-        } }, { new HashMap<String, String>() {
-          {
-            put(NAME, "store1");
-            put(STORE_VERSION, "1");
-            put(STORE_PARTITION, "");
-          }
-        }, new HashMap<String, Boolean>() {
-          {
-            put("isBlobTransferEnabled", true);
-            put("isHybrid", true);
-          }
-        }, new HashMap<String, Object>() { // expected response
-          {
-            put("expectedStatus", HttpResponseStatus.BAD_REQUEST);
-            put("expectedHostNames", Collections.emptyList());
-            put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "store1", "1", ""));
-          }
-        }, new HashMap<String, Object>() {
-          {
-            put("instances", new HashMap<CharSequence, Integer>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", 1);
-              }
-            });
-            put("instancesHealth", new HashMap<CharSequence, Boolean>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", true);
-              }
-            });
-          }
-        } }, { new HashMap<String, String>(), new HashMap<String, Boolean>() {
-          {
-            put("isBlobTransferEnabled", true);
-            put("isHybrid", true);
-          }
-        }, new HashMap<String, Object>() { // expected response
-          {
-            put("expectedStatus", HttpResponseStatus.BAD_REQUEST);
-            put("expectedHostNames", Collections.emptyList());
-            put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "", "", ""));
-          }
-        }, new HashMap<String, Object>() {
-          {
-            put("instances", new HashMap<CharSequence, Integer>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", 1);
-              }
-            });
-            put("instancesHealth", new HashMap<CharSequence, Boolean>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", true);
-              }
-            });
-          }
-        } }, { new HashMap<String, String>() {
-          {
-            put(NAME, "invalid-store");
-            put(STORE_VERSION, "2");
-            put(STORE_PARTITION, "20");
-          }
-        }, new HashMap<String, Boolean>() {
-          {
-            put("isBlobTransferEnabled", true);
-            put("isHybrid", true);
-          }
-        }, new HashMap<String, Object>() { // expected response
-          {
-            put("expectedStatus", HttpResponseStatus.NOT_FOUND);
-            put("expectedHostNames", Collections.emptyList());
-            put(
-                "expectedErrorMsg",
-                String.format(REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER, "invalid-store", "test-cluster"));
-          }
-        }, new HashMap<String, Object>() {
-          {
-            put("instances", new HashMap<CharSequence, Integer>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", 1);
-              }
-            });
-            put("instancesHealth", new HashMap<CharSequence, Boolean>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", true);
-              }
-            });
-          }
-        } }, { new HashMap<String, String>() {
-          {
-            put(NAME, "store1");
-            put(STORE_VERSION, "1");
-            put(STORE_PARTITION, "10");
-          }
-        }, new HashMap<String, Boolean>() {
-          {
-            put("isBlobTransferEnabled", true);
-            put("isHybrid", true);
-          }
-        }, new HashMap<String, Object>() {
-          {
-            put("expectedStatus", HttpResponseStatus.FORBIDDEN);
-            put("expectedHostNames", Collections.emptyList());
-            put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, "store1"));
-          }
-        }, new HashMap<String, Object>() {
-          {
-            put("instances", new HashMap<CharSequence, Integer>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", 1);
-              }
-            });
-            put("instancesHealth", new HashMap<CharSequence, Boolean>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", true);
-              }
-            });
-          }
-        } }, { new HashMap<String, String>() {
-          {
-            put(NAME, "store1");
-            put(STORE_VERSION, "1");
-            put(STORE_PARTITION, "10");
-          }
-        }, new HashMap<String, Boolean>() {
-          {
-            put("isBlobTransferEnabled", false);
-            put("isHybrid", false);
-          }
-        }, new HashMap<String, Object>() { // expected response
-          {
-            put("expectedStatus", HttpResponseStatus.FORBIDDEN);
-            put("expectedHostNames", Collections.emptyList());
-            put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, "store1"));
-          }
-        }, new HashMap<String, Object>() {
-          {
-            put("instances", new HashMap<CharSequence, Integer>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", 1);
-              }
-            });
-            put("instancesHealth", new HashMap<CharSequence, Boolean>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", true);
-              }
-            });
-          }
-        } }, { new HashMap<String, String>() {
-          {
-            put(NAME, "store2");
             put(STORE_VERSION, "2");
             put(STORE_PARTITION, "20");
           }
@@ -446,66 +434,24 @@ public class TestMetaDataHandler {
             put("isBlobTransferEnabled", true);
             put("isHybrid", false);
           }
-        }, new HashMap<String, Object>() {
+        }, new HashMap<CharSequence, Integer>() {
           {
-            put("expectedStatus", HttpResponseStatus.OK);
-            put(
-                "expectedHostNames",
-                Arrays.asList("ltx1-test.prod.linkedin.com_137", "ltx1-test2.prod.linkedin.com_137"));
+            put("ltx1-test.prod.linkedin.com_137", 1);
+            put("ltx1-test1.prod.linkedin.com_137", 1);
+            put("ltx1-test2.prod.linkedin.com_137", 1);
+          }
+        }, new HashMap<String, Boolean>() {
+          {
+            put("ltx1-test.prod.linkedin.com_137", false);
+            put("ltx1-test1.prod.linkedin.com_137", false);
+            put("ltx1-test2.prod.linkedin.com_137", false);
+          }
+        }, new HashMap<String, String>() {
+          {
+            put("expectedStatus", HttpResponseStatus.OK.toString());
             put("expectedErrorMsg", "");
           }
-        }, new HashMap<String, Object>() {
-          {
-            put("instances", new HashMap<CharSequence, Integer>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", 1);
-                put("ltx1-test1.prod.linkedin.com_137", 1);
-                put("ltx1-test2.prod.linkedin.com_137", 1);
-              }
-            });
-            put("instancesHealth", new HashMap<CharSequence, Boolean>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", true);
-                put("ltx1-test1.prod.linkedin.com_137", false);
-                put("ltx1-test2.prod.linkedin.com_137", true);
-              }
-            });
-          }
-        } }, { new HashMap<String, String>() {
-          {
-            put(NAME, "store2");
-            put(STORE_VERSION, "2");
-            put(STORE_PARTITION, "20");
-          }
-        }, new HashMap<String, Boolean>() {
-          {
-            put("isBlobTransferEnabled", true);
-            put("isHybrid", false);
-          }
-        }, new HashMap<String, Object>() {
-          {
-            put("expectedStatus", HttpResponseStatus.OK);
-            put("expectedHostNames", Collections.emptyList());
-            put("expectedErrorMsg", "");
-          }
-        }, new HashMap<String, Object>() {
-          {
-            put("instances", new HashMap<CharSequence, Integer>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", 1);
-                put("ltx1-test1.prod.linkedin.com_137", 1);
-                put("ltx1-test2.prod.linkedin.com_137", 1);
-              }
-            });
-            put("instancesHealth", new HashMap<CharSequence, Boolean>() {
-              {
-                put("ltx1-test.prod.linkedin.com_137", false);
-                put("ltx1-test1.prod.linkedin.com_137", false);
-                put("ltx1-test2.prod.linkedin.com_137", false);
-              }
-            });
-          }
-        } } };
+        }, Collections.emptyList() } };
   }
 
   @Test(dataProvider = "controllerUrlProvider")
@@ -1710,8 +1656,10 @@ public class TestMetaDataHandler {
   public void testHandleBlobDiscovery(
       Map<String, String> queryParams,
       Map<String, Boolean> storeSettings,
-      Map<String, Object> expectedResponse,
-      Map<String, Object> pushStatusResponse) throws IOException {
+      Map<CharSequence, Integer> instanceResultsFromPushStatusStore,
+      Map<String, Boolean> instanceHealth,
+      Map<String, String> expectedResponse,
+      List<String> expectedHostNames) throws IOException {
 
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
@@ -1725,12 +1673,12 @@ public class TestMetaDataHandler {
     int version = storeVersion.isEmpty() ? 0 : Integer.parseInt(storeVersion);
     int partition = storePartition.isEmpty() ? 0 : Integer.parseInt(storePartition);
 
-    Map<CharSequence, Integer> alInstances = (Map<CharSequence, Integer>) pushStatusResponse.get("instances");
-    Mockito.doReturn(alInstances).when(pushStatusStoreReader).getPartitionStatus(storeName, version, partition, null);
+    Mockito.doReturn(instanceResultsFromPushStatusStore)
+        .when(pushStatusStoreReader)
+        .getPartitionStatus(storeName, version, partition, null);
 
-    Map<CharSequence, Boolean> instancesHealth = (Map<CharSequence, Boolean>) pushStatusResponse.get("instancesHealth");
-    instancesHealth.forEach((instance, isLive) -> {
-      Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance.toString());
+    instanceHealth.forEach((instance, isLive) -> {
+      Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
     });
 
     Store store = Mockito.mock(Store.class);
@@ -1772,14 +1720,13 @@ public class TestMetaDataHandler {
       hostNames = blobDiscoveryResponse.getLiveNodeHostNames();
     }
 
-    String expectedErrorMsg = expectedResponse.get("expectedErrorMsg").toString();
-    List<String> expectedHostNames = (List<String>) expectedResponse.get("expectedHostNames");
     Collections.sort(hostNames);
     Collections.sort(expectedHostNames);
 
-    Assert.assertEquals(response.status(), expectedResponse.get("expectedStatus"));
+    Assert.assertEquals(response.status().toString(), expectedResponse.get("expectedStatus"));
     Assert.assertEquals(hostNames, expectedHostNames);
 
+    String expectedErrorMsg = expectedResponse.get("expectedErrorMsg");
     if (!expectedErrorMsg.isEmpty()) {
       Assert.assertEquals(response.content().toString(StandardCharsets.UTF_8), expectedErrorMsg);
     }
