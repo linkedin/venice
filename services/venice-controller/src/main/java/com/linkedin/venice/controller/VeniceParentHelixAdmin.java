@@ -1153,11 +1153,10 @@ public class VeniceParentHelixAdmin implements Admin {
      */
     if (latestTopic.isPresent()) {
       LOGGER.debug("Latest kafka topic for store: {} is {}", storeName, latestTopic.get());
-
       final String latestTopicName = latestTopic.get().getName();
       int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
-      boolean deferredSwap = isDeferredSwap(clusterName, storeName, versionNumber);
-      if (deferredSwap) {
+      Store store = getStore(clusterName, storeName);
+      if (store.getVersion(versionNumber).map(Version::isVersionSwapDeferred).orElse(false)) {
         LOGGER.error(
             "There is already future version {} exists for store {}, please wait till the future version is made current.",
             versionNumber,
@@ -3525,13 +3524,13 @@ public class VeniceParentHelixAdmin implements Admin {
     if (currentReturnStatus.isTerminal()) {
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
       int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-      boolean deferredSwap = isDeferredSwap(clusterName, storeName, versionNum);
       HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
 
-      if (!deferredSwap) {
-        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-          ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-          Store parentStore = repository.getStore(storeName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store parentStore = repository.getStore(storeName);
+        boolean isDeferredSwap = parentStore.getVersion(versionNum).map(Version::isVersionSwapDeferred).orElse(false);
+        if (!isDeferredSwap) {
           // targetedRegions is non-empty for target region push of batch store
           boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
           boolean isVersionPushed =
@@ -3574,22 +3573,6 @@ public class VeniceParentHelixAdmin implements Admin {
         currentReturnStatusDetails.toString(),
         extraDetails,
         extraInfoUpdateTimestamp);
-  }
-
-  boolean isDeferredSwap(String clusterName, String storeName, int versionNum) {
-    Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
-    for (Map.Entry<String, String> entry: futureVersions.entrySet()) {
-      ControllerClient controllerClient = getVeniceHelixAdmin().getControllerClientMap(clusterName).get(entry.getKey());
-      StoreResponse storeResponse = ControllerClient.retryableRequest(controllerClient, 5, c -> c.getStore(storeName));
-      StoreInfo store = storeResponse.getStore();
-      Optional<Version> version = store.getVersion(versionNum);
-      if (version.isPresent()) {
-        if (version.get().isVersionSwapDeferred() && store.getCurrentVersion() < versionNum) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   /**
