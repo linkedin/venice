@@ -40,7 +40,6 @@ public class AggVersionedIngestionStatsTest {
    */
   @Test
   public void testIngestionOffsetRewind() {
-
     MetricsRepository metricsRepo = new MetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
@@ -114,9 +113,11 @@ public class AggVersionedIngestionStatsTest {
       verifyNoMetrics(metricsRepo, currentKey);
       verifyNoMetrics(metricsRepo, futureKey);
     }
+
+    metricsRepo.close();
+    reporter.close();
   }
 
-  // TODO there's some race condition somewhere
   @Test
   public void testStatsCanUpdateVersionStatus() {
     MetricsRepository metricsRepo = new MetricsRepository();
@@ -124,8 +125,6 @@ public class AggVersionedIngestionStatsTest {
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
 
     String storeName = Utils.getUniqueString("store_foo");
-    String prefix = "." + storeName;
-    String postfix = IngestionStats.VERSION_TOPIC_END_OFFSET_REWIND_COUNT + ".IngestionStatsGauge";
 
     metricsRepo.addReporter(reporter);
     ReadOnlyStoreRepository mockMetaRepository = mock(ReadOnlyStoreRepository.class);
@@ -259,6 +258,9 @@ public class AggVersionedIngestionStatsTest {
     mockStore.addVersion(version3);
     mockStore.deleteVersion(1);
     stats.handleStoreChanged(mockStore);
+
+    metricsRepo.close();
+    reporter.close();
   }
 
   private Store createStore(String storeName) {
