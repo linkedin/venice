@@ -12,21 +12,17 @@ import java.util.concurrent.atomic.LongAdder;
  */
 public class DIVStats {
   private final MetricConfig metricConfig = new MetricConfig();
-  private final WritePathLatencySensor producerSourceBrokerLatencySensor;
-  private final WritePathLatencySensor sourceBrokerLeaderConsumerLatencySensor;
-  private final WritePathLatencySensor producerLocalBrokerLatencySensor;
-  private final WritePathLatencySensor localBrokerFollowerConsumerLatencySensor;
-  private final WritePathLatencySensor leaderProducerCompletionLatencySensor;
+
   private final WritePathLatencySensor leaderDIVCompletionLatencySensor;
+  private final WritePathLatencySensor drainerDIVCompletionLatencySensor;
   private final LongAdder duplicateMsg = new LongAdder();
   private final LongAdder successMsg = new LongAdder();
-
   private long benignLeaderOffsetRewindCount = 0;
   private long potentiallyLossyLeaderOffsetRewindCount = 0;
-  private long leaderProducerFailureCount = 0;
-  private long benignLeaderProducerFailureCount = 0;
   private long missingMsg = 0;
   private long corruptedMsg = 0;
+  private long leaderProducerFailureCount = 0;
+  private long benignLeaderProducerFailureCount = 0;
 
   public DIVStats() {
     /**
@@ -40,19 +36,12 @@ public class DIVStats {
      */
     MetricsRepository localRepository = new MetricsRepository(metricConfig);
 
-    // NR metrics below:
-    producerSourceBrokerLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "producer_to_source_broker_latency");
-    sourceBrokerLeaderConsumerLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "source_broker_to_leader_consumer_latency");
-    producerLocalBrokerLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "producer_to_local_broker_latency");
-    localBrokerFollowerConsumerLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "local_broker_to_follower_consumer_latency");
-    leaderProducerCompletionLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "leader_producer_completion_latency");
+    // this sensor records the div completion time happens in pre-producing stage for leaders.
     leaderDIVCompletionLatencySensor =
         new WritePathLatencySensor(localRepository, metricConfig, "leader_div_completion_latency");
+    // this sensor records the div completion time happens in the drainer threads, aka. internal processing stage.
+    drainerDIVCompletionLatencySensor =
+        new WritePathLatencySensor(localRepository, metricConfig, "drainer_div_completion_latency");
   }
 
   public long getDuplicateMsg() {
@@ -105,52 +94,20 @@ public class DIVStats {
     this.successMsg.add(count);
   }
 
-  public WritePathLatencySensor getProducerSourceBrokerLatencySensor() {
-    return producerSourceBrokerLatencySensor;
-  }
-
-  public void recordProducerSourceBrokerLatencyMs(double value, long currentTimeMs) {
-    producerSourceBrokerLatencySensor.record(value, currentTimeMs);
-  }
-
-  public void recordSourceBrokerLeaderConsumerLatencyMs(double value, long currentTimeMs) {
-    sourceBrokerLeaderConsumerLatencySensor.record(value, currentTimeMs);
-  }
-
-  public WritePathLatencySensor getSourceBrokerLeaderConsumerLatencySensor() {
-    return sourceBrokerLeaderConsumerLatencySensor;
-  }
-
-  public void recordProducerLocalBrokerLatencyMs(double value, long currentTimeMs) {
-    producerLocalBrokerLatencySensor.record(value, currentTimeMs);
-  }
-
-  public WritePathLatencySensor getProducerLocalBrokerLatencySensor() {
-    return producerLocalBrokerLatencySensor;
-  }
-
-  public void recordLocalBrokerFollowerConsumerLatencyMs(double value, long currentTimeMs) {
-    localBrokerFollowerConsumerLatencySensor.record(value, currentTimeMs);
-  }
-
-  public WritePathLatencySensor getLocalBrokerFollowerConsumerLatencySensor() {
-    return localBrokerFollowerConsumerLatencySensor;
-  }
-
-  public void recordLeaderProducerCompletionLatencyMs(double value, long currentTimeMs) {
-    leaderProducerCompletionLatencySensor.record(value, currentTimeMs);
-  }
-
-  public WritePathLatencySensor getLeaderProducerCompletionLatencySensor() {
-    return leaderProducerCompletionLatencySensor;
-  }
-
   public WritePathLatencySensor getLeaderDIVCompletionLatencySensor() {
     return leaderDIVCompletionLatencySensor;
   }
 
   public void recordLeaderDIVCompletionLatencyMs(double value, long currentTimeMs) {
     leaderDIVCompletionLatencySensor.record(value, currentTimeMs);
+  }
+
+  public WritePathLatencySensor getDrainerDIVCompletionLatencySensor() {
+    return drainerDIVCompletionLatencySensor;
+  }
+
+  public void recordDrainerDIVCompletionLatencyMs(double value, long currentTimeMs) {
+    drainerDIVCompletionLatencySensor.record(value, currentTimeMs);
   }
 
   public synchronized void recordBenignLeaderOffsetRewind() {

@@ -132,6 +132,37 @@ public class AggVersionedIngestionStats
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordProducerCallBackLatency(value, currentTimeMs));
   }
 
+  public void recordLeaderLatencies(
+      String storeName,
+      int version,
+      long currentTimeMs,
+      double producerBrokerLatencyMs,
+      double brokerConsumerLatencyMs) {
+    recordVersionedAndTotalStat(storeName, version, stat -> {
+      stat.recordProducerSourceBrokerLatencyMs(producerBrokerLatencyMs, currentTimeMs);
+      stat.recordSourceBrokerLeaderConsumerLatencyMs(brokerConsumerLatencyMs, currentTimeMs);
+    });
+  }
+
+  public void recordFollowerLatencies(
+      String storeName,
+      int version,
+      long currentTimeMs,
+      double producerBrokerLatencyMs,
+      double brokerConsumerLatencyMs) {
+    recordVersionedAndTotalStat(storeName, version, stat -> {
+      stat.recordProducerLocalBrokerLatencyMs(producerBrokerLatencyMs, currentTimeMs);
+      stat.recordLocalBrokerFollowerConsumerLatencyMs(brokerConsumerLatencyMs, currentTimeMs);
+    });
+  }
+
+  public void recordLeaderProducerCompletionTime(String storeName, int version, double value, long currentTimeMs) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stat -> stat.recordLeaderProducerCompletionLatencyMs(value, currentTimeMs));
+  }
+
   public void recordConsumedRecordEndToEndProcessingLatency(
       String storeName,
       int version,

@@ -1908,14 +1908,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // Emit latency metrics separately for leaders and followers
       boolean isLeader = partitionConsumptionState.getLeaderFollowerState().equals(LEADER);
       if (isLeader) {
-        versionedDIVStats.recordLeaderLatencies(
+        versionedIngestionStats.recordLeaderLatencies(
             storeName,
             versionNumber,
             consumerTimestampMs,
             producerBrokerLatencyMs,
             brokerConsumerLatencyMs);
       } else {
-        versionedDIVStats.recordFollowerLatencies(
+        versionedIngestionStats.recordFollowerLatencies(
             storeName,
             versionNumber,
             consumerTimestampMs,
@@ -2255,7 +2255,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         versionedDIVStats.recordLeaderDIVCompletionTime(
             storeName,
             versionNumber,
-            LatencyUtils.getElapsedTimeInMs(beforeProcessingPerRecordTimestampNs),
+            LatencyUtils.getLatencyInMS(beforeProcessingPerRecordTimestampNs),
             beforeProcessingBatchRecordsTimestampMs);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {

@@ -125,7 +125,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       // queuing to drainer.
       // this indicates how much time kafka took to deliver the message to broker.
       if (!ingestionTask.isUserSystemStore()) {
-        ingestionTask.getVersionedDIVStats()
+        ingestionTask.getVersionIngestionStats()
             .recordLeaderProducerCompletionTime(
                 ingestionTask.getStoreName(),
                 ingestionTask.versionNumber,

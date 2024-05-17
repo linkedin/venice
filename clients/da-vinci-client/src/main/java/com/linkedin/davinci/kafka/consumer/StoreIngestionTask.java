@@ -2800,6 +2800,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         if (recordLevelMetricEnabled.get()) {
           versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
+          versionedDIVStats.recordLeaderDIVCompletionTime(
+              storeName,
+              versionNumber,
+              LatencyUtils.getElapsedTimeInMs(currentTimeMs),
+              currentTimeMs);
         }
       } catch (FatalDataValidationException fatalException) {
         if (!endOfPushReceived) {

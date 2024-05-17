@@ -21,19 +21,15 @@ public class DIVStatsReporterTest {
     String storeName = Utils.getUniqueString("store");
     DIVStatsReporter divStatsReporter = new DIVStatsReporter(metricsRepository, storeName);
 
-    assertEquals(
-        reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(),
-        (double) NULL_DIV_STATS.code);
+    assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsGauge").value(), (double) NULL_DIV_STATS.code);
 
     DIVStats stats = new DIVStats();
     stats.recordSuccessMsg();
     divStatsReporter.setStats(stats);
-    assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(), 1d);
+    assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsGauge").value(), 1d);
 
     divStatsReporter.setStats(null);
-    assertEquals(
-        reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(),
-        (double) NULL_DIV_STATS.code);
+    assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsGauge").value(), (double) NULL_DIV_STATS.code);
   }
 
   @Test
@@ -43,8 +39,8 @@ public class DIVStatsReporterTest {
      */
     DIVStatsReporter mockDIVStatsReporter = mock(DIVStatsReporter.class);
     doReturn(mock(DIVStats.class)).when(mockDIVStatsReporter).getStats();
-    DIVStatsReporter.DIVStatsCounter counter =
-        new DIVStatsReporter.DIVStatsCounter("testDIVStatsCounter", mockDIVStatsReporter, () -> 1L);
+    DIVStatsReporter.DIVStatsGauge counter =
+        new DIVStatsReporter.DIVStatsGauge(mockDIVStatsReporter, () -> 1L, "testDIVStatsCounter");
     assertEquals(counter.measure(new MetricConfig(), System.currentTimeMillis()), 1.0);
 
   }
