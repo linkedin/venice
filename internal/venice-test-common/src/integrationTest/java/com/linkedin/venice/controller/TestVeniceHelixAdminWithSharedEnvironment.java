@@ -582,7 +582,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
               null,
               -1,
               multiClusterConfig.getCommonConfig().getReplicationMetadataVersion(),
-              false));
+              false,
+              -1));
     }
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     veniceAdmin
@@ -598,7 +599,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         null,
         -1,
         multiClusterConfig.getCommonConfig().getReplicationMetadataVersion(),
-        false);
+        false,
+        -1);
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     Assert.assertEquals(
         veniceAdmin.getStore(clusterName, storeName).getVersions().size(),

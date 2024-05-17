@@ -214,6 +214,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   Version cloneVersion();
 
+  void setRepushSourceVersion(int version);
+
+  int getRepushSourceVersion();
+
   @JsonIgnore
   int getRmdVersionId();
 

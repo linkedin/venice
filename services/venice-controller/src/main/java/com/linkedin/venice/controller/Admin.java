@@ -193,7 +193,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
-      boolean versionSwapDeferred);
+      boolean versionSwapDeferred,
+      int repushSourceVersion);
 
   default boolean hasWritePermissionToBatchJobHeartbeatStore(
       X509Certificate requesterCert,
@@ -229,7 +230,8 @@ public interface Admin extends AutoCloseable, Closeable {
         -1,
         Optional.empty(),
         false,
-        null);
+        null,
+        -1);
   }
 
   default Version incrementVersionIdempotent(
@@ -246,7 +248,8 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      int repushSourceVersion) {
     return incrementVersionIdempotent(
         clusterName,
         storeName,
@@ -262,7 +265,8 @@ public interface Admin extends AutoCloseable, Closeable {
         rewindTimeInSecondsOverride,
         emergencySourceRegion,
         versionSwapDeferred,
-        null);
+        null,
+        repushSourceVersion);
   }
 
   Version incrementVersionIdempotent(
@@ -280,7 +284,8 @@ public interface Admin extends AutoCloseable, Closeable {
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      String targetedRegions);
+      String targetedRegions,
+      int repushSourceVersion);
 
   String getRealTimeTopic(String clusterName, String storeName);
 

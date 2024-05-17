@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -87,6 +88,8 @@ public class TestAdminSparkWithMocks {
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.STREAM.toString()));
+    params.add(new BasicNameValuePair(ControllerApiConstants.REPUSH_SOURCE_VERSION, "0"));
+
     final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath());
     post.setEntity(new UrlEncodedFormEntity(params));
 
@@ -144,6 +147,8 @@ public class TestAdminSparkWithMocks {
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.STREAM.toString()));
+    params.add(new BasicNameValuePair(ControllerApiConstants.REPUSH_SOURCE_VERSION, "0"));
+
     final HttpPost post =
         new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath() + "?query=foo");
 
@@ -226,6 +231,7 @@ public class TestAdminSparkWithMocks {
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, pushJobId1));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.INCREMENTAL.toString()));
+    params.add(new BasicNameValuePair(ControllerApiConstants.REPUSH_SOURCE_VERSION, "0"));
     if (sourceGridFabricPresent) {
       params.add(new BasicNameValuePair(ControllerApiConstants.SOURCE_GRID_FABRIC, sourceGridFabric));
       optionalSourceGridSourceFabric = Optional.of(sourceGridFabric);
@@ -247,7 +253,8 @@ public class TestAdminSparkWithMocks {
             -1,
             optionalemergencySourceRegion,
             false,
-            null);
+            null,
+            NON_EXISTING_VERSION);
 
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
     // accessible
@@ -339,6 +346,7 @@ public class TestAdminSparkWithMocks {
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.STREAM.toString()));
+    params.add(new BasicNameValuePair(ControllerApiConstants.REPUSH_SOURCE_VERSION, "0"));
     final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath());
     post.setEntity(new UrlEncodedFormEntity(params));
 

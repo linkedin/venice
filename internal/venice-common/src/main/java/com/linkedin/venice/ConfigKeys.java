@@ -276,6 +276,9 @@ public class ConfigKeys {
   public static final String CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS =
       "controller.backup.version.default.retention.ms";
 
+  public static final String CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS =
+      "controller.backup.version.deletion.sleep.ms";
+
   /**
    * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
    */
