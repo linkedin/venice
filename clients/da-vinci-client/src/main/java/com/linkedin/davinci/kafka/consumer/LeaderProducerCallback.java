@@ -86,6 +86,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
             e);
       }
     } else {
+      long currentTimeForMetricsMs = System.currentTimeMillis();
+
       // recordMetadata.partition() represents the partition being written by VeniceWriter
       // partitionConsumptionState.getPartition() is leaderSubPartition
       // when leaderSubPartition != recordMetadata.partition(), local StorageEngine will be written by
@@ -117,7 +119,6 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         }
       }
 
-      long currentTimeForMetricsMs = System.currentTimeMillis();
       // record the timestamp when the writer has finished writing to the version topic
       leaderProducedRecordContext.setProducedTimestampMs(currentTimeForMetricsMs);
 
@@ -212,7 +213,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
               .recordProducerCallBackLatency(
                   ingestionTask.getStoreName(),
                   ingestionTask.versionNumber,
-                  LatencyUtils.getLatencyInMS(produceTimeNs),
+                  LatencyUtils.getElapsedTimeInMs(currentTimeForMetricsMs),
                   currentTimeForMetricsMs);
         }
       } catch (Exception oe) {
