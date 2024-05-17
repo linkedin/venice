@@ -1,14 +1,13 @@
 package com.linkedin.venice.router;
 
 import static com.linkedin.venice.HttpConstants.JSON;
+import static com.linkedin.venice.HttpConstants.TEXT_PLAIN;
 import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_PARTITION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VERSION;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS;
+import static com.linkedin.venice.router.MetaDataHandler.REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE;
@@ -31,6 +30,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaIdResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -225,233 +225,14 @@ public class TestMetaDataHandler {
     return new Object[][] { { "master_controller" }, { "leader_controller" } };
   }
 
-  @DataProvider(name = "blobDiscoveryProvider")
-  public static Object[][] blobDiscoveryDataProvider() {
-    return new Object[][] { { new HashMap<String, String>() {
-      {
-        put(NAME, "");
-        put(STORE_VERSION, "3");
-        put(STORE_PARTITION, "30");
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("isBlobTransferEnabled", true);
-        put("isHybrid", true);
-      }
-    }, new HashMap<CharSequence, Integer>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", true);
-      }
-    }, new HashMap<String, String>() {
-      {
-        put("expectedStatus", HttpResponseStatus.BAD_REQUEST.toString());
-        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "", "3", "30"));
-      }
-    }, Collections.emptyList() }, { new HashMap<String, String>() {
-      {
-        put(NAME, "store1");
-        put(STORE_VERSION, "");
-        put(STORE_PARTITION, "30");
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("isBlobTransferEnabled", true);
-        put("isHybrid", true);
-      }
-    }, new HashMap<CharSequence, Integer>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", true);
-      }
-    }, new HashMap<String, String>() {
-      {
-        put("expectedStatus", HttpResponseStatus.BAD_REQUEST.toString());
-        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "store1", "", "30"));
-      }
-    }, Collections.emptyList() }, { new HashMap<String, String>() {
-      {
-        put(NAME, "store1");
-        put(STORE_VERSION, "3");
-        put(STORE_PARTITION, "");
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("isBlobTransferEnabled", true);
-        put("isHybrid", true);
-      }
-    }, new HashMap<CharSequence, Integer>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", true);
-      }
-    }, new HashMap<String, String>() {
-      {
-        put("expectedStatus", HttpResponseStatus.BAD_REQUEST.toString());
-        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "store1", "3", ""));
-      }
-    }, Collections.emptyList() }, { new HashMap<String, String>() {
-      {
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("isBlobTransferEnabled", true);
-        put("isHybrid", true);
-      }
-    }, new HashMap<CharSequence, Integer>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", true);
-      }
-    }, new HashMap<String, String>() {
-      {
-        put("expectedStatus", HttpResponseStatus.BAD_REQUEST.toString());
-        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, "", "", ""));
-      }
-    }, Collections.emptyList() }, { new HashMap<String, String>() {
-      {
-        put(NAME, "invalid-store");
-        put(STORE_VERSION, "2");
-        put(STORE_PARTITION, "20");
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("isBlobTransferEnabled", true);
-        put("isHybrid", true);
-      }
-    }, new HashMap<CharSequence, Integer>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", true);
-      }
-    }, new HashMap<String, String>() {
-      {
-        put("expectedStatus", io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND.toString());
-        put(
-            "expectedErrorMsg",
-            String.format(REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER, "invalid-store", "test-cluster"));
-      }
-    }, Collections.emptyList() }, { new HashMap<String, String>() {
-      {
-        put(NAME, "store1");
-        put(STORE_VERSION, "2");
-        put(STORE_PARTITION, "20");
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("isBlobTransferEnabled", true);
-        put("isHybrid", true);
-      }
-    }, new HashMap<CharSequence, Integer>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", true);
-      }
-    }, new HashMap<String, String>() {
-      {
-        put("expectedStatus", io.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN.toString());
-        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, "store1"));
-      }
-    }, Collections.emptyList() }, { new HashMap<String, String>() {
-      {
-        put(NAME, "store1");
-        put(STORE_VERSION, "2");
-        put(STORE_PARTITION, "20");
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("isBlobTransferEnabled", false);
-        put("isHybrid", false);
-      }
-    }, new HashMap<CharSequence, Integer>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", true);
-      }
-    }, new HashMap<String, String>() {
-      {
-        put("expectedStatus", io.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN.toString());
-        put("expectedErrorMsg", String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, "store1"));
-      }
-    }, Collections.emptyList() }, { new HashMap<String, String>() {
-      {
-        put(NAME, "store1");
-        put(STORE_VERSION, "2");
-        put(STORE_PARTITION, "20");
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("isBlobTransferEnabled", true);
-        put("isHybrid", false);
-      }
-    }, new HashMap<CharSequence, Integer>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-        put("ltx1-test1.prod.linkedin.com_137", 1);
-        put("ltx1-test2.prod.linkedin.com_137", 1);
-      }
-    }, new HashMap<String, Boolean>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", true);
-        put("ltx1-test1.prod.linkedin.com_137", false);
-        put("ltx1-test2.prod.linkedin.com_137", true);
-      }
-    }, new HashMap<String, String>() {
-      {
-        put("expectedStatus", HttpResponseStatus.OK.toString());
-        put("expectedErrorMsg", "");
-      }
-    }, Arrays.asList("ltx1-test.prod.linkedin.com_137", "ltx1-test2.prod.linkedin.com_137") },
-        { new HashMap<String, String>() {
-          {
-            put(NAME, "store1");
-            put(STORE_VERSION, "2");
-            put(STORE_PARTITION, "20");
-          }
-        }, new HashMap<String, Boolean>() {
-          {
-            put("isBlobTransferEnabled", true);
-            put("isHybrid", false);
-          }
-        }, new HashMap<CharSequence, Integer>() {
-          {
-            put("ltx1-test.prod.linkedin.com_137", 1);
-            put("ltx1-test1.prod.linkedin.com_137", 1);
-            put("ltx1-test2.prod.linkedin.com_137", 1);
-          }
-        }, new HashMap<String, Boolean>() {
-          {
-            put("ltx1-test.prod.linkedin.com_137", false);
-            put("ltx1-test1.prod.linkedin.com_137", false);
-            put("ltx1-test2.prod.linkedin.com_137", false);
-          }
-        }, new HashMap<String, String>() {
-          {
-            put("expectedStatus", HttpResponseStatus.OK.toString());
-            put("expectedErrorMsg", "");
-          }
-        }, Collections.emptyList() } };
+  @DataProvider(name = "blobDiscoveryMissingParamsProvider")
+  public static Object[][] blobDiscoveryMissingParamsProvider() {
+    return new Object[][] { { "", "3", "30" }, { "store1", "", "30" }, { "store1", "3", "" }, { "", "", "" } };
+  }
+
+  @DataProvider(name = "blobDiscoverySettingsProvider")
+  public static Object[][] blobDiscoverySettingsProvider() {
+    return new Object[][] { { true, true }, { false, false }, { true, false }, { false, false } };
   }
 
   @Test(dataProvider = "controllerUrlProvider")
@@ -1652,45 +1433,86 @@ public class TestMetaDataHandler {
             DefaultVenicePartitioner.class.getCanonicalName()));
   }
 
-  @Test(dataProvider = "blobDiscoveryProvider")
-  public void testHandleBlobDiscovery(
-      Map<String, String> queryParams,
-      Map<String, Boolean> storeSettings,
-      Map<CharSequence, Integer> instanceResultsFromPushStatusStore,
-      Map<String, Boolean> instanceHealth,
-      Map<String, String> expectedResponse,
-      List<String> expectedHostNames) throws IOException {
-
-    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+  @Test(dataProvider = "blobDiscoveryMissingParamsProvider")
+  public void testHandleBlobDiscovery_missingParams(String storeName, String storeVersion, String storePartition)
+      throws IOException {
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
 
-    String storeName = queryParams.getOrDefault(NAME, "");
-    String storeVersion = queryParams.getOrDefault(STORE_VERSION, "");
-    String storePartition = queryParams.getOrDefault(STORE_PARTITION, "");
+    String requestUri = String.format(
+        "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
+        TYPE_BLOB_DISCOVERY,
+        storeName,
+        storeVersion,
+        storePartition);
 
-    // to avoid the parseInt exception that would happen on the testcase only
-    int version = storeVersion.isEmpty() ? 0 : Integer.parseInt(storeVersion);
-    int partition = storePartition.isEmpty() ? 0 : Integer.parseInt(storePartition);
+    FullHttpResponse response = passRequestToMetadataHandler(
+        requestUri,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository,
+        pushStatusStoreReader);
 
-    Mockito.doReturn(instanceResultsFromPushStatusStore)
-        .when(pushStatusStoreReader)
-        .getPartitionStatus(storeName, version, partition, null);
+    String expectedErrorMsg =
+        String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, storeName, storeVersion, storePartition);
 
-    instanceHealth.forEach((instance, isLive) -> {
-      Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
-    });
+    Assert.assertEquals(response.content().toString(StandardCharsets.UTF_8), expectedErrorMsg);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), TEXT_PLAIN);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
+  }
+
+  @Test
+  public void testHandleBlobDiscovery_invalidStore() throws IOException {
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
+
+    String storeName = "invalid-store";
+    String storeVersion = "3";
+    String storePartition = "30";
+
+    Mockito.doReturn(null).when(storeRepository).getStore(storeName);
+
+    String requestUri = String.format(
+        "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
+        TYPE_BLOB_DISCOVERY,
+        storeName,
+        storeVersion,
+        storePartition);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        requestUri,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository,
+        pushStatusStoreReader);
+
+    String expectedErrorMsg = String.format(REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER, storeName, "test-cluster");
+
+    Assert.assertEquals(response.content().toString(StandardCharsets.UTF_8), expectedErrorMsg);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), TEXT_PLAIN);
+    Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
+  }
+
+  @Test(dataProvider = "blobDiscoverySettingsProvider")
+  public void testHandleBlobDiscovery_settings(Boolean isBlobTransferEnabled, Boolean isHybrid) throws IOException {
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
+
+    String storeName = "store1";
+    String storeVersion = "3";
+    String storePartition = "30";
 
     Store store = Mockito.mock(Store.class);
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
-
-    if (storeName.equals("invalid-store")) {
-      Mockito.doReturn(null).when(storeRepository).getStore(storeName);
-    }
-
-    boolean isBlobTransferEnabled = storeSettings.get("isBlobTransferEnabled");
-    boolean isHybrid = storeSettings.get("isHybrid");
-
     Mockito.doReturn(isBlobTransferEnabled).when(store).isBlobTransferEnabled();
     Mockito.doReturn(isHybrid).when(store).isHybrid();
 
@@ -1711,24 +1533,212 @@ public class TestMetaDataHandler {
         storeRepository,
         pushStatusStoreReader);
 
-    List<String> hostNames = Collections.emptyList();
+    if (isBlobTransferEnabled && !isHybrid) {
+      Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+      Assert.assertEquals(response.headers().get(CONTENT_TYPE), JSON);
+    } else {
+      String expectedErrorMsg = String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, storeName);
+
+      Assert.assertEquals(response.content().toString(StandardCharsets.UTF_8), expectedErrorMsg);
+      Assert.assertEquals(response.headers().get(CONTENT_TYPE), TEXT_PLAIN);
+      Assert.assertEquals(response.status(), HttpResponseStatus.FORBIDDEN);
+    }
+  }
+
+  @Test
+  public void testHandleBlobDiscovery_pushStatusStoreError() throws IOException {
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
+
+    String storeName = "store";
+    String storeVersion = "3";
+    String storePartition = "30";
+
+    Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    Mockito.doReturn(true).when(store).isBlobTransferEnabled();
+    Mockito.doReturn(false).when(store).isHybrid();
+
+    Mockito.doThrow(new VeniceException("exception"))
+        .when(pushStatusStoreReader)
+        .getPartitionStatus(
+            storeName,
+            Integer.valueOf(storeVersion),
+            Integer.valueOf(storePartition),
+            Optional.empty());
+
+    String requestUri = String.format(
+        "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
+        TYPE_BLOB_DISCOVERY,
+        storeName,
+        storeVersion,
+        storePartition);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        requestUri,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository,
+        pushStatusStoreReader);
+
+    String expectedErrorMsg =
+        String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition);
+    Assert.assertEquals(response.content().toString(StandardCharsets.UTF_8), expectedErrorMsg);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), TEXT_PLAIN);
+    Assert.assertEquals(response.status(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+  }
+
+  @Test
+  public void testHandleBlobDiscovery_liveNodes() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
+
+    String storeName = "store_name";
+    String storeVersion = "1";
+    String storePartition = "30";
+
+    Map<CharSequence, Integer> instanceResultsFromPushStatusStore = new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+        put("ltx1-test1.prod.linkedin.com_137", 1);
+        put("ltx1-test2.prod.linkedin.com_137", 1);
+      }
+    };
+
+    Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+        put("ltx1-test1.prod.linkedin.com_137", false);
+        put("ltx1-test2.prod.linkedin.com_137", true);
+      }
+    };
+
+    List<String> expectedResult = Arrays.asList("ltx1-test.prod.linkedin.com_137", "ltx1-test2.prod.linkedin.com_137");
+
+    Mockito.doReturn(instanceResultsFromPushStatusStore)
+        .when(pushStatusStoreReader)
+        .getPartitionStatus(
+            storeName,
+            Integer.valueOf(storeVersion),
+            Integer.valueOf(storePartition),
+            Optional.empty());
+
+    instanceHealth.forEach((instance, isLive) -> {
+      Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
+    });
+
+    Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    Mockito.doReturn(true).when(store).isBlobTransferEnabled();
+    Mockito.doReturn(false).when(store).isHybrid();
+
+    String requestUri = String.format(
+        "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
+        TYPE_BLOB_DISCOVERY,
+        storeName,
+        storeVersion,
+        storePartition);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        requestUri,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository,
+        pushStatusStoreReader);
+
     String contentType = response.headers().get(CONTENT_TYPE);
 
-    if (contentType.equals(JSON)) {
-      BlobDiscoveryResponse blobDiscoveryResponse =
-          OBJECT_MAPPER.readValue(response.content().array(), BlobDiscoveryResponse.class);
-      hostNames = blobDiscoveryResponse.getLiveNodeHostNames();
-    }
+    BlobDiscoveryResponse blobDiscoveryResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), BlobDiscoveryResponse.class);
+    List<String> hostNames = blobDiscoveryResponse.getLiveNodeHostNames();
 
     Collections.sort(hostNames);
-    Collections.sort(expectedHostNames);
+    Collections.sort(expectedResult);
 
-    Assert.assertEquals(response.status().toString(), expectedResponse.get("expectedStatus"));
-    Assert.assertEquals(hostNames, expectedHostNames);
+    Assert.assertEquals(hostNames, expectedResult);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), JSON);
+  }
 
-    String expectedErrorMsg = expectedResponse.get("expectedErrorMsg");
-    if (!expectedErrorMsg.isEmpty()) {
-      Assert.assertEquals(response.content().toString(StandardCharsets.UTF_8), expectedErrorMsg);
-    }
+  @Test
+  public void testHandleBlobDiscovery_deadNodes() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
+
+    String storeName = "store_name";
+    String storeVersion = "1";
+    String storePartition = "30";
+
+    Map<CharSequence, Integer> instanceResultsFromPushStatusStore = new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+        put("ltx1-test1.prod.linkedin.com_137", 1);
+        put("ltx1-test2.prod.linkedin.com_137", 1);
+      }
+    };
+
+    Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", false);
+        put("ltx1-test1.prod.linkedin.com_137", false);
+        put("ltx1-test2.prod.linkedin.com_137", false);
+      }
+    };
+
+    List<String> expectedResult = Collections.emptyList();
+
+    Mockito.doReturn(instanceResultsFromPushStatusStore)
+        .when(pushStatusStoreReader)
+        .getPartitionStatus(
+            storeName,
+            Integer.valueOf(storeVersion),
+            Integer.valueOf(storePartition),
+            Optional.empty());
+
+    instanceHealth.forEach((instance, isLive) -> {
+      Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
+    });
+
+    Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    Mockito.doReturn(true).when(store).isBlobTransferEnabled();
+    Mockito.doReturn(false).when(store).isHybrid();
+
+    String requestUri = String.format(
+        "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
+        TYPE_BLOB_DISCOVERY,
+        storeName,
+        storeVersion,
+        storePartition);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        requestUri,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository,
+        pushStatusStoreReader);
+
+    BlobDiscoveryResponse blobDiscoveryResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), BlobDiscoveryResponse.class);
+    List<String> hostNames = blobDiscoveryResponse.getLiveNodeHostNames();
+
+    Collections.sort(hostNames);
+    Collections.sort(expectedResult);
+
+    Assert.assertEquals(hostNames, expectedResult);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), JSON);
   }
 }

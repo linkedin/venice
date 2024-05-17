@@ -10,7 +10,10 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_PAR
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VERSION;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
-import static com.linkedin.venice.router.api.RouterResourceType.*;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_ALL_VALUE_SCHEMA_IDS;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_CURRENT_VERSION;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_GET_UPDATE_SCHEMA;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_LATEST_VALUE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
@@ -148,6 +151,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   static final String REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS =
       "Blob Discovery: missing storeName:%s, storeVersion:%s, or storePartition:%s";
 
+  static final String REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE =
+      "Blob Discovery: failed to get the live node hostNames for store:%s version:%s partition:%s";
   private final VeniceVersionFinder veniceVersionFinder;
 
   public MetaDataHandler(
@@ -540,8 +545,11 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     try {
       // gets the instances for a FULL_PUSH for the store's version and partitionId
       // gets the instance's hostnames from its keys & filter to include only live instances
-      Map<CharSequence, Integer> instances = pushStatusStoreReader
-          .getPartitionStatus(storeName, Integer.parseInt(storeVersion), Integer.parseInt(storePartition), null);
+      Map<CharSequence, Integer> instances = pushStatusStoreReader.getPartitionStatus(
+          storeName,
+          Integer.parseInt(storeVersion),
+          Integer.parseInt(storePartition),
+          Optional.empty());
       List<String> liveNodeHostNames = instances.entrySet()
           .stream()
           .map(Map.Entry::getKey)
@@ -550,8 +558,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           .collect(Collectors.toList());
       response.setLiveNodeNames(liveNodeHostNames);
     } catch (VeniceException e) {
-      response.setError(
-          "Blob Discovery: failed to get the live node hostNames for " + storeName + storePartition + storePartition);
+      byte[] errBody =
+          (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();
+      setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+      return;
     }
 
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
