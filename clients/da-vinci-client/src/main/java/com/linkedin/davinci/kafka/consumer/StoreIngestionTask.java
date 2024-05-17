@@ -2800,7 +2800,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         if (recordLevelMetricEnabled.get()) {
           versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
-          versionedDIVStats.recordLeaderDIVCompletionTime(
+          versionedDIVStats.recordDrainerDIVCompletionTime(
               storeName,
               versionNumber,
               LatencyUtils.getElapsedTimeInMs(currentTimeMs),
