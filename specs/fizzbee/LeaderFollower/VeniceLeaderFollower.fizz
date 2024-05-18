@@ -26,15 +26,18 @@ always eventually assertion ReplicasConsistent:
 
     return True
 
+
+# Currently, FizzBee does not support parameters. So, we have to define these as variables with uppercase.
+KEYS = ('key1', 'key2')
+VALUES = ('value1', 'value2')
+LEADER = 'LEADER'
+FOLLOWER = 'FOLLOWER'
+N_NODES = 3
+NODE_IDS = range(N_NODES)
+
+
 # Init is a special action called when the model starts. It is used to initialize the state of the model.
 action Init:
-    # Currently, FizzBee does not support parameters. So, we have to define these as variables with uppercase.
-    KEYS = ('key1', 'key2')
-    VALUES = ('value1', 'value2')
-    LEADER = 'LEADER'
-    FOLLOWER = 'FOLLOWER'
-    N_NODES = 3
-    NODE_IDS = range(N_NODES)
 
     # Initialize the state of each node
     real_time_topic = []
@@ -42,8 +45,12 @@ action Init:
     nodes = [
         {
             'state': 'FOLLOWER',
+            # If true, the node became a leader, but not yet caught up with the version topic.
+            'newly_promoted': False,
+
             'rtOffset': 0,
             'vtOffset': 0,
+
             'persistedRecords': {}
         }
         for i in NODE_IDS
@@ -62,12 +69,14 @@ atomic action PromoteLeader:
     # non-deterministic choices is executed.
     any id in NODE_IDS:
         nodes[id]['state'] = 'LEADER'
+        nodes[id]['newly_promoted'] = True
 
 
 atomic action DemoteLeader:
     any id in NODE_IDS:
         if nodes[id]['state'] == 'LEADER':
             nodes[id]['state'] = 'FOLLOWER'
+            nodes[id]['newly_promoted'] = False
 
 
 atomic action ClientProducesToVenice:
@@ -77,18 +86,27 @@ atomic action ClientProducesToVenice:
 
 # The fair keyword implies this action is weakly fair. That is, the action is always enabled,
 # it will eventually happen.
-atomic fair action LeaderConsume:
+atomic fair action NewLeaderCatchup:
   any id in NODE_IDS:
-    if nodes[id]['state'] == 'LEADER':
-        if nodes[id]['vtOffset'] >= len(version_topic):
-            real_time_consume(id)
-        else:
+    if nodes[id]['state'] == 'LEADER' and nodes[id]['newly_promoted']:
+        if nodes[id]['vtOffset'] < len(version_topic):
             version_topic_consume(id)
+        else:
+            nodes[id]['newly_promoted'] = False
+
+
+# The fair keyword implies this action is weakly fair. That is, the action is always enabled,
+# it will eventually happen.
+atomic fair action EstablishedLeaderConsume:
+  any id in NODE_IDS:
+    if nodes[id]['state'] == 'LEADER' and not nodes[id]['newly_promoted']:
+        real_time_consume(id)
+
 
 
 # The strong modifier to the fair keyword implies this action is strongly fair. That is, the action
 # gets enabled repeatedly (that is it may get disabled in between), it will eventually happen.
-atomic fair<strong> action FollowerConsume:
+atomic fair action FollowerConsume:
     any id in NODE_IDS:
         if nodes[id]['state'] == 'FOLLOWER' and nodes[id]['vtOffset'] < len(version_topic):
             version_topic_consume(id)
@@ -101,25 +119,38 @@ atomic func real_time_consume(nodeId):
     if nodes[nodeId]['rtOffset'] >= len(real_time_topic):
         return
 
+    offset, key, value = -1, '', ''
+
+    atomic:
+        offset = nodes[nodeId]['rtOffset']
+        key, value = real_time_topic[offset][0], real_time_topic[offset][1]
+
+        # Append the consumed event to the version topic
+        if (key, value, offset) not in version_topic:
+            version_topic.append((key, value, offset))
+        else:
+            pass
+
     # Update the node's state and persisted records
-    offset = nodes[nodeId]['rtOffset']
-    key, value = real_time_topic[offset][0], real_time_topic[offset][1]
-
-    nodes[nodeId]['rtOffset'] += 1
     nodes[nodeId]['persistedRecords'][key] = value
+    atomic:
+        nodes[nodeId]['rtOffset'] += 1
+        nodes[nodeId]['vtOffset'] += 1
 
-    # Append the consumed event to the version topic
-    version_topic.append((key, value, offset))
 
-
-atomic func version_topic_consume(nodeId):
+func version_topic_consume(nodeId):
     # A node consuming events from the version topic.
 
-    # Update the node's state and persisted records
-    offset = nodes[nodeId]['vtOffset']
-    key, value = version_topic[offset][0], version_topic[offset][1]
-    nodes[nodeId]['vtOffset'] += 1
-    nodes[nodeId]['persistedRecords'][key] = value
+    atomic:
+        # Update the node's state and persisted records
+        offset = nodes[nodeId]['vtOffset']
+        key, value, rt_offset = version_topic[offset][0], version_topic[offset][1], version_topic[offset][2]
+        nodes[nodeId]['persistedRecords'][key] = value
+
+    atomic:
+        # Update the node's state and persisted records
+        nodes[nodeId]['rtOffset'] += 1
+        nodes[nodeId]['vtOffset'] += 1
 
 
 atomic action LeaderStaysAsLeader:
