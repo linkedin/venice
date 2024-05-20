@@ -134,6 +134,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   protected final boolean readOnly;
   protected final boolean writeOnly;
+  protected final boolean readWriteLeaderForDefaultCF;
+  protected final boolean readWriteLeaderForRMDCF;
+
   private final Optional<Statistics> aggStatistics;
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
@@ -191,6 +194,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     this.readOnly = storagePartitionConfig.isReadOnly();
     this.writeOnly = storagePartitionConfig.isWriteOnlyConfig();
+    this.readWriteLeaderForDefaultCF = storagePartitionConfig.isReadWriteLeaderForDefaultCF();
+    this.readWriteLeaderForRMDCF = storagePartitionConfig.isReadWriteLeaderForRMDCF();
     this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeName, partitionId);
     this.options = options;
     /**
@@ -350,7 +355,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return blobTransferEnabled;
   }
 
-  private Options getStoreOptions(StoragePartitionConfig storagePartitionConfig, boolean isRMD) {
+  protected Options getStoreOptions(StoragePartitionConfig storagePartitionConfig, boolean isRMD) {
     Options options = new Options();
 
     options.setEnv(factory.getEnv());
@@ -411,6 +416,18 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTrigger());
       options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTrigger());
       options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTrigger());
+    }
+    if (rocksDBServerConfig.isLevel0CompactionTuningForReadWriteLeaderEnabled()) {
+      /**
+       * Read-write leader tuning has higher priority than the above strategy.
+       */
+      if (!isRMD && storagePartitionConfig.isReadWriteLeaderForDefaultCF()
+          || isRMD && storagePartitionConfig.isReadWriteLeaderForRMDCF()) {
+        options.setLevel0FileNumCompactionTrigger(
+            rocksDBServerConfig.getLevel0FileNumCompactionTriggerForReadWriteLeader());
+        options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerForReadWriteLeader());
+        options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerForReadWriteLeader());
+      }
     }
 
     // Memtable options
@@ -955,11 +972,27 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   @Override
   public boolean verifyConfig(StoragePartitionConfig partitionConfig) {
-    if (options.tableFormatConfig() instanceof PlainTableConfig) {
-      return readOnly == partitionConfig.isReadOnly() && writeOnly == partitionConfig.isWriteOnlyConfig();
+    if (readOnly != partitionConfig.isReadOnly()) {
+      return false;
     }
-    return deferredWrite == partitionConfig.isDeferredWrite() && readOnly == partitionConfig.isReadOnly()
-        && writeOnly == partitionConfig.isWriteOnlyConfig();
+    if (writeOnly != partitionConfig.isWriteOnlyConfig()) {
+      return false;
+    }
+    if (rocksDBServerConfig.isLevel0CompactionTuningForReadWriteLeaderEnabled()) {
+      if (readWriteLeaderForDefaultCF != partitionConfig.isReadWriteLeaderForDefaultCF()) {
+        return false;
+      }
+      if (readWriteLeaderForRMDCF != partitionConfig.isReadWriteLeaderForRMDCF()) {
+        return false;
+      }
+    }
+
+    if (options.tableFormatConfig() instanceof BlockBasedTableConfig
+        && deferredWrite != partitionConfig.isDeferredWrite()) {
+      return false;
+    }
+
+    return true;
   }
 
   @Override
