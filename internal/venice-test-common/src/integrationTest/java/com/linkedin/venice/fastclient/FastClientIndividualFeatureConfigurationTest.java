@@ -60,8 +60,10 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         StoreMetadataFetchMode.SERVER_BASED_METADATA);
     // Update the read quota to 1000 and make 500 requests, all requests should be allowed.
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils
-          .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(1000)));
+      TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setReadQuotaInCU(1000).setStorageNodeReadQuotaEnabled(true)));
     });
     for (int j = 0; j < 5; j++) {
       for (int i = 0; i < recordCnt; i++) {
