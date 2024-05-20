@@ -199,7 +199,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       LOGGER.warn("Partition {}_{} was removed before adjusting.", storeVersionName, partitionId);
       return;
     }
-    LOGGER.info("Storage partition got triggered by: {} with config: {}", mode, partitionConfig);
+    LOGGER.info("Storage partition adjustment got triggered by: {} with config: {}", mode, partitionConfig);
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     if (partition.verifyConfig(partitionConfig)) {
       LOGGER.info("Store partition adjustment will be skipped as there is no difference");
