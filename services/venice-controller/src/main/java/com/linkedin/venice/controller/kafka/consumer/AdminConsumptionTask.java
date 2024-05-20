@@ -404,7 +404,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
 
         if (remoteConsumptionEnabled && LatencyUtils
-            .getElapsedTimeInMs(lastUpdateTimeForConsumptionOffsetLag) > CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS) {
+            .getElapsedTimeFromMsToMs(lastUpdateTimeForConsumptionOffsetLag) > CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS) {
           recordConsumptionLag();
           lastUpdateTimeForConsumptionOffsetLag = System.currentTimeMillis();
         }

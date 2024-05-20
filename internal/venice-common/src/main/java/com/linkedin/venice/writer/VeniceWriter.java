@@ -1947,7 +1947,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         if (!sendEndOfSegment) {
           long currentSegmentStartTime = segmentsStartTimeArray[partition];
           if (currentSegmentStartTime != -1
-              && LatencyUtils.getElapsedTimeInMs(currentSegmentStartTime) > maxElapsedTimeForSegmentInMs) {
+              && LatencyUtils.getElapsedTimeFromMsToMs(currentSegmentStartTime) > maxElapsedTimeForSegmentInMs) {
             endSegment(partition, false);
             currentSegment = startSegment(partition);
           }

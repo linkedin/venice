@@ -562,7 +562,8 @@ public class PartitionTracker {
        * message is expected.
        */
       long lastRecordTimestamp = segment.getLastRecordTimestamp();
-      if (logCompactionDelayInMs > 0 && LatencyUtils.getElapsedTimeInMs(lastRecordTimestamp) < logCompactionDelayInMs) {
+      if (logCompactionDelayInMs > 0
+          && LatencyUtils.getElapsedTimeFromMsToMs(lastRecordTimestamp) < logCompactionDelayInMs) {
         DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, consumerRecord);
         logger.error(
             "Encountered missing data message within the log compaction time window. Error msg: {}",

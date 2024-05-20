@@ -161,19 +161,18 @@ public class StatsHandler extends ChannelDuplexHandler {
        * registered by the pipeline to be executed in the same thread.
        */
       ctx.fireChannelRead(msg);
-      double firstPartLatency = LatencyUtils.getLatencyInMS(serverStatsContext.getRequestStartTimeInNS());
+      double firstPartLatency = LatencyUtils.getElapsedTimeFromNSToMS(serverStatsContext.getRequestStartTimeInNS());
       serverStatsContext.setFirstPartLatency(firstPartLatency);
     } else {
       // Only works for multi-get request.
       long startTimeOfPart2InNS = System.nanoTime();
       long startTimeInNS = serverStatsContext.getRequestStartTimeInNS();
 
-      serverStatsContext
-          .setPartsInvokeDelayLatency(LatencyUtils.convertLatencyFromNSToMS(startTimeOfPart2InNS - startTimeInNS));
+      serverStatsContext.setPartsInvokeDelayLatency(LatencyUtils.convertNSToMS(startTimeOfPart2InNS - startTimeInNS));
 
       ctx.fireChannelRead(msg);
 
-      serverStatsContext.setSecondPartLatency(LatencyUtils.getLatencyInMS(startTimeOfPart2InNS));
+      serverStatsContext.setSecondPartLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeOfPart2InNS));
       serverStatsContext.incrementRequestPartCount();
     }
   }
@@ -204,7 +203,7 @@ public class StatsHandler extends ChannelDuplexHandler {
             ? null
             : serverStatsContext.getCurrentStats().getStoreStats(serverStatsContext.getStoreName());
         serverStatsContext.recordBasicMetrics(serverHttpRequestStats);
-        double elapsedTime = LatencyUtils.getLatencyInMS(serverStatsContext.getRequestStartTimeInNS());
+        double elapsedTime = LatencyUtils.getElapsedTimeFromNSToMS(serverStatsContext.getRequestStartTimeInNS());
         // if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
         // records a successRequest in stats. Otherwise, records a errorRequest in stats
         // For TOO_MANY_REQUESTS do not record either success or error. Recording as success would give out

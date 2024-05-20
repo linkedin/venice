@@ -55,7 +55,7 @@ class ConsumptionTask implements Runnable {
   /**
    * Maintain rate counter with default window size to calculate the message and bytes rate at topic partition level.
    * Those topic partition level information will not be emitted out as a metric, to avoid emitting too many metrics per
-   * server host, they are for admin tool debugging purpose. 
+   * server host, they are for admin tool debugging purpose.
    */
   private final Map<PubSubTopicPartition, Rate> messageRatePerTopicPartition = new VeniceConcurrentHashMap<>();
   private final Map<PubSubTopicPartition, Rate> bytesRatePerTopicPartition = new VeniceConcurrentHashMap<>();
@@ -182,7 +182,7 @@ class ConsumptionTask implements Runnable {
               consumedDataReceiver.write(topicPartitionMessages);
             }
             aggStats.recordTotalConsumerRecordsProducingToWriterBufferLatency(
-                LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
+                LatencyUtils.getElapsedTimeFromMsToMs(beforeProducingToWriteBufferTimestamp));
             aggStats.recordTotalNonZeroPollResultNum(polledPubSubMessagesCount);
             storePollCounterMap.forEach((storeName, counter) -> {
               aggStats.getStoreStats(storeName).recordPollResultNum(counter.msgCount);

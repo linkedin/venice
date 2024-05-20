@@ -877,7 +877,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         "RocksDB close for store: {}, partition {} took {} ms.",
         storeName,
         partitionId,
-        LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+        LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
   }
 
   /**
@@ -893,7 +893,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           "RocksDB close for store: {}, partition {} took {} ms.",
           storeName,
           partitionId,
-          LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+          LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
 
       if (this.readOnly) {
         this.rocksDB = rocksDBThrottler

@@ -144,7 +144,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     String resourceName = getResourceName(currentVersion);
     long nanoTsBeforeSerialization = System.nanoTime();
     byte[] keyBytes = keySerializer.serialize(key);
-    requestContext.requestSerializationTime = LatencyUtils.getLatencyInMS(nanoTsBeforeSerialization);
+    requestContext.requestSerializationTime = LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSerialization);
     int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
     String b64EncodedKeyBytes = EncodingUtils.base64EncodeToString(keyBytes);
 
@@ -275,7 +275,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             finalRouteRequestFuture.complete(SC_NOT_FOUND);
             if (!receivedSuccessfulResponse.getAndSet(true)) {
               requestContext.requestSubmissionToResponseHandlingTime =
-                  LatencyUtils.getLatencyInMS(nanoTsBeforeSendingRequest);
+                  LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
 
               valueFuture.complete(null);
             }
@@ -284,7 +284,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
               finalRouteRequestFuture.complete(SC_OK);
               if (!receivedSuccessfulResponse.getAndSet(true)) {
                 requestContext.requestSubmissionToResponseHandlingTime =
-                    LatencyUtils.getLatencyInMS(nanoTsBeforeSendingRequest);
+                    LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
                 CompressionStrategy compressionStrategy = response.getCompressionStrategy();
                 long nanoTsBeforeDecompression = System.nanoTime();
                 ByteBuffer data = decompressRecord(
@@ -292,11 +292,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                     ByteBuffer.wrap(response.getBody()),
                     requestContext.currentVersion,
                     metadata.getCompressor(compressionStrategy, requestContext.currentVersion));
-                requestContext.decompressionTime = LatencyUtils.getLatencyInMS(nanoTsBeforeDecompression);
+                requestContext.decompressionTime = LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDecompression);
                 long nanoTsBeforeDeserialization = System.nanoTime();
                 RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
                 V value = tryToDeserialize(deserializer, data, response.getSchemaId(), key);
-                requestContext.responseDeserializationTime = LatencyUtils.getLatencyInMS(nanoTsBeforeDeserialization);
+                requestContext.responseDeserializationTime =
+                    LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDeserialization);
                 requestContext.successRequestKeyCount.incrementAndGet();
                 valueFuture.complete(value);
               }
@@ -337,7 +338,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         if (allFailed) {
           // Only fail the request if all the transport futures are completed exceptionally.
           requestContext.requestSubmissionToResponseHandlingTime =
-              LatencyUtils.getLatencyInMS(nanoTsBeforeSendingRequest);
+              LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
           valueFuture.completeExceptionally(throwable);
         }
         return null;

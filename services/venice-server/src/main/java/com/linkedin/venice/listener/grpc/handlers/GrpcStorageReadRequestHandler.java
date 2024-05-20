@@ -32,7 +32,7 @@ public class GrpcStorageReadRequestHandler extends VeniceServerGrpcHandler {
         throw new VeniceRequestEarlyTerminationException(request.getStoreName());
       }
 
-      submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
+      submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
       switch (request.getRequestType()) {
         case SINGLE_GET:
           response = storage.handleSingleGetRequest((GetRouterRequest) request);

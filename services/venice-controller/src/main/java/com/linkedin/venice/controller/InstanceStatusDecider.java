@@ -81,7 +81,7 @@ public class InstanceStatusDecider {
       synchronized (resourceAssignment) {
         LOGGER.info(
             "Spent {}ms on acquiring ResourceAssignment lock.",
-            LatencyUtils.getElapsedTimeInMs(startTimeForAcquiringLockInMs));
+            LatencyUtils.getElapsedTimeFromMsToMs(startTimeForAcquiringLockInMs));
         // Get resource names from replicas hold by this instance.
         Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
 

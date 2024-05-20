@@ -370,7 +370,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       long deserializeStartTimeInNS = System.nanoTime();
       OUTPUT output =
           delegate.decode(reusedDecoder, input, inputBytesLength, reusedValue, deserializer, response, compressor);
-      response.addReadComputeDeserializationLatency(LatencyUtils.getLatencyInMS(deserializeStartTimeInNS));
+      response.addReadComputeDeserializationLatency(LatencyUtils.getElapsedTimeFromNSToMS(deserializeStartTimeInNS));
       return output;
     }
   }

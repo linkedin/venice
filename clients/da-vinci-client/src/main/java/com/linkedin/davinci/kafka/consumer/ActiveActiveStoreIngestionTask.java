@@ -353,7 +353,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     ValueRecord result = SingleGetChunkingAdapter
         .getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null, rmdManifestContainer);
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
-        LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
+        LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);
     if (result == null) {
       return null;
@@ -456,7 +456,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                            // config to represent the mapping from Kafka server URLs to colo ID.
         );
         getHostLevelIngestionStats()
-            .recordIngestionActiveActivePutLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
+            .recordIngestionActiveActivePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
 
       case DELETE:
@@ -468,7 +468,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             kafkaClusterId,
             kafkaClusterId);
         getHostLevelIngestionStats()
-            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
+            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
 
       case UPDATE:
@@ -483,7 +483,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             kafkaClusterId,
             kafkaClusterId);
         getHostLevelIngestionStats()
-            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
+            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
       default:
         throw new VeniceMessageException(
@@ -533,7 +533,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult.getRmdRecord());
         }
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getLatencyInMS(preprocessingTime));
+          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromNSToMS(preprocessingTime));
           if (exception == null) {
             producePutOrDeleteToKafka(
                 mergeConflictResult,
@@ -661,7 +661,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           compressor.get(),
           valueManifestContainer);
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
-          LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
+          LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
           currentTimeForMetricsMs);
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);

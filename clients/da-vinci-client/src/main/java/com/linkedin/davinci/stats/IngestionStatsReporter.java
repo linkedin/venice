@@ -314,7 +314,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> sensorFunction.apply(getStats()).getAvg(),
+            () -> sensorFunction.apply(getStats()).getMax(),
             sensorBaseName + "_latency_max_ms"));
   }
 

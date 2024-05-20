@@ -81,7 +81,7 @@ public class RouterHeartbeat extends AbstractVeniceService {
              * If elapsed time exceeds timeout threshold already, check whether the response future
              * is complete already; if not, the heartbeat request is timeout already.
              */
-            double elapsedTime = LatencyUtils.getLatencyInMS(heartbeatStartTimeInNS);
+            double elapsedTime = LatencyUtils.getElapsedTimeFromNSToMS(heartbeatStartTimeInNS);
             long timeoutLimit;
             if (elapsedTime >= heartbeatTimeoutMillis) {
               timeoutLimit = 0;

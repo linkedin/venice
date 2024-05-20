@@ -685,7 +685,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           LOGGER.info(
               "Enabling disabled replicas for instances {} took {} ms",
               newInstances.stream().map(Instance::getNodeId).collect(Collectors.joining(",")),
-              LatencyUtils.getElapsedTimeInMs(startTime));
+              LatencyUtils.getElapsedTimeFromMsToMs(startTime));
         }
 
         @Override
@@ -3523,7 +3523,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         PushJobDetails jobDetails = getPushJobDetails(storeVersionKey);
         if (jobDetails != null) {
           /** Use {@link PushJobDetails.reportTimestamp} to approximate time of topic creation.*/
-          if (LatencyUtils.getElapsedTimeInMs(jobDetails.reportTimestamp) > fatalDataValidationFailureRetentionMs) {
+          if (LatencyUtils
+              .getElapsedTimeFromMsToMs(jobDetails.reportTimestamp) > fatalDataValidationFailureRetentionMs) {
             return true;
           }
         }

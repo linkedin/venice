@@ -428,7 +428,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
               ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(response.getBody()));
               stats.ifPresent(
                   (clientStats) -> clientStats
-                      .recordResponseDecompressionTime(LatencyUtils.getLatencyInMS(decompressionStartTime)));
+                      .recordResponseDecompressionTime(LatencyUtils.getElapsedTimeFromNSToMS(decompressionStartTime)));
               RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
               valueFuture.complete(tryToDeserialize(deserializer, data, response.getSchemaId(), key));
               responseCompleteReporter.report();
@@ -579,18 +579,18 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       // N.B.: All stats handling is async
       long preHandlingTimeNS = System.nanoTime();
       stats.ifPresent(
-          clientStats -> clientStats.recordRequestSerializationTime(
-              LatencyUtils.convertLatencyFromNSToMS(preSubmitTimeInNS - preRequestTimeInNS)));
+          clientStats -> clientStats
+              .recordRequestSerializationTime(LatencyUtils.convertNSToMS(preSubmitTimeInNS - preRequestTimeInNS)));
       stats.ifPresent(
           clientStats -> clientStats.recordRequestSubmissionToResponseHandlingTime(
-              LatencyUtils.convertLatencyFromNSToMS(preHandlingTimeNS - preSubmitTimeInNS)));
+              LatencyUtils.convertNSToMS(preHandlingTimeNS - preSubmitTimeInNS)));
 
       return responseHandler.handle(
           clientResponse,
           throwable,
           () -> stats.ifPresent(
               clientStats -> clientStats
-                  .recordResponseDeserializationTime(LatencyUtils.getLatencyInMS(preHandlingTimeNS))));
+                  .recordResponseDeserializationTime(LatencyUtils.getElapsedTimeFromNSToMS(preHandlingTimeNS))));
     };
 
     if (handleResponseOnDeserializationExecutor) {
@@ -700,7 +700,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key)));
     }
     byte[] result = computeRequestClientKeySerializer.serializeObjects(serializedKeyList, serializedComputeRequest);
-    stats.ifPresent(s -> s.recordRequestSerializationTime(LatencyUtils.getLatencyInMS(preRequestSerializationNanos)));
+    stats.ifPresent(
+        s -> s.recordRequestSerializationTime(LatencyUtils.getElapsedTimeFromNSToMS(preRequestSerializationNanos)));
     return result;
   }
 
@@ -840,7 +841,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key)));
     }
     byte[] result = multiGetRequestSerializer.serializeObjects(serializedKeyList);
-    stats.ifPresent(s -> s.recordRequestSerializationTime(LatencyUtils.getLatencyInMS(startTime)));
+    stats.ifPresent(s -> s.recordRequestSerializationTime(LatencyUtils.getElapsedTimeFromNSToMS(startTime)));
     return result;
   }
 

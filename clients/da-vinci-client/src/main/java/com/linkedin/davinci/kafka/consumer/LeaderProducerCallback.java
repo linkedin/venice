@@ -130,7 +130,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
             .recordLeaderProducerCompletionTime(
                 ingestionTask.getStoreName(),
                 ingestionTask.versionNumber,
-                LatencyUtils.getLatencyInMS(produceTimeNs),
+                LatencyUtils.getElapsedTimeFromNSToMS(produceTimeNs),
                 currentTimeForMetricsMs);
         if (ingestionTask.isHybridMode() && sourceConsumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
             && partitionConsumptionState.hasLagCaughtUp()) {
@@ -213,7 +213,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
               .recordProducerCallBackLatency(
                   ingestionTask.getStoreName(),
                   ingestionTask.versionNumber,
-                  LatencyUtils.getElapsedTimeInMs(currentTimeForMetricsMs),
+                  LatencyUtils.getElapsedTimeFromMsToMs(currentTimeForMetricsMs),
                   currentTimeForMetricsMs);
         }
       } catch (Exception oe) {

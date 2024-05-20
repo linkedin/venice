@@ -729,7 +729,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               "Partition: {} of topic: {} has stopped consumption in {} ms.",
               partition,
               topicName,
-              LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+              LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
           return;
         }
         sleep(retryIntervalInMs);
@@ -878,7 +878,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                 "Partition: {} of topic: {} has stopped consumption in {} ms.",
                 partitionId,
                 topicName,
-                LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+                LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
             return;
           }
           sleep((long) sleepSeconds * Time.MS_PER_SECOND);

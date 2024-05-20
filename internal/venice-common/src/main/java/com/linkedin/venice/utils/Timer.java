@@ -23,6 +23,6 @@ class TimerImpl implements Timer {
 
   @Override
   public void close() {
-    timeInMsConsumer.accept(LatencyUtils.getLatencyInMS(startTimeInNs));
+    timeInMsConsumer.accept(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
   }
 }

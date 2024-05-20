@@ -524,7 +524,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             "Partition: {} of topic: {} closed in {} ms.",
             partitionId,
             topicName,
-            LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+            LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
         return true;
       } else {
         // If pending ingestion action stops consumption (unsubscribe), we will not handover ingestion and we should
