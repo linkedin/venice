@@ -178,7 +178,7 @@ public class GrpcTransportClient extends InternalTransportClient {
       boolean isSingleGet) {
     String[] requestParts = requestPath.split("/");
 
-    if (isValidRequest(requestParts, isSingleGet)) {
+    if (!isValidRequest(requestParts, isSingleGet)) {
       LOGGER.error("Failed to process request: {}", requestParts);
       // avoiding CompletableFuture.failedFuture to keep it JDK agnostic
       CompletableFuture<TransportClientResponse> failedFuture = new CompletableFuture<>();
