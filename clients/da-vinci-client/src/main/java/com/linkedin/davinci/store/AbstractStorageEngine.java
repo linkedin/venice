@@ -195,10 +195,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
           "StoragePartitionConfig should contain the right partition id: " + partitionId + ", but got "
               + partitionConfig.getPartitionId());
     }
-    if (!containsPartition(partitionId)) {
-      LOGGER.warn("Partition {}_{} was removed before adjusting.", storeVersionName, partitionId);
-      return;
-    }
     LOGGER.info("Storage partition adjustment got triggered by: {} with config: {}", mode, partitionConfig);
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     if (partition.verifyConfig(partitionConfig)) {
