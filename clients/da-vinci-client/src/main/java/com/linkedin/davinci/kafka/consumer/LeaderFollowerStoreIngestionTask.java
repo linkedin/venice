@@ -473,6 +473,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
               localKafkaServer);
 
+          /**
+           * When switching leader to follower, we may adjust the underlying storage partition to optimize the performance.
+           * Only adjust the storage engine after the batch portion as compaction tuning is meaningless for the batch portion.
+           */
+          if (partitionConsumptionState.isEndOfPushReceived()) {
+            storageEngine.adjustStoragePartition(
+                partition,
+                AbstractStorageEngine.StoragePartitionAdjustmentTrigger.DEMOTE_TO_FOLLOWER,
+                getStoragePartitionConfig(partitionConsumptionState));
+          }
+
           LOGGER.info("{} demoted to standby for partition {}", ingestionTaskName, partition);
         } else {
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
@@ -574,7 +585,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   localKafkaServer);
             } else {
               startConsumingAsLeaderInTransitionFromStandby(partitionConsumptionState);
+              /**
+               * May adjust the underlying storage partition to optimize the ingestion performance.
+               * Only adjust the underlying storage partition after batch portion as the compaction
+               * tuning is not meaningful for batch portion.
+               */
+              if (partitionConsumptionState.isEndOfPushReceived()) {
+                storageEngine.adjustStoragePartition(
+                    partition,
+                    AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PROMOTE_TO_LEADER,
+                    getStoragePartitionConfig(partitionConsumptionState));
+              }
             }
+
             /**
              * The topic switch operation will be recorded but the actual topic switch happens only after the replica
              * is promoted to leader; we should check whether it's ready to serve after switching topic.
@@ -1570,29 +1593,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             e);
       }
 
-      if (lossy) {
-        if (!partitionConsumptionState.isCompletionReported()) {
-          logMsg += Utils.NEW_LINE_CHAR;
-          logMsg += "Failing the job because lossy rewind happens before reporting completed";
-          LOGGER.error(logMsg);
-          ingestionTask.getVersionedDIVStats()
-              .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
-          VeniceException e = new VeniceException(logMsg);
-          ingestionTask.getStatusReportAdapter()
-              .reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
-          throw e;
-        } else {
-          logMsg += Utils.NEW_LINE_CHAR;
-          logMsg += "Don't fail the job after reporting completed";
-          LOGGER.error(logMsg);
-          ingestionTask.getVersionedDIVStats()
-              .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
-        }
-      } else {
+      /**
+       * Handles rewind scenarios as follows:
+       * 1. If the rewind does not result in data loss, there is no need to fail the job.
+       * 2. If the rewind results in data loss and occurs before the END_OF_PUSH is received, the job should be failed.
+       * 3. If the rewind results in data loss but occurs after the END_OF_PUSH is received, the job should not be failed,
+       *    as it is now in streaming ingestion mode and serving online traffic.
+       */
+      if (!lossy) {
         LOGGER.info(logMsg);
         ingestionTask.getVersionedDIVStats()
             .recordBenignLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
+        return;
       }
+
+      if (partitionConsumptionState.isEndOfPushReceived()) {
+        logMsg += Utils.NEW_LINE_CHAR;
+        logMsg += "Don't fail the job after receiving EndOfPush.";
+        LOGGER.error(logMsg);
+        ingestionTask.getVersionedDIVStats()
+            .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
+        return;
+      }
+
+      logMsg += Utils.NEW_LINE_CHAR;
+      logMsg += "Failing the job because lossy rewind happens before receiving EndOfPush.";
+      LOGGER.error(logMsg);
+      ingestionTask.getVersionedDIVStats()
+          .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
+      VeniceException e = new VeniceException(logMsg);
+      ingestionTask.getStatusReportAdapter()
+          .reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
+      throw e;
     }
   }
 

@@ -50,6 +50,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_WRIT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
@@ -305,7 +306,8 @@ public class ControllerClient implements Closeable {
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
         false,
-        null);
+        null,
+        -1);
   }
 
   public VersionCreationResponse requestTopicForWrites(
@@ -336,29 +338,33 @@ public class ControllerClient implements Closeable {
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
         deferVersionSwap,
-        null);
+        null,
+        -1);
   }
 
   /**
    * Request a topic for the VeniceWriter to write into.  A new VPJ push, or a Samza bulk processing job should both use
    * this method.  The push job ID needs to be unique for this push.  Multiple requests with the same pushJobId are
    * idempotent and will return the same topic.
-   * @param storeName Name of the store being written to.
-   * @param storeSize Estimated size of push in bytes, used to determine partitioning
-   * @param pushJobId Unique identifier for this job
-   * @param sendStartOfPush Whether controller should send START_OF_PUSH message to the newly created topic,
-   *                        while adding a new version. This is currently used in Samza batch load, a.k.a. grandfather
-   * @param sorted Whether the push is going to contain sorted data (in each partition) or not
-   * @param wcEnabled Whether write compute is enabled for this push job or not
-   * @param partitioners partitioner class names in a string seperated by comma
-   * @param compressionDictionary Base64 encoded dictionary to be used to perform dictionary compression
-   * @param sourceGridFabric An identifier of the data center which is used in native replication to determine
-   *                       the Kafka URL
-   * @param batchJobHeartbeatEnabled whether batch push job enables the heartbeat
+   *
+   * @param storeName                   Name of the store being written to.
+   * @param storeSize                   Estimated size of push in bytes, used to determine partitioning
+   * @param pushJobId                   Unique identifier for this job
+   * @param sendStartOfPush             Whether controller should send START_OF_PUSH message to the newly created topic,
+   *                                    while adding a new version. This is currently used in Samza batch load, a.k.a.
+   *                                    grandfather
+   * @param sorted                      Whether the push is going to contain sorted data (in each partition) or not
+   * @param wcEnabled                   Whether write compute is enabled for this push job or not
+   * @param partitioners                partitioner class names in a string seperated by comma
+   * @param compressionDictionary       Base64 encoded dictionary to be used to perform dictionary compression
+   * @param sourceGridFabric            An identifier of the data center which is used in native replication to
+   *                                    determine the Kafka URL
+   * @param batchJobHeartbeatEnabled    whether batch push job enables the heartbeat
    * @param rewindTimeInSecondsOverride if a valid value is specified (>=0) for hybrid store, this param will override
-   *                                       the default store-level rewindTimeInSeconds config.
-   * @param deferVersionSwap whether to defer version swap after the push is done
-   * @param targetedRegions the list of regions that is separated by comma for targeted region push.
+   *                                    the default store-level rewindTimeInSeconds config.
+   * @param deferVersionSwap            whether to defer version swap after the push is done
+   * @param targetedRegions             the list of regions that is separated by comma for targeted region push.
+   * @param repushSourceVersion
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(
@@ -375,7 +381,8 @@ public class ControllerClient implements Closeable {
       boolean batchJobHeartbeatEnabled,
       long rewindTimeInSecondsOverride,
       boolean deferVersionSwap,
-      String targetedRegions) {
+      String targetedRegions,
+      int repushSourceVersion) {
     QueryParams params = newParams().add(NAME, storeName)
         // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -389,7 +396,8 @@ public class ControllerClient implements Closeable {
         .add(SOURCE_GRID_FABRIC, sourceGridFabric)
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
-        .add(DEFER_VERSION_SWAP, deferVersionSwap);
+        .add(DEFER_VERSION_SWAP, deferVersionSwap)
+        .add(REPUSH_SOURCE_VERSION, repushSourceVersion);
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);
     }

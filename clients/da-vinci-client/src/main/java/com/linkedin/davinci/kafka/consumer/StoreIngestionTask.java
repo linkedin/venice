@@ -5,6 +5,7 @@ import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
@@ -710,7 +711,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         returnStatus = storageEngine.checkDatabaseIntegrity(
             partitionId,
             offsetRecord.getDatabaseInfo(),
-            getStoragePartitionConfig(partitionId, storeVersionState.sorted, partitionConsumptionState));
+            getStoragePartitionConfig(storeVersionState.sorted, partitionConsumptionState));
         LOGGER.info(
             "checkDatabaseIntegrity {} for {}, partition: {}",
             returnStatus ? "succeeded" : "failed",
@@ -733,8 +734,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void beginBatchWrite(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
-    StoragePartitionConfig storagePartitionConfig =
-        getStoragePartitionConfig(partitionId, sorted, partitionConsumptionState);
+    StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(sorted, partitionConsumptionState);
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
 
     Optional<Supplier<byte[]>> partitionChecksumSupplier = Optional.empty();
@@ -761,11 +761,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private StoragePartitionConfig getStoragePartitionConfig(
-      int partitionId,
+  protected StoragePartitionConfig getStoragePartitionConfig(PartitionConsumptionState partitionConsumptionState) {
+    StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
+    if (storeVersionState == null) {
+      throw new VeniceException("Can't find store version state for store version: " + kafkaVersionTopic);
+    }
+    return getStoragePartitionConfig(storeVersionState.sorted, partitionConsumptionState);
+  }
+
+  protected StoragePartitionConfig getStoragePartitionConfig(
       boolean sorted,
       PartitionConsumptionState partitionConsumptionState) {
-    StoragePartitionConfig storagePartitionConfig = new StoragePartitionConfig(kafkaVersionTopic, partitionId);
+    StoragePartitionConfig storagePartitionConfig =
+        new StoragePartitionConfig(kafkaVersionTopic, partitionConsumptionState.getPartition());
     boolean deferredWrites;
     boolean readOnly = false;
     if (partitionConsumptionState.isEndOfPushReceived()) {
@@ -781,6 +789,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     storagePartitionConfig.setDeferredWrite(deferredWrites);
     storagePartitionConfig.setReadOnly(readOnly);
+
+    if (partitionConsumptionState.isCompletionReported()) {
+      storagePartitionConfig.setWriteOnlyConfig(false);
+    }
+
+    if (partitionConsumptionState.isHybrid()) {
+      if (partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
+        storagePartitionConfig.setReadWriteLeaderForDefaultCF(false);
+        storagePartitionConfig.setReadWriteLeaderForRMDCF(false);
+      } else if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+        if (isActiveActiveReplicationEnabled) {
+          storagePartitionConfig.setReadWriteLeaderForRMDCF(true);
+        }
+        if (isWriteComputationEnabled) {
+          storagePartitionConfig.setReadWriteLeaderForDefaultCF(true);
+        }
+      }
+    }
+
     return storagePartitionConfig;
   }
 
@@ -2586,8 +2613,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Right now, we assume there are no sorted message after EndOfPush control message.
      * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.
      */
-    StoragePartitionConfig storagePartitionConfig =
-        getStoragePartitionConfig(partition, false, partitionConsumptionState);
+    StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(false, partitionConsumptionState);
 
     /**
      * Update the transactional/deferred mode of the partition.
@@ -3638,19 +3664,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           || (partitionConsumptionState.isEndOfPushReceived() && !partitionConsumptionState.isCompletionReported())) {
         if (isReadyToServe(partitionConsumptionState)) {
           int partition = partitionConsumptionState.getPartition();
-          Store store = storeRepository.getStoreOrThrow(storeName);
 
-          AbstractStorageEngine storageEngineReloadedFromRepo =
-              storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
-          if (store.isHybrid()) {
-            if (storageEngineReloadedFromRepo == null) {
-              LOGGER.warn("Storage engine {} was removed before reopening", kafkaVersionTopic);
-            } else {
-              storageEngineReloadedFromRepo.preparePartitionForReading(partition);
-            }
-          }
           if (!partitionConsumptionState.isCompletionReported()) {
+            Store store = storeRepository.getStoreOrThrow(storeName);
             reportCompleted(partitionConsumptionState);
+            AbstractStorageEngine storageEngineReloadedFromRepo =
+                storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+            if (store.isHybrid()) {
+              if (storageEngineReloadedFromRepo == null) {
+                LOGGER.warn("Storage engine {} was removed before reopening", kafkaVersionTopic);
+              } else {
+                /**
+                 * May adjust the underlying storage partition to optimize read perf.
+                 */
+                storageEngineReloadedFromRepo.adjustStoragePartition(
+                    partition,
+                    AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ,
+                    getStoragePartitionConfig(partitionConsumptionState));
+              }
+            }
+
             warmupSchemaCache(store);
           }
           if (suppressLiveUpdates) {

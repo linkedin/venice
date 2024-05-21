@@ -105,7 +105,8 @@ public class UserSystemStoreLifeCycleHelper {
           -1,
           Optional.empty(),
           false,
-          null);
+          null,
+          -1);
     }
     parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
     return version;

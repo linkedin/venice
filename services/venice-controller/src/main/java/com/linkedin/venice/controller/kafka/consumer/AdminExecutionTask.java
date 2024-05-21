@@ -623,6 +623,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     String pushJobId = message.pushJobId.toString();
+    int repushSourceVersion = message.repushSourceVersion;
     int versionNumber = message.versionNum;
     int numberOfPartitions = message.numberOfPartitions;
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
@@ -667,7 +668,8 @@ public class AdminExecutionTask implements Callable<Void> {
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
             replicationMetadataVersionId,
-            message.versionSwapDeferred);
+            message.versionSwapDeferred,
+            repushSourceVersion);
       }
     }
   }

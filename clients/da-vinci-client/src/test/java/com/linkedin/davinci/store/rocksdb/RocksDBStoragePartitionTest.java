@@ -1,20 +1,13 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_IMPLEMENTATION;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_MAX_MEMTABLE_COUNT;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_MEMTABLE_SIZE_IN_BYTES;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertTrue;
+import static org.testng.AssertJUnit.assertFalse;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -175,9 +168,7 @@ public class RocksDBStoragePartitionTest {
               checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
               String.valueOf(currentFileNo++));
         } else {
-          Assert.assertTrue(
-              checkpointingInfo.isEmpty(),
-              "For non-deferred-write database, sync() should return empty map");
+          assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
         }
       }
       if (interrupted) {
@@ -227,7 +218,7 @@ public class RocksDBStoragePartitionTest {
     if (sorted) {
       Assert.assertFalse(storagePartition.validateBatchIngestion());
       storagePartition.endBatchWrite();
-      Assert.assertTrue(storagePartition.validateBatchIngestion());
+      assertTrue(storagePartition.validateBatchIngestion());
     }
 
     // Verify all the key/value pairs
@@ -236,7 +227,7 @@ public class RocksDBStoragePartitionTest {
     }
 
     // Verify current ingestion mode is in deferred-write mode
-    Assert.assertTrue(storagePartition.verifyConfig(partitionConfig));
+    assertTrue(storagePartition.verifyConfig(partitionConfig));
 
     // Re-open it in read/write mode
     storagePartition.close();
@@ -257,7 +248,7 @@ public class RocksDBStoragePartitionTest {
     storagePartition.delete(toBeDeletedKey.getBytes());
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
-    Assert.assertTrue(storagePartition.getPartitionSizeInBytes() > 0);
+    assertTrue(storagePartition.getPartitionSizeInBytes() > 0);
 
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
@@ -316,9 +307,7 @@ public class RocksDBStoragePartitionTest {
               checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
               String.valueOf(currentFileNo++));
         } else {
-          Assert.assertTrue(
-              checkpointingInfo.isEmpty(),
-              "For non-deferred-write database, sync() should return empty map");
+          assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
         }
       }
       if (currentRecordNum == interruptedRecord1 || currentRecordNum == interruptedRecord2) {
@@ -362,7 +351,7 @@ public class RocksDBStoragePartitionTest {
     if (sorted) {
       Assert.assertFalse(storagePartition.validateBatchIngestion());
       storagePartition.endBatchWrite();
-      Assert.assertTrue(storagePartition.validateBatchIngestion());
+      assertTrue(storagePartition.validateBatchIngestion());
     }
 
     // Verify all the key/value pairs
@@ -371,7 +360,7 @@ public class RocksDBStoragePartitionTest {
     }
 
     // Verify current ingestion mode is in deferred-write mode
-    Assert.assertTrue(storagePartition.verifyConfig(partitionConfig));
+    assertTrue(storagePartition.verifyConfig(partitionConfig));
 
     storagePartition.rocksDB.compactRange();
     // Re-open it in read/write mode
@@ -417,7 +406,7 @@ public class RocksDBStoragePartitionTest {
           ByteUtils.copyByteArray(storagePartition.multiGet(keys, byteBufferList).get(0)),
           entry.getValue().getBytes());
       // test it again with the internally enlarged buffer
-      Assert.assertTrue(byteBufferList.get(0).capacity() > 1);
+      assertTrue(byteBufferList.get(0).capacity() > 1);
       Assert.assertEquals(
           ByteUtils.copyByteArray(storagePartition.multiGet(keys, byteBufferList).get(0)),
           entry.getValue().getBytes());
@@ -503,9 +492,7 @@ public class RocksDBStoragePartitionTest {
               checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
               String.valueOf(currentFileNo++));
         } else {
-          Assert.assertTrue(
-              checkpointingInfo.isEmpty(),
-              "For non-deferred-write database, sync() should return empty map");
+          assertTrue(checkpointingInfo.isEmpty(), "For non-deferred-write database, sync() should return empty map");
         }
       }
       if (interrupted) {
@@ -554,7 +541,7 @@ public class RocksDBStoragePartitionTest {
     if (sorted) {
       Assert.assertFalse(storagePartition.validateBatchIngestion());
       storagePartition.endBatchWrite();
-      Assert.assertTrue(storagePartition.validateBatchIngestion());
+      assertTrue(storagePartition.validateBatchIngestion());
     }
 
     // Verify all the key/value pairs
@@ -563,7 +550,7 @@ public class RocksDBStoragePartitionTest {
     }
 
     // Verify current ingestion mode is in deferred-write mode
-    Assert.assertTrue(storagePartition.verifyConfig(partitionConfig));
+    assertTrue(storagePartition.verifyConfig(partitionConfig));
 
     // Re-open it in read/write mode
     storagePartition.close();
@@ -620,7 +607,7 @@ public class RocksDBStoragePartitionTest {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
     }
     VeniceException ex = Assert.expectThrows(VeniceException.class, storagePartition::endBatchWrite);
-    Assert.assertTrue(ex.getMessage().contains("last sstFile checksum didn't match for store"));
+    assertTrue(ex.getMessage().contains("last sstFile checksum didn't match for store"));
 
     storagePartition.drop();
     removeDir(storeDir);
@@ -653,7 +640,7 @@ public class RocksDBStoragePartitionTest {
       storagePartition.get((KEY_PREFIX + "10").getBytes());
       Assert.fail("VeniceException is expected when looking up an already closed DB");
     } catch (VeniceException e) {
-      Assert.assertTrue(e.getMessage().contains("RocksDB has been closed for store"));
+      assertTrue(e.getMessage().contains("RocksDB has been closed for store"));
     }
 
     storagePartition.drop();
@@ -661,7 +648,80 @@ public class RocksDBStoragePartitionTest {
   }
 
   @Test
-  public void testPlainTableCompactionTriggerSetting() {
+  public void testVerifyConfig() {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    Properties properties = new Properties();
+    properties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.toString());
+    properties.put(ROCKSDB_LEVEL0_COMPACTION_TUNING_FOR_READ_WRITE_LEADER_ENABLED, "true");
+
+    VeniceProperties veniceServerProperties =
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
+    RocksDBServerConfig rocksDBServerConfig =
+        new RocksDBServerConfig(AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties));
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setWriteOnlyConfig(true);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig,
+        storeConfig);
+
+    StoragePartitionConfig testConfig = new StoragePartitionConfig(storeName, partitionId);
+    testConfig.setReadWriteLeaderForRMDCF(true);
+    assertFalse(storagePartition.verifyConfig(testConfig));
+
+    testConfig = new StoragePartitionConfig(storeName, partitionId);
+    testConfig.setReadWriteLeaderForDefaultCF(true);
+    assertFalse(storagePartition.verifyConfig(testConfig));
+
+    testConfig = new StoragePartitionConfig(storeName, partitionId);
+    assertTrue(storagePartition.verifyConfig(testConfig));
+    storagePartition.drop();
+
+    // Create a new storage partition with read-write leader tuning disabled.
+    properties = new Properties();
+    properties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.toString());
+    properties.put(ROCKSDB_LEVEL0_COMPACTION_TUNING_FOR_READ_WRITE_LEADER_ENABLED, "false");
+    veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
+    rocksDBServerConfig =
+        new RocksDBServerConfig(AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties));
+    serverConfig = new VeniceServerConfig(veniceServerProperties);
+    factory = new RocksDBStorageEngineFactory(serverConfig);
+    storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
+    storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig,
+        storeConfig);
+
+    testConfig = new StoragePartitionConfig(storeName, partitionId);
+    testConfig.setReadWriteLeaderForRMDCF(true);
+    assertTrue(storagePartition.verifyConfig(testConfig));
+
+    testConfig = new StoragePartitionConfig(storeName, partitionId);
+    testConfig.setReadWriteLeaderForDefaultCF(true);
+    assertTrue(storagePartition.verifyConfig(testConfig));
+
+    testConfig = new StoragePartitionConfig(storeName, partitionId);
+    assertTrue(storagePartition.verifyConfig(testConfig));
+
+    storagePartition.drop();
+    removeDir(storeDir);
+  }
+
+  @Test
+  public void testCompactionTriggerSetting() {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     Properties properties = new Properties();
@@ -673,6 +733,10 @@ public class RocksDBStoragePartitionTest {
     properties.put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 40);
     properties.put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 50);
     properties.put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 60);
+    properties.put(ROCKSDB_LEVEL0_COMPACTION_TUNING_FOR_READ_WRITE_LEADER_ENABLED, "true");
+    properties.put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_FOR_READ_WRITE_LEADER, 1);
+    properties.put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_FOR_READ_WRITE_LEADER, 2);
+    properties.put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_FOR_READ_WRITE_LEADER, 4);
     VeniceProperties veniceServerProperties =
         AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
@@ -717,6 +781,34 @@ public class RocksDBStoragePartitionTest {
     Assert.assertEquals(readWriteOptions.level0SlowdownWritesTrigger(), 20);
     Assert.assertEquals(readWriteOptions.level0StopWritesTrigger(), 30);
 
+    // Check compaction setting with read-write leader
+    StoragePartitionConfig storagePartitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    storagePartitionConfig.setReadWriteLeaderForDefaultCF(true);
+    storagePartitionConfig.setReadWriteLeaderForRMDCF(false);
+    // Verify default CF
+    Options readWriterLeaderForDefaultCF = storagePartition.getStoreOptions(storagePartitionConfig, false);
+    Assert.assertEquals(readWriterLeaderForDefaultCF.level0FileNumCompactionTrigger(), 1);
+    Assert.assertEquals(readWriterLeaderForDefaultCF.level0SlowdownWritesTrigger(), 2);
+    Assert.assertEquals(readWriterLeaderForDefaultCF.level0StopWritesTrigger(), 4);
+    // Verify RMD CF
+    Options readWriterLeaderForRMDCF = storagePartition.getStoreOptions(storagePartitionConfig, true);
+    Assert.assertEquals(readWriterLeaderForRMDCF.level0FileNumCompactionTrigger(), 40);
+    Assert.assertEquals(readWriterLeaderForRMDCF.level0SlowdownWritesTrigger(), 50);
+    Assert.assertEquals(readWriterLeaderForRMDCF.level0StopWritesTrigger(), 60);
+
+    storagePartitionConfig.setReadWriteLeaderForDefaultCF(false);
+    storagePartitionConfig.setReadWriteLeaderForRMDCF(true);
+    // Verify default CF
+    readWriterLeaderForDefaultCF = storagePartition.getStoreOptions(storagePartitionConfig, false);
+    Assert.assertEquals(readWriterLeaderForDefaultCF.level0FileNumCompactionTrigger(), 40);
+    Assert.assertEquals(readWriterLeaderForDefaultCF.level0SlowdownWritesTrigger(), 50);
+    Assert.assertEquals(readWriterLeaderForDefaultCF.level0StopWritesTrigger(), 60);
+    // Verify RMD CF
+    readWriterLeaderForRMDCF = storagePartition.getStoreOptions(storagePartitionConfig, true);
+    Assert.assertEquals(readWriterLeaderForRMDCF.level0FileNumCompactionTrigger(), 1);
+    Assert.assertEquals(readWriterLeaderForRMDCF.level0SlowdownWritesTrigger(), 2);
+    Assert.assertEquals(readWriterLeaderForRMDCF.level0StopWritesTrigger(), 4);
+
     storagePartition.drop();
     removeDir(storeDir);
   }
@@ -742,7 +834,7 @@ public class RocksDBStoragePartitionTest {
       int partitionId = 0;
       StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
 
-      RocksDBMemoryStats mockMemoryStats = Mockito.mock(RocksDBMemoryStats.class);
+      RocksDBMemoryStats mockMemoryStats = mock(RocksDBMemoryStats.class);
       VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
       VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
       RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(

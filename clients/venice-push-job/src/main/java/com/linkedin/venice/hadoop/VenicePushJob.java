@@ -539,6 +539,7 @@ public class VenicePushJob implements AutoCloseable {
               + pushJobSetting.repushInfoResponse.getError());
     }
     int version = pushJobSetting.repushInfoResponse.getRepushInfo().getVersion().getNumber();
+    pushJobSetting.repushSourceVersion = version;
     return Version.composeKafkaTopic(userProvidedStoreName, version);
   }
 
@@ -2206,7 +2207,8 @@ public class VenicePushJob implements AutoCloseable {
             setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
             setting.deferVersionSwap,
-            setting.targetedRegions));
+            setting.targetedRegions,
+            pushJobSetting.repushSourceVersion));
     if (versionCreationResponse.isError()) {
       if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
         LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");

@@ -26,6 +26,7 @@ import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
@@ -205,6 +206,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int errorPartitionAutoResetLimit;
   private final long errorPartitionProcessingCycleDelay;
   private final long backupVersionDefaultRetentionMs;
+  private final long backupVersionCleanupSleepMs;
+
   private final boolean backupVersionRetentionBasedCleanupEnabled;
   private final boolean backupVersionMetadataFetchBasedCleanupEnabled;
 
@@ -480,6 +483,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
     this.errorPartitionProcessingCycleDelay =
         props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
+    this.backupVersionCleanupSleepMs =
+        props.getLong(CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS, TimeUnit.MINUTES.toMillis(5));
     this.backupVersionDefaultRetentionMs =
         props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
     this.backupVersionRetentionBasedCleanupEnabled =
@@ -858,6 +863,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getBackupVersionDefaultRetentionMs() {
     return backupVersionDefaultRetentionMs;
+  }
+
+  public long getBackupVersionCleanupSleepMs() {
+    return backupVersionCleanupSleepMs;
   }
 
   public boolean isBackupVersionRetentionBasedCleanupEnabled() {

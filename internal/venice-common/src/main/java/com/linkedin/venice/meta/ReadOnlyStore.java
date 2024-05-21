@@ -568,6 +568,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public void setRepushSourceVersion(int version) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getRepushSourceVersion() {
+      return this.delegate.getRepushSourceVersion();
+    }
+
+    @Override
     public int getRmdVersionId() {
       return this.delegate.getRmdVersionId();
     }

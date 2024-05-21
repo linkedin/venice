@@ -185,6 +185,15 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION =
       "rocksdb.level0.stops.writes.trigger.write.only.version";
 
+  public static final String ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_FOR_READ_WRITE_LEADER =
+      "rocksdb.level0.file.num.compaction.trigger.for.read.write.leader";
+  public static final String ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_FOR_READ_WRITE_LEADER =
+      "rocksdb.level0.slowdown.writes.trigger.for.read.write.leader";
+  public static final String ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_FOR_READ_WRITE_LEADER =
+      "rocksdb.level0.stops.writes.trigger.for.read.write.leader";
+  public static final String ROCKSDB_LEVEL0_COMPACTION_TUNING_FOR_READ_WRITE_LEADER_ENABLED =
+      "rocksdb.level0.compaction.tuning.for.read.write.leader.enabled";
+
   public static final String ROCKSDB_PUT_REUSE_BYTE_BUFFER = "rocksdb.put.reuse.byte.buffer";
 
   /**
@@ -268,6 +277,12 @@ public class RocksDBServerConfig {
   private final int level0FileNumCompactionTriggerWriteOnlyVersion;
   private final int level0SlowdownWritesTriggerWriteOnlyVersion;
   private final int level0StopWritesTriggerWriteOnlyVersion;
+
+  private final int level0FileNumCompactionTriggerForReadWriteLeader;
+  private final int level0SlowdownWritesTriggerForReadWriteLeader;
+  private final int level0StopWritesTriggerForReadWriteLeader;
+  private final boolean level0CompactionTuningForReadWriteLeaderEnabled;
+
   private final boolean putReuseByteBufferEnabled;
   private final boolean atomicFlushEnabled;
   private final boolean separateRMDCacheEnabled;
@@ -377,6 +392,15 @@ public class RocksDBServerConfig {
     this.level0StopWritesTriggerWriteOnlyVersion =
         props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 160);
 
+    this.level0FileNumCompactionTriggerForReadWriteLeader =
+        props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_FOR_READ_WRITE_LEADER, 10);
+    this.level0SlowdownWritesTriggerForReadWriteLeader =
+        props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_FOR_READ_WRITE_LEADER, 20);
+    this.level0StopWritesTriggerForReadWriteLeader =
+        props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_FOR_READ_WRITE_LEADER, 40);
+    this.level0CompactionTuningForReadWriteLeaderEnabled =
+        props.getBoolean(ROCKSDB_LEVEL0_COMPACTION_TUNING_FOR_READ_WRITE_LEADER_ENABLED, false);
+
     this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
     this.atomicFlushEnabled = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, true);
     this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, false);
@@ -415,6 +439,22 @@ public class RocksDBServerConfig {
 
   public int getLevel0StopWritesTrigger() {
     return level0StopWritesTrigger;
+  }
+
+  public int getLevel0FileNumCompactionTriggerForReadWriteLeader() {
+    return level0FileNumCompactionTriggerForReadWriteLeader;
+  }
+
+  public int getLevel0SlowdownWritesTriggerForReadWriteLeader() {
+    return level0SlowdownWritesTriggerForReadWriteLeader;
+  }
+
+  public int getLevel0StopWritesTriggerForReadWriteLeader() {
+    return level0StopWritesTriggerForReadWriteLeader;
+  }
+
+  public boolean isLevel0CompactionTuningForReadWriteLeaderEnabled() {
+    return level0CompactionTuningForReadWriteLeaderEnabled;
   }
 
   public boolean getRocksDBUseDirectReads() {

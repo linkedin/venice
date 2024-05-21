@@ -10,6 +10,7 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeTyp
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.FOLLOWER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.SortedInput.SORTED;
+import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
@@ -1581,14 +1582,22 @@ public abstract class StoreIngestionTaskTest {
       doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     }, () -> {
-      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
-      // mockAbstractStorageEngine.preparePartitionForReading will hold the lock, do not use
-      // "verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS)).preparePartitionForReading(PARTITION_FOO)";
-      // otherwise, the lock will be hold for time "TEST_TIMEOUT_MS"
+      ArgumentCaptor<StoragePartitionConfig> storagePartitionConfigArgumentCaptor =
+          ArgumentCaptor.forClass(StoragePartitionConfig.class);
       TestUtils.waitForNonDeterministicAssertion(
           10,
           TimeUnit.SECONDS,
-          () -> verify(mockAbstractStorageEngine, atLeastOnce()).preparePartitionForReading(PARTITION_FOO));
+          () -> verify(mockAbstractStorageEngine).adjustStoragePartition(
+              eq(PARTITION_FOO),
+              eq(PREPARE_FOR_READ),
+              storagePartitionConfigArgumentCaptor.capture()));
+      StoragePartitionConfig storagePartitionConfigParam = storagePartitionConfigArgumentCaptor.getValue();
+      assertEquals(storagePartitionConfigParam.getPartitionId(), PARTITION_FOO);
+      assertFalse(storagePartitionConfigParam.isWriteOnlyConfig());
+      assertFalse(storagePartitionConfigParam.isReadOnly());
+      assertFalse(storagePartitionConfigParam.isDeferredWrite());
+      assertFalse(storagePartitionConfigParam.isReadWriteLeaderForDefaultCF());
+      assertFalse(storagePartitionConfigParam.isReadWriteLeaderForRMDCF());
     }, aaConfig);
   }
 
@@ -1607,7 +1616,7 @@ public abstract class StoreIngestionTaskTest {
     new StoragePartitionConfig(topic, PARTITION_FOO);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
+      verify(mockAbstractStorageEngine, never()).adjustStoragePartition(eq(PARTITION_FOO), eq(PREPARE_FOR_READ), any());
     }, aaConfig);
   }
 
@@ -1627,8 +1636,9 @@ public abstract class StoreIngestionTaskTest {
     new StoragePartitionConfig(topic, PARTITION_BAR);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
-      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
+      verify(mockAbstractStorageEngine, never()).adjustStoragePartition(eq(PARTITION_FOO), eq(PREPARE_FOR_READ), any());
+      verify(mockAbstractStorageEngine, never()).adjustStoragePartition(eq(PARTITION_BAR), eq(PREPARE_FOR_READ), any());
+
     }, aaConfig);
   }
 
@@ -4544,7 +4554,7 @@ public abstract class StoreIngestionTaskTest {
         () -> LeaderFollowerStoreIngestionTask
             .checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, 10, 11, mockTask2));
     assertTrue(
-        exception.getMessage().contains("Failing the job because lossy rewind happens before reporting completed"));
+        exception.getMessage().contains("Failing the job because lossy rewind happens before receiving EndOfPush."));
     verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
   }
 

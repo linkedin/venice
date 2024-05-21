@@ -139,6 +139,8 @@ public class ControllerApiConstants {
 
   public static final String DEFER_VERSION_SWAP = "defer_version_swap";
 
+  public static final String REPUSH_SOURCE_VERSION = "repush_source_version";
+
   public static final String REPLICATION_METADATA_VERSION_ID = "replication_metadata_version_id";
 
   public static final String PARTITION_DETAIL_ENABLED = "partition_detail_enabled";
