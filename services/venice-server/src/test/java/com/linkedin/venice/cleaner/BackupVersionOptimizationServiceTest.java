@@ -1,6 +1,7 @@
 package com.linkedin.venice.cleaner;
 
-import static com.linkedin.venice.meta.VersionStatus.*;
+import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
