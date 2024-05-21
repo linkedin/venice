@@ -150,7 +150,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
           String client = Objects.requireNonNull(call.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR)).toString();
 
           if (VeniceSystemStoreUtils.isSystemStore(storeName)
-              || hasAccess(client, "", clientCert, storeName, method, errorHandler)) {
+              || hasAccess(client, call.getAuthority(), clientCert, storeName, method, errorHandler)) {
             LOGGER.info("Requested principal has access to resource. Processing request");
             super.onMessage(message);
           }
