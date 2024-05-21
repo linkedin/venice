@@ -49,8 +49,10 @@ import org.apache.logging.log4j.Logger;
  */
 public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, StoreDataChangedListener {
   private static final Logger logger = LogManager.getLogger(HelixReadOnlySchemaRepository.class);
-
   public static final int VALUE_SCHEMA_STARTING_ID = 1;
+
+  private static final Duration FORCE_REFRESH_SUPERSET_SCHEMA_MAX_DELAY_DEFAULT = Duration.ofMinutes(1);
+  private static Duration FORCE_REFRESH_SUPERSET_SCHEMA_MAX_DELAY = FORCE_REFRESH_SUPERSET_SCHEMA_MAX_DELAY_DEFAULT;
 
   /**
    * Local cache between store name and store schema.
@@ -72,6 +74,20 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
   // Mutex for local cache
   private final ReadWriteLock schemaLock = new ReentrantReadWriteLock();
+
+  /**
+   * Package-private for use in tests. DO NOT CALL IN MAIN CODE!
+   */
+  static void setForceRefreshSupersetSchemaMaxDelay(Duration duration) {
+    FORCE_REFRESH_SUPERSET_SCHEMA_MAX_DELAY = duration;
+  }
+
+  /**
+   * Package-private for use in tests. DO NOT CALL IN MAIN CODE!
+   */
+  static void resetForceRefreshSupersetSchemaMaxDelay() {
+    FORCE_REFRESH_SUPERSET_SCHEMA_MAX_DELAY = FORCE_REFRESH_SUPERSET_SCHEMA_MAX_DELAY_DEFAULT;
+  }
 
   public HelixReadOnlySchemaRepository(
       ReadOnlyStoreRepository storeRepository,
@@ -179,7 +195,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       } finally {
         getSchemaLock().writeLock().unlock();
       }
-    }, 10, Duration.ofSeconds(1), Duration.ofMinutes(1), Duration.ofMinutes(5), retriableExceptions);
+    }, 10, Duration.ofSeconds(1), FORCE_REFRESH_SUPERSET_SCHEMA_MAX_DELAY, Duration.ofMinutes(5), retriableExceptions);
     long timePassed = System.currentTimeMillis() - currentTimestamp;
     logger.info(
         "Obtain superset schema id: {} for store {} with time in milliseconds: {}.",

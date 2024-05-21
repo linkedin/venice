@@ -1284,12 +1284,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    Version version = store.getVersion(versionNumber)
-        .orElseThrow(
-            () -> new VeniceHttpException(
-                HttpStatus.SC_NOT_FOUND,
-                "Version " + versionNumber + " was not found for Store " + storeName
-                    + ".  Cannot end push for version that does not exist"));
+    Version version = store.getVersion(versionNumber);
+    if (version == null) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_NOT_FOUND,
+          "Version " + versionNumber + " was not found for Store " + storeName
+              + ".  Cannot end push for version that does not exist");
+    }
 
     String topicToReceiveEndOfPush = version.getPushType().isStreamReprocessing()
         ? Version.composeStreamReprocessingTopic(storeName, versionNumber)
@@ -2969,15 +2970,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!store.isHybrid() && !store.isWriteComputationEnabled() && !store.isSystemStore()) {
           logAndThrow("Store " + storeName + " is not hybrid, refusing to return a realtime topic");
         }
-        Optional<Version> version = store.getVersion(store.getLargestUsedVersionNumber());
-        int partitionCount = version.isPresent() ? version.get().getPartitionCount() : 0;
+        Version version = store.getVersion(store.getLargestUsedVersionNumber());
+        int partitionCount = version != null ? version.getPartitionCount() : 0;
         // during transition to version based partition count, some old stores may have partition count on the store
         // config only.
         if (partitionCount == 0) {
           // Now store-level partition count is set when a store is converted to hybrid
           partitionCount = store.getPartitionCount();
           if (partitionCount == 0) {
-            if (!version.isPresent()) {
+            if (version == null) {
               throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
             } else {
               throw new VeniceException("Store: " + storeName + " has partition count set to 0");
@@ -3143,8 +3144,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     VeniceControllerConfig systemSchemaClusterConfig = multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
     String systemSchemaClusterD2Service = systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName);
     String systemSchemaClusterD2ZkHost = systemSchemaClusterConfig.getChildControllerD2ZkHost(getRegionName());
+    int currentVersionNumber = store.getCurrentVersion();
+    Version version = store.getVersionOrThrow(currentVersionNumber);
     return RepushInfo.createRepushInfo(
-        store.getVersion(store.getCurrentVersion()).get(),
+        version,
         getKafkaBootstrapServers(isSSL),
         systemSchemaClusterD2Service,
         systemSchemaClusterD2ZkHost);
@@ -3247,8 +3250,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (store == null) {
         throwStoreDoesNotExist(clusterName, storeName);
       }
-      Optional<Version> versionToBeDeleted = store.getVersion(versionNumber);
-      if (!versionToBeDeleted.isPresent()) {
+      Version versionToBeDeleted = store.getVersion(versionNumber);
+      if (versionToBeDeleted == null) {
         LOGGER.info(
             "Version: {} doesn't exist in store: {}, will skip `deleteOneStoreVersion`",
             versionNumber,
@@ -5915,8 +5918,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // terminal.
         return new OfflinePushStatusInfo(executionStatus, statusUpdateTimestamp, details);
       }
-      if (store.getVersion(versionNumber).isPresent()) {
-        Version version = store.getVersion(versionNumber).get();
+      Version version = store.getVersion(versionNumber);
+      if (version != null) {
         ExecutionStatusWithDetails daVinciStatusAndDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(
             getPushStatusStoreReader(),
             version.kafkaTopicName(),
@@ -6462,7 +6465,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private Optional<Version> getStoreVersion(String clusterName, String topic) {
+  private Version getStoreVersion(String clusterName, String topic) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionId = Version.parseVersionFromKafkaTopicName(topic);
     Store store = getStore(clusterName, storeName);
@@ -6501,7 +6504,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * Check whether the specified store is already terminated or not.
          * If yes, the kill job message will be skipped.
          */
-        Optional<Version> version;
+        Version version;
         try {
           version = getStoreVersion(clusterName, kafkaTopic);
         } catch (VeniceNoStoreException e) {
@@ -6511,8 +6514,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               clusterName);
           return;
         }
-        if (version.isPresent()) {
-          VersionStatus status = version.get().getStatus();
+        if (version != null) {
+          VersionStatus status = version.getStatus();
           if (VersionStatus.isBootstrapCompleted(status)) {
             /**
              * This is trying to avoid kill job entry in participant store if the version is already online.
@@ -6548,7 +6551,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // Update version status to KILLED on ZkNode.
           ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
           Store store = repository.getStore(storeName);
-          store.updateVersionStatus(version.get().getNumber(), VersionStatus.KILLED);
+          store.updateVersionStatus(version.getNumber(), VersionStatus.KILLED);
           repository.updateStore(store);
         }
       }
@@ -8191,7 +8194,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Check if the store version is still relevant
             try {
               Store store = repository.getStoreOrThrow(Version.parseStoreFromVersionTopic(storeVersion));
-              if (!store.getVersion(Version.parseVersionFromKafkaTopicName(storeVersion)).isPresent()) {
+              if (store.getVersion(Version.parseVersionFromKafkaTopicName(storeVersion)) == null) {
                 irrelevantStoreVersions.add(storeVersion);
                 delete = true;
               }

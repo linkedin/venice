@@ -25,7 +25,7 @@ public class MetadataRepoBasedTopicExistingCheckerImpl implements TopicExistence
 
       if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
         int version = Version.parseVersionFromKafkaTopicName(topic);
-        if (!store.getVersion(version).isPresent()) {
+        if (store.getVersion(version) == null) {
           isExistingTopic = false;
         }
       } else if (Version.isRealTimeTopic(topic)) {

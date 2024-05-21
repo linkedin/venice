@@ -159,7 +159,8 @@ public class StorageReadRequestHandlerTest {
   @BeforeMethod
   public void setUp() {
     doReturn(store).when(storeRepository).getStoreOrThrow(any());
-    doReturn(Optional.of(version)).when(store).getVersion(anyInt());
+    doReturn(version).when(store).getVersion(anyInt());
+    doReturn(version).when(store).getVersionOrThrow(anyInt());
 
     doReturn("test-store_v1").when(version).kafkaTopicName();
     PartitionerConfig partitionerConfig =
@@ -656,7 +657,7 @@ public class StorageReadRequestHandlerTest {
     doReturn(Version.composeKafkaTopic(storeName, 1)).when(request).getResourceName();
     doReturn(storeName).when(request).getStoreName();
     Store store = mock(Store.class);
-    doReturn(Optional.empty()).when(store).getVersion(anyInt());
+    doReturn(null).when(store).getVersion(anyInt());
     doReturn(store).when(storeRepository).getStore(storeName);
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
@@ -676,7 +677,7 @@ public class StorageReadRequestHandlerTest {
     doReturn(Version.composeKafkaTopic(storeName, 1)).when(request).getResourceName();
     doReturn(storeName).when(request).getStoreName();
     Store store = mock(Store.class);
-    doReturn(Optional.empty()).when(store).getVersion(anyInt());
+    doReturn(null).when(store).getVersion(anyInt());
     doReturn(store).when(storeRepository).getStore(storeName);
     doReturn(1).when(store).getCurrentVersion();
     when(storageEngine.isClosed()).thenReturn(true);

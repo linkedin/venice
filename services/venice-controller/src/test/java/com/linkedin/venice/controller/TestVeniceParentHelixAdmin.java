@@ -845,7 +845,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String pushJobId2 = "test_push_id2";
     store.addVersion(new VersionImpl(storeName, 1, pushJobId));
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(new Pair<>(store, store.getVersion(1).get())).when(internalAdmin)
+    doReturn(new Pair<>(store, store.getVersion(1))).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
@@ -880,7 +880,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Version version = new VersionImpl(storeName, 1, pushJobId);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(Optional.of(version)).when(store).getVersion(1);
+    doReturn(version).when(store).getVersion(1);
     doReturn(new Pair<>(store, version)).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
@@ -1583,7 +1583,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(pubSubTopics).when(topicManager).listTopics();
     Store store = mock(Store.class);
     doReturn(false).when(store).isIncrementalPushEnabled();
-    doReturn(Optional.empty()).when(store).getVersion(anyInt());
+    doReturn(null).when(store).getVersion(anyInt());
     doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
@@ -1592,7 +1592,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(repository).when(resources).getStoreMetadataRepository();
     doReturn(store).when(repository).getStore(anyString());
     Version version = mock(Version.class);
-    doReturn(Optional.of(version)).when(store).getVersion(anyInt());
+    doReturn(version).when(store).getVersion(anyInt());
     doReturn(VersionStatus.CREATED).when(version).getStatus();
     doReturn(Version.PushType.BATCH).when(version).getPushType();
     Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", completeMap);
@@ -2260,7 +2260,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     StoreInfo info = mock(StoreInfo.class);
     doReturn(response).when(client).getStore(anyString());
     doReturn(info).when(response).getStore();
-    doReturn(new Pair<>(store, store.getVersion(1).get())).when(internalAdmin)
+    doReturn(new Pair<>(store, store.getVersion(1))).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
@@ -2441,7 +2441,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
       doReturn(-1).when(store).getRmdVersion();
       doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-      doReturn(Optional.of(version)).when(store).getVersion(1);
+      doReturn(version).when(store).getVersion(1);
       doReturn(new Pair<>(store, version)).when(internalAdmin)
           .waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
       List<PubSubTopic> pubSubTopics =

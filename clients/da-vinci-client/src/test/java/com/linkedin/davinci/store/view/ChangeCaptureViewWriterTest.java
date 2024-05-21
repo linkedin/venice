@@ -32,7 +32,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -160,7 +159,7 @@ public class ChangeCaptureViewWriterTest {
     Store mockStore = Mockito.mock(Store.class);
 
     Version version = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
-    Mockito.when(mockStore.getVersion(1)).thenReturn(Optional.of(version));
+    Mockito.when(mockStore.getVersionOrThrow(1)).thenReturn(version);
     Mockito.when(mockStore.getName()).thenReturn(STORE_NAME);
 
     VeniceProperties props = VeniceProperties.empty();

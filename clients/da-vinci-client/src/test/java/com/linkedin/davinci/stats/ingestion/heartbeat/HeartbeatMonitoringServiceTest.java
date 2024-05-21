@@ -10,7 +10,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
-import java.util.Optional;
 import java.util.Set;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -43,9 +42,9 @@ public class HeartbeatMonitoringServiceTest {
     Mockito.when(mockStore.getName()).thenReturn(TEST_STORE);
     Mockito.when(mockStore.getCurrentVersion()).thenReturn(currentVersion.getNumber());
     Mockito.when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
-    Mockito.when(mockStore.getVersion(1)).thenReturn(Optional.of(backupVersion));
-    Mockito.when(mockStore.getVersion(2)).thenReturn(Optional.of(currentVersion));
-    Mockito.when(mockStore.getVersion(3)).thenReturn(Optional.of(futureVersion));
+    Mockito.when(mockStore.getVersion(1)).thenReturn(backupVersion);
+    Mockito.when(mockStore.getVersion(2)).thenReturn(currentVersion);
+    Mockito.when(mockStore.getVersion(3)).thenReturn(futureVersion);
 
     MetricsRepository mockMetricsRepository = new MetricsRepository();
     ReadOnlyStoreRepository mockReadOnlyRepository = Mockito.mock(ReadOnlyStoreRepository.class);

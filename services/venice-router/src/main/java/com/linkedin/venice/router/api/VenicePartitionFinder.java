@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -88,11 +87,11 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
     if (store == null) {
       throw new VeniceException("Unknown store: " + storeName);
     }
-    Optional<Version> version = store.getVersion(versionNum);
-    if (!version.isPresent()) {
+    Version version = store.getVersion(versionNum);
+    if (version == null) {
       throw new VeniceException("Unknown version: " + versionNum + " in store: " + storeName);
     }
-    PartitionerConfig partitionerConfig = version.get().getPartitionerConfig();
+    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
     Properties params = new Properties();
     params.putAll(partitionerConfig.getPartitionerParams());
     VeniceProperties partitionerProperties = new VeniceProperties(params);

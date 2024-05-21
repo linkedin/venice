@@ -413,11 +413,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           if (null == store) {
             return false;
           }
-          Optional<Version> version = store.getVersion(versionNumber);
-          if (!version.isPresent()) {
+          Version version = store.getVersion(versionNumber);
+          if (version == null) {
             return false;
           }
-          return version.get().isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
+          return version.isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
         },
         metadataRepo);
     /**
@@ -1025,8 +1025,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       try {
         Store store = metadataRepo.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(topic));
         int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
-        if (store == null || !store.getVersion(versionNumber).isPresent()
-            || store.getVersion(versionNumber).get().getStatus() != VersionStatus.ONLINE) {
+        Version version = store.getVersion(versionNumber);
+        if (version == null || version.getStatus() != VersionStatus.ONLINE) {
           result.add(topic);
         }
       } catch (VeniceNoStoreException e) {

@@ -22,7 +22,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -65,7 +64,7 @@ public class LeakedResourceCleanerTest {
         Version version = mock(Version.class);
         doReturn(config.version).when(version).getNumber();
         versions.add(version);
-        doReturn(Optional.of(version)).when(store).getVersion(config.version);
+        doReturn(version).when(store).getVersion(config.version);
       }
       doReturn(config.hasIngestionTask).when(ingestionService).containsRunningConsumption(topic);
       mockedEngines.add(storageEngine);

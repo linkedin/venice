@@ -1,6 +1,12 @@
 package com.linkedin.venice.meta;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
+
 import com.linkedin.venice.exceptions.StoreDisabledException;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -307,17 +313,44 @@ public class TestZKStore {
   public void testAddVersion() {
     String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    assertNull(store.getVersion(2));
+    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(2));
+    assertNull(store.getVersion(5));
+    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(5));
+    assertNull(store.getVersion(6));
+    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(6));
+    assertEquals(store.getVersions().size(), 0);
     store.addVersion(new VersionImpl(storeName, 5));
-    Assert.assertEquals(store.getVersions().size(), 1);
+    assertNull(store.getVersion(2));
+    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(2));
+    assertNotNull(store.getVersion(5));
+    assertEquals(store.getVersionOrThrow(5).getNumber(), 5);
+    assertNull(store.getVersion(6));
+    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(6));
+    assertEquals(store.getVersions().size(), 1);
     // largest used version is 5
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
+    assertEquals(store.peekNextVersion().getNumber(), 6);
     store.addVersion(new VersionImpl(storeName, 2));
-    Assert.assertEquals(store.getVersions().size(), 2);
+    assertNotNull(store.getVersion(2));
+    assertEquals(store.getVersionOrThrow(2).getNumber(), 2);
+    assertNotNull(store.getVersion(5));
+    assertEquals(store.getVersionOrThrow(5).getNumber(), 5);
+    assertNull(store.getVersion(6));
+    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(6));
+    assertEquals(store.getVersions().size(), 2);
     // largest used version is still 5
     Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
     Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId");
-    store.addVersion(version);
     Assert.assertEquals(version.getNumber(), 6);
+    store.addVersion(version);
+    Assert.assertEquals(store.peekNextVersion().getNumber(), 7);
+    assertNotNull(store.getVersion(2));
+    assertEquals(store.getVersionOrThrow(2).getNumber(), 2);
+    assertNotNull(store.getVersion(5));
+    assertEquals(store.getVersionOrThrow(5).getNumber(), 5);
+    assertNotNull(store.getVersion(6));
+    assertEquals(store.getVersionOrThrow(6).getNumber(), 6);
+    assertEquals(store.getVersions().size(), 3);
   }
 
   @Test
@@ -328,13 +361,13 @@ public class TestZKStore {
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.setNativeReplicationEnabled(false);
     store.addVersion(new VersionImpl(storeName, 0, pushJobID));
-    Assert.assertFalse(store.getVersion(0).get().isNativeReplicationEnabled());
+    Assert.assertFalse(store.getVersion(0).isNativeReplicationEnabled());
 
     // Test that tne next new version is true if the cluster is later set to true
     store.setNativeReplicationEnabled(true);
     String anotherPushJonID = Utils.getUniqueString("FOO-ID-AGAIN");
     store.addVersion(new VersionImpl(storeName, 1, anotherPushJonID));
-    Assert.assertTrue(store.getVersion(1).get().isNativeReplicationEnabled());
+    Assert.assertTrue(store.getVersion(1).isNativeReplicationEnabled());
   }
 
   @Test

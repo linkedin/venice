@@ -30,6 +30,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConstantsOverrider;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -88,6 +89,7 @@ public class TopicManagerTest {
 
   @BeforeClass
   public void setUp() {
+    PubSubConstantsOverrider.setPubsubOffsetApiTimeoutDurationDefaultValue(Duration.ofSeconds(1));
     createTopicManager();
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
@@ -125,6 +127,7 @@ public class TopicManagerTest {
 
   @AfterClass
   public void cleanUp() throws IOException {
+    PubSubConstantsOverrider.resetPubsubOffsetApiTimeoutDurationDefaultValue();
     topicManager.close();
   }
 
@@ -182,6 +185,9 @@ public class TopicManagerTest {
     return topicName;
   }
 
+  /**
+   * N.B.: This test takes 1 minute in the absence of {@link PubSubConstantsOverrider}.
+   */
   @Test
   public void testGetProducerTimestampOfLastDataRecord() throws ExecutionException, InterruptedException {
     final PubSubTopic topic = getTopic();
@@ -194,6 +200,9 @@ public class TopicManagerTest {
     Assert.assertEquals(retrievedTimestamp, timestamp);
   }
 
+  /**
+   * N.B.: This test takes 2 minutes in the absence of {@link PubSubConstantsOverrider}.
+   */
   @Test
   public void testGetProducerTimestampOfLastDataRecordWithControlMessage()
       throws ExecutionException, InterruptedException {
@@ -227,6 +236,9 @@ public class TopicManagerTest {
     Assert.assertEquals(retrievedTimestamp, PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION);
   }
 
+  /**
+   * N.B.: This test takes 3 minutes in the absence of {@link PubSubConstantsOverrider}.
+   */
   @Test
   public void testGetProducerTimestampOfLastDataRecordWithOnlyControlMessages()
       throws ExecutionException, InterruptedException {

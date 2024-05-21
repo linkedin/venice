@@ -80,8 +80,7 @@ public class RealTimeTopicSwitcherTest {
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
     Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
-    doReturn(Optional.of(version)).when(mockStore)
-        .getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
+    doReturn(version).when(mockStore).getVersionOrThrow(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
@@ -110,8 +109,7 @@ public class RealTimeTopicSwitcherTest {
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
     Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
     version.setNativeReplicationEnabled(true);
-    doReturn(Optional.of(version)).when(mockStore)
-        .getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
+    doReturn(version).when(mockStore).getVersionOrThrow(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(DataReplicationPolicy.AGGREGATE).when(mockHybridConfig).getDataReplicationPolicy();
@@ -147,10 +145,10 @@ public class RealTimeTopicSwitcherTest {
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
     Store mockStore = mock(Store.class);
     when(mockStore.getName()).thenReturn(storeName);
-    when(mockStore.getVersion(1)).thenReturn(Optional.of(version1));
-    when(mockStore.getVersion(2)).thenReturn(Optional.of(version2));
-    when(mockStore.getVersion(3)).thenReturn(Optional.of(version3));
-    when(mockStore.getVersion(4)).thenReturn(Optional.empty());
+    when(mockStore.getVersion(1)).thenReturn(version1);
+    when(mockStore.getVersion(2)).thenReturn(version2);
+    when(mockStore.getVersion(3)).thenReturn(version3);
+    when(mockStore.getVersion(4)).thenReturn(null);
 
     TopicManager mockTopicManager = mock(TopicManager.class);
     when(mockTopicManager.containsTopic(realTimeTopic)).thenReturn(true);
@@ -202,8 +200,7 @@ public class RealTimeTopicSwitcherTest {
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
     Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
-    doReturn(Optional.of(version)).when(mockStore)
-        .getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
+    doReturn(version).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);

@@ -72,7 +72,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -192,7 +191,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     when(store.getCurrentVersion()).thenReturn(1);
     when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     when(metadataRepository.getStore(anyString())).thenReturn(store);
-    when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
+    when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     when(metadataRepository.getValueSchema(storeName, TEST_SCHEMA_ID))
         .thenReturn(new SchemaEntry(TEST_SCHEMA_ID, valueSchema));
     bootstrappingVeniceChangelogConsumer.setStoreRepository(metadataRepository);

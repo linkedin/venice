@@ -13,7 +13,6 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -130,15 +129,15 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
           // Don't touch current version.
           continue;
         }
-        Optional<Version> versionInfo = store.getVersion(versionNumber);
-        if (!versionInfo.isPresent()) {
+        Version versionInfo = store.getVersion(versionNumber);
+        if (versionInfo == null) {
           LOGGER.warn(
               "Failed to find out the version info for store: {}, version: {} from ReadOnlyStoreRepository",
               storeName,
               versionNumber);
           continue;
         }
-        if (!versionInfo.get().getStatus().equals(ONLINE)) {
+        if (!versionInfo.getStatus().equals(ONLINE)) {
           // Skip the non-online version
           continue;
         }

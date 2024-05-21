@@ -1,13 +1,14 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreDisabledException;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 
 /**
@@ -73,27 +74,6 @@ public abstract class AbstractStore implements Store {
     checkVersionSupplier();
     storeVersionsSupplier.getForUpdate().clear();
     versions.forEach(v -> storeVersionsSupplier.getForUpdate().add(v.dataModel()));
-  }
-
-  @Override
-  public Optional<CompressionStrategy> getVersionCompressionStrategy(int versionNumber) {
-    if (versionNumber == NON_EXISTING_VERSION) {
-      return Optional.empty();
-    }
-
-    return getVersion(versionNumber).map(version -> version.getCompressionStrategy());
-  }
-
-  @Override
-  public void setBufferReplayForHybridForVersion(int versionNum, boolean enabled) {
-    for (int i = storeVersionsSupplier.getForUpdate().size() - 1; i >= 0; i--) {
-      Version version = new VersionImpl(storeVersionsSupplier.getForUpdate().get(i));
-      if (version.getNumber() == versionNum) {
-        version.setBufferReplayEnabledForHybrid(enabled);
-        return;
-      }
-    }
-    throw new VeniceException("Unknown version: " + versionNum + " in store: " + getName());
   }
 
   @Override
@@ -239,25 +219,36 @@ public abstract class AbstractStore implements Store {
   }
 
   @Override
-  public Optional<Version> getVersion(int versionNumber) {
+  @Nullable
+  public Version getVersion(int versionNumber) {
     checkVersionSupplier();
     for (Version version: storeVersionsSupplier.getForRead()) {
       if (version.getNumber() == versionNumber) {
-        return Optional.of(version);
+        return version;
       }
     }
 
-    return Optional.empty();
+    return null;
+  }
+
+  @Override
+  @Nonnull
+  public Version getVersionOrThrow(int versionNumber) throws StoreVersionNotFoundException {
+    Version version = getVersion(versionNumber);
+    if (version == null) {
+      throw new StoreVersionNotFoundException(getName(), versionNumber);
+    }
+    return version;
   }
 
   @Override
   public VersionStatus getVersionStatus(int versionNumber) {
-    Optional<Version> version = getVersion(versionNumber);
-    if (!version.isPresent()) {
+    Version version = getVersion(versionNumber);
+    if (version == null) {
       return VersionStatus.NOT_CREATED;
     }
 
-    return version.get().getStatus();
+    return version.getStatus();
   }
 
   private Version increaseVersion(String pushJobId, boolean createNewVersion) {

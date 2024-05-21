@@ -25,7 +25,6 @@ dependencies {
   implementation libraries.fastUtil
   implementation libraries.helix
   implementation libraries.httpAsyncClient
-  implementation libraries.kafka
   implementation libraries.kafkaClients
   implementation libraries.rocksdbjni
   implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...

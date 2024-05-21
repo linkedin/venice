@@ -18,7 +18,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Optional;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -42,7 +41,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     Version mockVersion = mock(Version.class);
     when(mockVersion.isActiveActiveReplicationEnabled()).thenReturn(false);
     Store mockStore = mock(Store.class);
-    when(mockStore.getVersion(versionNumber)).thenReturn(Optional.of(mockVersion));
+    when(mockStore.getVersion(versionNumber)).thenReturn(mockVersion);
     when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
 
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);

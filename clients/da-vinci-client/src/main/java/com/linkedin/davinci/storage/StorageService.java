@@ -217,7 +217,7 @@ public class StorageService extends AbstractVeniceService {
     try {
       int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
       store = storeRepository.getStoreOrThrow(storeName);
-      doDeleteStorageEngine = !store.getVersion(versionNumber).isPresent() || versionNumber < store.getCurrentVersion();
+      doDeleteStorageEngine = store.getVersion(versionNumber) == null || versionNumber < store.getCurrentVersion();
     } catch (VeniceNoStoreException e) {
       // The store does not exist in Venice anymore, so it will be deleted.
       doDeleteStorageEngine = true;
@@ -598,9 +598,9 @@ public class StorageService extends AbstractVeniceService {
       return false;
     }
     try {
-      Optional<Version> version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNum);
-      if (version.isPresent()) {
-        return version.get().isActiveActiveReplicationEnabled();
+      Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNum);
+      if (version != null) {
+        return version.isActiveActiveReplicationEnabled();
       } else {
         LOGGER.warn("Version {} of store {} does not exist in storeRepository.", versionNum, storeName);
         return false;

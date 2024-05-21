@@ -27,6 +27,8 @@ public class VersionImpl implements Version {
 
   /**
    * Use the constructor that specifies a pushJobId instead
+   *
+   * Currently used in tests only.
    */
   @Deprecated
   public VersionImpl(String storeName, int number) {

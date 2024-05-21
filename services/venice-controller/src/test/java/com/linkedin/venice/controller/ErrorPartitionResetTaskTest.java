@@ -71,7 +71,7 @@ public class ErrorPartitionResetTaskTest {
     String clusterName = Utils.getUniqueString("testCluster");
     // Setup a store where two of its partitions has exactly one error replica.
     Store store = getStoreWithCurrentVersion();
-    String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
+    String resourceName = store.getVersion(store.getCurrentVersion()).kafkaTopicName();
     EnumMap<HelixState, List<Instance>> errorStateInstanceMap = new EnumMap<>(HelixState.class);
     EnumMap<HelixState, List<Instance>> healthyStateInstanceMap = new EnumMap<>(HelixState.class);
     errorStateInstanceMap.put(HelixState.ERROR, Arrays.asList(instances[0]));
@@ -152,7 +152,7 @@ public class ErrorPartitionResetTaskTest {
     String clusterName = Utils.getUniqueString("testCluster");
     // Setup a store where one of its partitions has excess error replicas.
     Store store = getStoreWithCurrentVersion();
-    String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
+    String resourceName = store.getVersion(store.getCurrentVersion()).kafkaTopicName();
 
     EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
     helixStateToInstancesMap.put(HelixState.ERROR, Arrays.asList(instances[0], instances[1]));

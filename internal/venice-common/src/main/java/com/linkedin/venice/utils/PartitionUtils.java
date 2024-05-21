@@ -14,7 +14,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.Collection;
-import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -222,9 +221,9 @@ public class PartitionUtils {
       return amplificationFactor;
     }
     try {
-      Optional<Version> version = readOnlyStoreRepository.getStore(storeName).getVersion(versionNumber);
-      if (version.isPresent()) {
-        amplificationFactor = version.get().getPartitionerConfig().getAmplificationFactor();
+      Version version = readOnlyStoreRepository.getStore(storeName).getVersion(versionNumber);
+      if (version != null) {
+        amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
       } else {
         LOGGER.warn("Version {} does not exist.", versionNumber);
         amplificationFactor =

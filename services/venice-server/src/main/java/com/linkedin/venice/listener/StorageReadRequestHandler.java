@@ -415,8 +415,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     boolean misrouted = false;
     Store store = metadataRepository.getStore(request.getStoreName());
     if (store != null) {
-      Optional<Version> version = store.getVersion(Version.parseVersionFromVersionTopicName(request.getResourceName()));
-      if (!version.isPresent()) {
+      Version version = store.getVersion(Version.parseVersionFromVersionTopicName(request.getResourceName()));
+      if (version == null) {
         misrouted = true;
       }
     }
@@ -476,19 +476,15 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     try {
       int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersion);
       Store store = metadataRepository.getStoreOrThrow(storeName);
-      Optional<Version> version = store.getVersion(versionNumber);
-      if (version.isPresent()) {
-        partitionerConfig = version.get().getPartitionerConfig();
-        if (partitionerConfig == null) {
-          /**
-           * If we did find the version in the metadata, and its partitioner config is null (common case) then we want
-           * to distinguish this by caching the default partitioner, otherwise we will end up re-executing this
-           * closure repeatedly and needlessly.
-           */
-          partitionerConfig = new PartitionerConfigImpl();
-        }
-      } else {
-        throw new VeniceException("Can not acquire partitionerConfig (version " + versionNumber + " not found).");
+      Version version = store.getVersionOrThrow(versionNumber);
+      partitionerConfig = version.getPartitionerConfig();
+      if (partitionerConfig == null) {
+        /**
+         * If we did find the version in the metadata, and its partitioner config is null (common case) then we want
+         * to distinguish this by caching the default partitioner, otherwise we will end up re-executing this
+         * closure repeatedly and needlessly.
+         */
+        partitionerConfig = new PartitionerConfigImpl();
       }
     } catch (VeniceException e) {
       throw e;

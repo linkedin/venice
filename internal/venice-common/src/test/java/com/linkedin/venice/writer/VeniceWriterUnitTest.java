@@ -114,7 +114,6 @@ public class VeniceWriterUnitTest {
   public void testDeleteDeprecatedChunk() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -126,6 +125,7 @@ public class VeniceWriterUnitTest {
         .setTime(SystemTime.INSTANCE)
         .setChunkingEnabled(true)
         .setRmdChunkingEnabled(true)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
@@ -166,7 +166,6 @@ public class VeniceWriterUnitTest {
   public void testReplicationMetadataChunking() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -178,6 +177,7 @@ public class VeniceWriterUnitTest {
         .setTime(SystemTime.INSTANCE)
         .setChunkingEnabled(true)
         .setRmdChunkingEnabled(true)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
@@ -341,7 +341,6 @@ public class VeniceWriterUnitTest {
   public void testReplicationMetadataWrittenCorrectly() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     String stringSchema = "\"string\"";
@@ -352,6 +351,7 @@ public class VeniceWriterUnitTest {
         .setWriteComputeSerializer(serializer)
         .setPartitioner(new DefaultVenicePartitioner())
         .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
@@ -437,7 +437,6 @@ public class VeniceWriterUnitTest {
   public void testCloseSegmentBasedOnElapsedTime() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 0);
@@ -449,6 +448,7 @@ public class VeniceWriterUnitTest {
         .setWriteComputeSerializer(serializer)
         .setPartitioner(new DefaultVenicePartitioner())
         .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
@@ -478,8 +478,6 @@ public class VeniceWriterUnitTest {
   public void testSendHeartbeat(boolean addLeaderCompleteHeader, LeaderCompleteState leaderCompleteState) {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     String stringSchema = "\"string\"";
@@ -490,6 +488,7 @@ public class VeniceWriterUnitTest {
         .setWriteComputeSerializer(serializer)
         .setPartitioner(new DefaultVenicePartitioner())
         .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);

@@ -6,7 +6,6 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 
@@ -44,9 +43,9 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
     Store store = getStore(storeName);
     for (;;) {
       if (store != null) {
-        Optional<Version> version = store.getVersion(versionNumber);
-        if (version.isPresent()) {
-          return new Pair<>(store, version.get());
+        Version version = store.getVersion(versionNumber);
+        if (version != null) {
+          return new Pair<>(store, version);
         }
       }
       if (expirationTime < System.currentTimeMillis() || !Utils.sleep(delayMs)) {

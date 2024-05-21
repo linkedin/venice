@@ -55,7 +55,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -135,7 +134,7 @@ public class VeniceChangelogConsumerImplTest {
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
-    Mockito.when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
+    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     Mockito.when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
 
     veniceChangelogConsumer.setStoreRepository(mockRepository);
@@ -213,7 +212,7 @@ public class VeniceChangelogConsumerImplTest {
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
-    Mockito.when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
+    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
 
@@ -265,7 +264,7 @@ public class VeniceChangelogConsumerImplTest {
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
     Mockito.when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
-    Mockito.when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
+    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     verify(mockPubSubConsumer).subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), OffsetRecord.LOWEST_OFFSET);

@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
@@ -110,11 +111,15 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
   }
 
   private void resetApplicableErrorPartitions(Store store) {
-    int currentVersion = store.getCurrentVersion();
-    if (currentVersion == Store.NON_EXISTING_VERSION || !store.getVersion(currentVersion).isPresent()) {
+    int currentVersionNumber = store.getCurrentVersion();
+    if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
       return;
     }
-    String resourceName = store.getVersion(currentVersion).get().kafkaTopicName();
+    Version currentVersion = store.getVersion(currentVersionNumber);
+    if (currentVersion == null) {
+      return;
+    }
+    String resourceName = currentVersion.kafkaTopicName();
     irrelevantResources.remove(resourceName);
     try {
       PartitionAssignment partitionAssignment = routingDataRepository.getPartitionAssignments(resourceName);
