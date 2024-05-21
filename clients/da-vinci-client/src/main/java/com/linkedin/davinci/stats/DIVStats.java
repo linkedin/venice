@@ -13,8 +13,8 @@ import java.util.concurrent.atomic.LongAdder;
 public class DIVStats {
   private final MetricConfig metricConfig = new MetricConfig();
 
-  private final WritePathLatencySensor leaderDIVCompletionLatencySensor;
-  private final WritePathLatencySensor drainerDIVCompletionLatencySensor;
+  private final WritePathLatencySensor leaderProcessToDIVLatencySensor;
+  private final WritePathLatencySensor drainerProcessToDIVLatencySensor;
   private final LongAdder duplicateMsg = new LongAdder();
   private final LongAdder successMsg = new LongAdder();
   private long benignLeaderOffsetRewindCount = 0;
@@ -36,12 +36,14 @@ public class DIVStats {
      */
     MetricsRepository localRepository = new MetricsRepository(metricConfig);
 
-    // this sensor records the div completion time happens in pre-producing stage for leaders.
-    leaderDIVCompletionLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "leader_div_completion_latency");
-    // this sensor records the div completion time happens in the drainer threads, aka. internal processing stage.
-    drainerDIVCompletionLatencySensor =
-        new WritePathLatencySensor(localRepository, metricConfig, "drainer_div_completion_latency");
+    // this sensor measure the latency from the start of processing a record until the DIV validation completes in
+    // pre-producing stage, that's on consumer thread
+    leaderProcessToDIVLatencySensor =
+        new WritePathLatencySensor(localRepository, metricConfig, "leader_process_to_div_latency");
+    // this sensor measure the latency from the start of processing a record until the DIV validation completes in
+    // internal processing stage, that's on drainer thread
+    drainerProcessToDIVLatencySensor =
+        new WritePathLatencySensor(localRepository, metricConfig, "drainer_process_to_div_latency");
   }
 
   public long getDuplicateMsg() {
@@ -94,20 +96,20 @@ public class DIVStats {
     this.successMsg.add(count);
   }
 
-  public WritePathLatencySensor getLeaderDIVCompletionLatencySensor() {
-    return leaderDIVCompletionLatencySensor;
+  public WritePathLatencySensor getLeaderProcessToDIVLatencySensor() {
+    return leaderProcessToDIVLatencySensor;
   }
 
-  public void recordLeaderDIVCompletionLatencyMs(double value, long currentTimeMs) {
-    leaderDIVCompletionLatencySensor.record(value, currentTimeMs);
+  public void recordLeaderProcessToDIVLatencyMs(double value, long currentTimeMs) {
+    leaderProcessToDIVLatencySensor.record(value, currentTimeMs);
   }
 
-  public WritePathLatencySensor getDrainerDIVCompletionLatencySensor() {
-    return drainerDIVCompletionLatencySensor;
+  public WritePathLatencySensor getDrainerProcessToDIVLatencySensor() {
+    return drainerProcessToDIVLatencySensor;
   }
 
-  public void recordDrainerDIVCompletionLatencyMs(double value, long currentTimeMs) {
-    drainerDIVCompletionLatencySensor.record(value, currentTimeMs);
+  public void recordDrainerProcessToDIVLatencyMs(double value, long currentTimeMs) {
+    drainerProcessToDIVLatencySensor.record(value, currentTimeMs);
   }
 
   public synchronized void recordBenignLeaderOffsetRewind() {

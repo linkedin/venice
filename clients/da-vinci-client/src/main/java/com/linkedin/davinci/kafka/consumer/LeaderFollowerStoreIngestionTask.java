@@ -2285,7 +2285,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerRecord,
             isEndOfPushReceived,
             partitionConsumptionState);
-        versionedDIVStats.recordLeaderDIVCompletionTime(
+        versionedDIVStats.recordLeaderProcessToDIV(
             storeName,
             versionNumber,
             LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingPerRecordTimestampNs),

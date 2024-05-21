@@ -45,8 +45,8 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
 
     // This prevents user store system store to register latency related DIV metric sensors.
     if (!VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
-      registerLatencySensor("leader_div_completion", DIVStats::getLeaderDIVCompletionLatencySensor);
-      registerLatencySensor("drainer_div_completion", DIVStats::getDrainerDIVCompletionLatencySensor);
+      registerLatencySensor("leader_process_to_div", DIVStats::getLeaderProcessToDIVLatencySensor);
+      registerLatencySensor("drainer_process_to_div", DIVStats::getDrainerProcessToDIVLatencySensor);
     }
   }
 
