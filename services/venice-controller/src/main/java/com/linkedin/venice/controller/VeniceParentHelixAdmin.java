@@ -1157,7 +1157,8 @@ public class VeniceParentHelixAdmin implements Admin {
       final String latestTopicName = latestTopic.get().getName();
       int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
       Store store = getStore(clusterName, storeName);
-      if (store.getVersion(versionNumber).map(Version::isVersionSwapDeferred).orElse(false)) {
+      Version version = store.getVersion(versionNumber);
+      if (version != null && version.isVersionSwapDeferred()) {
         LOGGER.error(
             "There is already future version {} exists for store {}, please wait till the future version is made current.",
             versionNumber,
@@ -3545,7 +3546,8 @@ public class VeniceParentHelixAdmin implements Admin {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
-        boolean isDeferredSwap = parentStore.getVersion(versionNum).map(Version::isVersionSwapDeferred).orElse(false);
+        Version version = parentStore.getVersion(versionNum);
+        boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
         if (!isDeferredSwap) {
           // targetedRegions is non-empty for target region push of batch store
           boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
