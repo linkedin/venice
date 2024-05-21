@@ -60,7 +60,7 @@ public class TestDictionaryRetrievalService {
     doReturn("test_store_v1").when(version).kafkaTopicName();
     versions.add(version);
     doReturn(versions).when(store).getVersions();
-    doReturn(Optional.ofNullable(version)).when(store).getVersion(anyInt());
+    doReturn(version).when(store).getVersion(anyInt());
     stores.add(store);
     doReturn(stores).when(metadataRepository).getAllStores();
     doReturn(store).when(metadataRepository).getStore(any());

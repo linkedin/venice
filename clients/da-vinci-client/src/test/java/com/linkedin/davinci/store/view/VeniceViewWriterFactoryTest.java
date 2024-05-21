@@ -17,7 +17,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -50,7 +49,7 @@ public class VeniceViewWriterFactoryTest {
     Store mockStore = Mockito.mock(Store.class);
     Version version = new VersionImpl(TEST_STORE, 1, "fooid");
     version.setViewConfigs(viewConfigMap);
-    Mockito.when(mockStore.getVersion(1)).thenReturn(Optional.of(version));
+    Mockito.when(mockStore.getVersionOrThrow(1)).thenReturn(version);
     Mockito.when(mockStore.getName()).thenReturn(TEST_STORE);
 
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(mockVeniceConfigLoader);

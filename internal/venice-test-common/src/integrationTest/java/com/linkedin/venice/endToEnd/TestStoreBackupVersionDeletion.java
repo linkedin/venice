@@ -83,7 +83,7 @@ public class TestStoreBackupVersionDeletion {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void tesRepushBackupVersionDeletion() throws IOException {
+  public void testRepushBackupVersionDeletion() throws IOException {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
     // Setup job properties
@@ -119,7 +119,7 @@ public class TestStoreBackupVersionDeletion {
       // repush pushed 2 as source version, so version 2 should be deleted
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
         Store store = veniceHelixAdmin.getStore(CLUSTER_NAMES[0], storeName);
-        return !store.getVersion(2).isPresent() && store.getVersions().size() == 2;
+        return store.getVersion(2) == null && store.getVersions().size() == 2;
       });
     }
   }

@@ -729,7 +729,7 @@ public class TestUtils {
 
     doReturn(-1).when(mockStore).getCurrentVersion();
 
-    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
+    doReturn(version).when(mockStore).getVersion(anyInt());
 
     return new StoreIngestionTaskFactory.Builder().setVeniceWriterFactory(mock(VeniceWriterFactory.class))
         .setStorageEngineRepository(mockStorageEngineRepository)

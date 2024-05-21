@@ -157,7 +157,8 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     if (backupVersionRetentionMs < 0) {
       backupVersionRetentionMs = defaultBackupVersionRetentionMs;
     }
-    if (store.getVersion(currentVersion).get().getRepushSourceVersion() > NON_EXISTING_VERSION) {
+    Version version = store.getVersion(currentVersion);
+    if (version != null && version.getRepushSourceVersion() > NON_EXISTING_VERSION) {
       backupVersionRetentionMs = waitTimeDeleteRepushSourceVersion;
     } else if (backupVersionRetentionMs < MINIMAL_BACKUP_VERSION_CLEANUP_DELAY) {
       backupVersionRetentionMs = MINIMAL_BACKUP_VERSION_CLEANUP_DELAY;
@@ -267,7 +268,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     // If the current version is from repush, do not delete the version before previous current version,
     // instead delete the repush source version from which it was repushed as they hold identical data.
     // During later iteration of this thread, it will delete the older backup after threshold retention time.
-    int repushSourceVersion = store.getVersion(currentVersion).get().getRepushSourceVersion();
+    int repushSourceVersion = store.getVersionOrThrow(currentVersion).getRepushSourceVersion();
     List<Version> readyToBeRemovedVersions = versions.stream()
         .filter(
             v -> repushSourceVersion > NON_EXISTING_VERSION

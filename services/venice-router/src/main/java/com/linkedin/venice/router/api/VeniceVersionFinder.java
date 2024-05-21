@@ -206,11 +206,11 @@ public class VeniceVersionFinder {
   }
 
   private boolean isDecompressorReady(Store store, int versionNumber) {
-    String kafkaTopic = Version.composeKafkaTopic(store.getName(), versionNumber);
-    return store.getVersion(versionNumber)
-        .map(
-            version -> version.getCompressionStrategy() != CompressionStrategy.ZSTD_WITH_DICT
-                || compressorFactory.versionSpecificCompressorExists(kafkaTopic))
-        .orElse(false);
+    Version version = store.getVersion(versionNumber);
+    if (version == null) {
+      return false;
+    }
+    return version.getCompressionStrategy() != CompressionStrategy.ZSTD_WITH_DICT
+        || compressorFactory.versionSpecificCompressorExists(Version.composeKafkaTopic(store.getName(), versionNumber));
   }
 }

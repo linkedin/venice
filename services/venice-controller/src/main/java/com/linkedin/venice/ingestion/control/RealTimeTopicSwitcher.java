@@ -148,10 +148,10 @@ public class RealTimeTopicSwitcher {
      */
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(srcTopicName)) {
       int partitionCount;
-      Optional<Version> version =
+      Version version =
           store.getVersion(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()));
-      if (version.isPresent()) {
-        partitionCount = version.get().getPartitionCount();
+      if (version != null) {
+        partitionCount = version.getPartitionCount();
       } else {
         partitionCount = store.getPartitionCount();
       }
@@ -211,14 +211,8 @@ public class RealTimeTopicSwitcher {
       return;
     }
 
-    Version previousStoreVersion = store.getVersion(previousVersion)
-        .orElseThrow(
-            () -> new VeniceException(
-                "Corresponding version " + previousVersion + " does not exist for store: " + store.getName()));
-    Version nextStoreVersion = store.getVersion(nextVersion)
-        .orElseThrow(
-            () -> new VeniceException(
-                "Corresponding version " + nextVersion + " does not exist for store: " + store.getName()));
+    Version previousStoreVersion = store.getVersionOrThrow(previousVersion);
+    Version nextStoreVersion = store.getVersionOrThrow(nextVersion);
 
     // Only transmit version swap message to RT's if there is a view config (temporary check)
     if (!hasViewConfigs(nextStoreVersion, previousStoreVersion)) {
@@ -270,11 +264,8 @@ public class RealTimeTopicSwitcher {
       throw new IllegalArgumentException("The realTimeTopicName param is invalid: " + realTimeTopic);
     }
 
-    Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()))
-        .orElseThrow(
-            () -> new VeniceException(
-                "Corresponding version does not exist for topic: " + topicWhereToSendTheTopicSwitch + " in store: "
-                    + store.getName()));
+    Version version =
+        store.getVersionOrThrow(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()));
 
     Optional<HybridStoreConfig> hybridStoreConfig;
     if (version.isUseVersionLevelHybridConfig()) {

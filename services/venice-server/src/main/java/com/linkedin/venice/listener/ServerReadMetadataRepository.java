@@ -79,12 +79,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
             "No valid store version available to read for store: " + storeName
                 + ". Please push data to the store before consuming");
       }
-      Optional<Version> currentVersionOptional = store.getVersion(currentVersionNumber);
-      if (!currentVersionOptional.isPresent()) {
-        throw new VeniceException(
-            String.format("Current version: %d not found in store: %s", currentVersionNumber, storeName));
-      }
-      Version currentVersion = currentVersionOptional.get();
+      Version currentVersion = store.getVersionOrThrow(currentVersionNumber);
       Map<CharSequence, CharSequence> partitionerParams =
           new HashMap<>(currentVersion.getPartitionerConfig().getPartitionerParams());
       VersionProperties versionProperties = new VersionProperties(

@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.manager;
 
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE;
+import static com.linkedin.venice.pubsub.PubSubConstants.getPubsubOffsetApiTimeoutDurationDefaultValue;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CONSUMER_ACQUISITION_WAIT_TIME;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CONTAINS_TOPIC;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_OFFSET_FOR_TIME;
@@ -284,7 +284,7 @@ class TopicMetadataFetcher implements Closeable {
 
       startTime = System.nanoTime();
       Map<PubSubTopicPartition, Long> offsetsMap =
-          pubSubConsumerAdapter.endOffsets(topicPartitions, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+          pubSubConsumerAdapter.endOffsets(topicPartitions, getPubsubOffsetApiTimeoutDurationDefaultValue());
       stats.recordLatency(GET_TOPIC_LATEST_OFFSETS, startTime);
       Int2LongMap result = new Int2LongOpenHashMap(offsetsMap.size());
       for (Map.Entry<PubSubTopicPartition, Long> entry: offsetsMap.entrySet()) {
@@ -330,7 +330,7 @@ class TopicMetadataFetcher implements Closeable {
     try {
       long startTime = System.nanoTime();
       Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumerAdapter
-          .endOffsets(Collections.singleton(pubSubTopicPartition), PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+          .endOffsets(Collections.singleton(pubSubTopicPartition), getPubsubOffsetApiTimeoutDurationDefaultValue());
       stats.recordLatency(GET_PARTITION_LATEST_OFFSETS, startTime);
       Long offset = offsetMap.get(pubSubTopicPartition);
       if (offset == null) {
@@ -403,7 +403,7 @@ class TopicMetadataFetcher implements Closeable {
     try {
       long startTime = System.nanoTime();
       Long result = pubSubConsumerAdapter
-          .offsetForTime(pubSubTopicPartition, timestamp, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+          .offsetForTime(pubSubTopicPartition, timestamp, getPubsubOffsetApiTimeoutDurationDefaultValue());
       stats.recordLatency(GET_OFFSET_FOR_TIME, startTime);
       if (result != null) {
         return result;
@@ -547,9 +547,8 @@ class TopicMetadataFetcher implements Closeable {
     boolean subscribed = false;
     try {
       // find the end offset
-      Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumerAdapter.endOffsets(
-          Collections.singletonList(pubSubTopicPartition),
-          PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+      Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumerAdapter
+          .endOffsets(Collections.singletonList(pubSubTopicPartition), getPubsubOffsetApiTimeoutDurationDefaultValue());
       if (offsetMap == null || offsetMap.isEmpty()) {
         throw new VeniceException("Failed to get the end offset for topic-partition: " + pubSubTopicPartition);
       }
@@ -560,7 +559,7 @@ class TopicMetadataFetcher implements Closeable {
 
       // find the beginning offset
       long earliestOffset =
-          pubSubConsumerAdapter.beginningOffset(pubSubTopicPartition, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+          pubSubConsumerAdapter.beginningOffset(pubSubTopicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
       if (earliestOffset == latestOffset) {
         return Collections.emptyList(); // no records in this topic partition
       }
@@ -585,7 +584,7 @@ class TopicMetadataFetcher implements Closeable {
         while (pollAttempt <= PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT
             && (consumedBatch == null || consumedBatch.isEmpty())) {
           consumedBatch =
-              pubSubConsumerAdapter.poll(Math.max(10, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE.toMillis()))
+              pubSubConsumerAdapter.poll(Math.max(10, getPubsubOffsetApiTimeoutDurationDefaultValue().toMillis()))
                   .get(pubSubTopicPartition);
           pollAttempt++;
         }

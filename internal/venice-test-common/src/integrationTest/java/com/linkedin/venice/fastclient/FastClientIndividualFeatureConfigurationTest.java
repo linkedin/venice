@@ -42,11 +42,27 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class FastClientIndividualFeatureConfigurationTest extends AbstractClientEndToEndSetup {
   private static final Logger LOGGER = LogManager.getLogger();
+
+  /*
+   * @{link AbstractClientEndToEndSetup} enables the read quota for stores as part of prepareData and stores are
+   * typically reused at a class level for tests. However, some tests require flows to disable read quota, and
+   * it is important to reset so that these tests don't step on other tests. For now, we choose to add a before
+   * method to class that validates disabled read quota behavior to reset the state to ensure other tests run
+   * successfully.
+   */
+  @BeforeMethod
+  public void enableStoreReadQuota() {
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils.assertCommand(
+          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
+    });
+  }
 
   @Test(timeOut = TIME_OUT)
   public void testServerReadQuota() throws Exception {
@@ -60,8 +76,10 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         StoreMetadataFetchMode.SERVER_BASED_METADATA);
     // Update the read quota to 1000 and make 500 requests, all requests should be allowed.
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils
-          .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(1000)));
+      TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setReadQuotaInCU(1000).setStorageNodeReadQuotaEnabled(true)));
     });
     for (int j = 0; j < 5; j++) {
       for (int i = 0; i < recordCnt; i++) {

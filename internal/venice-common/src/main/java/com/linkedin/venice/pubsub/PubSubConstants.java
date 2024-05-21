@@ -66,7 +66,27 @@ public class PubSubConstants {
    */
   public static final int PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE = 2 * Time.MS_PER_SECOND;
 
-  public static final Duration PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE = Duration.ofMinutes(1);
+  private static final Duration PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE_DEFAULT = Duration.ofMinutes(1);
+  private static Duration PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE =
+      PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE_DEFAULT;
+
+  public static Duration getPubsubOffsetApiTimeoutDurationDefaultValue() {
+    return PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE;
+  }
+
+  /**
+   * Package-private for use in tests. DO NOT CALL IN MAIN CODE!
+   */
+  static void setPubsubOffsetApiTimeoutDurationDefaultValue(Duration duration) {
+    PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE = duration;
+  }
+
+  /**
+   * Package-private for use in tests. DO NOT CALL IN MAIN CODE!
+   */
+  static void resetPubsubOffsetApiTimeoutDurationDefaultValue() {
+    PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE = PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE_DEFAULT;
+  }
 
   public static final long PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION = -1;
 

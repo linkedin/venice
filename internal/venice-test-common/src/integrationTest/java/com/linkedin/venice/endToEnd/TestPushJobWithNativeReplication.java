@@ -412,9 +412,9 @@ public class TestPushJobWithNativeReplication {
 
           // Verify version level hybrid config is set correctly. The current version should be 1.
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
-          Optional<Version> version =
+          Version version =
               childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-          HybridStoreConfig hybridConfig = version.get().getHybridStoreConfig();
+          HybridStoreConfig hybridConfig = version.getHybridStoreConfig();
           Assert.assertNotNull(hybridConfig);
           Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), TEST_TIMEOUT);
           Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 2);

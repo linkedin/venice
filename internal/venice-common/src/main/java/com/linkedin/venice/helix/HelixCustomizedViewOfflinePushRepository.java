@@ -44,6 +44,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository {
   private static final Logger LOGGER = LogManager.getLogger(HelixCustomizedViewOfflinePushRepository.class);
+  private static final int STORE_VERSION_PARTITION_COUNT_NOT_FOUND = -1;
   private final ReentrantReadWriteLock resourceAssignmentRWLock = new ReentrantReadWriteLock();
 
   private final Map<String, Integer> resourceToPartitionCountMap = new VeniceConcurrentHashMap<>();
@@ -128,22 +129,9 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
       Set<String> instancesSeenInCustomizedViewButMissingFromLiveInstances = new HashSet<>();
       for (CustomizedView customizedView: customizedViewCollection) {
         String resourceName = customizedView.getResourceName();
-        int partitionCount = resourceToPartitionCountMap.getOrDefault(resourceName, -1);
-        if (partitionCount == -1) {
-          String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-          int version = Version.parseVersionFromVersionTopicName(resourceName);
-          Store store = storeRepository.getStore(storeName);
-          if (store == null) {
-            LOGGER.warn("Cannot find store for resource: {}.", resourceName);
-            continue;
-          }
-
-          if (!store.getVersion(version).isPresent()) {
-            LOGGER.warn("Version not found in store for resource: {}.", resourceName);
-            continue;
-          }
-          partitionCount = store.getVersion(version).get().getPartitionCount();
-          resourceToPartitionCountMap.put(resourceName, partitionCount);
+        int partitionCount = getPartitionCount(resourceName);
+        if (partitionCount == STORE_VERSION_PARTITION_COUNT_NOT_FOUND) {
+          continue;
         }
         PartitionAssignment partitionAssignment = new PartitionAssignment(resourceName, partitionCount);
         for (String partitionName: customizedView.getPartitionSet()) {
@@ -244,8 +232,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
       }
 
       String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
-      int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
-      resourceToPartitionCountMap.put(newResourceName, partitionCount);
+      updateResourceToPartitionCountMap(store, newResourceName, currentVersion);
     }
 
     @Override
@@ -258,23 +245,68 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
       IntSet versionsSet = new IntLinkedOpenHashSet(store.getVersions().size());
       store.getVersions().forEach(version -> versionsSet.add(version.getNumber()));
 
-      resourceToPartitionCountMap.entrySet().removeIf(entry -> {
-        String storeName = Version.parseStoreFromKafkaTopicName(entry.getKey());
-        return store.getName().equals(storeName)
-            && !versionsSet.contains(Version.parseVersionFromVersionTopicName(entry.getKey()));
-      });
+      purgeResourceToPartitionCountMap(
+          store.getName(),
+          resourceName -> !versionsSet.contains(Version.parseVersionFromVersionTopicName(resourceName)));
 
       String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
-      int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
-      resourceToPartitionCountMap.put(newResourceName, partitionCount);
+      updateResourceToPartitionCountMap(store, newResourceName, currentVersion);
     }
 
     @Override
     public void handleStoreDeleted(String storeName) {
-      resourceToPartitionCountMap.entrySet().removeIf(entry -> {
-        String name = Version.parseStoreFromKafkaTopicName(entry.getKey());
-        return storeName.equals(name);
-      });
+      purgeResourceToPartitionCountMap(storeName, versionNumberIsIgnored -> true);
     }
+  }
+
+  /**
+   * This should be the only function which reads the {@link #resourceToPartitionCountMap}.
+   *
+   * @param resourceName for which to get the partition count.
+   * @return the partition count, or {@link #STORE_VERSION_PARTITION_COUNT_NOT_FOUND}
+   */
+  private int getPartitionCount(String resourceName) {
+    int partitionCount =
+        this.resourceToPartitionCountMap.getOrDefault(resourceName, STORE_VERSION_PARTITION_COUNT_NOT_FOUND);
+    if (partitionCount == STORE_VERSION_PARTITION_COUNT_NOT_FOUND) {
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int version = Version.parseVersionFromVersionTopicName(resourceName);
+      Store store = this.storeRepository.getStore(storeName);
+      partitionCount = updateResourceToPartitionCountMap(store, resourceName, version);
+    }
+    return partitionCount;
+  }
+
+  /**
+   * This should be the only function which puts a new entry into the {@link #resourceToPartitionCountMap}.
+   */
+  private int updateResourceToPartitionCountMap(Store store, String resourceName, int versionNumber) {
+    int partitionCount = STORE_VERSION_PARTITION_COUNT_NOT_FOUND;
+    if (store == null) {
+      LOGGER.warn("Cannot find store for resource: {}.", resourceName);
+    } else {
+      Version storeVersion = store.getVersion(versionNumber);
+      if (storeVersion == null) {
+        LOGGER.warn("Version not found in store for resource: {}.", resourceName);
+      } else {
+        partitionCount = storeVersion.getPartitionCount();
+        this.resourceToPartitionCountMap.put(resourceName, partitionCount);
+      }
+    }
+    return partitionCount;
+  }
+
+  private interface ResourceDeleter {
+    boolean shouldDelete(String resourceName);
+  }
+
+  /**
+   * This should be the only function which deletes entries from the {@link #resourceToPartitionCountMap}.
+   */
+  private void purgeResourceToPartitionCountMap(String storeName, ResourceDeleter resourceDeleter) {
+    resourceToPartitionCountMap.entrySet()
+        .removeIf(
+            entry -> storeName.equals(Version.parseStoreFromKafkaTopicName(entry.getKey()))
+                && resourceDeleter.shouldDelete(entry.getKey()));
   }
 }

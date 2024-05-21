@@ -191,7 +191,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         new Instance("b", disabledHostName, 3), new Instance("d", "d", 4), new Instance("e", "e", 5) };
     // Setup a store where two of its partitions has exactly one error replica.
     Store store = getStoreWithCurrentVersion();
-    String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
+    String resourceName = store.getVersion(store.getCurrentVersion()).kafkaTopicName();
     EnumMap<HelixState, List<Instance>> errorStateInstanceMap = new EnumMap<>(HelixState.class);
     EnumMap<HelixState, List<Instance>> healthyStateInstanceMap = new EnumMap<>(HelixState.class);
     errorStateInstanceMap.put(HelixState.ERROR, Collections.singletonList(instances[0]));

@@ -913,7 +913,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(aaConfig == AA_ON).when(mockStore).isActiveActiveReplicationEnabled();
     version.setRmdVersionId(REPLICATION_METADATA_VERSION_ID);
 
-    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
+    doReturn(version).when(mockStore).getVersion(anyInt());
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
 
@@ -1578,7 +1578,7 @@ public abstract class StoreIngestionTaskTest {
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       Store mockStore = mock(Store.class);
       doReturn(true).when(mockStore).isHybrid();
-      doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
+      doReturn(new VersionImpl("storeName", 1)).when(mockStore).getVersion(1);
       doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     }, () -> {
@@ -2012,8 +2012,7 @@ public abstract class StoreIngestionTaskTest {
     runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {
       Store mockStore = mock(Store.class);
       doReturn(1).when(mockStore).getCurrentVersion();
-      doReturn(Optional.of(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1)))).when(mockStore)
-          .getVersion(1);
+      doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
     }, () -> {
@@ -2036,8 +2035,7 @@ public abstract class StoreIngestionTaskTest {
       Store mockStore = mock(Store.class);
       storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
       doReturn(1).when(mockStore).getCurrentVersion();
-      doReturn(Optional.of(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1)))).when(mockStore)
-          .getVersion(1);
+      doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
     },
@@ -2591,7 +2589,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(schemaEntry).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
-      doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
+      doReturn(new VersionImpl("storeName", 1)).when(mockStore).getVersion(1);
     }, () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       // since notifier reporting happens before offset update, it actually reports previous offsets
@@ -3574,7 +3572,7 @@ public abstract class StoreIngestionTaskTest {
     Store mockStore = mock(Store.class);
     doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
-    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
+    doReturn(mockVersion).when(mockStore).getVersion(1);
     doReturn(aaConfig == AA_ON).when(mockVersion).isActiveActiveReplicationEnabled();
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
@@ -3704,7 +3702,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn("localhost").when(version).getPushStreamSourceAddress();
 
     Store store = mock(Store.class);
-    doReturn(Optional.of(version)).when(store).getVersion(eq(1));
+    doReturn(version).when(store).getVersion(eq(1));
 
     String versionTopicName = "testStore_v1";
     VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
@@ -4041,7 +4039,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(dataRecoveryVersionConfig).when(version).getDataRecoveryVersionConfig();
 
     Store store = mock(Store.class);
-    doReturn(Optional.of(version)).when(store).getVersion(eq(1));
+    doReturn(version).when(store).getVersion(eq(1));
 
     VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(topic).when(storeConfig).getStoreVersionName();
@@ -4132,7 +4130,7 @@ public abstract class StoreIngestionTaskTest {
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
-    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
+    doReturn(mockVersion).when(mockStore).getVersion(1);
     doReturn(aaConfig == AA_ON).when(mockVersion).isActiveActiveReplicationEnabled();
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
@@ -4213,7 +4211,7 @@ public abstract class StoreIngestionTaskTest {
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
-    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
+    doReturn(mockVersion).when(mockStore).getVersion(1);
     doReturn(true).when(mockVersion).isActiveActiveReplicationEnabled();
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);

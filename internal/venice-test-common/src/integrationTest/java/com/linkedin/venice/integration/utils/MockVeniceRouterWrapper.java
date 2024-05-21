@@ -86,7 +86,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
 
     Version mockVersion = Mockito.mock(Version.class);
-    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(Mockito.anyInt());
+    doReturn(mockVersion).when(mockStore).getVersion(Mockito.anyInt());
 
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     doReturn(partitionerConfig).when(mockVersion).getPartitionerConfig();

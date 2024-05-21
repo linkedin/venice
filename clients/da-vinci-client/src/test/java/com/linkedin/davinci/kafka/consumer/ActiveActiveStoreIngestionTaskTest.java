@@ -272,7 +272,6 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     AtomicLong offset = new AtomicLong(0);
 
     ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
@@ -304,6 +303,7 @@ public class ActiveActiveStoreIngestionTaskTest {
             .setTime(SystemTime.INSTANCE)
             .setChunkingEnabled(true)
             .setRmdChunkingEnabled(true)
+            .setPartitionCount(1)
             .build();
     VeniceWriter<byte[], byte[], byte[]> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);

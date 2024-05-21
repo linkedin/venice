@@ -14,7 +14,6 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -118,12 +117,12 @@ public class InstanceStatusDecider {
                   result.getSecond());
             }
 
-            Optional<Version> version = resources.getStoreMetadataRepository()
+            Version version = resources.getStoreMetadataRepository()
                 .getStore(Version.parseStoreFromKafkaTopicName(resourceName))
                 .getVersion(Version.parseVersionFromKafkaTopicName(resourceName));
 
-            if (version.isPresent()) {
-              result = willTriggerRebalance(partitionAssignmentAfterRemoving, version.get().getMinActiveReplicas());
+            if (version != null) {
+              result = willTriggerRebalance(partitionAssignmentAfterRemoving, version.getMinActiveReplicas());
             } else {
               result = new Pair<>(
                   false,

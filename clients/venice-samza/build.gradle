@@ -16,7 +16,6 @@ dependencies {
 
   implementation libraries.httpAsyncClient
 
-  implementation libraries.kafka
   implementation libraries.log4j2api
   implementation libraries.samzaApi
 }

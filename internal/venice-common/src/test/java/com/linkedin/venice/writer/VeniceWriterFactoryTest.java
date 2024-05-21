@@ -19,22 +19,22 @@ import org.testng.annotations.Test;
 public class VeniceWriterFactoryTest {
   @Test
   public void testVeniceWriterFactory() {
-    PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactoryMack = mock(PubSubProducerAdapterFactory.class);
+    PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactoryMock = mock(PubSubProducerAdapterFactory.class);
     PubSubProducerAdapter producerAdapterMock = mock(PubSubProducerAdapter.class);
     ArgumentCaptor<String> brokerAddrCapture = ArgumentCaptor.forClass(String.class);
-    when(producerFactoryMack.create(any(VeniceProperties.class), eq("store_v1"), brokerAddrCapture.capture()))
+    when(producerFactoryMock.create(any(VeniceProperties.class), eq("store_v1"), brokerAddrCapture.capture()))
         .thenReturn(producerAdapterMock);
-    when(producerAdapterMock.getNumberOfPartitions(any())).thenReturn(1);
 
-    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(new Properties(), producerFactoryMack, null);
-    VeniceWriter veniceWriter = veniceWriterFactory
-        .createVeniceWriter(new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898").build());
-    when(producerAdapterMock.getBrokerAddress()).thenReturn(brokerAddrCapture.getValue());
-    assertNotNull(veniceWriter);
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(new Properties(), producerFactoryMock, null);
+    try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898").setPartitionCount(1).build())) {
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(brokerAddrCapture.getValue());
+      assertNotNull(veniceWriter);
 
-    String capturedBrokerAddr = veniceWriter.getDestination();
-    assertNotNull(capturedBrokerAddr);
-    assertEquals(capturedBrokerAddr, "store_v1@kafka:9898");
+      String capturedBrokerAddr = veniceWriter.getDestination();
+      assertNotNull(capturedBrokerAddr);
+      assertEquals(capturedBrokerAddr, "store_v1@kafka:9898");
+    }
   }
 
   @Test

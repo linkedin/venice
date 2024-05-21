@@ -23,7 +23,6 @@ import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerQuotaTokenBucketStats;
 import com.linkedin.venice.throttle.TokenBucket;
-import com.linkedin.venice.utils.ExpiringSet;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -33,11 +32,9 @@ import io.netty.util.ReferenceCountUtil;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -55,7 +52,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private final String thisNodeId;
   private final AggServerQuotaUsageStats stats;
   private final Clock clock;
-  private final ExpiringSet<String> noBucketStores = new ExpiringSet<>(30, TimeUnit.SECONDS);
   // TODO make these configurable
   private final int enforcementIntervalSeconds = 10; // TokenBucket refill interval
   private final int enforcementCapacityMultiple = 5; // Token bucket capacity is refill amount times this multiplier
@@ -218,9 +214,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       // If this happens it is probably due to a short-lived race condition where the resource is being accessed before
       // the bucket is allocated. The request will be allowed based on node/server capacity so emit metrics accordingly.
       stats.recordAllowedUnintentionally(storeName, rcu);
-      if (isNewNoBucketResource(request.getResourceName())) {
-        handleResourceNoBucket(request.getResourceName());
-      }
     }
 
     /**
@@ -303,15 +296,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     return true;
-  }
-
-  /**
-   * This method and the expiring set noBucketStores is only used to throttle the logging of such event
-   */
-  public void handleResourceNoBucket(String resourceName) {
-    LOGGER.warn("Request for resource: {} but no TokenBucket for that resource. Not yet enforcing quota", resourceName);
-    // TODO: we could consider initializing a bucket. Would need to carefully consider this case.
-    noBucketStores.add(resourceName); // So that we only log this once every 30 seconds
   }
 
   public boolean handleServerOverCapacity(
@@ -479,8 +463,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
          */
         this.onCustomizedViewChange(customizedViewRepository.getPartitionAssignments(topic));
       } catch (VeniceNoHelixResourceException e) {
-        Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
-        if (version.isPresent() && version.get().getStatus().equals(VersionStatus.ONLINE)) {
+        Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
+        if (version != null && version.getStatus().equals(VersionStatus.ONLINE)) {
           /**
            * The store metadata believes this version is online, but the partition assignment is not in the
            * external view.
@@ -505,7 +489,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
            */
           if (!isLatestVersion(Version.parseVersionFromKafkaTopicName(topic), topics)) {
             throw new VeniceException(
-                "Metadata for store " + store.getName() + " shows that version " + version.get().getNumber()
+                "Metadata for store " + store.getName() + " shows that version " + version.getNumber()
                     + " is online but couldn't find the resource in external view:",
                 e);
           }
@@ -578,10 +562,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
   public ConcurrentMap<String, TokenBucket> getStoreVersionBuckets() {
     return storeVersionBuckets;
-  }
-
-  public boolean isNewNoBucketResource(String resourceName) {
-    return !noBucketStores.contains(resourceName);
   }
 
   public boolean storageConsumeRcu(int rcu) {

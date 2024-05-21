@@ -133,15 +133,15 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
               continue;
             }
             // The version has already been deleted.
-            if (!store.getVersion(version).isPresent() &&
-            /**
-             * This is to avoid the race condition since Version will be deleted in Controller first and the
-             * actual cleanup in storage node is being handled in {@link ParticipantStoreConsumptionTask}.
-             *
-             * If there is no version existed in ZK and no running ingestion task for current resource, it
-             * is safe to be deleted.
-             */
-                !ingestionService.containsRunningConsumption(resourceName)) {
+            if (store.getVersion(version) == null
+                /**
+                 * This is to avoid the race condition since Version will be deleted in Controller first and the
+                 * actual cleanup in storage node is being handled in {@link ParticipantStoreConsumptionTask}.
+                 *
+                 * If there is no version existed in ZK and no running ingestion task for current resource, it
+                 * is safe to be deleted.
+                 */
+                && !ingestionService.containsRunningConsumption(resourceName)) {
               LOGGER.info(
                   "Resource: {} doesn't have either the corresponding version stored in ZK, or a running ingestion task, so it will be cleaned up.",
                   resourceName);

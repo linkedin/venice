@@ -69,7 +69,6 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -339,10 +338,14 @@ public class DaVinciBackend implements Closeable {
 
       // Check whether the local storage engine belongs to any valid store version or not
       Set<Integer> validVersionNumbers = new HashSet<>();
-      Optional<Version> latestVersion = getVeniceLatestNonFaultyVersion(storeName, Collections.emptySet());
-      Optional<Version> currentVersion = getVeniceCurrentVersion(storeName);
-      currentVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
-      latestVersion.ifPresent(version -> validVersionNumbers.add(version.getNumber()));
+      Version currentVersion = getVeniceCurrentVersion(storeName);
+      if (currentVersion != null) {
+        validVersionNumbers.add(currentVersion.getNumber());
+      }
+      Version latestVersion = getVeniceLatestNonFaultyVersion(storeName, Collections.emptySet());
+      if (latestVersion != null) {
+        validVersionNumbers.add(latestVersion.getNumber());
+      }
 
       int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
       // The version is no longer valid (stale version), it will be deleted.
@@ -378,11 +381,11 @@ public class DaVinciBackend implements Closeable {
 
       int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopicName);
 
-      Version version = storeRepository.getStoreOrThrow(storeName)
-          .getVersion(versionNumber)
-          .orElseThrow(
-              () -> new VeniceException(
-                  "Could not find version: " + versionNumber + " for store: " + storeName + " in storeRepository!"));
+      Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber);
+      if (version == null) {
+        throw new VeniceException(
+            "Could not find version: " + versionNumber + " for store: " + storeName + " in storeRepository!");
+      }
 
       /**
        * Set the target bootstrap version for the store in the below order:
@@ -603,30 +606,36 @@ public class DaVinciBackend implements Closeable {
     storeBackend.trySubscribeDaVinciFutureVersion();
   }
 
-  Optional<Version> getVeniceLatestNonFaultyVersion(String storeName, Set<Integer> faultyVersions) {
+  Version getVeniceLatestNonFaultyVersion(String storeName, Set<Integer> faultyVersions) {
     try {
       return getVeniceLatestNonFaultyVersion(getStoreRepository().getStoreOrThrow(storeName), faultyVersions);
     } catch (VeniceNoStoreException e) {
-      return Optional.empty();
+      return null;
     }
   }
 
-  Optional<Version> getVeniceCurrentVersion(String storeName) {
+  Version getVeniceCurrentVersion(String storeName) {
     try {
       return getVeniceCurrentVersion(getStoreRepository().getStoreOrThrow(storeName));
     } catch (VeniceNoStoreException e) {
-      return Optional.empty();
+      return null;
     }
   }
 
-  private Optional<Version> getVeniceLatestNonFaultyVersion(Store store, Set<Integer> faultyVersions) {
-    return store.getVersions()
-        .stream()
-        .filter(v -> !faultyVersions.contains(v.getNumber()))
-        .max(Comparator.comparing(Version::getNumber));
+  private Version getVeniceLatestNonFaultyVersion(Store store, Set<Integer> faultyVersions) {
+    Version latestNonFaultyVersion = null;
+    for (Version version: store.getVersions()) {
+      if (faultyVersions.contains(version.getNumber())) {
+        continue;
+      }
+      if (latestNonFaultyVersion == null || latestNonFaultyVersion.getNumber() < version.getNumber()) {
+        latestNonFaultyVersion = version;
+      }
+    }
+    return latestNonFaultyVersion;
   }
 
-  private Optional<Version> getVeniceCurrentVersion(Store store) {
+  private Version getVeniceCurrentVersion(Store store) {
     return store.getVersion(store.getCurrentVersion());
   }
 
