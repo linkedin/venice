@@ -533,7 +533,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult.getRmdRecord());
         }
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromNSToMS(preprocessingTime));
+          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
           if (exception == null) {
             producePutOrDeleteToKafka(
                 mergeConflictResult,
