@@ -95,7 +95,8 @@ public class VeniceGrpcEndToEndTest {
   public String writeData(String storeName) throws IOException {
     // 1. Create a new store in Venice
     cluster.getNewStore(storeName);
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA);
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setStorageNodeReadQuotaEnabled(true);
 
     ControllerResponse updateStoreResponse = cluster.updateStore(storeName, params);
     Assert.assertNull(updateStoreResponse.getError());
