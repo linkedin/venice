@@ -2978,12 +2978,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
       // topic
       // data may have been log compacted) or log compaction is enabled and record is old enough for log compaction.
-      PubSubTopic pubSubTopic = consumerRecord.getTopicPartition().getPubSubTopic();
+      PubSubTopic pubSubTopic = consumerRecord.getTopic();
 
       return (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null)
-          || (topicManager.isTopicCompactionEnabled(pubSubTopic)
-              && LatencyUtils.getElapsedTimeFromMsToMs(consumerRecord.getPubSubMessageTime()) >= topicManager
-                  .getTopicMinLogCompactionLagMs(pubSubTopic));
+          || (pubSubTopic.isVersionTopic() &&topicManager.isTopicCompactionEnabled(pubSubTopic)
+          && LatencyUtils.getElapsedTimeFromMsToMs(consumerRecord.getPubSubMessageTime()) >= topicManager.getTopicMinLogCompactionLagMs(pubSubTopic));
     });
 
     try {
@@ -3470,7 +3469,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
           String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
           PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
-          if (getTopicManager(localKafkaServer).containsTopic(metaStoreRT)) {
+          if (getTopicManager(localKafkaServer).containsTopicWithRetries(metaStoreRT, 5)) {
             metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
           }
         }
@@ -4034,6 +4033,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       return true;
     }
-    return topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic);
+    return topicManagerRepository.getLocalTopicManager().containsTopicCached(this.versionTopic);
   }
 }

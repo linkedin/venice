@@ -35,6 +35,10 @@ public interface PubSubMessage<K, V, OFFSET> {
     return getTopicPartition().getPubSubTopic().getName();
   }
 
+  default PubSubTopic getTopic() {
+    return getTopicPartition().getPubSubTopic();
+  }
+
   default int getPartition() {
     return getTopicPartition().getPartitionNumber();
   }

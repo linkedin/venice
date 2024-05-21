@@ -88,6 +88,7 @@ class TopicMetadataFetcher implements Closeable {
   private final Map<PubSubTopicPartition, ValueAndExpiryTime<Long>> lastProducerTimestampCache =
       new VeniceConcurrentHashMap<>();
   private final long cachedEntryTtlInNs;
+  private final long topicCacheTtlInNs;
   private final AtomicInteger consumerWaitListSize = new AtomicInteger(0);
 
   TopicMetadataFetcher(
@@ -101,6 +102,7 @@ class TopicMetadataFetcher implements Closeable {
     this.pubSubConsumerPool = new LinkedBlockingQueue<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.closeables = new ArrayList<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.cachedEntryTtlInNs = MILLISECONDS.toNanos(topicManagerContext.getTopicOffsetCheckIntervalMs());
+    this.topicCacheTtlInNs = MILLISECONDS.toNanos(topicManagerContext.getTopicCacheTtlMs());
     PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
       PubSubConsumerAdapter pubSubConsumerAdapter = topicManagerContext.getPubSubConsumerAdapterFactory()
@@ -144,7 +146,8 @@ class TopicMetadataFetcher implements Closeable {
       PubSubAdminAdapter pubSubAdminAdapter,
       BlockingQueue<PubSubConsumerAdapter> pubSubConsumerPool,
       ThreadPoolExecutor threadPoolExecutor,
-      long cachedEntryTtlInNs) {
+      long cachedEntryTtlInNs,
+      long topicCacheTtlInNs) {
     this.pubSubClusterAddress = pubSubClusterAddress;
     this.stats = stats;
     this.pubSubAdminAdapter = pubSubAdminAdapter;
@@ -152,6 +155,7 @@ class TopicMetadataFetcher implements Closeable {
     this.threadPoolExecutor = threadPoolExecutor;
     this.cachedEntryTtlInNs = cachedEntryTtlInNs;
     this.closeables = new ArrayList<>(pubSubConsumerPool);
+    this.topicCacheTtlInNs = topicCacheTtlInNs;
   }
 
   // acquire the consumer from the pool
@@ -183,7 +187,9 @@ class TopicMetadataFetcher implements Closeable {
     if (pubSubTopicPartition.getPartitionNumber() < 0) {
       throw new IllegalArgumentException("Invalid partition number: " + pubSubTopicPartition.getPartitionNumber());
     }
-    if (containsTopicCached(pubSubTopicPartition.getPubSubTopic())) {
+    ValueAndExpiryTime<Boolean> cachedValue = topicExistenceCache.get(pubSubTopicPartition.getPubSubTopic());
+    // if the topic exists based on the cache, return
+    if (cachedValue != null && cachedValue.getValue()) {
       return;
     }
     boolean topicExists = RetryUtils.executeWithMaxAttempt(
@@ -258,6 +264,18 @@ class TopicMetadataFetcher implements Closeable {
         topicExistenceCache.computeIfAbsent(topic, k -> new ValueAndExpiryTime<>(containsTopic(topic)));
     updateCacheAsync(topic, cachedValue, topicExistenceCache, () -> containsTopicAsync(topic));
     return cachedValue.getValue();
+  }
+
+  public boolean containsTopicWithRetries(PubSubTopic pubSubTopic, int retries) {
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+      return containsTopic(pubSubTopic);
+    }, retries, INITIAL_RETRY_DELAY, Duration.ofSeconds(5), Duration.ofMinutes(5), PUBSUB_RETRIABLE_FAILURES);
+  }
+
+  public boolean containsTopicCachedWithRetries(PubSubTopic pubSubTopic, int retries) {
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+      return containsTopicCached(pubSubTopic);
+    }, retries, INITIAL_RETRY_DELAY, Duration.ofSeconds(5), Duration.ofMinutes(5), PUBSUB_RETRIABLE_FAILURES);
   }
 
   /**
