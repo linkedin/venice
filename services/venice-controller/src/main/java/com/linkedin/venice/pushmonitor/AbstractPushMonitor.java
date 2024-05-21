@@ -1012,8 +1012,7 @@ public abstract class AbstractPushMonitor
       /** Do not delete previous versions as for repush previous current version should be deleted instead
        * such deletions are handled in @see StoreBackupVersionCleanupService
        */
-      Version version = store.getVersion(versionNumber);
-      if (version != null && version.getRepushSourceVersion() <= NON_EXISTING_VERSION) {
+      if (store.getVersionOrThrow(versionNumber).getRepushSourceVersion() <= NON_EXISTING_VERSION) {
         storeCleaner.retireOldStoreVersions(clusterName, storeName, false, -1);
       }
     } catch (Exception e) {
