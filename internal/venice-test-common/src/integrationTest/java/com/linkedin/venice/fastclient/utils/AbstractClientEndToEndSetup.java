@@ -230,6 +230,10 @@ public abstract class AbstractClientEndToEndSetup {
     waitForRouterD2();
   }
 
+  /**
+   * <b>Note:</b> Classes that overrides this method need to ensure the store creation enables the storage
+   * node read quota.
+   */
   protected void prepareData() throws Exception {
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
