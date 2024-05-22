@@ -27,6 +27,7 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -44,7 +45,6 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -89,8 +89,8 @@ public class VeniceClusterConfig {
 
   private final VeniceProperties clusterProperties;
 
-  private final SecurityProtocol kafkaSecurityProtocol;
-  private final Map<String, SecurityProtocol> kafkaBootstrapUrlToSecurityProtocol;
+  private final PubSubSecurityProtocol kafkaSecurityProtocol;
+  private final Map<String, PubSubSecurityProtocol> kafkaBootstrapUrlToSecurityProtocol;
   private final Optional<SSLConfig> sslConfig;
 
   public VeniceClusterConfig(VeniceProperties clusterProps, Map<String, Map<String, String>> kafkaClusterMap)
@@ -135,17 +135,17 @@ public class VeniceClusterConfig {
     LOGGER.info("Final region name for this node: {}", this.regionName);
 
     String kafkaSecurityProtocolString =
-        clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
+        clusterProps.getString(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
     if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocolString)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocolString);
     }
-    this.kafkaSecurityProtocol = SecurityProtocol.forName(kafkaSecurityProtocolString);
+    this.kafkaSecurityProtocol = PubSubSecurityProtocol.forName(kafkaSecurityProtocolString);
 
     Int2ObjectMap<String> tmpKafkaClusterIdToUrlMap = new Int2ObjectOpenHashMap<>();
     Object2IntMap<String> tmpKafkaClusterUrlToIdMap = new Object2IntOpenHashMap<>();
     Int2ObjectMap<String> tmpKafkaClusterIdToAliasMap = new Int2ObjectOpenHashMap<>();
     Object2IntMap<String> tmpKafkaClusterAliasToIdMap = new Object2IntOpenHashMap<>();
-    Map<String, SecurityProtocol> tmpKafkaBootstrapUrlToSecurityProtocol = new HashMap<>();
+    Map<String, PubSubSecurityProtocol> tmpKafkaBootstrapUrlToSecurityProtocol = new HashMap<>();
     Map<String, String> tmpKafkaUrlResolution = new HashMap<>();
 
     boolean foundBaseKafkaUrlInMappingIfItIsPopulated = kafkaClusterMap.isEmpty();
@@ -167,7 +167,7 @@ public class VeniceClusterConfig {
         tmpKafkaClusterUrlToIdMap.put(url, clusterId);
         tmpKafkaUrlResolution.put(url, url);
         if (securityProtocolString != null) {
-          tmpKafkaBootstrapUrlToSecurityProtocol.put(url, SecurityProtocol.valueOf(securityProtocolString));
+          tmpKafkaBootstrapUrlToSecurityProtocol.put(url, PubSubSecurityProtocol.valueOf(securityProtocolString));
         }
       }
       if (baseKafkaBootstrapServers.equals(url)) {
@@ -228,7 +228,7 @@ public class VeniceClusterConfig {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocolString);
     }
     if (KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocolString)
-        || kafkaBootstrapUrlToSecurityProtocol.containsValue(SecurityProtocol.SSL)) {
+        || kafkaBootstrapUrlToSecurityProtocol.containsValue(PubSubSecurityProtocol.SSL)) {
       this.sslConfig = Optional.of(new SSLConfig(clusterProps));
     } else {
       this.sslConfig = Optional.empty();
@@ -260,8 +260,8 @@ public class VeniceClusterConfig {
     return kafkaBootstrapServers;
   }
 
-  public SecurityProtocol getKafkaSecurityProtocol(String kafkaBootstrapUrl) {
-    SecurityProtocol clusterSpecificSecurityProtocol = kafkaBootstrapUrlToSecurityProtocol.get(kafkaBootstrapUrl);
+  public PubSubSecurityProtocol getKafkaSecurityProtocol(String kafkaBootstrapUrl) {
+    PubSubSecurityProtocol clusterSpecificSecurityProtocol = kafkaBootstrapUrlToSecurityProtocol.get(kafkaBootstrapUrl);
     return clusterSpecificSecurityProtocol == null ? kafkaSecurityProtocol : clusterSpecificSecurityProtocol;
   }
 

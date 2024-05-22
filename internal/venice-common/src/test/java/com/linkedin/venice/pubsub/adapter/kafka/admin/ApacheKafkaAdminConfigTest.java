@@ -2,13 +2,13 @@ package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
 import static org.testng.Assert.*;
 
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.config.SslConfigs;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.testng.annotations.Test;
 
 
@@ -20,15 +20,15 @@ public class ApacheKafkaAdminConfigTest {
 
   @Test
   public void testSetupSaslInKafkaAdminPlaintext() {
-    testSetupSaslInKafkaAdmin(SecurityProtocol.SASL_PLAINTEXT);
+    testSetupSaslInKafkaAdmin(PubSubSecurityProtocol.SASL_PLAINTEXT);
   }
 
   @Test
   public void testSetupSaslInKafkaAdminSSL() {
-    testSetupSaslInKafkaAdmin(SecurityProtocol.SASL_SSL);
+    testSetupSaslInKafkaAdmin(PubSubSecurityProtocol.SASL_SSL);
   }
 
-  private void testSetupSaslInKafkaAdmin(SecurityProtocol securityProtocol) {
+  private void testSetupSaslInKafkaAdmin(PubSubSecurityProtocol securityProtocol) {
     Properties properties = new Properties();
     properties.put("cluster.name", "cluster");
     properties.put("zookeeper.address", "localhost:2181");
