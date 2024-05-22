@@ -32,7 +32,7 @@ public class VeniceHdfsInputScan implements Scan, Batch {
   public InputPartition[] planInputPartitions() {
     try {
       Path inputDirPath = new Path(jobConfig.getString(INPUT_PATH_PROP));
-      FileSystem fs = FileSystem.get(new Configuration());
+      FileSystem fs = inputDirPath.getFileSystem(new Configuration());
       List<VeniceHdfsInputPartition> inputPartitionList = new ArrayList<>();
       // For now, we create 1 file as 1 InputPartition. This is not the most ideal, because Avro allows splitting files
       // to a smaller granularity using sync markers. We can explore later if we feel we need that optimization.

@@ -39,11 +39,9 @@ public class VeniceHdfsInputPartitionReader extends VeniceAbstractPartitionReade
       throw new VeniceException("Expected VeniceHdfsInputPartition");
     }
     VeniceHdfsInputPartition inputPartition = (VeniceHdfsInputPartition) partition;
-
-    Configuration configuration = new Configuration();
     FileSystem fs;
     try {
-      fs = FileSystem.get(configuration);
+      fs = inputPartition.getFilePath().getFileSystem(new Configuration());
     } catch (IOException e) {
       throw new VeniceException("Unable to get a FileSystem", e);
     }
