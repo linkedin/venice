@@ -23,6 +23,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -38,7 +39,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -288,8 +288,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       List<String> regionNames,
       List<PubSubBrokerWrapper> kafkaBrokers) {
     if (serverProperties.isPresent()) {
-      SecurityProtocol baseSecurityProtocol = SecurityProtocol
-          .valueOf(serverProperties.get().getProperty(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name));
+      PubSubSecurityProtocol baseSecurityProtocol = PubSubSecurityProtocol
+          .valueOf(serverProperties.get().getProperty(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name));
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
       Map<String, String> mapping;
@@ -297,21 +297,21 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         mapping = new HashMap<>();
         int clusterId = i - 1;
         mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, regionNames.get(clusterId));
-        SecurityProtocol securityProtocol = baseSecurityProtocol;
+        PubSubSecurityProtocol securityProtocol = baseSecurityProtocol;
         if (clusterId > 0) {
           // Testing mixed security on any 2-layer setup with 2 or more DCs.
-          securityProtocol = SecurityProtocol.SSL;
+          securityProtocol = PubSubSecurityProtocol.SSL;
         }
         mapping.put(KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL, securityProtocol.name);
 
         // N.B. the first Kafka broker in the list is the parent, which we're excluding from the mapping, so this
         // is why the index here is offset by 1 compared to the cluster ID.
         PubSubBrokerWrapper pubSubBrokerWrapper = kafkaBrokers.get(i);
-        String kafkaAddress = securityProtocol == SecurityProtocol.SSL
+        String kafkaAddress = securityProtocol == PubSubSecurityProtocol.SSL
             ? pubSubBrokerWrapper.getSSLAddress()
             : pubSubBrokerWrapper.getAddress();
         mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaAddress);
-        String otherKafkaAddress = securityProtocol == SecurityProtocol.PLAINTEXT
+        String otherKafkaAddress = securityProtocol == PubSubSecurityProtocol.PLAINTEXT
             ? pubSubBrokerWrapper.getSSLAddress()
             : pubSubBrokerWrapper.getAddress();
         mapping.put(KAFKA_CLUSTER_MAP_KEY_OTHER_URLS, otherKafkaAddress);

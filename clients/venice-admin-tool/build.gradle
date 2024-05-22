@@ -21,6 +21,8 @@ dependencies {
     // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
     exclude module: 'zookeeper'
   }
+  implementation libraries.zstd
+
   testImplementation project(':internal:venice-common').sourceSets.test.output
 }
 
