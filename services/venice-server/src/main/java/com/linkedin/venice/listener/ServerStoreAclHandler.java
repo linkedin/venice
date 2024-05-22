@@ -2,19 +2,15 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.SslUtils;
 import io.grpc.Metadata;
 import io.grpc.ServerCall;
 import io.grpc.ServerCallHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.ssl.SslHandler;
 import io.netty.util.Attribute;
 import io.netty.util.ReferenceCountUtil;
-import java.security.cert.X509Certificate;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -25,7 +21,6 @@ import org.apache.logging.log4j.Logger;
  * 1. Access from Router, and Router request will be validated in {@link ServerAclHandler}, and {@link ServerStoreAclHandler} will be a quick pass-through.
  * 2. Access from Client directly, and {@link ServerAclHandler} will deny the request, and {@link ServerStoreAclHandler} will
  *    validate the request in store-level, which is exactly same as the access control behavior in Router.
- *
  * If both of them fail, the request will be rejected.
  */
 public class ServerStoreAclHandler extends StoreAclHandler {
@@ -33,14 +28,6 @@ public class ServerStoreAclHandler extends StoreAclHandler {
 
   public ServerStoreAclHandler(DynamicAccessController accessController, ReadOnlyStoreRepository metadataRepository) {
     super(accessController, metadataRepository);
-  }
-
-  /**
-   * In Venice Server, the resource name is actually a Kafka topic name.
-   */
-  @Override
-  protected String extractStoreName(String resourceName) {
-    return Version.parseStoreFromKafkaTopicName(resourceName);
   }
 
   @Override
@@ -57,13 +44,25 @@ public class ServerStoreAclHandler extends StoreAclHandler {
   }
 
   @Override
-  protected X509Certificate extractClientCert(ChannelHandlerContext ctx) throws SSLPeerUnverifiedException {
-    SslHandler sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
-    if (sslHandler != null) {
-      return SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
+  public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
+      ServerCall<ReqT, RespT> call,
+      Metadata headers,
+      ServerCallHandler<ReqT, RespT> next) {
+    if (checkWhetherAccessHasAlreadyApproved(headers)) {
+      LOGGER.debug("Access already approved by ServerAclHandler");
+      return next.startCall(call, headers);
     } else {
-      throw new VeniceException("Failed to extract client cert from the incoming request");
+      LOGGER.debug("Delegating access check to StoreAclHandler");
+      return super.interceptCall(call, headers, next);
     }
+  }
+
+  /**
+   * In Venice Server, the resource name is actually a Kafka topic name.
+   */
+  @Override
+  protected String extractStoreName(String resourceName) {
+    return Version.parseStoreFromKafkaTopicName(resourceName);
   }
 
   protected static boolean checkWhetherAccessHasAlreadyApproved(ChannelHandlerContext ctx) {
@@ -73,21 +72,6 @@ public class ServerStoreAclHandler extends StoreAclHandler {
 
   protected static boolean checkWhetherAccessHasAlreadyApproved(Metadata headers) {
     return Boolean.parseBoolean(
-        headers.get(
-            Metadata.Key
-                .of(ServerAclHandler.GRPC_SERVER_ACL_APPROVED_ATTRIBUTE_KEY, Metadata.ASCII_STRING_MARSHALLER)));
-  }
-
-  @Override
-  public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
-      ServerCall<ReqT, RespT> call,
-      Metadata headers,
-      ServerCallHandler<ReqT, RespT> next) {
-    boolean checkWhetherAccessHasAlreadyApproved = checkWhetherAccessHasAlreadyApproved(headers);
-    if (checkWhetherAccessHasAlreadyApproved) {
-      return next.startCall(call, headers);
-    } else {
-      return super.interceptCall(call, headers, next);
-    }
+        headers.get(Metadata.Key.of(ServerAclHandler.SERVER_ACL_APPROVED, Metadata.ASCII_STRING_MARSHALLER)));
   }
 }

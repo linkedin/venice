@@ -1,7 +1,11 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.ssl.SslHandler;
+import java.security.cert.X509Certificate;
+import javax.net.ssl.SSLPeerUnverifiedException;
 
 
 public class ServerHandlerUtils {
@@ -20,5 +24,14 @@ public class ServerHandlerUtils {
       sslHandler = ctx.channel().parent().pipeline().get(SslHandler.class);
     }
     return sslHandler;
+  }
+
+  public static X509Certificate extractClientCert(ChannelHandlerContext ctx) throws SSLPeerUnverifiedException {
+    SslHandler sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
+    if (sslHandler != null) {
+      return SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
+    } else {
+      throw new VeniceException("Failed to extract client cert from the incoming request");
+    }
   }
 }
