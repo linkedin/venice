@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Set up JDK
@@ -58,7 +58,7 @@ jobs:
     outputs:
       alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           # Checkout as many commits as needed for the diff
           fetch-depth: 2
@@ -69,7 +69,7 @@ jobs:
           filters: |
             alpini:
               - 'internal/alpini/**'
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         with:
           fetch-depth: 0
@@ -128,7 +128,7 @@ jobs:
     outputs:
       alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           # Checkout as many commits as needed for the diff
           fetch-depth: 2
@@ -139,7 +139,7 @@ jobs:
           filters: |
             alpini:
               - 'internal/alpini/**'
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         with:
           fetch-depth: 0
@@ -196,7 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Set up JDK
