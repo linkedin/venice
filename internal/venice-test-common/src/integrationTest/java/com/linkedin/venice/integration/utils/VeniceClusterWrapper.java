@@ -13,6 +13,7 @@ import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.writeBatchData;
 
 import com.github.luben.zstd.ZstdDictTrainer;
+import com.google.common.base.Preconditions;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -110,7 +111,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   // TODO: pass it to every venice component.
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private final Map<String, String> nettyToGrpcServerMap;
+  private final Map<String, String> nettyServerToGrpcAddress;
 
   private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
 
@@ -140,9 +141,16 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
       Map<String, String> clusterToD2,
       Map<String, String> clusterToServerD2,
-      Map<String, String> nettyToGrpcServerMap) {
+      Map<String, String> nettyServerToGrpcAddress) {
 
     super(SERVICE_NAME, null);
+
+    Preconditions.checkNotNull(nettyServerToGrpcAddress);
+    // validate netty to grpc addressing mapping if GRPC is enabled
+    Preconditions.checkArgument(
+        !options.isGrpcEnabled() || (options.isGrpcEnabled() && !nettyServerToGrpcAddress.isEmpty()),
+        "Netty to GRPC address mapping cannot be empty if GRPC is enabled");
+
     this.options = options;
     this.zkServerWrapper = zkServerWrapper;
     this.pubSubBrokerWrapper = pubSubBrokerWrapper;
@@ -152,14 +160,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.clusterToD2 = clusterToD2;
     this.clusterToServerD2 = clusterToServerD2;
     this.pubSubProducerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
-    this.nettyToGrpcServerMap = nettyToGrpcServerMap;
+    this.nettyServerToGrpcAddress = nettyServerToGrpcAddress;
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(VeniceClusterCreateOptions options) {
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
-    Map<String, String> nettyServerToGrpcMap = new HashMap<>();
+    Map<String, String> nettyServerToGrpcAddress = new HashMap<>();
 
     Map<String, String> clusterToD2;
     if (options.getClusterToD2() == null || options.getClusterToD2().isEmpty()) {
@@ -291,12 +299,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.getClusterName(),
             veniceServerWrapper.getPort());
         veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
-
       }
 
       if (options.isGrpcEnabled()) {
         for (VeniceServerWrapper vsw: veniceServerWrappers.values()) {
-          nettyServerToGrpcMap.put(vsw.getAddress(), vsw.getGrpcAddress());
+          nettyServerToGrpcAddress.put(vsw.getAddress(), vsw.getGrpcAddress());
         }
       }
 
@@ -319,7 +326,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               veniceRouterWrappers,
               clusterToD2,
               clusterToServerD2,
-              nettyServerToGrpcMap);
+              nettyServerToGrpcAddress);
           // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
@@ -475,8 +482,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return new ArrayList<>(veniceServerWrappers.values());
   }
 
-  public synchronized Map<String, String> getNettyToGrpcServerMap() {
-    return nettyToGrpcServerMap;
+  public synchronized Map<String, String> getNettyServerToGrpcAddress() {
+    return nettyServerToGrpcAddress;
   }
 
   public synchronized List<VeniceRouterWrapper> getVeniceRouters() {

@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import com.google.common.base.Preconditions;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.security.SSLFactory;
 import java.util.Map;
@@ -8,14 +9,17 @@ import java.util.Map;
 public class GrpcClientConfig {
   // Use r2Client for non-storage related requests (not implemented in gRPC yet)
   private final Client r2Client;
+
+  private final int port;
   // require a map from netty server to grpc address due to lack of gRPC service discovery
-  private final Map<String, String> nettyServerToGrpcAddressMap;
+  private final Map<String, String> nettyServerToGrpcAddress;
   // SSL Factory required if using SSL
   private final SSLFactory sslFactory;
 
-  public GrpcClientConfig(Builder builder) {
+  GrpcClientConfig(Builder builder) {
     this.r2Client = builder.r2Client;
-    this.nettyServerToGrpcAddressMap = builder.nettyServerToGrpcAddressMap;
+    this.port = builder.port;
+    this.nettyServerToGrpcAddress = builder.nettyServerToGrpcAddress;
     this.sslFactory = builder.sslFactory;
   }
 
@@ -23,8 +27,12 @@ public class GrpcClientConfig {
     return r2Client;
   }
 
-  public Map<String, String> getNettyServerToGrpcAddressMap() {
-    return nettyServerToGrpcAddressMap;
+  public int getPort() {
+    return this.port;
+  }
+
+  public Map<String, String> getNettyServerToGrpcAddress() {
+    return nettyServerToGrpcAddress;
   }
 
   public SSLFactory getSslFactory() {
@@ -33,7 +41,9 @@ public class GrpcClientConfig {
 
   public static class Builder {
     private Client r2Client = null;
-    private Map<String, String> nettyServerToGrpcAddressMap = null;
+
+    private int port;
+    private Map<String, String> nettyServerToGrpcAddress = null;
     private SSLFactory sslFactory = null;
 
     public Builder setR2Client(Client r2Client) {
@@ -41,8 +51,13 @@ public class GrpcClientConfig {
       return this;
     }
 
-    public Builder setNettyServerToGrpcAddressMap(Map<String, String> nettyServerToGrpcAddressMap) {
-      this.nettyServerToGrpcAddressMap = nettyServerToGrpcAddressMap;
+    public Builder setPort(int port) {
+      this.port = port;
+      return this;
+    }
+
+    public Builder setNettyServerToGrpcAddress(Map<String, String> nettyServerToGrpcAddress) {
+      this.nettyServerToGrpcAddress = nettyServerToGrpcAddress;
       return this;
     }
 
@@ -52,20 +67,10 @@ public class GrpcClientConfig {
     }
 
     public GrpcClientConfig build() {
-      verify();
+      Preconditions.checkNotNull(r2Client);
+      Preconditions.checkNotNull(nettyServerToGrpcAddress);
+      Preconditions.checkState(port != 0 || !nettyServerToGrpcAddress.isEmpty());
       return new GrpcClientConfig(this);
-    }
-
-    private void verify() {
-      if (r2Client == null) {
-        throw new IllegalArgumentException("R2 client must be set when enabling gRPC on FC");
-      }
-      if (nettyServerToGrpcAddressMap == null) {
-        throw new IllegalArgumentException("Netty server to grpc address map must be set");
-      }
-      if (nettyServerToGrpcAddressMap.size() == 0) {
-        throw new IllegalArgumentException("Netty server to grpc address map must not be empty");
-      }
     }
   }
 }
