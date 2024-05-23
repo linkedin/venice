@@ -69,7 +69,7 @@ public class GrpcClientConfig {
     public GrpcClientConfig build() {
       Preconditions.checkNotNull(r2Client);
       Preconditions.checkNotNull(nettyServerToGrpcAddress);
-      Preconditions.checkState(port != -1 || nettyServerToGrpcAddress.isEmpty());
+      Preconditions.checkState(port != 0 || !nettyServerToGrpcAddress.isEmpty());
       return new GrpcClientConfig(this);
     }
   }
