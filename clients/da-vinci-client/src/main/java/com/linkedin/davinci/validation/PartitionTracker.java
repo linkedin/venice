@@ -566,7 +566,9 @@ public class PartitionTracker {
         logger.error(
             "Encountered missing data message within the log compaction time window. Error msg: {}",
             dataMissingException.getMessage());
-        errorMetricCallback.ifPresent(divErrorMetricCallback -> divErrorMetricCallback.execute(dataMissingException));
+        if (errorMetricCallback.isPresent()) {
+          errorMetricCallback.get().execute(dataMissingException);
+        }
         throw dataMissingException;
       }
       segment.setSequenceNumber(incomingSequenceNumber);
@@ -601,7 +603,9 @@ public class PartitionTracker {
       logger.error(
           "Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg: {}",
           missingSegment.getMessage());
-      errorMetricCallback.ifPresent(divErrorMetricCallback -> divErrorMetricCallback.execute(missingSegment));
+      if (errorMetricCallback.isPresent()) {
+        errorMetricCallback.get().execute(missingSegment);
+      }
       throw missingSegment;
     }
 
