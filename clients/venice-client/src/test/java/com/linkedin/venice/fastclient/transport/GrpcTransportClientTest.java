@@ -182,7 +182,8 @@ public class GrpcTransportClientTest {
   @Test
   public void testHandleNonStorageQueries() {
     TransportClient mockTransportClient = mock(TransportClient.class);
-    GrpcTransportClient transportClient = spy(new GrpcTransportClient(mockTransportClient, ImmutableMap.of(), null));
+    GrpcTransportClient transportClient =
+        spy(new GrpcTransportClient(mockTransportClient, ImmutableMap.of(), 23900, null));
 
     Map<String, String> headers = Collections.emptyMap();
     transportClient.handleNonStorageQueries(URI, headers, new byte[0], true);

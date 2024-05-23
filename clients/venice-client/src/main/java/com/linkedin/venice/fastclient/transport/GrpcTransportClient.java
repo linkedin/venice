@@ -39,7 +39,6 @@ public class GrpcTransportClient extends InternalTransportClient {
   private static final Logger LOGGER = LogManager.getLogger(GrpcTransportClient.class);
   private static final String STORAGE_ACTION = "storage";
   private static final String GRPC_ADDRESS_FORMAT = "%s:%s";
-  private static final String GRPC_PORT = "23900";
   private final VeniceConcurrentHashMap<String, ManagedChannel> serverGrpcChannels;
   private final Map<String, String> nettyServerToGrpcAddress;
   // we cache stubs to avoid creating a new stub for each request, improves performance
@@ -48,10 +47,18 @@ public class GrpcTransportClient extends InternalTransportClient {
   private final TransportClient r2TransportClientForNonStorageOps; // used for non-storage related requests
   private final ChannelCredentials channelCredentials;
 
+  private final int port;
+
   public GrpcTransportClient(GrpcClientConfig grpcClientConfig) {
     this(
         new R2TransportClient(grpcClientConfig.getR2Client()),
+        /*
+         * General principle to not mutate input parameters and wrapping it up using a new map since this
+         * class updates the map with inferred grpc address to prevent redundant computation for mapping netty
+         * to grpc address
+         */
         new HashMap<>(grpcClientConfig.getNettyServerToGrpcAddress()),
+        grpcClientConfig.getPort(),
         grpcClientConfig.getSslFactory());
   }
 
@@ -59,9 +66,11 @@ public class GrpcTransportClient extends InternalTransportClient {
   GrpcTransportClient(
       TransportClient transportClient,
       Map<String, String> nettyServerToGrpcAddress,
+      int port,
       SSLFactory sslFactory) {
     this.r2TransportClientForNonStorageOps = transportClient;
     this.nettyServerToGrpcAddress = nettyServerToGrpcAddress;
+    this.port = port;
     this.serverGrpcChannels = new VeniceConcurrentHashMap<>();
     this.stubCache = new VeniceConcurrentHashMap<>();
     this.channelCredentials = buildChannelCredentials(sslFactory);
@@ -149,7 +158,7 @@ public class GrpcTransportClient extends InternalTransportClient {
       String[] serverAddressParts = serverAddress.split(":");
       Preconditions.checkState(serverAddressParts.length == 2, "Invalid server address");
 
-      return String.format(GRPC_ADDRESS_FORMAT, serverAddressParts[0], GRPC_PORT);
+      return String.format(GRPC_ADDRESS_FORMAT, serverAddressParts[0], port);
     });
 
     return nettyServerToGrpcAddress.get(serverAddress);

@@ -9,6 +9,8 @@ import java.util.Map;
 public class GrpcClientConfig {
   // Use r2Client for non-storage related requests (not implemented in gRPC yet)
   private final Client r2Client;
+
+  private final int port;
   // require a map from netty server to grpc address due to lack of gRPC service discovery
   private final Map<String, String> nettyServerToGrpcAddress;
   // SSL Factory required if using SSL
@@ -16,12 +18,17 @@ public class GrpcClientConfig {
 
   GrpcClientConfig(Builder builder) {
     this.r2Client = builder.r2Client;
+    this.port = builder.port;
     this.nettyServerToGrpcAddress = builder.nettyServerToGrpcAddress;
     this.sslFactory = builder.sslFactory;
   }
 
   public Client getR2Client() {
     return r2Client;
+  }
+
+  public int getPort() {
+    return this.port;
   }
 
   public Map<String, String> getNettyServerToGrpcAddress() {
@@ -34,11 +41,18 @@ public class GrpcClientConfig {
 
   public static class Builder {
     private Client r2Client = null;
+
+    private int port;
     private Map<String, String> nettyServerToGrpcAddress = null;
     private SSLFactory sslFactory = null;
 
     public Builder setR2Client(Client r2Client) {
       this.r2Client = r2Client;
+      return this;
+    }
+
+    public Builder setPort(int port) {
+      this.port = port;
       return this;
     }
 
@@ -55,6 +69,7 @@ public class GrpcClientConfig {
     public GrpcClientConfig build() {
       Preconditions.checkNotNull(r2Client);
       Preconditions.checkNotNull(nettyServerToGrpcAddress);
+      Preconditions.checkState(port != -1 || nettyServerToGrpcAddress.isEmpty());
       return new GrpcClientConfig(this);
     }
   }
