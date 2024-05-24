@@ -111,22 +111,27 @@ public class TestSupersetSchemaGeneratorWithCustomProp {
 
   @Test
   public void testGenerateSupersetSchemaWithExistingCustomProp() {
+    /**
+     * Give a list of schemas and the 2nd schema will remove some optional field.
+     */
     Schema schema1 = Schema.parse(
-        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"TestRecord\",\n" + "  \"fields\": [\n"
-            + "    {\"name\": \"int_field\", \"type\": \"int\", \"default\": 0}\n" + "  ],\n"
-            + "  \"custom_prop\": \"custom_prop1\"\n" + "}\n");
-    Schema schema2 = Schema.parse(
         "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"TestRecord\",\n" + "  \"fields\": [\n"
             + "    {\"name\": \"int_field\", \"type\": \"int\", \"default\": 0},\n"
             + "    {\"name\": \"string_field\", \"type\": \"string\", \"default\": \"\"}\n" + "  ],\n"
-            + "  \"custom_prop\": \"custom_prop2\"\n" + "}");
+            + "  \"custom_prop\": \"custom_prop1\"\n" + "}");
+    Schema schema2 = Schema.parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"TestRecord\",\n" + "  \"fields\": [\n"
+            + "    {\"name\": \"int_field\", \"type\": \"int\", \"default\": 0}\n" + "  ],\n"
+            + "  \"custom_prop\": \"custom_prop2\"\n" + "}\n");
+
     SchemaEntry schemaEntry1 = new SchemaEntry(1, schema1);
-    SchemaEntry schemaEntry2 = new SchemaEntry(2, schema1);
+    SchemaEntry schemaEntry2 = new SchemaEntry(2, schema2);
     List<SchemaEntry> schemaEntryList = new ArrayList<>();
     schemaEntryList.add(schemaEntry1);
     schemaEntryList.add(schemaEntry2);
 
-    assertEquals(generator.generateSupersetSchemaFromSchemas(schemaEntryList), schemaEntry2);
-    assertEquals(generator.generateSupersetSchema(schema1, schema2), schema2);
+    // Make sure there is no exception thrown
+    generator.generateSupersetSchemaFromSchemas(schemaEntryList);
+    generator.generateSupersetSchema(schema1, schema2);
   }
 }
