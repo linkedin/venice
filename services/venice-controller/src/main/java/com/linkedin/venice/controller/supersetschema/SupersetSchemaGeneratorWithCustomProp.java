@@ -41,7 +41,7 @@ public class SupersetSchemaGeneratorWithCustomProp implements SupersetSchemaGene
      * Check whether the latest value schema contains {@link #customProp} or not.
      */
     String customPropInLatestValueSchema = latestValueSchemaEntry.getSchema().getProp(customProp);
-    if (customPropInLatestValueSchema != null) {
+    if (customPropInLatestValueSchema != null && supersetSchemaEntry.getSchema().getProp(customProp) == null) {
       Schema newSupersetSchema = supersetSchemaEntry.clone().getSchema();
       // Not empty, then copy it to the superset schema
       newSupersetSchema.addProp(customProp, customPropInLatestValueSchema);
@@ -74,7 +74,7 @@ public class SupersetSchemaGeneratorWithCustomProp implements SupersetSchemaGene
   public Schema generateSupersetSchema(Schema existingSchema, Schema newSchema) {
     Schema supersetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(existingSchema, newSchema);
     String customPropInNewSchema = newSchema.getProp(customProp);
-    if (customPropInNewSchema != null) {
+    if (customPropInNewSchema != null) {// && supersetSchema.getProp(customProp) == null) {
       Schema newSupersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(supersetSchema.toString());
       newSupersetSchema.addProp(customProp, customPropInNewSchema);
       return newSupersetSchema;
