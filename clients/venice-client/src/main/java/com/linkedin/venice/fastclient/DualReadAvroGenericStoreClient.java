@@ -68,7 +68,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
        * We need to record the latency metric before trying to complete {@link valueFuture} since the pre-registered
        * callbacks to {@link valueFuture} could be executed in the same thread.
        */
-      latency.set(LatencyUtils.getLatencyInMS(startTimeNS));
+      latency.set(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNS));
 
       if (throwable != null) {
         error.set(true);

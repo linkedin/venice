@@ -404,7 +404,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
 
         if (remoteConsumptionEnabled && LatencyUtils
-            .getElapsedTimeInMs(lastUpdateTimeForConsumptionOffsetLag) > CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS) {
+            .getElapsedTimeFromMsToMs(lastUpdateTimeForConsumptionOffsetLag) > getConsumptionLagUpdateIntervalInMs()) {
           recordConsumptionLag();
           lastUpdateTimeForConsumptionOffsetLag = System.currentTimeMillis();
         }
@@ -960,7 +960,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   /**
    * Record metrics for consumption lag.
    */
-  private void recordConsumptionLag() {
+  void recordConsumptionLag() {
     try {
       /**
        *  In the default read_uncommitted isolation level, the end offset is the high watermark (that is, the offset of
@@ -996,5 +996,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   // Visible for testing
   TopicManager getSourceKafkaClusterTopicManager() {
     return sourceKafkaClusterTopicManager;
+  }
+
+  // Visible for testing
+  long getConsumptionLagUpdateIntervalInMs() {
+    return CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS;
   }
 }

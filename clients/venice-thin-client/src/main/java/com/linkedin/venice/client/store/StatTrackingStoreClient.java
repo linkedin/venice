@@ -196,19 +196,24 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
        * is very small.
        */
       if (currentKeyCnt == 1) {
-        stats.recordStreamingResponseTimeToReceiveFirstRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
+        stats
+            .recordStreamingResponseTimeToReceiveFirstRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
       }
       if (currentKeyCnt == keyCntForP50) {
-        stats.recordStreamingResponseTimeToReceive50PctRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
+        stats
+            .recordStreamingResponseTimeToReceive50PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
       }
       if (currentKeyCnt == keyCntForP90) {
-        stats.recordStreamingResponseTimeToReceive90PctRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
+        stats
+            .recordStreamingResponseTimeToReceive90PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
       }
       if (currentKeyCnt == keyCntForP95) {
-        stats.recordStreamingResponseTimeToReceive95PctRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
+        stats
+            .recordStreamingResponseTimeToReceive95PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
       }
       if (currentKeyCnt == keyCntForP99) {
-        stats.recordStreamingResponseTimeToReceive99PctRecord(LatencyUtils.getLatencyInMS(preRequestTimeInNS));
+        stats
+            .recordStreamingResponseTimeToReceive99PctRecord(LatencyUtils.getElapsedTimeFromNSToMS(preRequestTimeInNS));
       }
     }
 
@@ -257,7 +262,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       Optional<Exception> exception,
       int successKeyCnt,
       int duplicateEntryCnt) {
-    double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
+    double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
     if (exception.isPresent()) {
       clientStats.recordUnhealthyRequest();
       clientStats.recordUnhealthyLatency(latency);
@@ -296,7 +301,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       ClientStats clientStats,
       long startTimeInNS) {
     return (T value, Throwable throwable) -> {
-      double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
+      double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
       if (throwable != null) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);

@@ -277,6 +277,36 @@ public class VenicePushJobTest {
     }
   }
 
+  @Test
+  public void testPushJobUnknownPollStatusDoesWaiting() {
+    Properties vpjProps = new Properties();
+    vpjProps.setProperty(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
+    ControllerClient client = mock(ControllerClient.class);
+    JobStatusQueryResponse unknownResponse = mock(JobStatusQueryResponse.class);
+    doReturn("UNKNOWN").when(unknownResponse).getStatus();
+    JobStatusQueryResponse completedResponse = mock(JobStatusQueryResponse.class);
+    doReturn("COMPLETED").when(completedResponse).getStatus();
+    doReturn(unknownResponse).doReturn(unknownResponse)
+        .doReturn(completedResponse)
+        .when(client)
+        .queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null));
+    try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      pushJobSetting.jobStatusInUnknownStateTimeoutMs = 100_000_000;
+      Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
+      pushJobSetting.version = 1;
+      pushJobSetting.topic = "abc";
+      pushJobSetting.storeResponse = new StoreResponse();
+      pushJobSetting.storeResponse.setName("abc");
+      StoreInfo storeInfo = new StoreInfo();
+      storeInfo.setBootstrapToOnlineTimeoutInHours(10);
+      pushJobSetting.storeResponse.setStore(storeInfo);
+      pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false);
+    } catch (Exception e) {
+      Assert.fail("The test should be completed successfully without any timeout exception");
+    }
+  }
+
   private Properties getRepushWithTTLProps() {
     Properties repushProps = new Properties();
     repushProps.setProperty(REPUSH_TTL_ENABLE, "true");

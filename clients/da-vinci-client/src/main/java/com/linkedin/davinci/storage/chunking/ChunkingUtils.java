@@ -166,7 +166,7 @@ public class ChunkingUtils {
           // User-defined schema, thus not a chunked value.
 
           if (response != null) {
-            response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+            response.addDatabaseLookupLatency(LatencyUtils.getElapsedTimeFromNSToMS(databaseLookupStartTimeInNS));
           }
 
           GenericRecord deserializedKey = keyRecordDeserializer.deserialize(key);
@@ -315,7 +315,7 @@ public class ChunkingUtils {
       // User-defined schema, thus not a chunked value. Early termination.
 
       if (response != null) {
-        response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+        response.addDatabaseLookupLatency(LatencyUtils.getElapsedTimeFromNSToMS(databaseLookupStartTimeInNS));
         response.addValueSize(valueLength);
       }
       return adapter.constructValue(
@@ -378,7 +378,7 @@ public class ChunkingUtils {
     }
 
     if (response != null) {
-      response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+      response.addDatabaseLookupLatency(LatencyUtils.getElapsedTimeFromNSToMS(databaseLookupStartTimeInNS));
       response.addValueSize(actualSize);
       response.incrementMultiChunkLargeValueCount();
     }

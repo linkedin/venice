@@ -369,7 +369,7 @@ public class StorageService extends AbstractVeniceService {
     LOGGER.info(
         "time spent on creating new storage Engine for store {}: {} ms",
         topicName,
-        LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine));
+        LatencyUtils.getElapsedTimeFromNSToMS(startTimeInBuildingNewEngine));
     return engine;
   }
 

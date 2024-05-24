@@ -58,7 +58,7 @@ class TopicManagerStats extends AbstractVeniceStats {
       return;
     }
     // convert ns to us and record
-    sensorsByTypes.get(sensorType).record(LatencyUtils.getLatencyInMS(startTimeInNs));
+    sensorsByTypes.get(sensorType).record(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
   }
 
   final void registerTopicMetadataFetcherSensors(TopicMetadataFetcher topicMetadataFetcher) {

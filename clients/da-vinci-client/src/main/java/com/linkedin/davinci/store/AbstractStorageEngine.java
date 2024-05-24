@@ -366,7 +366,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
         "Closing {} rockDB partitions of store {} took {} ms",
         tmpList.size(),
         storeVersionName,
-        LatencyUtils.getElapsedTimeInMs(startTime));
+        LatencyUtils.getElapsedTimeFromMsToMs(startTime));
     partitionList.clear();
     closeMetadataPartition();
   }

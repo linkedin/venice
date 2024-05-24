@@ -353,7 +353,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     ValueRecord result = SingleGetChunkingAdapter
         .getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null, rmdManifestContainer);
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
-        LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
+        LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);
     if (result == null) {
       return null;
@@ -370,7 +370,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs) {
+      long beforeProcessingBatchRecordsTimestampMs) {
     /**
      * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
      * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
@@ -386,7 +386,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           kafkaUrl,
           kafkaClusterId,
           beforeProcessingRecordTimestampNs,
-          currentTimeForMetricsMs);
+          beforeProcessingBatchRecordsTimestampMs);
       return;
     }
     KafkaKey kafkaKey = consumerRecord.getKey();
@@ -421,10 +421,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             keyBytes,
             consumerRecord.getTopicPartition(),
             valueManifestContainer,
-            currentTimeForMetricsMs));
+            beforeProcessingBatchRecordsTimestampMs));
 
-    final RmdWithValueSchemaId rmdWithValueSchemaID =
-        getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition, currentTimeForMetricsMs);
+    final RmdWithValueSchemaId rmdWithValueSchemaID = getReplicationMetadataAndSchemaId(
+        partitionConsumptionState,
+        keyBytes,
+        subPartition,
+        beforeProcessingBatchRecordsTimestampMs);
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
     final long offsetSumPreOperation =
@@ -456,7 +459,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                            // config to represent the mapping from Kafka server URLs to colo ID.
         );
         getHostLevelIngestionStats()
-            .recordIngestionActiveActivePutLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
+            .recordIngestionActiveActivePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
 
       case DELETE:
@@ -468,7 +471,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             kafkaClusterId,
             kafkaClusterId);
         getHostLevelIngestionStats()
-            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
+            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
 
       case UPDATE:
@@ -483,7 +486,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             kafkaClusterId,
             kafkaClusterId);
         getHostLevelIngestionStats()
-            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
+            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
       default:
         throw new VeniceMessageException(
@@ -533,7 +536,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult.getRmdRecord());
         }
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getLatencyInMS(preprocessingTime));
+          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
           if (exception == null) {
             producePutOrDeleteToKafka(
                 mergeConflictResult,
@@ -661,7 +664,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           compressor.get(),
           valueManifestContainer);
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
-          LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
+          LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
           currentTimeForMetricsMs);
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);

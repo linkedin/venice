@@ -10,9 +10,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Time;
@@ -73,13 +70,13 @@ public class AggVersionedDIVStatsTest {
      */
 
     Assert.assertEquals(
-        reporter.query("." + storeName + "_future--success_msg.DIVStatsCounter").value(),
+        reporter.query("." + storeName + "_future--success_msg.DIVStatsGauge").value(),
         (double) NULL_DIV_STATS.code);
     Assert.assertEquals(
-        reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsCounter").value(),
+        reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsGauge").value(),
         (double) NULL_DIV_STATS.code);
     Assert.assertEquals(
-        reporter.query("." + storeName + "_future--corrupted_msg.DIVStatsCounter").value(),
+        reporter.query("." + storeName + "_future--corrupted_msg.DIVStatsGauge").value(),
         (double) NULL_DIV_STATS.code);
   }
 
@@ -90,135 +87,16 @@ public class AggVersionedDIVStatsTest {
 
     String storeName = newStore.getName();
 
-    Assert.assertEquals(reporter.query("." + storeName + "_total--corrupted_msg.DIVStatsCounter").value(), 0d);
-    Assert.assertEquals(reporter.query("." + storeName + "_total--success_msg.DIVStatsCounter").value(), 0d);
-  }
-
-  @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })
-  public void testStatsCanUpdateVersionStatus() {
-    String storeName = mockStore.getName();
-    Assert.assertEquals(reporter.query("." + storeName + "--future_version.Gauge").value(), 0d);
-
-    // v1 starts pushing
-    Version version = new VersionImpl(storeName, 1);
-    mockStore.addVersion(version);
-    stats.handleStoreChanged(mockStore);
-
-    // expect to see v1's stats on future reporter
-    Assert.assertEquals(reporter.query("." + storeName + "--future_version.Gauge").value(), 1d);
-
-    long consumerTimestampMs = System.currentTimeMillis();
-
-    double v1ProducerToSourceBrokerLatencyMs = 811d;
-    double v1SourceBrokerToLeaderConsumerLatencyMs = 211d;
-    stats.recordLeaderLatencies(
-        storeName,
-        1,
-        consumerTimestampMs,
-        v1ProducerToSourceBrokerLatencyMs,
-        v1SourceBrokerToLeaderConsumerLatencyMs);
-
-    double v1ProducerToLocalBrokerLatencyMs = 821d;
-    double v1LocalBrokerToFollowerConsumerLatencyMs = 221d;
-    stats.recordFollowerLatencies(
-        storeName,
-        1,
-        consumerTimestampMs,
-        v1ProducerToLocalBrokerLatencyMs,
-        v1LocalBrokerToFollowerConsumerLatencyMs);
-
-    // v1 becomes the current version and v2 starts pushing
-    version.setStatus(VersionStatus.ONLINE);
-    mockStore.setCurrentVersionWithoutCheck(1);
-    Version version2 = new VersionImpl(storeName, 2);
-    mockStore.addVersion(version2);
-
-    stats.recordDuplicateMsg(storeName, 2);
-    stats.handleStoreChanged(mockStore);
-
-    // expect to see v1's stats on current reporter and v2's stats on future reporter
-    Assert.assertEquals(reporter.query("." + storeName + "--future_version.Gauge").value(), 2d);
-    Assert.assertEquals(reporter.query("." + storeName + "--current_version.Gauge").value(), 1d);
-    Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 1d);
-
-    double v2ProducerToSourceBrokerLatencyMs = 812d;
-    double v2SourceBrokerToLeaderConsumerLatencyMs = 212d;
-    stats.recordLeaderLatencies(
-        storeName,
-        2,
-        consumerTimestampMs,
-        v2ProducerToSourceBrokerLatencyMs,
-        v2SourceBrokerToLeaderConsumerLatencyMs);
-
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_current--producer_to_source_broker_latency_avg_ms.DIVStatsCounter").value(),
-        v1ProducerToSourceBrokerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_current--producer_to_source_broker_latency_max_ms.DIVStatsCounter").value(),
-        v1ProducerToSourceBrokerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--source_broker_to_leader_consumer_latency_avg_ms.DIVStatsCounter")
-            .value(),
-        v2SourceBrokerToLeaderConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--source_broker_to_leader_consumer_latency_max_ms.DIVStatsCounter")
-            .value(),
-        v2SourceBrokerToLeaderConsumerLatencyMs);
-
-    double v2ProducerToLocalBrokerLatencyMs = 822d;
-    double v2LocalBrokerToFollowerConsumerLatencyMs = 222d;
-    stats.recordFollowerLatencies(
-        storeName,
-        2,
-        consumerTimestampMs,
-        v2ProducerToLocalBrokerLatencyMs,
-        v2LocalBrokerToFollowerConsumerLatencyMs);
-
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_current--producer_to_local_broker_latency_avg_ms.DIVStatsCounter").value(),
-        v1ProducerToLocalBrokerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_current--producer_to_local_broker_latency_max_ms.DIVStatsCounter").value(),
-        v1ProducerToLocalBrokerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--local_broker_to_follower_consumer_latency_avg_ms.DIVStatsCounter")
-            .value(),
-        v2LocalBrokerToFollowerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--local_broker_to_follower_consumer_latency_max_ms.DIVStatsCounter")
-            .value(),
-        v2LocalBrokerToFollowerConsumerLatencyMs);
-
-    // v2 finishes pushing
-    version2.setStatus(VersionStatus.ONLINE);
-    stats.handleStoreChanged(mockStore);
-    // since turning Version status to be online and becoming current version are two separated operations, expect to
-    // see
-    // v2's stats on backup reporter
-    Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 0d);
-
-    // v2 becomes the current version
-    mockStore.setCurrentVersionWithoutCheck(2);
-    stats.handleStoreChanged(mockStore);
-
-    // expect to see v2's stats on current reporter and v1's stats on backup reporter
-    Assert.assertEquals(reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsCounter").value(), 1d);
-
-    // v3 finishes pushing and the status becomes to be online
-    Version version3 = new VersionImpl(storeName, 3);
-    version3.setStatus(VersionStatus.ONLINE);
-    mockStore.addVersion(version3);
-    mockStore.deleteVersion(1);
-    stats.handleStoreChanged(mockStore);
-    stats.recordMissingMsg(storeName, 3);
+    Assert.assertEquals(reporter.query("." + storeName + "_total--corrupted_msg.DIVStatsGauge").value(), 0d);
+    Assert.assertEquals(reporter.query("." + storeName + "_total--success_msg.DIVStatsGauge").value(), 0d);
   }
 
   @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })
   public void testStatsCanDeleteStore() {
     String storeName = "store0";
-    Assert.assertNotNull(metricsRepository.getMetric("." + storeName + "_future--success_msg.DIVStatsCounter"));
+    Assert.assertNotNull(metricsRepository.getMetric("." + storeName + "_future--success_msg.DIVStatsGauge"));
     stats.handleStoreDeleted(storeName);
-    Assert.assertNull(metricsRepository.getMetric("." + storeName + "_future--success_msg.DIVStatsCounter"));
+    Assert.assertNull(metricsRepository.getMetric("." + storeName + "_future--success_msg.DIVStatsGauge"));
   }
 
   private Store createStore(String nameStore) {

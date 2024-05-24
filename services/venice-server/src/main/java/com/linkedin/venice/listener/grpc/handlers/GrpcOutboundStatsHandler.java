@@ -38,7 +38,7 @@ public class GrpcOutboundStatsHandler extends VeniceServerGrpcHandler {
 
     statsContext.recordBasicMetrics(serverHttpRequestStats);
 
-    double elapsedTime = LatencyUtils.getLatencyInMS(statsContext.getRequestStartTimeInNS());
+    double elapsedTime = LatencyUtils.getElapsedTimeFromNSToMS(statsContext.getRequestStartTimeInNS());
 
     if (!ctx.hasError() && !responseStatus.equals(OK) || responseStatus.equals(NOT_FOUND)) {
       statsContext.successRequest(serverHttpRequestStats, elapsedTime);

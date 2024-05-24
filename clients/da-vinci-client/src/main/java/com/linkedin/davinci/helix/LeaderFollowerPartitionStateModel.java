@@ -111,7 +111,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
             "Completed setting up new store partition for {} partition {}. Total elapsed time: {} ms",
             resourceName,
             getPartition(),
-            LatencyUtils.getLatencyInMS(startTimeForSettingUpNewStorePartitionInNs));
+            LatencyUtils.getElapsedTimeFromNSToMS(startTimeForSettingUpNewStorePartitionInNs));
       } catch (Exception e) {
         logger.error("Failed to set up new store partition for {} partition {}", resourceName, getPartition(), e);
         if (isRegularStoreCurrentVersion) {

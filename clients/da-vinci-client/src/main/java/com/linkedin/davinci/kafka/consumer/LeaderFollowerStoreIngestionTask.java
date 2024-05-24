@@ -521,8 +521,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       /**
        * Check whether the push timeout
        */
-      if (!partitionConsumptionState.isComplete() && LatencyUtils
-          .getElapsedTimeInMs(partitionConsumptionState.getConsumptionStartTimeInMs()) > this.bootstrapTimeoutInMs) {
+      if (!partitionConsumptionState.isComplete() && LatencyUtils.getElapsedTimeFromMsToMs(
+          partitionConsumptionState.getConsumptionStartTimeInMs()) > this.bootstrapTimeoutInMs) {
         if (!pushTimeout) {
           pushTimeout = true;
           timeoutPartitions = new HashSet<>();
@@ -684,7 +684,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * 2. leader is consuming SR topic right now and TS wants leader to switch to another topic.
            */
           long lastTimestamp = getLastConsumedMessageTimestamp(partition);
-          if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime
+          if (LatencyUtils.getElapsedTimeFromMsToMs(lastTimestamp) > newLeaderInactiveTime
               || switchAwayFromStreamReprocessingTopic(currentLeaderTopic, newSourceTopic)) {
             leaderExecuteTopicSwitch(partitionConsumptionState, topicSwitchWrapper.getTopicSwitch(), newSourceTopic);
           }
@@ -696,7 +696,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     if (emitMetrics.get()) {
-      hostLevelIngestionStats.recordCheckLongRunningTasksLatency(LatencyUtils.getLatencyInMS(checkStartTimeInNS));
+      hostLevelIngestionStats
+          .recordCheckLongRunningTasksLatency(LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS));
     }
 
     if (pushTimeout) {
@@ -716,7 +717,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * a different producer host name.
      */
     long lastTimestamp = getLastConsumedMessageTimestamp(pcs.getPartition());
-    if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) <= newLeaderInactiveTime) {
+    if (LatencyUtils.getElapsedTimeFromMsToMs(lastTimestamp) <= newLeaderInactiveTime) {
       return false;
     }
 
@@ -1125,7 +1126,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             partitionConsumptionState);
       }
       if (LatencyUtils
-          .getElapsedTimeInMs(latestConsumedProducerTimestamp) < dataRecoveryCompletionTimeLagThresholdInMs) {
+          .getElapsedTimeFromMsToMs(latestConsumedProducerTimestamp) < dataRecoveryCompletionTimeLagThresholdInMs) {
         LOGGER.info(
             "Data recovery completed for topic: {} partition: {} upon consuming records with "
                 + "producer timestamp of {} which is within the data recovery completion lag threshold of {} ms",
@@ -1148,7 +1149,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           localVTOffsetProgress);
       boolean isAtEndOfSourceVT = dataRecoveryLag <= 0;
       long lastTimestamp = getLastConsumedMessageTimestamp(partitionConsumptionState.getPartition());
-      if (isAtEndOfSourceVT && LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
+      if (isAtEndOfSourceVT && LatencyUtils.getElapsedTimeFromMsToMs(lastTimestamp) > newLeaderInactiveTime) {
         LOGGER.info(
             "Data recovery completed for topic: {} partition: {} upon exceeding leader inactive time of {} ms",
             kafkaVersionTopic,
@@ -1940,14 +1941,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // Emit latency metrics separately for leaders and followers
       boolean isLeader = partitionConsumptionState.getLeaderFollowerState().equals(LEADER);
       if (isLeader) {
-        versionedDIVStats.recordLeaderLatencies(
+        versionedIngestionStats.recordLeaderLatencies(
             storeName,
             versionNumber,
             consumerTimestampMs,
             producerBrokerLatencyMs,
             brokerConsumerLatencyMs);
       } else {
-        versionedDIVStats.recordFollowerLatencies(
+        versionedIngestionStats.recordFollowerLatencies(
             storeName,
             versionNumber,
             consumerTimestampMs,
@@ -2284,11 +2285,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerRecord,
             isEndOfPushReceived,
             partitionConsumptionState);
-        versionedDIVStats.recordLeaderDIVCompletionTime(
-            storeName,
-            versionNumber,
-            LatencyUtils.getElapsedTimeInMs(beforeProcessingPerRecordTimestampNs),
-            beforeProcessingBatchRecordsTimestampMs);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!isEndOfPushReceived) {
@@ -2304,6 +2300,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         LOGGER.debug("{} : Skipping a duplicate record at offset: {}", ingestionTaskName, consumerRecord.getOffset());
         return DelegateConsumerRecordResult.DUPLICATE_MESSAGE;
       }
+
+      // heavy leader processing starts here
+      versionedIngestionStats.recordLeaderPreprocessingLatency(
+          storeName,
+          versionNumber,
+          LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingPerRecordTimestampNs),
+          beforeProcessingBatchRecordsTimestampMs);
 
       if (kafkaKey.isControlMessage()) {
         boolean producedFinally = true;
@@ -2569,7 +2572,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           long synchronizeStartTimeInNS = System.nanoTime();
           lastFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
           hostLevelIngestionStats
-              .recordLeaderProducerSynchronizeLatency(LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
+              .recordLeaderProducerSynchronizeLatency(LatencyUtils.getElapsedTimeFromNSToMS(synchronizeStartTimeInNS));
         }
       } catch (InterruptedException e) {
         LOGGER.warn(
@@ -2993,7 +2996,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs) {
+      long beforeProcessingBatchRecordsTimestampMs) {
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     byte[] keyBytes = kafkaKey.getKey();
@@ -3189,7 +3192,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   update.updateValue,
                   update.updateSchemaId,
                   readerUpdateProtocolVersion));
-      hostLevelIngestionStats.recordWriteComputeUpdateLatency(LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
+      hostLevelIngestionStats
+          .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
     } catch (Exception e) {
       writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
       throw new RuntimeException(e);
@@ -3279,7 +3283,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             storeDeserializerCache,
             compressor.get(),
             manifestContainer);
-        hostLevelIngestionStats.recordWriteComputeLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+        hostLevelIngestionStats
+            .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
       } catch (Exception e) {
         writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
         throw e;

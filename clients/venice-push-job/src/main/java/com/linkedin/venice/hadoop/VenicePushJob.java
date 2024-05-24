@@ -846,7 +846,7 @@ public class VenicePushJob implements AutoCloseable {
       if (!pushJobSetting.isTargetedRegionPushEnabled) {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
       }
-      pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
+      pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
       updatePushJobDetailsWithConfigs();
       updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
       sendPushJobDetailsToController();
@@ -875,7 +875,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
-        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
+        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
         updatePushJobDetailsWithConfigs();
         updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
@@ -2471,7 +2471,7 @@ public class VenicePushJob implements AutoCloseable {
       }
       long bootstrapToOnlineTimeoutInHours =
           VenicePushJob.this.pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
-      long durationMs = LatencyUtils.getElapsedTimeInMs(pollStartTimeMs);
+      long durationMs = LatencyUtils.getElapsedTimeFromMsToMs(pollStartTimeMs);
       if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
         throw new VeniceException(
             "Failing push-job for store " + VenicePushJob.this.pushJobSetting.storeResponse.getName()
@@ -2482,9 +2482,9 @@ public class VenicePushJob implements AutoCloseable {
       } else if (unknownStateStartTimeMs == 0) {
         unknownStateStartTimeMs = System.currentTimeMillis();
       } else if (LatencyUtils
-          .getElapsedTimeInMs(unknownStateStartTimeMs) < pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
+          .getElapsedTimeFromMsToMs(unknownStateStartTimeMs) < pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
         double elapsedMinutes =
-            ((double) LatencyUtils.getElapsedTimeInMs(unknownStateStartTimeMs)) / Time.MS_PER_MINUTE;
+            ((double) LatencyUtils.getElapsedTimeFromMsToMs(unknownStateStartTimeMs)) / Time.MS_PER_MINUTE;
         LOGGER.warn("Some data centers are still in unknown state after waiting for {} minutes", elapsedMinutes);
       } else {
         long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
@@ -2753,7 +2753,7 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
     }
-    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
+    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
     updatePushJobDetailsWithConfigs();
     sendPushJobDetailsToController();
   }

@@ -895,7 +895,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         boolean timestampLagIsAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
             partitionConsumptionState,
-            LatencyUtils.getElapsedTimeInMs(latestConsumedProducerTimestamp),
+            LatencyUtils.getElapsedTimeFromMsToMs(latestConsumedProducerTimestamp),
             producerTimeLagThresholdInMS,
             shouldLogLag,
             TIME_LAG,
@@ -1061,7 +1061,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (measureTime && recordLevelMetricEnabled.get()) {
       hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
-          LatencyUtils.getLatencyInMS(queuePutStartTimeInNS),
+          LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS),
           currentTimeForMetricsMs);
     }
   }
@@ -1137,7 +1137,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingPerRecordTimestampNs);
 
           if (metricsEnabled) {
-            elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
+            elapsedTimeForPuttingIntoQueue += LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS);
           }
           break;
         case PRODUCED_TO_KAFKA:
@@ -1602,7 +1602,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.info(
             "Starting consumer action {}. Latency from creating action to starting action {}ms",
             action,
-            LatencyUtils.getElapsedTimeInMs(action.getCreateTimestampInMs()));
+            LatencyUtils.getElapsedTimeFromMsToMs(action.getCreateTimestampInMs()));
         action.incrementAttempt();
         processConsumerAction(action, store);
         action.getFuture().complete(null);
@@ -1613,7 +1613,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.info(
             "Finished consumer action {} in {}ms",
             action,
-            LatencyUtils.getElapsedTimeInMs(actionProcessStartTimeInMs));
+            LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs));
       } catch (VeniceIngestionTaskKilledException | InterruptedException e) {
         action.getFuture().completeExceptionally(e);
         throw e;
@@ -1626,7 +1626,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "Failed to execute consumer action {} after {} attempts. Total elapsed time: {}ms",
             action,
             action.getAttemptsCount(),
-            LatencyUtils.getElapsedTimeInMs(actionProcessStartTimeInMs),
+            LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs),
             e);
         // Mark action as failed since it has exhausted all the retries.
         action.getFuture().completeExceptionally(e);
@@ -1838,7 +1838,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionedIngestionStats.recordSubscribePrepLatency(
             storeName,
             versionNumber,
-            LatencyUtils.getElapsedTimeInMs(consumptionStatePrepTimeStart));
+            LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
         /**
          * If it is already elected to LEADER, we should subscribe to leader topic in the offset record, instead of VT.
          * For now, this will only be triggered by ingestion isolation, as it is passing LEADER state from forked process
@@ -2839,6 +2839,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               fatalException.getMessage());
         }
       }
+
+      /**
+       heavy internal processing starts here
+       **/
+      if (recordLevelMetricEnabled.get()) {
+        versionedIngestionStats.recordInternalPreprocessingLatency(
+            storeName,
+            versionNumber,
+            LatencyUtils.getElapsedTimeFromMsToMs(currentTimeMs),
+            currentTimeMs);
+      }
+
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (leaderProducedRecordContext == null
             ? (ControlMessage) kafkaValue.payloadUnion
@@ -2882,7 +2894,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
             storeName,
             versionNumber,
-            LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestampNs),
+            LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingRecordTimestampNs),
             currentTimeMs);
       }
     } catch (DuplicateDataException e) {
@@ -2973,7 +2985,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       return (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null)
           || (topicManager.isTopicCompactionEnabled(pubSubTopic)
-              && LatencyUtils.getElapsedTimeInMs(consumerRecord.getPubSubMessageTime()) >= topicManager
+              && LatencyUtils.getElapsedTimeFromMsToMs(consumerRecord.getPubSubMessageTime()) >= topicManager
                   .getTopicMinLogCompactionLagMs(pubSubTopic));
     });
 
@@ -3260,7 +3272,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           versionedIngestionStats.recordTransformerLatency(
               storeName,
               versionNumber,
-              LatencyUtils.getElapsedTimeInMs(recordTransformStartTime),
+              LatencyUtils.getElapsedTimeFromMsToMs(recordTransformStartTime),
               currentTimeMs);
           writeToStorageEngine(producedPartition, keyBytes, put);
         } else {
@@ -3279,7 +3291,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         if (metricsEnabled && recordLevelMetricEnabled.get()) {
           hostLevelIngestionStats
-              .recordStorageEnginePutLatency(LatencyUtils.getLatencyInMS(startTimeNs), currentTimeMs);
+              .recordStorageEnginePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
         }
         break;
 
@@ -3296,7 +3308,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         deleteFromStorageEngine(producedPartition, keyBytes, delete);
         if (metricsEnabled && recordLevelMetricEnabled.get()) {
           hostLevelIngestionStats
-              .recordStorageEngineDeleteLatency(LatencyUtils.getLatencyInMS(startTimeNs), currentTimeMs);
+              .recordStorageEngineDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
         }
         break;
 
@@ -3578,7 +3590,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     LOGGER.info(
         "Ingestion task of topic: {} is shutdown in {}ms",
         kafkaVersionTopic,
-        LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+        LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
   }
 
   /**
