@@ -370,7 +370,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs) {
+      long beforeProcessingBatchRecordsTimestampMs) {
     /**
      * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
      * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
@@ -386,7 +386,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           kafkaUrl,
           kafkaClusterId,
           beforeProcessingRecordTimestampNs,
-          currentTimeForMetricsMs);
+          beforeProcessingBatchRecordsTimestampMs);
       return;
     }
     KafkaKey kafkaKey = consumerRecord.getKey();
@@ -421,10 +421,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             keyBytes,
             consumerRecord.getTopicPartition(),
             valueManifestContainer,
-            currentTimeForMetricsMs));
+            beforeProcessingBatchRecordsTimestampMs));
 
-    final RmdWithValueSchemaId rmdWithValueSchemaID =
-        getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition, currentTimeForMetricsMs);
+    final RmdWithValueSchemaId rmdWithValueSchemaID = getReplicationMetadataAndSchemaId(
+        partitionConsumptionState,
+        keyBytes,
+        subPartition,
+        beforeProcessingBatchRecordsTimestampMs);
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
     final long offsetSumPreOperation =

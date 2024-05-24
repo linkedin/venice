@@ -2,7 +2,6 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.function.DoubleSupplier;
@@ -42,12 +41,6 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
             this,
             () -> (double) getStats().getBenignLeaderProducerFailure(),
             "benign_leader_producer_failure_count"));
-
-    // This prevents user store system store to register latency related DIV metric sensors.
-    if (!VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
-      registerLatencySensor("leader_process_to_div", DIVStats::getLeaderProcessToDIVLatencySensor);
-      registerLatencySensor("drainer_process_to_div", DIVStats::getDrainerProcessToDIVLatencySensor);
-    }
   }
 
   protected void registerLatencySensor(

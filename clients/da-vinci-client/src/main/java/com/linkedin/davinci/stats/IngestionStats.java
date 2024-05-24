@@ -60,6 +60,8 @@ public class IngestionStats {
   public static final String TRANSFORMER_LATENCY = "transformer_latency";
   public static final String IDLE_TIME = "idle_time";
   public static final String PRODUCER_CALLBACK_LATENCY = "producer_callback_latency";
+  public static final String LEADER_PREPROCESSING_LATENCY = "leader_preprocessing_latency";
+  public static final String INTERNAL_PREPROCESSING_LATENCY = "internal_preprocessing_latency";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
@@ -91,6 +93,8 @@ public class IngestionStats {
   private final WritePathLatencySensor nearlineLocalBrokerToReadyToServeLatencySensor;
   private WritePathLatencySensor transformerLatencySensor;
   private final WritePathLatencySensor producerCallBackLatency;
+  private final WritePathLatencySensor leaderPreprocessingLatency;
+  private final WritePathLatencySensor internalPreprocessingLatency;
   // Measure the count of ignored updates due to conflict resolution
   private final LongAdderRateGauge conflictResolutionUpdateIgnoredSensor = new LongAdderRateGauge();
   // Measure the total number of incoming conflict resolutions
@@ -188,6 +192,10 @@ public class IngestionStats {
         NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY);
     producerCallBackLatency =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, PRODUCER_CALLBACK_LATENCY);
+    leaderPreprocessingLatency =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, LEADER_PREPROCESSING_LATENCY);
+    internalPreprocessingLatency =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, INTERNAL_PREPROCESSING_LATENCY);
 
     registerSensor(localMetricRepository, UPDATE_IGNORED_DCR, conflictResolutionUpdateIgnoredSensor);
     registerSensor(localMetricRepository, TOTAL_DCR, totalConflictResolutionCountSensor);
@@ -337,6 +345,22 @@ public class IngestionStats {
 
   public void recordProducerCallBackLatency(double value, long currentTimeMs) {
     producerCallBackLatency.record(value, currentTimeMs);
+  }
+
+  public double getLeaderPreprocessingLatencyMax() {
+    return leaderPreprocessingLatency.getMax();
+  }
+
+  public void recordLeaderPreprocessingLatency(double value, long currentTimeMs) {
+    leaderPreprocessingLatency.record(value, currentTimeMs);
+  }
+
+  public double getInternalPreprocessingLatencyMax() {
+    return internalPreprocessingLatency.getMax();
+  }
+
+  public void recordInternalPreprocessingLatency(double value, long currentTimeMs) {
+    internalPreprocessingLatency.record(value, currentTimeMs);
   }
 
   public void recordVersionTopicEndOffsetRewind() {

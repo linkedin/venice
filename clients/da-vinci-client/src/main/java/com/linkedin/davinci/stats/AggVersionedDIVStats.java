@@ -56,20 +56,6 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordSuccessMsg);
   }
 
-  public void recordLeaderProcessToDIV(String storeName, int version, double value, long currentTimeMs) {
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordLeaderProcessToDIVLatencyMs(value, currentTimeMs));
-  }
-
-  public void recordDrainerProcessToDIV(String storeName, int version, double value, long currentTimeMs) {
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordDrainerProcessToDIVLatencyMs(value, currentTimeMs));
-  }
-
   public void recordBenignLeaderOffsetRewind(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordBenignLeaderOffsetRewind);
   }

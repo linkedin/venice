@@ -13,9 +13,11 @@ import static com.linkedin.davinci.stats.IngestionStats.HYBRID_LEADER_OFFSET_LAG
 import static com.linkedin.davinci.stats.IngestionStats.IDLE_TIME;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_ERROR_GAUGE;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_PUSH_TIMEOUT_GAUGE;
+import static com.linkedin.davinci.stats.IngestionStats.INTERNAL_PREPROCESSING_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_PRODUCED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_OFFSET_LAG;
+import static com.linkedin.davinci.stats.IngestionStats.LEADER_PREPROCESSING_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_PRODUCED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME;
@@ -171,6 +173,20 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getProducerCallBackLatencyMax(),
               0,
               PRODUCER_CALLBACK_LATENCY + "_max"));
+
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getLeaderPreprocessingLatencyMax(),
+              0,
+              LEADER_PREPROCESSING_LATENCY + "_max"));
+
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getInternalPreprocessingLatencyMax(),
+              0,
+              INTERNAL_PREPROCESSING_LATENCY + "_max"));
 
       registerSensor(
           new IngestionStatsGauge(this, () -> (double) getStats().getBatchReplicationLag(), 0, BATCH_REPLICATION_LAG));

@@ -2826,11 +2826,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         if (recordLevelMetricEnabled.get()) {
           versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
-          versionedDIVStats.recordDrainerProcessToDIV(
-              storeName,
-              versionNumber,
-              LatencyUtils.getElapsedTimeFromMsToMs(currentTimeMs),
-              currentTimeMs);
         }
       } catch (FatalDataValidationException fatalException) {
         if (!endOfPushReceived) {
@@ -2844,6 +2839,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               fatalException.getMessage());
         }
       }
+
+      /**
+       heavy internal preprocessing starts here
+       **/
+      if (recordLevelMetricEnabled.get()) {
+        versionedIngestionStats.recordInternalPreprocessingLatency(
+            storeName,
+            versionNumber,
+            LatencyUtils.getElapsedTimeFromMsToMs(currentTimeMs),
+            currentTimeMs);
+      }
+
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (leaderProducedRecordContext == null
             ? (ControlMessage) kafkaValue.payloadUnion

@@ -2285,11 +2285,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerRecord,
             isEndOfPushReceived,
             partitionConsumptionState);
-        versionedDIVStats.recordLeaderProcessToDIV(
-            storeName,
-            versionNumber,
-            LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingPerRecordTimestampNs),
-            beforeProcessingBatchRecordsTimestampMs);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!isEndOfPushReceived) {
@@ -2305,6 +2300,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         LOGGER.debug("{} : Skipping a duplicate record at offset: {}", ingestionTaskName, consumerRecord.getOffset());
         return DelegateConsumerRecordResult.DUPLICATE_MESSAGE;
       }
+
+      // heavy preprocessing starts here
+      versionedIngestionStats.recordLeaderPreprocessingLatency(
+          storeName,
+          versionNumber,
+          LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingPerRecordTimestampNs),
+          beforeProcessingBatchRecordsTimestampMs);
 
       if (kafkaKey.isControlMessage()) {
         boolean producedFinally = true;
@@ -2994,7 +2996,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs) {
+      long beforeProcessingBatchRecordsTimestampMs) {
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     byte[] keyBytes = kafkaKey.getKey();
