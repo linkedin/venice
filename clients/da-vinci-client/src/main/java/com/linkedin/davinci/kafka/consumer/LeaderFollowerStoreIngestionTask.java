@@ -2301,7 +2301,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         return DelegateConsumerRecordResult.DUPLICATE_MESSAGE;
       }
 
-      // heavy preprocessing starts here
+      // heavy leader processing starts here
       versionedIngestionStats.recordLeaderPreprocessingLatency(
           storeName,
           versionNumber,

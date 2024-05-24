@@ -2841,7 +2841,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       /**
-       heavy internal preprocessing starts here
+       heavy internal processing starts here
        **/
       if (recordLevelMetricEnabled.get()) {
         versionedIngestionStats.recordInternalPreprocessingLatency(
