@@ -189,6 +189,20 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               INTERNAL_PREPROCESSING_LATENCY + "_max"));
 
       registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getLeaderPreprocessingLatencyAvg(),
+              0,
+              LEADER_PREPROCESSING_LATENCY + "_avg"));
+
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getInternalPreprocessingLatencyAvg(),
+              0,
+              INTERNAL_PREPROCESSING_LATENCY + "_avg"));
+
+      registerSensor(
           new IngestionStatsGauge(this, () -> (double) getStats().getBatchReplicationLag(), 0, BATCH_REPLICATION_LAG));
       registerSensor(
           new IngestionStatsGauge(

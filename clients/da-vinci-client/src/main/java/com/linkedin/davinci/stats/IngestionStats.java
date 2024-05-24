@@ -351,8 +351,16 @@ public class IngestionStats {
     return leaderPreprocessingLatency.getMax();
   }
 
+  public double getLeaderPreprocessingLatencyAvg() {
+    return leaderPreprocessingLatency.getAvg();
+  }
+
   public void recordLeaderPreprocessingLatency(double value, long currentTimeMs) {
     leaderPreprocessingLatency.record(value, currentTimeMs);
+  }
+
+  public double getInternalPreprocessingLatencyAvg() {
+    return internalPreprocessingLatency.getAvg();
   }
 
   public double getInternalPreprocessingLatencyMax() {
