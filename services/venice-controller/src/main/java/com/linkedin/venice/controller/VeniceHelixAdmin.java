@@ -3325,7 +3325,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       OfflinePushStatus offlinePushStatus = pushMonitor.getOfflinePushOrThrow(topicName);
       return offlinePushStatus.hasFatalDataValidationError();
     } catch (VeniceException e) {
-      LOGGER.warn("Failed to get offline push status for topic: {}", topicName, e);
+      LOGGER.warn("Failed to get offline push status for topic: {}. It might not exist anymore.", topicName);
       return false;
     }
   }
