@@ -250,7 +250,7 @@ class TopicMetadataFetcher implements Closeable {
       return containsTopic;
     } catch (Exception e) {
       LOGGER.error("Failed to check if topic exists: {}", topic, e);
-      return false;
+      throw e;
     }
   }
 
