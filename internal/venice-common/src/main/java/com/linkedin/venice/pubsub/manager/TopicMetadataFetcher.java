@@ -243,10 +243,15 @@ class TopicMetadataFetcher implements Closeable {
    * @return true if the topic exists, false otherwise
    */
   boolean containsTopic(PubSubTopic topic) {
-    long startTime = System.nanoTime();
-    boolean containsTopic = pubSubAdminAdapter.containsTopic(topic);
-    stats.recordLatency(CONTAINS_TOPIC, startTime);
-    return containsTopic;
+    try {
+      long startTime = System.nanoTime();
+      boolean containsTopic = pubSubAdminAdapter.containsTopic(topic);
+      stats.recordLatency(CONTAINS_TOPIC, startTime);
+      return containsTopic;
+    } catch (Exception e) {
+      LOGGER.error("Failed to check if topic exists: {}", topic, e);
+      return false;
+    }
   }
 
   CompletableFuture<Boolean> containsTopicAsync(PubSubTopic topic) {

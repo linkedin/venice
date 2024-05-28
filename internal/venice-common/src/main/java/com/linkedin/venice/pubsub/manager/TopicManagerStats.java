@@ -11,6 +11,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.EnumMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 
 /**
@@ -20,6 +21,7 @@ class TopicManagerStats extends AbstractVeniceStats {
   private static final String TOPIC_MANAGER_STATS_PREFIX = "TopicManagerStats_";
   private EnumMap<SENSOR_TYPE, Sensor> sensorsByTypes = null;
   private final MetricsRepository metricsRepository;
+  private AtomicLong pubSubAdminOpFailureCount = new AtomicLong(0);
 
   enum SENSOR_TYPE {
     CREATE_TOPIC, DELETE_TOPIC, LIST_ALL_TOPICS, SET_TOPIC_CONFIG, GET_ALL_TOPIC_RETENTIONS, GET_TOPIC_CONFIG,
@@ -61,6 +63,11 @@ class TopicManagerStats extends AbstractVeniceStats {
     sensorsByTypes.get(sensorType).record(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
   }
 
+  // pubSubAdminOpFailureCount
+  void recordPubSubAdminOpFailure() {
+    pubSubAdminOpFailureCount.incrementAndGet();
+  }
+
   final void registerTopicMetadataFetcherSensors(TopicMetadataFetcher topicMetadataFetcher) {
     if (metricsRepository == null) {
       return;
@@ -81,5 +88,9 @@ class TopicManagerStats extends AbstractVeniceStats {
         new AsyncGauge(
             (ignored, ignored2) -> topicMetadataFetcher.getConsumerWaitListSize(),
             "consumer_wait_list_size"));
+    registerSensorIfAbsent(
+        new AsyncGauge(
+            (ignored, ignored2) -> pubSubAdminOpFailureCount.getAndSet(0),
+            "pub_sub_admin_op_failure_count"));
   }
 }
