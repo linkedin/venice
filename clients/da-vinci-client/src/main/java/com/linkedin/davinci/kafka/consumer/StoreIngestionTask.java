@@ -2981,8 +2981,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopic pubSubTopic = consumerRecord.getTopic();
 
       return (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null)
-          || (pubSubTopic.isVersionTopic() &&topicManager.isTopicCompactionEnabled(pubSubTopic)
-          && LatencyUtils.getElapsedTimeFromMsToMs(consumerRecord.getPubSubMessageTime()) >= topicManager.getTopicMinLogCompactionLagMs(pubSubTopic));
+          || (pubSubTopic.isVersionTopic() && topicManager.isTopicCompactionEnabled(pubSubTopic)
+              && LatencyUtils.getElapsedTimeFromMsToMs(consumerRecord.getPubSubMessageTime()) >= topicManager
+                  .getTopicMinLogCompactionLagMs(pubSubTopic));
     });
 
     try {
@@ -4033,6 +4034,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       return true;
     }
-    return topicManagerRepository.getLocalTopicManager().containsTopicCached(this.versionTopic);
+    return topicManagerRepository.getLocalTopicManager().containsTopic(this.versionTopic);
   }
 }

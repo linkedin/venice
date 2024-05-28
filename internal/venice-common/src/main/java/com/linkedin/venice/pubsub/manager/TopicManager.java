@@ -666,10 +666,6 @@ public class TopicManager implements Closeable {
     return topicMetadataFetcher.containsTopicWithRetries(pubSubTopic, retries);
   }
 
-  public boolean containsTopicCachedWithRetries(PubSubTopic pubSubTopic, int retries) {
-    return topicMetadataFetcher.containsTopicCachedWithRetries(pubSubTopic, retries);
-  }
-
   public long getLatestOffsetWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
     return topicMetadataFetcher.getLatestOffsetWithRetries(pubSubTopicPartition, retries);
   }

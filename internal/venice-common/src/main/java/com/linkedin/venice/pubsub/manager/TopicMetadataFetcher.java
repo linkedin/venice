@@ -187,11 +187,14 @@ class TopicMetadataFetcher implements Closeable {
     if (pubSubTopicPartition.getPartitionNumber() < 0) {
       throw new IllegalArgumentException("Invalid partition number: " + pubSubTopicPartition.getPartitionNumber());
     }
-    ValueAndExpiryTime<Boolean> cachedValue = topicExistenceCache.get(pubSubTopicPartition.getPubSubTopic());
-    // if the topic exists based on the cache, return
-    if (cachedValue != null && cachedValue.getValue()) {
-      return;
+    try {
+      if (containsTopicCached(pubSubTopicPartition.getPubSubTopic())) {
+        return;
+      }
+    } catch (Exception e) {
+      // in case there is any exception, we will retry the operation
     }
+
     boolean topicExists = RetryUtils.executeWithMaxAttempt(
         () -> containsTopic(pubSubTopicPartition.getPubSubTopic()),
         3,
@@ -267,15 +270,13 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   public boolean containsTopicWithRetries(PubSubTopic pubSubTopic, int retries) {
-    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-      return containsTopic(pubSubTopic);
-    }, retries, INITIAL_RETRY_DELAY, Duration.ofSeconds(5), Duration.ofMinutes(5), PUBSUB_RETRIABLE_FAILURES);
-  }
-
-  public boolean containsTopicCachedWithRetries(PubSubTopic pubSubTopic, int retries) {
-    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-      return containsTopicCached(pubSubTopic);
-    }, retries, INITIAL_RETRY_DELAY, Duration.ofSeconds(5), Duration.ofMinutes(5), PUBSUB_RETRIABLE_FAILURES);
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> containsTopic(pubSubTopic),
+        retries,
+        INITIAL_RETRY_DELAY,
+        Duration.ofSeconds(5),
+        Duration.ofMinutes(5),
+        PUBSUB_RETRIABLE_FAILURES);
   }
 
   /**
