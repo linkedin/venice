@@ -88,7 +88,6 @@ class TopicMetadataFetcher implements Closeable {
   private final Map<PubSubTopicPartition, ValueAndExpiryTime<Long>> lastProducerTimestampCache =
       new VeniceConcurrentHashMap<>();
   private final long cachedEntryTtlInNs;
-  private final long topicCacheTtlInNs;
   private final AtomicInteger consumerWaitListSize = new AtomicInteger(0);
 
   TopicMetadataFetcher(
@@ -102,7 +101,6 @@ class TopicMetadataFetcher implements Closeable {
     this.pubSubConsumerPool = new LinkedBlockingQueue<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.closeables = new ArrayList<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.cachedEntryTtlInNs = MILLISECONDS.toNanos(topicManagerContext.getTopicOffsetCheckIntervalMs());
-    this.topicCacheTtlInNs = MILLISECONDS.toNanos(topicManagerContext.getTopicCacheTtlMs());
     PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
       PubSubConsumerAdapter pubSubConsumerAdapter = topicManagerContext.getPubSubConsumerAdapterFactory()
@@ -146,8 +144,7 @@ class TopicMetadataFetcher implements Closeable {
       PubSubAdminAdapter pubSubAdminAdapter,
       BlockingQueue<PubSubConsumerAdapter> pubSubConsumerPool,
       ThreadPoolExecutor threadPoolExecutor,
-      long cachedEntryTtlInNs,
-      long topicCacheTtlInNs) {
+      long cachedEntryTtlInNs) {
     this.pubSubClusterAddress = pubSubClusterAddress;
     this.stats = stats;
     this.pubSubAdminAdapter = pubSubAdminAdapter;
@@ -155,7 +152,6 @@ class TopicMetadataFetcher implements Closeable {
     this.threadPoolExecutor = threadPoolExecutor;
     this.cachedEntryTtlInNs = cachedEntryTtlInNs;
     this.closeables = new ArrayList<>(pubSubConsumerPool);
-    this.topicCacheTtlInNs = topicCacheTtlInNs;
   }
 
   // acquire the consumer from the pool

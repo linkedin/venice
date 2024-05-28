@@ -75,7 +75,6 @@ public class TopicMetadataFetcherTest {
   private BlockingQueue<PubSubConsumerAdapter> pubSubConsumerPool;
   private ThreadPoolExecutor threadPoolExecutor;
   private long cachedEntryTtlInNs = TimeUnit.MINUTES.toNanos(5);
-  private long topicCacheTtlInNs = TimeUnit.MINUTES.toNanos(5);
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private String topicName = "testTopicName";
   private PubSubTopic pubSubTopic;
@@ -97,8 +96,7 @@ public class TopicMetadataFetcherTest {
         adminMock,
         pubSubConsumerPool,
         threadPoolExecutor,
-        cachedEntryTtlInNs,
-        topicCacheTtlInNs);
+        cachedEntryTtlInNs);
     assertEquals(pubSubConsumerPool.size(), 1);
   }
 

@@ -111,7 +111,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_PRESENCE_CHECK_ENABLE
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_EXISTENCE_CHECK_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
@@ -269,11 +268,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * Time interval for offset check of topic in Hybrid Store lag measurement.
    */
   private final int topicOffsetCheckIntervalMs;
-
-  /**
-   * Time interval to check the existence of the topic in the source Kafka cluster.
-   */
-  private final int topicCacheTtlMs;
 
   private final int topicManagerMetadataFetcherConsumerPoolSize;
   private final int topicManagerMetadataFetcherThreadPoolSize;
@@ -521,8 +515,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     maxRequestSize = (int) serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024);
     topicOffsetCheckIntervalMs =
         serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
-    topicCacheTtlMs =
-        serverProperties.getInt(SERVER_SOURCE_TOPIC_EXISTENCE_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(30));
     this.topicManagerMetadataFetcherConsumerPoolSize = serverProperties.getInt(
         PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE,
         PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE);
@@ -930,10 +922,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getTopicOffsetCheckIntervalMs() {
     return topicOffsetCheckIntervalMs;
-  }
-
-  public long getTopicCacheTtlMs() {
-    return topicCacheTtlMs;
   }
 
   public int getNettyGracefulShutdownPeriodSeconds() {

@@ -26,7 +26,6 @@ public class TopicManagerContext {
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
   private final long topicOffsetCheckIntervalMs;
-  private final long topicCacheTtlMs;
   private final int topicMetadataFetcherConsumerPoolSize;
   private final int topicMetadataFetcherThreadPoolSize;
 
@@ -40,7 +39,6 @@ public class TopicManagerContext {
     this.metricsRepository = builder.metricsRepository;
     this.pubSubPropertiesSupplier = builder.pubSubPropertiesSupplier;
     this.topicOffsetCheckIntervalMs = builder.topicOffsetCheckIntervalMs;
-    this.topicCacheTtlMs = builder.topicCacheTtlMs;
     this.topicMetadataFetcherConsumerPoolSize = builder.topicMetadataFetcherConsumerPoolSize;
     this.topicMetadataFetcherThreadPoolSize = builder.topicMetadataFetcherThreadPoolSize;
   }
@@ -85,10 +83,6 @@ public class TopicManagerContext {
     return topicOffsetCheckIntervalMs;
   }
 
-  public long getTopicCacheTtlMs() {
-    return topicCacheTtlMs;
-  }
-
   public int getTopicMetadataFetcherConsumerPoolSize() {
     return topicMetadataFetcherConsumerPoolSize;
   }
@@ -122,7 +116,6 @@ public class TopicManagerContext {
     private long topicDeletionStatusPollIntervalMs = PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
     private long topicOffsetCheckIntervalMs = 60_000L; // 1 minute
-    private long topicCacheTtlMs = 30_000L; // 30 seconds
     private int topicMetadataFetcherConsumerPoolSize = 1;
     private int topicMetadataFetcherThreadPoolSize = 2;
 
@@ -173,11 +166,6 @@ public class TopicManagerContext {
       return this;
     }
 
-    public Builder setTopicCacheTtlMs(long topicCacheTtlMs) {
-      this.topicCacheTtlMs = topicCacheTtlMs;
-      return this;
-    }
-
     public Builder setTopicMetadataFetcherConsumerPoolSize(int topicMetadataFetcherConsumerPoolSize) {
       this.topicMetadataFetcherConsumerPoolSize = topicMetadataFetcherConsumerPoolSize;
       return this;
@@ -215,10 +203,6 @@ public class TopicManagerContext {
 
       if (topicOffsetCheckIntervalMs < 0) {
         throw new IllegalArgumentException("topicOffsetCheckIntervalMs must be positive");
-      }
-
-      if (topicCacheTtlMs < 0) {
-        throw new IllegalArgumentException("topicCacheTtlMs must be positive");
       }
 
       if (topicMetadataFetcherConsumerPoolSize <= 0) {
