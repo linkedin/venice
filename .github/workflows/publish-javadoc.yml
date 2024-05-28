@@ -31,7 +31,7 @@ jobs:
         with:
           arguments: "aggregateJavadoc"
       - name: Deploy to GitHub Page
-        uses: JamesIves/github-pages-deploy-action@v4.4.1
+        uses: JamesIves/github-pages-deploy-action@v4.6.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: javadoc
