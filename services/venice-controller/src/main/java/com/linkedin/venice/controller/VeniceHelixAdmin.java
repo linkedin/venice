@@ -3263,7 +3263,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       deleteHelixResource(clusterName, resourceName);
       LOGGER.info("Killing offline push for: {} in cluster: {}", resourceName, clusterName);
       killOfflinePush(clusterName, resourceName, true);
+
+      // Check DIV error in the push status before stopping the monitor.
+      boolean hasFatalDataValidationError = hasFatalDataValidationError(pushMonitor, resourceName);
       stopMonitorOfflinePush(clusterName, resourceName, true, isForcedDelete);
+
       Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
       if (deletedVersion.isPresent()) {
         // Do not delete topic during store migration
@@ -3271,8 +3275,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!store.isMigrating()) {
           // Not using deletedVersion.get().kafkaTopicName() because it's incorrect for Zk shared stores.
           String versionTopicName = Version.composeKafkaTopic(storeName, deletedVersion.get().getNumber());
-          if (fatalDataValidationFailureRetentionMs != -1
-              && hasFatalDataValidationError(pushMonitor, versionTopicName)) {
+          if (fatalDataValidationFailureRetentionMs != -1 && hasFatalDataValidationError) {
             truncateKafkaTopic(versionTopicName, fatalDataValidationFailureRetentionMs);
           } else {
             truncateKafkaTopic(versionTopicName);
