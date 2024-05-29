@@ -516,19 +516,20 @@ subprojects {
         }
 
         violationRules {
-          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.40
+          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.45
           failOnViolation = true
         }
       }
 
-      task logDiffCoverage {
+      task logCoverage {
         doLast {
+          parseJacocoXml("$buildDir/reports/jacoco/test/jacocoTestReport.xml")
           parseJacocoXml("$buildDir/reports/jacoco/diffCoverage/report.xml")
         }
       }
 
       diffCoverage.dependsOn jacocoTestReport
-      diffCoverage.finalizedBy logDiffCoverage
+      diffCoverage.finalizedBy logCoverage
     }
   }
 
@@ -781,6 +782,7 @@ ext.createDiffFile = { ->
 
 // for a given xml jacoco report, parse it and print out the branch coverage
 ext.parseJacocoXml = { filePath ->
+  println "Parsing Jacoco XML file at: ${filePath}"
   try {
     def jacocoReport = parser.parse(filePath).children()
     def branchCoverage = jacocoReport.find { it.name() == 'counter' && it.@type == 'BRANCH' }
