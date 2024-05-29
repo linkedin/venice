@@ -2142,4 +2142,10 @@ public class ConfigKeys {
    */
   public static final String SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED =
       "server.record.level.metrics.when.bootstrapping.current.version.enabled";
+
+  /**
+   * Time interval for checking dangling topics between 2 different types of pub sub backends.
+   */
+  public static final String CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND =
+      "controller.dangling.topic.clean.up.interval.second";
 }

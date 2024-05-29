@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -26,8 +27,9 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
       Admin admin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       PubSubTopicRepository pubSubTopicRepository,
-      TopicCleanupServiceStats topicCleanupServiceStats) {
-    super(admin, multiClusterConfigs, pubSubTopicRepository, topicCleanupServiceStats);
+      TopicCleanupServiceStats topicCleanupServiceStats,
+      PubSubClientsFactory pubSubClientsFactory) {
+    super(admin, multiClusterConfigs, pubSubTopicRepository, topicCleanupServiceStats, pubSubClientsFactory);
   }
 
   @Override

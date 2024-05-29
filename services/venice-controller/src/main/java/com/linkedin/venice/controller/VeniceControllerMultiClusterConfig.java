@@ -278,8 +278,11 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getStoreGraveyardCleanupSleepIntervalBetweenListFetchMinutes();
   }
 
-  // TODO: Remove this method once we fully support cluster-level pub sub adapter configuration.
   public PubSubClientsFactory getPubSubClientsFactory() {
     return getCommonConfig().getPubSubClientsFactory();
+  }
+
+  public long getDanglingTopicCleanupIntervalSeconds() {
+    return getCommonConfig().getDanglingTopicCleanupIntervalSeconds();
   }
 }

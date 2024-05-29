@@ -5,13 +5,21 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -74,13 +82,17 @@ public class TopicCleanupService extends AbstractVeniceService {
   private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
+  private Optional<PubSubAdminAdapter> apacheKafkaAdminAdapter;
+  private long recentDanglingTopicCleanupTime = -1L;
+  private final long danglingTopicCleanupIntervalMs;
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
 
   public TopicCleanupService(
       Admin admin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       PubSubTopicRepository pubSubTopicRepository,
-      TopicCleanupServiceStats topicCleanupServiceStats) {
+      TopicCleanupServiceStats topicCleanupServiceStats,
+      PubSubClientsFactory pubSubClientsFactory) {
     this.admin = admin;
     this.sleepIntervalBetweenTopicListFetchMs =
         multiClusterConfigs.getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
@@ -101,6 +113,28 @@ public class TopicCleanupService extends AbstractVeniceService {
     } else {
       this.multiDataCenterStoreToVersionTopicCount = Collections.emptyMap();
     }
+
+    this.danglingTopicCleanupIntervalMs =
+        Time.MS_PER_SECOND * multiClusterConfigs.getDanglingTopicCleanupIntervalSeconds();
+    if (!pubSubClientsFactory.getAdminAdapterFactory().getClass().equals(ApacheKafkaAdminAdapterFactory.class)
+        && danglingTopicCleanupIntervalMs > 0) {
+      this.apacheKafkaAdminAdapter = Optional.of(constructApacheKafkaAdminAdapter());
+    } else {
+      this.apacheKafkaAdminAdapter = Optional.empty();
+    }
+  }
+
+  private PubSubAdminAdapter constructApacheKafkaAdminAdapter() {
+    VeniceProperties veniceProperties = admin.getPubSubSSLProperties(getTopicManager().getPubSubClusterAddress());
+    ApacheKafkaAdminAdapterFactory apacheKafkaAdminAdapterFactory = new ApacheKafkaAdminAdapterFactory();
+    PubSubAdminAdapter apacheKafkaAdminAdapter =
+        apacheKafkaAdminAdapterFactory.create(veniceProperties, pubSubTopicRepository);
+    return apacheKafkaAdminAdapter;
+  }
+
+  // For test purpose
+  void setApacheKafkaAdminAdapter(ApacheKafkaAdminAdapter apacheKafkaAdminAdapter) {
+    this.apacheKafkaAdminAdapter = Optional.of(apacheKafkaAdminAdapter);
   }
 
   @Override
@@ -247,6 +281,17 @@ public class TopicCleanupService extends AbstractVeniceService {
     });
     if (realTimeTopicDeletionNeeded.get() && !multiDataCenterStoreToVersionTopicCount.isEmpty()) {
       refreshMultiDataCenterStoreToVersionTopicCountMap(topicsWithRetention.keySet());
+    }
+
+    // Check if there is dangling topics to be deleted.
+    if (apacheKafkaAdminAdapter.isPresent()
+        && System.currentTimeMillis() - danglingTopicCleanupIntervalMs > recentDanglingTopicCleanupTime) {
+      List<PubSubTopic> pubSubTopics = collectDanglingTopics(topicsWithRetention);
+      if (!pubSubTopics.isEmpty()) {
+        LOGGER.info("Find dangling topics: {}", pubSubTopics);
+      }
+      recentDanglingTopicCleanupTime = System.currentTimeMillis();
+      topics.addAll(pubSubTopics);
     }
   }
 
@@ -400,5 +445,44 @@ public class TopicCleanupService extends AbstractVeniceService {
           return true;
         })
         .collect(Collectors.toList());
+  }
+
+  private List<PubSubTopic> collectDanglingTopics(Map<PubSubTopic, Long> pubSubTopicsRetentions) {
+    List<PubSubTopic> topicsToCleanup = new ArrayList<>();
+    Set<PubSubTopic> kafkaTopics = apacheKafkaAdminAdapter.get().listAllTopics();
+    for (Map.Entry<PubSubTopic, Long> entry: pubSubTopicsRetentions.entrySet()) {
+      PubSubTopic pubSubTopic = entry.getKey();
+      if (!kafkaTopics.contains(pubSubTopic)) {
+        try {
+          String storeName = pubSubTopic.getStoreName();
+          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          Store store = admin.getStore(clusterDiscovered, storeName);
+          LOGGER.warn("Find topic discrepancy case: {}", pubSubTopic);
+          if (pubSubTopic.isRealTime() && !store.isHybrid()) {
+            for (Version version: store.getVersions()) {
+              if (version.getHybridStoreConfig() != null) {
+                break;
+              }
+            }
+            LOGGER.warn("Will remove real-time dangling topic {}", pubSubTopic);
+            topicsToCleanup.add(pubSubTopic);
+          } else if (pubSubTopic.isVersionTopicOrStreamReprocessingTopic() || pubSubTopic.isViewTopic()) {
+            int versionNum = Version.parseVersionFromKafkaTopicName(pubSubTopic.getName());
+            if (!store.containsVersion(versionNum)) {
+              LOGGER.warn("Will remove dangling version topic {}", pubSubTopic);
+              topicsToCleanup.add(pubSubTopic);
+            }
+          }
+        } catch (Exception e) {
+          if (e instanceof VeniceNoStoreException) {
+            LOGGER.warn("No store is found for topic: {}", pubSubTopic);
+            topicsToCleanup.add(pubSubTopic);
+          } else {
+            LOGGER.error("Error happened during checking dangling topic: {}", pubSubTopic, e);
+          }
+        }
+      }
+    }
+    return topicsToCleanup;
   }
 }
