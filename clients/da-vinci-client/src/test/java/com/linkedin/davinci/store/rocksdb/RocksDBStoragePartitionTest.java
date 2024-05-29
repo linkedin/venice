@@ -640,7 +640,7 @@ public class RocksDBStoragePartitionTest {
       storagePartition.get((KEY_PREFIX + "10").getBytes());
       Assert.fail("VeniceException is expected when looking up an already closed DB");
     } catch (VeniceException e) {
-      assertTrue(e.getMessage().contains("RocksDB has been closed for store"));
+      Assert.assertTrue(e.getMessage().contains("RocksDB has been closed for replica"));
     }
 
     storagePartition.drop();

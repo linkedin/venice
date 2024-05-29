@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.Utils;
 import java.util.Objects;
 
 
@@ -47,7 +48,7 @@ public class PubSubTopicPartitionImpl implements PubSubTopicPartition {
   @Override
   public String toString() {
     if (this.toStringOutput == null) {
-      this.toStringOutput = "TP(topic: '" + topic.getName() + "', partition: " + partitionNumber + ")";
+      this.toStringOutput = Utils.getReplicaId(getTopicName(), getPartitionNumber());
     }
     return this.toStringOutput;
   }

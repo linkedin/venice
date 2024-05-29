@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.mockito.ArgumentMatcher;
@@ -50,7 +51,8 @@ public class StorageUtilizationManagerTest {
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs = new PartitionConsumptionState(i, 1, mock(OffsetRecord.class), true);
+      PartitionConsumptionState pcs =
+          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, 1, mock(OffsetRecord.class), true);
       partitionConsumptionStateMap.put(i, pcs);
     }
 
