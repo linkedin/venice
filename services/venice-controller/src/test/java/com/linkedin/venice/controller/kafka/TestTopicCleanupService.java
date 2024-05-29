@@ -29,6 +29,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
@@ -202,6 +203,7 @@ public class TestTopicCleanupService {
     storeTopics.put(getPubSubTopic(storeName3, "_v100"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(storeName4, "_rt"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(storeName5, "_v1"), Long.MAX_VALUE);
+    storeTopics.put(getPubSubTopic(PubSubTopicType.ADMIN_TOPIC_PREFIX, "_cluster"), Long.MAX_VALUE);
 
     Map<PubSubTopic, Long> storeTopics2 = new HashMap<>();
     storeTopics2.put(getPubSubTopic(storeName1, "_v3"), Long.MAX_VALUE);
@@ -231,6 +233,7 @@ public class TestTopicCleanupService {
     pubSubTopicSet.remove(getPubSubTopic(storeName3, "_v100"));
     pubSubTopicSet.remove(getPubSubTopic(storeName4, "_rt"));
     pubSubTopicSet.remove(getPubSubTopic(storeName5, "_v1"));
+    pubSubTopicSet.remove(getPubSubTopic(PubSubTopicType.ADMIN_TOPIC_PREFIX, "_cluster"));
 
     ApacheKafkaAdminAdapterFactory apacheKafkaAdminAdapterFactory = mock(ApacheKafkaAdminAdapterFactory.class);
     ApacheKafkaAdminAdapter apacheKafkaAdminAdapter = mock(ApacheKafkaAdminAdapter.class);
