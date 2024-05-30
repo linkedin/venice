@@ -195,6 +195,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.TestChunkingUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -4427,6 +4428,72 @@ public abstract class StoreIngestionTaskTest {
     // Verify transformer error was recorded
     verify(mockVersionedStorageIngestionStats)
         .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+  }
+
+  @DataProvider
+  public static Object[][] testAssembledValueSizeProvider() {
+    Set<Integer> schemaIdSet = new HashSet<>();
+    for (AvroProtocolDefinition avroProtocolDefinition: AvroProtocolDefinition.values()) {
+      avroProtocolDefinition.currentProtocolVersion.ifPresent(schemaIdSet::add);
+    }
+    return DataProviderUtils.allPermutationGenerator(AAConfig.values(), schemaIdSet.toArray());
+  }
+
+  /**
+   * Create messages for a chunked record (in multiple chunks) and its manifest, and verify that the drainer
+   * records the size of the chunked record as described in the size field of the manifest.
+   * Also, test that this only occurs for the correct schema id and when manifest messages are processed.
+   * @throws Exception
+   */
+  @Test(dataProvider = "testAssembledValueSizeProvider")
+  public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId) throws Exception {
+    int numChunks = 3;
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1);
+    for (int i = 0; i < numChunks; i++) {
+      messages.add(TestChunkingUtils.createChunkedRecord(putKeyFoo, 1, 1, i, 0, tp));
+    }
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
+        TestChunkingUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
+    messages.add(manifestMessage);
+
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
+        try {
+          Put put = (Put) message.getValue().getPayloadUnion();
+          if (testSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+            put.schemaId = testSchemaId;
+          }
+          LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+          when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+          when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+          when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
+
+          storeIngestionTaskUnderTest.produceToStoreBufferService(
+              message,
+              leaderProducedRecordContext,
+              PARTITION_FOO,
+              localKafkaConsumerService.kafkaUrl,
+              System.nanoTime(),
+              System.currentTimeMillis());
+        } catch (InterruptedException e) {
+          throw new VeniceException(e);
+        }
+      }
+    }, aaConfig);
+
+    HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
+    if (testSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+      verify(hostLevelIngestionStats).recordAssembledValueSize(eq(10L * numChunks), anyLong()); // 10 bytes per chunk
+      verify(hostLevelIngestionStats, times(1)).recordAssembledValueSize(anyLong(), anyLong());
+    } else {
+      verify(hostLevelIngestionStats, times(0)).recordAssembledValueSize(anyLong(), anyLong());
+    }
   }
 
   @Test
