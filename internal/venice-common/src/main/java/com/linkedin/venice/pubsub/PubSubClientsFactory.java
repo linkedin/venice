@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
@@ -84,6 +85,15 @@ public class PubSubClientsFactory {
     return createFactory(
         veniceProperties,
         PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
+        ApacheKafkaAdminAdapterFactory.class.getName(),
+        FactoryType.ADMIN);
+  }
+
+  public static PubSubAdminAdapterFactory<PubSubAdminAdapter> createSourceOfTruthAdminFactory(
+      VeniceProperties veniceProperties) {
+    return createFactory(
+        veniceProperties,
+        PUB_SUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS,
         ApacheKafkaAdminAdapterFactory.class.getName(),
         FactoryType.ADMIN);
   }

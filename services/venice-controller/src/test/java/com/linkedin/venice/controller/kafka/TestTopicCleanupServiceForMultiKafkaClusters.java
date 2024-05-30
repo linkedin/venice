@@ -39,6 +39,7 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
     doReturn(2).when(config).getTopicCleanupDelayFactor();
     VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
     doReturn(veniceControllerConfig).when(config).getCommonConfig();
+    doReturn(new ApacheKafkaAdminAdapterFactory()).when(config).getSourceOfTruthAdminAdapterFactory();
     doReturn("fabric1,fabric2").when(veniceControllerConfig).getChildDatacenters();
 
     String kafkaClusterKey1 = "fabric1";

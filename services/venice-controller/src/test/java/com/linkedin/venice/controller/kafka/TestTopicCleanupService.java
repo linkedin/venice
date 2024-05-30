@@ -74,6 +74,8 @@ public class TestTopicCleanupService {
     veniceControllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(0L).when(veniceControllerMultiClusterConfig).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(1).when(veniceControllerMultiClusterConfig).getMinNumberOfUnusedKafkaTopicsToPreserve();
+    doReturn(new ApacheKafkaAdminAdapterFactory()).when(veniceControllerMultiClusterConfig)
+        .getSourceOfTruthAdminAdapterFactory();
     doReturn(1).when(admin).getMinNumberOfUnusedKafkaTopicsToPreserve();
 
     VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
@@ -239,7 +241,7 @@ public class TestTopicCleanupService {
     ApacheKafkaAdminAdapter apacheKafkaAdminAdapter = mock(ApacheKafkaAdminAdapter.class);
     doReturn(apacheKafkaAdminAdapter).when(apacheKafkaAdminAdapterFactory).create(any(), eq(pubSubTopicRepository));
 
-    topicCleanupService.setApacheKafkaAdminAdapter(apacheKafkaAdminAdapter);
+    topicCleanupService.setSourceOfTruthPubSubAdminAdapter(apacheKafkaAdminAdapter);
     String clusterName = "clusterName";
     Pair<String, String> pair = new Pair<>(clusterName, "");
     doReturn(pair).when(admin).discoverCluster(storeName3);

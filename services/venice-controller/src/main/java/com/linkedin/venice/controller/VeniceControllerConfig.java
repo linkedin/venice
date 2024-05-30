@@ -112,6 +112,7 @@ import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
@@ -328,6 +329,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int minSchemaCountToKeep;
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final PubSubClientsFactory pubSubClientsFactory;
+
+  private final PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory;
 
   private final long danglingTopicCleanupIntervalSeconds;
 
@@ -575,6 +578,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.useDaVinciSpecificExecutionStatusForError =
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
+    this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
     this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, 3600);
   }
 
@@ -1062,6 +1066,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public PubSubClientsFactory getPubSubClientsFactory() {
     return pubSubClientsFactory;
+  }
+
+  public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
+    return sourceOfTruthAdminAdapterFactory;
   }
 
   /**

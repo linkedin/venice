@@ -2065,6 +2065,12 @@ public class ConfigKeys {
   public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
 
   /**
+   * Source of truth admin adapter type, mainly for avoiding topic discrepancy between multiple pub sub systems.
+   */
+  public static final String PUB_SUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS =
+      "pub.sub.of.source.of.truth.admin.adapter.factory.class";
+
+  /**
    * Venice router's principal name used for ssl. Default should contain "venice-router".
    */
   public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";

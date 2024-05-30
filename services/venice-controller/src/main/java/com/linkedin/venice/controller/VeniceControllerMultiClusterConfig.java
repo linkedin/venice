@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
@@ -280,6 +281,10 @@ public class VeniceControllerMultiClusterConfig {
 
   public PubSubClientsFactory getPubSubClientsFactory() {
     return getCommonConfig().getPubSubClientsFactory();
+  }
+
+  public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
+    return getCommonConfig().getSourceOfTruthAdminAdapterFactory();
   }
 
   public long getDanglingTopicCleanupIntervalSeconds() {

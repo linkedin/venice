@@ -8,10 +8,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
@@ -83,7 +82,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
-  private PubSubAdminAdapter apacheKafkaAdminAdapter;
+  private PubSubAdminAdapter sourceOfTruthPubSubAdminAdapter;
   private long recentDanglingTopicCleanupTime = -1L;
   private final long danglingTopicCleanupIntervalMs;
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -117,25 +116,27 @@ public class TopicCleanupService extends AbstractVeniceService {
 
     this.danglingTopicCleanupIntervalMs =
         Time.MS_PER_SECOND * multiClusterConfigs.getDanglingTopicCleanupIntervalSeconds();
-    if (!pubSubClientsFactory.getAdminAdapterFactory().getClass().equals(ApacheKafkaAdminAdapterFactory.class)
+
+    PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory =
+        multiClusterConfigs.getSourceOfTruthAdminAdapterFactory();
+    PubSubAdminAdapterFactory pubSubAdminAdapterFactory = pubSubClientsFactory.getAdminAdapterFactory();
+    if (!sourceOfTruthAdminAdapterFactory.getClass().equals(pubSubAdminAdapterFactory.getClass())
         && danglingTopicCleanupIntervalMs > 0) {
-      this.apacheKafkaAdminAdapter = constructApacheKafkaAdminAdapter();
+      this.sourceOfTruthPubSubAdminAdapter = constructSourceOfTruthPubSubAdminAdapter(sourceOfTruthAdminAdapterFactory);
     } else {
-      this.apacheKafkaAdminAdapter = null;
+      this.sourceOfTruthPubSubAdminAdapter = null;
     }
   }
 
-  private PubSubAdminAdapter constructApacheKafkaAdminAdapter() {
+  private PubSubAdminAdapter constructSourceOfTruthPubSubAdminAdapter(
+      PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory) {
     VeniceProperties veniceProperties = admin.getPubSubSSLProperties(getTopicManager().getPubSubClusterAddress());
-    ApacheKafkaAdminAdapterFactory apacheKafkaAdminAdapterFactory = new ApacheKafkaAdminAdapterFactory();
-    PubSubAdminAdapter apacheKafkaAdminAdapter =
-        apacheKafkaAdminAdapterFactory.create(veniceProperties, pubSubTopicRepository);
-    return apacheKafkaAdminAdapter;
+    return sourceOfTruthAdminAdapterFactory.create(veniceProperties, pubSubTopicRepository);
   }
 
   // For test purpose
-  void setApacheKafkaAdminAdapter(ApacheKafkaAdminAdapter apacheKafkaAdminAdapter) {
-    this.apacheKafkaAdminAdapter = apacheKafkaAdminAdapter;
+  void setSourceOfTruthPubSubAdminAdapter(PubSubAdminAdapter pubSubAdminAdapter) {
+    this.sourceOfTruthPubSubAdminAdapter = pubSubAdminAdapter;
   }
 
   @Override
@@ -285,7 +286,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     }
 
     // Check if there is dangling topics to be deleted.
-    if (apacheKafkaAdminAdapter != null
+    if (sourceOfTruthPubSubAdminAdapter != null
         && System.currentTimeMillis() - danglingTopicCleanupIntervalMs > recentDanglingTopicCleanupTime) {
       List<PubSubTopic> pubSubTopics = collectDanglingTopics(topicsWithRetention);
       if (!pubSubTopics.isEmpty()) {
@@ -450,7 +451,7 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   private List<PubSubTopic> collectDanglingTopics(Map<PubSubTopic, Long> pubSubTopicsRetentions) {
     List<PubSubTopic> topicsToCleanup = new ArrayList<>();
-    Set<PubSubTopic> kafkaTopics = apacheKafkaAdminAdapter.listAllTopics();
+    Set<PubSubTopic> kafkaTopics = sourceOfTruthPubSubAdminAdapter.listAllTopics();
     for (Map.Entry<PubSubTopic, Long> entry: pubSubTopicsRetentions.entrySet()) {
       PubSubTopic pubSubTopic = entry.getKey();
       if (!kafkaTopics.contains(pubSubTopic)) {
