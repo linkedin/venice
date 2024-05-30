@@ -47,6 +47,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor consumerRecordsQueuePutLatencySensor;
   private final Sensor keySizeSensor;
   private final Sensor valueSizeSensor;
+  private final Sensor assembledValueSizeSensor;
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
   private final Sensor ingestionFailureSensor;
@@ -275,6 +276,14 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
 
+    String assembledValueSizeSensorName = "assembled_record_value_size_in_bytes";
+    this.assembledValueSizeSensor = registerSensor(
+        assembledValueSizeSensorName,
+        new Avg(),
+        new Min(),
+        new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + assembledValueSizeSensorName));
+
     String viewTimerSensorName = "total_view_writer_latency";
     this.viewProducerLatencySensor = registerPerStoreAndTotalSensor(
         viewTimerSensorName,
@@ -456,6 +465,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordValueSize(long bytes, long currentTimeMs) {
     valueSizeSensor.record(bytes, currentTimeMs);
+  }
+
+  public void recordAssembledValueSize(long bytes, long currentTimeMs) {
+    assembledValueSizeSensor.record(bytes, currentTimeMs);
   }
 
   public void recordIngestionFailure() {
