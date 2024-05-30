@@ -149,7 +149,7 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
       if (topicPubSubTopicConfigurationMap.containsKey(topic)) {
         topicConfigs.put(topic, topicPubSubTopicConfigurationMap.get(topic));
       } else {
-        throw new PubSubTopicDoesNotExistException("Topic " + topic + " does not exist");
+        throw new PubSubTopicDoesNotExistException(topic);
       }
     }
     return topicConfigs;

@@ -50,7 +50,6 @@ class TopicManagerStats extends AbstractVeniceStats {
               TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + sensorName)));
     }
 
-    // register pubSubAdminOpFailureCount sensor
     registerSensorIfAbsent(
         new AsyncGauge(
             (ignored, ignored2) -> pubSubAdminOpFailureCount.getAndSet(0),
@@ -69,7 +68,6 @@ class TopicManagerStats extends AbstractVeniceStats {
     sensorsByTypes.get(sensorType).record(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
   }
 
-  // pubSubAdminOpFailureCount
   void recordPubSubAdminOpFailure() {
     pubSubAdminOpFailureCount.incrementAndGet();
   }
