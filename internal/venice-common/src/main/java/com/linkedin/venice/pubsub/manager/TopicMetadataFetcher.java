@@ -22,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.stats.StatsErrorCode;
@@ -187,8 +188,9 @@ class TopicMetadataFetcher implements Closeable {
       if (containsTopicCached(pubSubTopicPartition.getPubSubTopic())) {
         return;
       }
-    } catch (Exception e) {
-      // in case there is any exception, we will retry the operation
+    } catch (PubSubClientRetriableException e) {
+      // in case there is any retriable exception, we will retry the operation
+      LOGGER.debug("Failed to check if topic exists: {}", pubSubTopicPartition.getPubSubTopic(), e);
     }
 
     boolean topicExists = RetryUtils.executeWithMaxAttempt(
