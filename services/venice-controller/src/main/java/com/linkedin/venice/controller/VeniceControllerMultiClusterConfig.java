@@ -290,4 +290,8 @@ public class VeniceControllerMultiClusterConfig {
   public long getDanglingTopicCleanupIntervalSeconds() {
     return getCommonConfig().getDanglingTopicCleanupIntervalSeconds();
   }
+
+  public int getDanglingTopicOccurrenceThresholdForCleanup() {
+    return getCommonConfig().getDanglingTopicOccurrenceThresholdForCleanup();
+  }
 }

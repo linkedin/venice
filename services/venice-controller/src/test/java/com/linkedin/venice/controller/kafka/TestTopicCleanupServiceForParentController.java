@@ -41,6 +41,7 @@ public class TestTopicCleanupServiceForParentController {
     doReturn("dc1").when(veniceControllerConfig).getChildDatacenters();
     TopicCleanupServiceStats topicCleanupServiceStats = mock(TopicCleanupServiceStats.class);
     doReturn(new ApacheKafkaAdminAdapterFactory()).when(pubSubClientsFactory).getAdminAdapterFactory();
+    doReturn(new ApacheKafkaAdminAdapterFactory()).when(config).getSourceOfTruthAdminAdapterFactory();
     topicCleanupService = new TopicCleanupServiceForParentController(
         admin,
         config,

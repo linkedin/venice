@@ -34,6 +34,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
@@ -333,6 +334,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory;
 
   private final long danglingTopicCleanupIntervalSeconds;
+  private final int danglingTopicOccurrenceThresholdForCleanup;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -579,7 +581,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
     this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
-    this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, 3600);
+    this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
+    this.danglingTopicOccurrenceThresholdForCleanup =
+        props.getInt(CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP, 3);
   }
 
   private void validateActiveActiveConfigs() {
@@ -1167,6 +1171,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getDanglingTopicCleanupIntervalSeconds() {
     return danglingTopicCleanupIntervalSeconds;
+  }
+
+  public int getDanglingTopicOccurrenceThresholdForCleanup() {
+    return danglingTopicOccurrenceThresholdForCleanup;
   }
 
   /**

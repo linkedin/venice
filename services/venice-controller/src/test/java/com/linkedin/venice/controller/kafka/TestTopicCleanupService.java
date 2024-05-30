@@ -85,6 +85,7 @@ public class TestTopicCleanupService {
     dataCenterToBootstrapServerMap.put("local", "local");
     dataCenterToBootstrapServerMap.put("remote", "remote");
     doReturn(dataCenterToBootstrapServerMap).when(veniceControllerMultiClusterConfig).getChildDataCenterKafkaUrlMap();
+    doReturn(1).when(veniceControllerMultiClusterConfig).getDanglingTopicOccurrenceThresholdForCleanup();
     doReturn("local").when(topicManager).getPubSubClusterAddress();
     remoteTopicManager = mock(TopicManager.class);
     doReturn(remoteTopicManager).when(admin).getTopicManager("remote");

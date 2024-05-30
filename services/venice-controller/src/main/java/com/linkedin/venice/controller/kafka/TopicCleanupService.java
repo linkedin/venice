@@ -82,10 +82,13 @@ public class TopicCleanupService extends AbstractVeniceService {
   private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
+
+  protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private PubSubAdminAdapter sourceOfTruthPubSubAdminAdapter;
   private long recentDanglingTopicCleanupTime = -1L;
+  private final Map<PubSubTopic, Integer> danglingTopicOccurrenceCounter;
+  private final int danglingTopicOccurrenceThresholdForCleanup;
   private final long danglingTopicCleanupIntervalMs;
-  protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
 
   public TopicCleanupService(
       Admin admin,
@@ -120,6 +123,9 @@ public class TopicCleanupService extends AbstractVeniceService {
     PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory =
         multiClusterConfigs.getSourceOfTruthAdminAdapterFactory();
     PubSubAdminAdapterFactory pubSubAdminAdapterFactory = pubSubClientsFactory.getAdminAdapterFactory();
+    this.danglingTopicOccurrenceCounter = new HashMap<>();
+    this.danglingTopicOccurrenceThresholdForCleanup =
+        multiClusterConfigs.getDanglingTopicOccurrenceThresholdForCleanup();
     if (!sourceOfTruthAdminAdapterFactory.getClass().equals(pubSubAdminAdapterFactory.getClass())
         && danglingTopicCleanupIntervalMs > 0) {
       this.sourceOfTruthPubSubAdminAdapter = constructSourceOfTruthPubSubAdminAdapter(sourceOfTruthAdminAdapterFactory);
@@ -285,7 +291,7 @@ public class TopicCleanupService extends AbstractVeniceService {
       refreshMultiDataCenterStoreToVersionTopicCountMap(topicsWithRetention.keySet());
     }
 
-    // Check if there is dangling topics to be deleted.
+    // Check if there are dangling topics to be deleted.
     if (sourceOfTruthPubSubAdminAdapter != null
         && System.currentTimeMillis() - danglingTopicCleanupIntervalMs > recentDanglingTopicCleanupTime) {
       List<PubSubTopic> pubSubTopics = collectDanglingTopics(topicsWithRetention);
@@ -469,8 +475,10 @@ public class TopicCleanupService extends AbstractVeniceService {
           }
         } catch (Exception e) {
           if (e instanceof VeniceNoStoreException) {
-            LOGGER.warn("No store is found for topic: {}", pubSubTopic);
-            topicsToCleanup.add(pubSubTopic);
+            if (checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
+              LOGGER.warn("No store is found for topic: {}", pubSubTopic);
+              topicsToCleanup.add(pubSubTopic);
+            }
           } else {
             LOGGER.error("Error happened during checking dangling topic: {}", pubSubTopic, e);
           }
@@ -487,8 +495,10 @@ public class TopicCleanupService extends AbstractVeniceService {
           break;
         }
       }
-      LOGGER.warn("Will remove real-time dangling topic {} .", pubSubTopic);
-      return false;
+      if (checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
+        LOGGER.warn("Will remove real-time dangling topic {} .", pubSubTopic);
+        return false;
+      }
     }
     return true;
   }
@@ -496,12 +506,20 @@ public class TopicCleanupService extends AbstractVeniceService {
   private boolean isStillValidVersionTopic(PubSubTopic pubSubTopic, Store store) {
     if (pubSubTopic.isVersionTopicOrStreamReprocessingTopic() || pubSubTopic.isViewTopic()) {
       int versionNum = Version.parseVersionFromKafkaTopicName(pubSubTopic.getName());
-      if (!store.containsVersion(versionNum)) {
+      if (!store.containsVersion(versionNum) && checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
         LOGGER.warn("Will remove dangling version topic {}.", pubSubTopic);
         return false;
       }
     }
     return true;
+  }
+
+  private boolean checkIfDanglingTopicConsistentlyFound(PubSubTopic pubSubTopic) {
+    danglingTopicOccurrenceCounter.compute(pubSubTopic, (key, val) -> (val == null) ? 1 : val + 1);
+    if (danglingTopicOccurrenceCounter.get(pubSubTopic) >= danglingTopicOccurrenceThresholdForCleanup) {
+      return true;
+    }
+    return false;
   }
 
 }

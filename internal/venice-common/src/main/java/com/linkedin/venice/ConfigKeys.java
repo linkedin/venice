@@ -2154,4 +2154,11 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND =
       "controller.dangling.topic.clean.up.interval.second";
+
+  /**
+   * To avoid potential risk of race condition, if a topic is identified as dangling topic in number of times beyond
+   * this defined threshold, then this topic could be deleted.
+   */
+  public static final String CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP =
+      "controller.dangling.topic.occurrence.threshold.for.cleanup";
 }
