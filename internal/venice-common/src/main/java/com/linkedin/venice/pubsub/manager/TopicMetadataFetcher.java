@@ -249,6 +249,7 @@ class TopicMetadataFetcher implements Closeable {
       stats.recordLatency(CONTAINS_TOPIC, startTime);
       return containsTopic;
     } catch (Exception e) {
+      LOGGER.debug("Failed to check if topic exists: {}", topic, e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }

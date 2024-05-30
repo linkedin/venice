@@ -374,6 +374,7 @@ public class TopicManager implements Closeable {
       stats.recordLatency(GET_ALL_TOPIC_RETENTIONS, startTime);
       return topicRetentions;
     } catch (Exception e) {
+      logger.debug("Failed to get all topic retentions", e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }
@@ -423,6 +424,7 @@ public class TopicManager implements Closeable {
       pubSubAdminAdapter.createTopic(pubSubTopic, numPartitions, replicationFactor, topicConfiguration);
       stats.recordLatency(CREATE_TOPIC, startTime);
     } catch (Exception e) {
+      logger.debug("Failed to create topic: {}", pubSubTopic, e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }
@@ -434,6 +436,7 @@ public class TopicManager implements Closeable {
       pubSubAdminAdapter.setTopicConfig(pubSubTopic, pubSubTopicConfiguration);
       stats.recordLatency(SET_TOPIC_CONFIG, startTime);
     } catch (Exception e) {
+      logger.debug("Failed to set topic config for topic: {}", pubSubTopic, e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }
@@ -450,6 +453,7 @@ public class TopicManager implements Closeable {
       stats.recordLatency(GET_TOPIC_CONFIG, startTime);
       return pubSubTopicConfiguration;
     } catch (Exception e) {
+      logger.debug("Failed to get topic config for topic: {}", pubSubTopic, e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }
@@ -463,6 +467,7 @@ public class TopicManager implements Closeable {
       stats.recordLatency(GET_TOPIC_CONFIG_WITH_RETRY, startTime);
       return pubSubTopicConfiguration;
     } catch (Exception e) {
+      logger.debug("Failed to get topic config for topic: {}", topicName, e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }
@@ -490,6 +495,7 @@ public class TopicManager implements Closeable {
       stats.recordLatency(GET_SOME_TOPIC_CONFIGS, startTime);
       return topicConfigs;
     } catch (Exception e) {
+      logger.debug("Failed to get topic configs for topics: {}", topicNames, e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }
@@ -568,6 +574,7 @@ public class TopicManager implements Closeable {
       stats.recordLatency(LIST_ALL_TOPICS, startTime);
       return topics;
     } catch (Exception e) {
+      logger.debug("Failed to list topics", e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }
@@ -588,6 +595,7 @@ public class TopicManager implements Closeable {
       stats.recordLatency(CONTAINS_TOPIC_WITH_RETRY, startTime);
       return containsTopic;
     } catch (Exception e) {
+      logger.debug("Failed to check if topic: {} exists", topic, e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }
@@ -612,6 +620,7 @@ public class TopicManager implements Closeable {
       stats.recordLatency(CONTAINS_TOPIC_WITH_RETRY, startTime);
       return containsTopic;
     } catch (Exception e) {
+      logger.debug("Failed to check if topic: {} exists", topic, e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }
