@@ -4561,7 +4561,7 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(
         exception.getMessage().contains("Failing the job because lossy rewind happens before receiving EndOfPush."));
     // Verify that the VT offset is also in the error message
-    assertTrue(exception.getMessage().contains("received message at offset " + messageOffset));
+    assertTrue(exception.getMessage().contains("received message at offset: " + messageOffset));
     verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
   }
 
