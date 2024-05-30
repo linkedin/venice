@@ -4498,6 +4498,7 @@ public abstract class StoreIngestionTaskTest {
     verify(mockStats1).recordBenignLeaderOffsetRewind(storeName, version);
 
     // Benign rewind
+    final long messageOffset = 10;
     KafkaKey key = new KafkaKey(MessageType.PUT, "test_key".getBytes());
     KafkaMessageEnvelope messsageEnvelope = new KafkaMessageEnvelope();
     LeaderMetadata leaderMetadata = new LeaderMetadata();
@@ -4517,7 +4518,7 @@ public abstract class StoreIngestionTaskTest {
         new PubSubTopicPartitionImpl(
             new TestPubSubTopic("test_store_v1", "test_store", PubSubTopicType.VERSION_TOPIC),
             1),
-        10,
+        messageOffset,
         -1,
         1000);
     AbstractStorageEngine mockStorageEngine2 = mock(AbstractStorageEngine.class);
@@ -4559,6 +4560,8 @@ public abstract class StoreIngestionTaskTest {
             .checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, 10, 11, mockTask2));
     assertTrue(
         exception.getMessage().contains("Failing the job because lossy rewind happens before receiving EndOfPush."));
+    // Verify that the VT offset is also in the error message
+    assertTrue(exception.getMessage().contains("received message at offset: " + messageOffset));
     verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
   }
 
