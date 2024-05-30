@@ -50,6 +50,12 @@ public class TestChunkingUtils {
     return chunkedKeySuffix;
   }
 
+  public static ByteBuffer prependSchemaId(byte[] valueBytes, int schemaId) {
+    ByteBuffer prependedValueBytes = ByteUtils.enlargeByteBufferForIntHeader(ByteBuffer.wrap(valueBytes));
+    prependedValueBytes.putInt(0, schemaId);
+    return prependedValueBytes;
+  }
+
   public static PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> createChunkedRecord(
       byte[] serializedKey,
       int firstSegmentNumber,
@@ -72,7 +78,9 @@ public class TestChunkingUtils {
     messageEnvelope.producerMetadata.producerGUID = new GUID();
     Put put = new Put();
     put.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-    put.putValue = ByteBuffer.wrap(createChunkBytes(chunkIndex * chunkLength, chunkLength));
+    byte[] valueBytes = createChunkBytes(chunkIndex * chunkLength, chunkLength);
+    put.putValue = prependSchemaId(valueBytes, AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion());
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
     messageEnvelope.payloadUnion = put;
     return new ImmutablePubSubMessage<>(
         kafkaKey,
@@ -112,7 +120,10 @@ public class TestChunkingUtils {
 
     Put put = new Put();
     put.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    put.putValue = chunkedValueManifestSerializer.serialize(manifest);
+    byte[] valueBytes = chunkedValueManifestSerializer.serialize(manifest).array();
+    put.putValue =
+        prependSchemaId(valueBytes, AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
     messageEnvelope.payloadUnion = put;
     return new ImmutablePubSubMessage<>(
         kafkaKey,
