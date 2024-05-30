@@ -42,6 +42,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -407,8 +408,7 @@ public class TopicManagerTest {
     Set<PubSubTopic> topics = new HashSet<>();
     topics.add(topic1);
     topics.add(topic2);
-    Map<PubSubTopic, PubSubTopicConfiguration> topicProperties = topicManager.getSomeTopicConfigs(topics);
-    Assert.assertTrue(topicProperties.isEmpty());
+    Assert.expectThrows(PubSubClientRetriableException.class, () -> topicManager.getSomeTopicConfigs(topics));
   }
 
   @Test
