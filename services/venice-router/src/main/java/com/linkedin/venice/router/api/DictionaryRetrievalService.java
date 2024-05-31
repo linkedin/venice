@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -134,7 +135,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               version -> handleVersionRetirement(version.kafkaTopicName(), "Version status " + version.getStatus()));
 
       // For versions that have been retired, delete dictionary.
-      for (String topic: scheduledDictionaryFetchFutures.keySet()) {
+      for (String topic: downloadingDictionaryFutures.keySet()) {
         if (Version.parseStoreFromKafkaTopicName(topic).equals(store.getName())
             && store.getVersion(Version.parseVersionFromKafkaTopicName(topic)) == null) {
           handleVersionRetirement(topic, "Version retired");
@@ -242,9 +243,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         sslFactory.isPresent());
     CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
 
-    storageNodeClient.sendRequest(request, responseFuture);
-
     return CompletableFuture.supplyAsync(() -> {
+      storageNodeClient.sendRequest(request, responseFuture);
       VeniceException exception = null;
       try {
         byte[] dictionary = getDictionaryFromResponse(
@@ -479,6 +479,11 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     // Shutdown the internal clean up executor of redundant exception filter.
     redundantExceptionFilter.shutdown();
+  }
+
+  // For testing only
+  Map<String, CompletableFuture<Void>> getDownloadingDictionaryFutures() {
+    return downloadingDictionaryFutures;
   }
 
   // Visible for testing

@@ -5,6 +5,7 @@ import static com.linkedin.venice.router.api.DictionaryRetrievalService.MIN_DICT
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -30,7 +31,9 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -196,10 +199,21 @@ public class TestDictionaryRetrievalService {
       doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(KAFKA_TOPIC_NAME, 0);
       // Create the store first to trigger dictionary download future
       storeChangeListener.handleStoreCreated(store);
+      // Block in the storage client so that future will not fail too fast to allow the validation for future maps
+      doAnswer(invocation -> {
+        Thread.sleep(10000); // Sleep for 10 seconds
+        return null; // Return null because the method is void
+      }).when(storageNodeClient).sendRequest(any(), any());
       // Do a no-op store change to execute the dictionary future clean-up logic
       storeChangeListener.handleStoreChanged(store);
-      // Verify that DictionaryRetrievalService#handleVersionRetirement is never called for the existing version
-      verify(compressorFactory, never()).removeVersionSpecificCompressor(KAFKA_TOPIC_NAME);
+      Map<String, CompletableFuture<Void>> downloadingDictionaryFutures =
+          dictionaryRetrievalService.getDownloadingDictionaryFutures();
+      TestUtils.waitForNonDeterministicAssertion(MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS, TimeUnit.SECONDS, () -> {
+        // Verify that DictionaryRetrievalService#handleVersionRetirement is never called for the existing version
+        verify(compressorFactory, never()).removeVersionSpecificCompressor(KAFKA_TOPIC_NAME);
+        // Verify that the downloading future map contains this version
+        assertTrue(downloadingDictionaryFutures.containsKey(KAFKA_TOPIC_NAME));
+      });
     } finally {
       if (dictionaryRetrievalService != null) {
         dictionaryRetrievalService.stop();
