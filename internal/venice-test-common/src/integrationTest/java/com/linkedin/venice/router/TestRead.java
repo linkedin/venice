@@ -1,12 +1,12 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_BLOB_DISCOVERY;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CURRENT_VERSION;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_HEALTH_CHECK;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
-import static com.linkedin.venice.utils.concurrent.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.fail;
+import static com.linkedin.venice.utils.concurrent.BlockingQueueType.*;
+import static org.testng.Assert.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
@@ -18,6 +18,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
+import com.linkedin.venice.controllerapi.BlobDiscoveryResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -88,7 +89,10 @@ public abstract class TestRead {
   private String storeVersionName;
   private int valueSchemaId;
   private String storeName;
+  private int storePartition;
   private final String readDisabledStoreName = Utils.getUniqueString("read_disabled_store");
+
+  private final String blobTransferEnabledStoreName = Utils.getUniqueString("blob_transfer_enabled_store");
 
   private String routerAddr;
   private VeniceKafkaSerializer keySerializer;
@@ -160,6 +164,10 @@ public abstract class TestRead {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
+    // veniceCluster.getVeniceRouters().forEach(r -> r.getRoutersClusterManager().getLiveRouterInstances().forEach(x ->
+    // x.));
+    // ServiceFactory.getMoc
+
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET, true); // test parallel lookup
     serverProperties.put(ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, 1); // test bounded queue
@@ -180,6 +188,7 @@ public abstract class TestRead {
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+    storePartition = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
     // Update default quota
     updateStore(0, MAX_KEY_LIMIT);
@@ -210,6 +219,7 @@ public abstract class TestRead {
         throw new VeniceException(
             "Failed to create a store: " + readDisabledStoreName + " with error: " + newStoreResponse.getError());
       }
+
       VersionCreationResponse versionCreationResponse = cc.emptyPush(readDisabledStoreName, "test_push", 10000);
       if (versionCreationResponse.isError()) {
         throw new VeniceException(
@@ -752,5 +762,63 @@ public abstract class TestRead {
         .toString();
     assertEquals(metricsRepository.metrics().get(requestUsageMetric).value(), 1.0d);
     assertEquals(metricsRepository.metrics().get(badRequestMetric).value(), 1.0d);
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testBlobDiscovery() {
+    if (!isTestEnabled()) {
+      return;
+    }
+
+    Map<CharSequence, Integer> instanceResultsFromPushStatusStore = new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", 1);
+        put("ltx1-test1.prod.linkedin.com_137", 1);
+        put("ltx1-test2.prod.linkedin.com_137", 1);
+      }
+    };
+
+    try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
+        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
+        .build()) {
+
+      client.start();
+
+      veniceCluster.updateStore(storeName, new UpdateStoreQueryParams().setBlobTransferEnabled(true));
+
+      /*
+      Optional<String> veniceRouterUrl = veniceCluster.getVeniceRouters().stream()
+          .map(vr -> vr.getAddress())
+          .findFirst();
+      */
+
+      String veniceRouterUrl = veniceCluster.getAllControllersURLs();
+
+      String url = String.format(
+          "%s/%s?store_name=%s&store_version=%s&store_partition=%s",
+          veniceRouterUrl,
+          TYPE_BLOB_DISCOVERY,
+          storeName,
+          2,
+          0);
+      HttpGet routerRequest =
+          new HttpGet(veniceCluster.getRandomRouterURL() + "/" + TYPE_CURRENT_VERSION + "/" + storeName);
+      HttpResponse response = client.execute(routerRequest, null).get();
+      String responseBody;
+      try (InputStream bodyStream = response.getEntity().getContent()) {
+        responseBody = IOUtils.toString(bodyStream);
+      }
+      Assert.assertEquals(
+          response.getStatusLine().getStatusCode(),
+          HttpStatus.SC_OK,
+          "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
+      BlobDiscoveryResponse blobDiscoveryResponse =
+          mapper.readValue(responseBody.getBytes(), BlobDiscoveryResponse.class);
+      Assert.assertEquals(blobDiscoveryResponse.getLiveNodeHostNames().size(), 3);
+      LOGGER.info(responseBody);
+    } catch (Exception e) {
+      fail("Unexpected exception", e);
+    }
   }
 }

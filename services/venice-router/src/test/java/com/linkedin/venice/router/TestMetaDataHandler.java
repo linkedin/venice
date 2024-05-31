@@ -1654,8 +1654,6 @@ public class TestMetaDataHandler {
         storeRepository,
         pushStatusStoreReader);
 
-    String contentType = response.headers().get(CONTENT_TYPE);
-
     BlobDiscoveryResponse blobDiscoveryResponse =
         OBJECT_MAPPER.readValue(response.content().array(), BlobDiscoveryResponse.class);
     List<String> hostNames = blobDiscoveryResponse.getLiveNodeHostNames();
@@ -1733,9 +1731,6 @@ public class TestMetaDataHandler {
     BlobDiscoveryResponse blobDiscoveryResponse =
         OBJECT_MAPPER.readValue(response.content().array(), BlobDiscoveryResponse.class);
     List<String> hostNames = blobDiscoveryResponse.getLiveNodeHostNames();
-
-    Collections.sort(hostNames);
-    Collections.sort(expectedResult);
 
     Assert.assertEquals(hostNames, expectedResult);
     Assert.assertEquals(response.status(), HttpResponseStatus.OK);
