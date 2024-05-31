@@ -134,13 +134,12 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               version -> handleVersionRetirement(version.kafkaTopicName(), "Version status " + version.getStatus()));
 
       // For versions that have been retired, delete dictionary.
-      downloadingDictionaryFutures.keySet()
-          .stream()
-          // Filter those topics which belong to the current store
-          .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(store.getName()))
-          // Filter those topics which are retired
-          .filter(topic -> store.getVersion(Version.parseVersionFromKafkaTopicName(topic)) == null)
-          .forEach(topic -> handleVersionRetirement(topic, "Version retired"));
+      for (String topic: scheduledDictionaryFetchFutures.keySet()) {
+        if (Version.parseStoreFromKafkaTopicName(topic).equals(store.getName())
+            && store.getVersion(Version.parseVersionFromKafkaTopicName(topic)) == null) {
+          handleVersionRetirement(topic, "Version retired");
+        }
+      }
     }
   };
 
