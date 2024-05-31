@@ -471,7 +471,11 @@ public class TopicCleanupService extends AbstractVeniceService {
           Store store = admin.getStore(clusterDiscovered, storeName);
           LOGGER.warn("Find topic discrepancy case: {}", pubSubTopic);
           if (!isStillValidRealtimeTopic(pubSubTopic, store) || !isStillValidVersionTopic(pubSubTopic, store)) {
-            topicsToCleanup.add(pubSubTopic);
+            if (checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
+              LOGGER.warn("Will remove consistently found dangling topic {}.", pubSubTopic);
+              topicsToCleanup.add(pubSubTopic);
+              danglingTopicOccurrenceCounter.remove(pubSubTopic);
+            }
           }
         } catch (Exception e) {
           if (e instanceof VeniceNoStoreException) {
@@ -495,10 +499,7 @@ public class TopicCleanupService extends AbstractVeniceService {
           break;
         }
       }
-      if (checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
-        LOGGER.warn("Will remove real-time dangling topic {} .", pubSubTopic);
-        return false;
-      }
+      return false;
     }
     return true;
   }
@@ -506,8 +507,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private boolean isStillValidVersionTopic(PubSubTopic pubSubTopic, Store store) {
     if (pubSubTopic.isVersionTopicOrStreamReprocessingTopic() || pubSubTopic.isViewTopic()) {
       int versionNum = Version.parseVersionFromKafkaTopicName(pubSubTopic.getName());
-      if (!store.containsVersion(versionNum) && checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
-        LOGGER.warn("Will remove dangling version topic {}.", pubSubTopic);
+      if (!store.containsVersion(versionNum)) {
         return false;
       }
     }
