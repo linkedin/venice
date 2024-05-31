@@ -230,8 +230,9 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       Version version = res.getSecond();
       if (store == null) {
         logger.error(
-            "Failed to get store for resource: {}. Will not update lag monitor.",
-            Utils.getReplicaId(resourceName, getPartition()));
+            "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
+            Utils.getReplicaId(resourceName, getPartition()),
+            trigger);
         return;
       }
       if (version == null && !isNullVersionValid) {
@@ -248,7 +249,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       }
       lagMonFunction.accept(version, getPartition());
     } catch (Exception e) {
-      logger.error("Failed to update lag monitor for replica: {}", Utils.getReplicaId(resourceName, getPartition()), e);
+      logger.error(
+          "Failed to update lag monitor for replica: {} with trigger: {}",
+          Utils.getReplicaId(resourceName, getPartition()),
+          trigger,
+          e);
     }
   }
 
