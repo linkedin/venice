@@ -12,9 +12,6 @@ import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 
 /**
@@ -46,33 +43,7 @@ public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
     if (callback != null) {
       callback.onCompletion(produceResult, null);
     }
-    return new CompletableFuture<PubSubProduceResult>() {
-      @Override
-      public boolean cancel(boolean mayInterruptIfRunning) {
-        return false;
-      }
-
-      @Override
-      public boolean isCancelled() {
-        return false;
-      }
-
-      @Override
-      public boolean isDone() {
-        return false;
-      }
-
-      @Override
-      public PubSubProduceResult get() throws InterruptedException, ExecutionException {
-        return produceResult;
-      }
-
-      @Override
-      public PubSubProduceResult get(long timeout, TimeUnit unit)
-          throws InterruptedException, ExecutionException, TimeoutException {
-        return produceResult;
-      }
-    };
+    return CompletableFuture.completedFuture(produceResult);
   }
 
   @Override
@@ -81,7 +52,7 @@ public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
-  public void close(int closeTimeOutMs, boolean flush) {
+  public void close(long closeTimeOutMs) {
     // no-op
   }
 

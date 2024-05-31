@@ -99,7 +99,7 @@ public class ApacheKafkaProducerAdapterITest {
   @AfterMethod(alwaysRun = true)
   public void cleanUp() {
     if (producerAdapter != null) {
-      producerAdapter.close(0, false);
+      producerAdapter.close(0);
     }
   }
 
@@ -177,7 +177,7 @@ public class ApacheKafkaProducerAdapterITest {
 
     // Initiate close in another thread as it close() call waits for ioThread to finish.
     // Since we're blocking ioThread in m0's callback calling it from current thread would lead to deadlock.
-    Thread closeProducerThread = new Thread(() -> producerAdapter.close(doFlush ? Integer.MAX_VALUE : 0, doFlush));
+    Thread closeProducerThread = new Thread(() -> producerAdapter.close(doFlush ? Integer.MAX_VALUE : 0));
     closeProducerThread.start();
     // We need to make sure that the Producer::close is always invoked first to ensure the correctness of this test
     waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -313,7 +313,7 @@ public class ApacheKafkaProducerAdapterITest {
       countDownLatch.await();
       // Still wait for some time to make sure blocking sendMessage is inside kafka before closing it.
       Utils.sleep(50);
-      producerAdapter.close(5000, doFlush);
+      producerAdapter.close(5000);
       sendMessageFuture.get(); // this is necessary to check whether expectations in sendMessage thread were met
     } catch (Exception e) {
       fail("Producer closing should have succeeded without an exception", e);
