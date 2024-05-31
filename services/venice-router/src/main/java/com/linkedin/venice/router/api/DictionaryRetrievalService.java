@@ -139,7 +139,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
           // Filter those topics which belong to the current store
           .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(store.getName()))
           // Filter those topics which are retired
-          .filter(topic -> store.getVersion(Version.parseVersionFromKafkaTopicName(topic)) != null)
+          .filter(topic -> store.getVersion(Version.parseVersionFromKafkaTopicName(topic)) == null)
           .forEach(topic -> handleVersionRetirement(topic, "Version retired"));
     }
   };
