@@ -9,7 +9,9 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import java.util.HashMap;
@@ -24,6 +26,7 @@ public class TestTopicCleanupServiceForParentController {
   private TopicManager topicManager;
   private TopicCleanupService topicCleanupService;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubClientsFactory pubSubClientsFactory = mock(PubSubClientsFactory.class);
 
   @BeforeTest
   public void setUp() {
@@ -37,8 +40,14 @@ public class TestTopicCleanupServiceForParentController {
     doReturn(veniceControllerConfig).when(config).getCommonConfig();
     doReturn("dc1").when(veniceControllerConfig).getChildDatacenters();
     TopicCleanupServiceStats topicCleanupServiceStats = mock(TopicCleanupServiceStats.class);
-    topicCleanupService =
-        new TopicCleanupServiceForParentController(admin, config, pubSubTopicRepository, topicCleanupServiceStats);
+    doReturn(new ApacheKafkaAdminAdapterFactory()).when(pubSubClientsFactory).getAdminAdapterFactory();
+    doReturn(new ApacheKafkaAdminAdapterFactory()).when(config).getSourceOfTruthAdminAdapterFactory();
+    topicCleanupService = new TopicCleanupServiceForParentController(
+        admin,
+        config,
+        pubSubTopicRepository,
+        topicCleanupServiceStats,
+        pubSubClientsFactory);
   }
 
   @Test
