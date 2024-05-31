@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.Update;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -26,6 +27,10 @@ public class TestChunkingUtils {
   private TestChunkingUtils() {
     // Util class
   }
+
+  public final static int CHUNK_LENGTH = 10;
+  public final static KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer =
+      new KeyWithChunkingSuffixSerializer();
 
   public static byte[] createChunkBytes(int startValue, final int chunkLength) {
     byte[] chunkBytes = new byte[chunkLength];
@@ -56,6 +61,20 @@ public class TestChunkingUtils {
     return prependedValueBytes;
   }
 
+  public static KafkaMessageEnvelope createKafkaMessageEnvelope(
+      MessageType messageType,
+      int segmentNumber,
+      int sequenceNumber) {
+    KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
+    messageEnvelope.messageType = messageType.getValue();
+    messageEnvelope.producerMetadata = new ProducerMetadata();
+    messageEnvelope.producerMetadata.messageTimestamp = 0;
+    messageEnvelope.producerMetadata.segmentNumber = segmentNumber;
+    messageEnvelope.producerMetadata.messageSequenceNumber = sequenceNumber;
+    messageEnvelope.producerMetadata.producerGUID = new GUID();
+    return messageEnvelope;
+  }
+
   public static PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> createChunkedRecord(
       byte[] serializedKey,
       int firstSegmentNumber,
@@ -63,32 +82,20 @@ public class TestChunkingUtils {
       int chunkIndex,
       int firstMessageOffset,
       PubSubTopicPartition pubSubTopicPartition) {
-    int chunkLength = 10;
-    ChunkedKeySuffix chunkKeySuffix1 = createChunkedKeySuffix(firstSegmentNumber, firstSequenceNumber, chunkIndex);
-    KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
-    ByteBuffer chunkKeyWithSuffix1 =
-        keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkKeySuffix1);
-    KafkaKey kafkaKey = new KafkaKey(PUT, ByteUtils.extractByteArray(chunkKeyWithSuffix1));
-    KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
-    messageEnvelope.messageType = 0; // PUT
-    messageEnvelope.producerMetadata = new ProducerMetadata();
-    messageEnvelope.producerMetadata.messageTimestamp = 0;
-    messageEnvelope.producerMetadata.segmentNumber = firstSegmentNumber;
-    messageEnvelope.producerMetadata.messageSequenceNumber = firstSequenceNumber + chunkIndex;
-    messageEnvelope.producerMetadata.producerGUID = new GUID();
+    long newOffset = firstMessageOffset + chunkIndex;
+    int newSequenceNumber = firstSequenceNumber + chunkIndex;
+    ChunkedKeySuffix chunkKeySuffix = createChunkedKeySuffix(firstSegmentNumber, firstSequenceNumber, chunkIndex);
+    ByteBuffer chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkKeySuffix);
+    KafkaKey kafkaKey = new KafkaKey(PUT, ByteUtils.extractByteArray(chunkKeyWithSuffix));
+    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(PUT, firstSegmentNumber, newSequenceNumber);
+
     Put put = new Put();
     put.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-    byte[] valueBytes = createChunkBytes(chunkIndex * chunkLength, chunkLength);
-    put.putValue = prependSchemaId(valueBytes, AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion());
+    byte[] valueBytes = createChunkBytes(chunkIndex * CHUNK_LENGTH, CHUNK_LENGTH);
+    put.putValue = prependSchemaId(valueBytes, put.schemaId);
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     messageEnvelope.payloadUnion = put;
-    return new ImmutablePubSubMessage<>(
-        kafkaKey,
-        messageEnvelope,
-        pubSubTopicPartition,
-        firstMessageOffset + chunkIndex,
-        0,
-        20);
+    return new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, newOffset, 0, 20);
   }
 
   public static PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> createChunkValueManifestRecord(
@@ -96,58 +103,37 @@ public class TestChunkingUtils {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstMessage,
       int numberOfChunks,
       PubSubTopicPartition pubSubTopicPartition) {
-    int chunkLength = 10;
-    KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
-
+    long newOffset = firstMessage.getOffset() + numberOfChunks;
     byte[] chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(PUT, chunkKeyWithSuffix);
-    KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
-    messageEnvelope.messageType = 0; // PUT
-    messageEnvelope.producerMetadata = new ProducerMetadata();
-    messageEnvelope.producerMetadata.messageTimestamp = 0;
-    messageEnvelope.producerMetadata.segmentNumber = firstMessage.getValue().getProducerMetadata().segmentNumber;
-    messageEnvelope.producerMetadata.messageSequenceNumber =
-        firstMessage.getValue().getProducerMetadata().messageSequenceNumber + numberOfChunks;
-    messageEnvelope.producerMetadata.producerGUID = new GUID();
+    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(
+        PUT,
+        firstMessage.getValue().getProducerMetadata().segmentNumber,
+        firstMessage.getValue().getProducerMetadata().messageSequenceNumber + numberOfChunks);
 
     ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
     ChunkedValueManifest manifest = new ChunkedValueManifest();
     manifest.keysWithChunkIdSuffix = new ArrayList<>(numberOfChunks);
     manifest.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    manifest.size = chunkLength * numberOfChunks;
-
+    manifest.size = numberOfChunks * CHUNK_LENGTH;
     manifest.keysWithChunkIdSuffix.add(ByteBuffer.wrap(firstMessage.getKey().getKey()));
+    byte[] valueBytes = chunkedValueManifestSerializer.serialize(manifest).array();
 
     Put put = new Put();
     put.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    byte[] valueBytes = chunkedValueManifestSerializer.serialize(manifest).array();
-    put.putValue =
-        prependSchemaId(valueBytes, AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+    put.putValue = prependSchemaId(valueBytes, put.schemaId);
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     messageEnvelope.payloadUnion = put;
-    return new ImmutablePubSubMessage<>(
-        kafkaKey,
-        messageEnvelope,
-        pubSubTopicPartition,
-        firstMessage.getOffset() + numberOfChunks,
-        0,
-        20);
+    return new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, newOffset, 0, 20);
   }
 
   public static PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> createDeleteRecord(
       byte[] serializedKey,
       byte[] serializedRmd,
       PubSubTopicPartition pubSubTopicPartition) {
-    KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     byte[] chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(DELETE, chunkKeyWithSuffix);
-    KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
-    messageEnvelope.messageType = 1;
-    messageEnvelope.producerMetadata = new ProducerMetadata();
-    messageEnvelope.producerMetadata.messageTimestamp = 0;
-    messageEnvelope.producerMetadata.segmentNumber = 0;
-    messageEnvelope.producerMetadata.messageSequenceNumber = 0;
-    messageEnvelope.producerMetadata.producerGUID = new GUID();
+    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(DELETE, 0, 0);
 
     Delete delete = new Delete();
     delete.schemaId = 1;
@@ -164,16 +150,10 @@ public class TestChunkingUtils {
       byte[] serializedValue,
       byte[] serializedRmd,
       PubSubTopicPartition pubSubTopicPartition) {
-    KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     byte[] chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(PUT, chunkKeyWithSuffix);
-    KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
-    messageEnvelope.messageType = PUT.getValue();
-    messageEnvelope.producerMetadata = new ProducerMetadata();
-    messageEnvelope.producerMetadata.messageTimestamp = 0;
-    messageEnvelope.producerMetadata.segmentNumber = 0;
-    messageEnvelope.producerMetadata.messageSequenceNumber = 0;
-    messageEnvelope.producerMetadata.producerGUID = new GUID();
+    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(PUT, 0, 0);
+
     Put put = new Put();
     put.schemaId = 1;
     put.putValue = ByteBuffer.wrap(serializedValue);
@@ -189,21 +169,14 @@ public class TestChunkingUtils {
       byte[] serializedKey,
       byte[] serializedValue,
       PubSubTopicPartition pubSubTopicPartition) {
-    KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     byte[] chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(UPDATE, chunkKeyWithSuffix);
-    KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
-    messageEnvelope.messageType = UPDATE.getValue();
-    messageEnvelope.producerMetadata = new ProducerMetadata();
-    messageEnvelope.producerMetadata.messageTimestamp = 0;
-    messageEnvelope.producerMetadata.segmentNumber = 0;
-    messageEnvelope.producerMetadata.messageSequenceNumber = 0;
-    messageEnvelope.producerMetadata.producerGUID = new GUID();
+    KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(UPDATE, 0, 0);
+
     Update update = new Update();
     update.schemaId = 1;
     update.updateValue = ByteBuffer.wrap(serializedValue);
     update.updateSchemaId = 1;
-
     messageEnvelope.payloadUnion = update;
     return new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 1, 0, serializedValue.length);
   }

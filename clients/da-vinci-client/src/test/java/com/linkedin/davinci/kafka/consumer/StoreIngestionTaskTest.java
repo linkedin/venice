@@ -4442,14 +4442,16 @@ public abstract class StoreIngestionTaskTest {
   /**
    * Create messages for a chunked record (in multiple chunks) and its manifest, and verify that the drainer
    * records the size of the chunked record as described in the size field of the manifest.
-   * Also, test that this only occurs for the correct schema id and when manifest messages are processed.
+   * Also, verify that metrics are only emitted when the correct schemaId=-20 is on the manifest message,
+   * and not emitted on any other invalid schemaId values.
    * @throws Exception
    */
   @Test(dataProvider = "testAssembledValueSizeProvider")
   public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId) throws Exception {
-    int numChunks = 3;
+    int numChunks = 10;
+    long expectedRecordSize = (long) numChunks * TestChunkingUtils.CHUNK_LENGTH;
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1);
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
     for (int i = 0; i < numChunks; i++) {
       messages.add(TestChunkingUtils.createChunkedRecord(putKeyFoo, 1, 1, i, 0, tp));
     }
@@ -4457,6 +4459,8 @@ public abstract class StoreIngestionTaskTest {
         TestChunkingUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
     messages.add(manifestMessage);
 
+    // The only expected real-life case should be when schemaId values are chunk=-10 and manifest=-20
+    boolean useRealSchemaId = testSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
     runTest(Collections.singleton(PARTITION_FOO), () -> {
       TestUtils.waitForNonDeterministicAssertion(
           5,
@@ -4466,7 +4470,7 @@ public abstract class StoreIngestionTaskTest {
       for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
         try {
           Put put = (Put) message.getValue().getPayloadUnion();
-          if (testSchemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+          if (!useRealSchemaId) {
             put.schemaId = testSchemaId;
           }
           LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
@@ -4487,9 +4491,10 @@ public abstract class StoreIngestionTaskTest {
       }
     }, aaConfig);
 
+    // Verify that the size of the assembled record was recorded in the metrics only if schemaId=-20
     HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
-    if (testSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-      verify(hostLevelIngestionStats).recordAssembledValueSize(eq(10L * numChunks), anyLong()); // 10 bytes per chunk
+    if (useRealSchemaId) {
+      verify(hostLevelIngestionStats).recordAssembledValueSize(eq(expectedRecordSize), anyLong());
       verify(hostLevelIngestionStats, times(1)).recordAssembledValueSize(anyLong(), anyLong());
     } else {
       verify(hostLevelIngestionStats, times(0)).recordAssembledValueSize(anyLong(), anyLong());

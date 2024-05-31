@@ -141,6 +141,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
@@ -3237,7 +3238,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
                 AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
             hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
-          } catch (VeniceException | IllegalArgumentException e) {
+          } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
             LOGGER.error("Failed to deserialize ChunkedValueManifest to record assembled value size", e);
           }
         }

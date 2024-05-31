@@ -118,7 +118,6 @@ public abstract class TestBatch {
   protected static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
   public static final String ASSEMBLED_VALUE_SENSOR_NAME = "assembled_record_value_size_in_bytes";
-  protected static final int MIN_RECORD_VALUE_SIZE = 1024 * 1024; // 1MB apiece
   protected static final int MAX_RECORD_VALUE_SIZE = 3 * 1024 * 1024; // 3 MB apiece
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -987,11 +986,8 @@ public abstract class TestBatch {
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range. It doesn't work in isolated ingestion mode.
     if (veniceCluster.getVeniceServers().stream().noneMatch(VeniceServerWrapper::isIsolatedIngestionEnabled)) {
-      validatePerStoreMetricsRange(
-          storeName,
-          ASSEMBLED_VALUE_SENSOR_NAME,
-          MIN_RECORD_VALUE_SIZE,
-          MAX_RECORD_VALUE_SIZE);
+      int minRecordValueSize = 1024 * 1024; // 1MB apiece
+      validatePerStoreMetricsRange(storeName, ASSEMBLED_VALUE_SENSOR_NAME, minRecordValueSize, MAX_RECORD_VALUE_SIZE);
     } else {
       assertUnusedPerStoreMetrics(storeName, ASSEMBLED_VALUE_SENSOR_NAME);
     }
