@@ -3,15 +3,14 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.router.api.DictionaryRetrievalService.MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS;
 import static com.linkedin.venice.router.api.DictionaryRetrievalService.MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -45,6 +44,10 @@ public class TestDictionaryRetrievalService {
   Store store;
   Version version;
 
+  private static String STORE_NAME = "test_store";
+  private static int VERSION_NUMBER = 1;
+  private static String KAFKA_TOPIC_NAME = "test_store_v1";
+
   @BeforeClass
   public void setUp() {
     onlineInstanceFinder = mock(OnlineInstanceFinder.class);
@@ -57,7 +60,7 @@ public class TestDictionaryRetrievalService {
     // start with NO_OP for warmup to succeed
     doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
     doReturn(VersionStatus.ONLINE).when(version).getStatus();
-    doReturn("test_store_v1").when(version).kafkaTopicName();
+    doReturn(KAFKA_TOPIC_NAME).when(version).kafkaTopicName();
     versions.add(version);
     doReturn(versions).when(store).getVersions();
     doReturn(version).when(store).getVersion(anyInt());
@@ -154,6 +157,49 @@ public class TestDictionaryRetrievalService {
         dictionaryRetrievalService.stop();
         dictionaryRetrievalService.close();
         // Reset to NO_OP for the next test
+        doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
+      }
+    }
+  }
+
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testStoreChangeCallbackDoNotRemoveExistingVersions() throws Exception {
+    DictionaryRetrievalService dictionaryRetrievalService = null;
+    try {
+      dictionaryRetrievalService = new DictionaryRetrievalService(
+          onlineInstanceFinder,
+          routerConfig,
+          Optional.of(sslFactory),
+          metadataRepository,
+          storageNodeClient,
+          compressorFactory);
+      dictionaryRetrievalService.start();
+      StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
+      // update the compression strategy such that dictionaryRetrievalService will try to fetch the dictionary
+      doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(version).getCompressionStrategy();
+      doReturn(VersionStatus.ONLINE).when(version).getStatus();
+      doReturn(STORE_NAME).when(version).getStoreName();
+      doReturn(VERSION_NUMBER).when(version).getNumber();
+      // Ensure that compressor does not exist for this version yet
+      doReturn(false).when(compressorFactory).versionSpecificCompressorExists(KAFKA_TOPIC_NAME);
+
+      doReturn(1).when(onlineInstanceFinder).getNumberOfPartitions(KAFKA_TOPIC_NAME);
+      Instance mockInstance = mock(Instance.class);
+      doReturn("localhost").when(mockInstance).getUrl(anyBoolean());
+      List<Instance> instances = new ArrayList<>();
+      instances.add(mockInstance);
+      doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(KAFKA_TOPIC_NAME, 0);
+      // Create the store first to trigger dictionary download future
+      storeChangeListener.handleStoreCreated(store);
+      // Do a no-op store change to execute the dictionary future clean-up logic
+      storeChangeListener.handleStoreChanged(store);
+      // Verify that DictionaryRetrievalService#handleVersionRetirement is never called for the existing version
+      verify(compressorFactory, never()).removeVersionSpecificCompressor(KAFKA_TOPIC_NAME);
+    } finally {
+      if (dictionaryRetrievalService != null) {
+        dictionaryRetrievalService.stop();
+        dictionaryRetrievalService.close();
+        // reset to NO_OP for next test
         doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
       }
     }
