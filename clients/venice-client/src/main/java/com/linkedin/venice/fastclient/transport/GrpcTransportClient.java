@@ -27,6 +27,7 @@ import io.grpc.Status;
 import io.grpc.TlsChannelCredentials;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -188,7 +189,7 @@ public class GrpcTransportClient extends InternalTransportClient {
     String[] requestParts = requestPath.split("/");
 
     if (!isValidRequest(requestParts, isSingleGet)) {
-      LOGGER.error("Failed to process request: {}", requestParts);
+      LOGGER.error("Failed to process request: {}", Arrays.toString(requestParts));
       // avoiding CompletableFuture.failedFuture to keep it JDK agnostic
       CompletableFuture<TransportClientResponse> failedFuture = new CompletableFuture<>();
       failedFuture.completeExceptionally(new VeniceClientException("Invalid request"));
