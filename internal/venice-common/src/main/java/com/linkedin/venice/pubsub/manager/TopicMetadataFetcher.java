@@ -22,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.stats.StatsErrorCode;
@@ -183,9 +184,15 @@ class TopicMetadataFetcher implements Closeable {
     if (pubSubTopicPartition.getPartitionNumber() < 0) {
       throw new IllegalArgumentException("Invalid partition number: " + pubSubTopicPartition.getPartitionNumber());
     }
-    if (containsTopicCached(pubSubTopicPartition.getPubSubTopic())) {
-      return;
+    try {
+      if (containsTopicCached(pubSubTopicPartition.getPubSubTopic())) {
+        return;
+      }
+    } catch (PubSubClientRetriableException e) {
+      // in case there is any retriable exception, we will retry the operation
+      LOGGER.debug("Failed to check if topic exists: {}", pubSubTopicPartition.getPubSubTopic(), e);
     }
+
     boolean topicExists = RetryUtils.executeWithMaxAttempt(
         () -> containsTopic(pubSubTopicPartition.getPubSubTopic()),
         3,
@@ -264,6 +271,16 @@ class TopicMetadataFetcher implements Closeable {
         topicExistenceCache.computeIfAbsent(topic, k -> new ValueAndExpiryTime<>(containsTopic(topic)));
     updateCacheAsync(topic, cachedValue, topicExistenceCache, () -> containsTopicAsync(topic));
     return cachedValue.getValue();
+  }
+
+  public boolean containsTopicWithRetries(PubSubTopic pubSubTopic, int retries) {
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> containsTopic(pubSubTopic),
+        retries,
+        INITIAL_RETRY_DELAY,
+        Duration.ofSeconds(5),
+        Duration.ofMinutes(5),
+        PUBSUB_RETRIABLE_FAILURES);
   }
 
   /**
