@@ -4,7 +4,7 @@ import static com.linkedin.venice.router.api.DictionaryRetrievalService.MAX_DICT
 import static com.linkedin.venice.router.api.DictionaryRetrievalService.MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -63,6 +63,7 @@ public class TestDictionaryRetrievalService {
     metadataRepository = mock(ReadOnlyStoreRepository.class);
     List<Store> stores = new ArrayList();
     store = mock(Store.class);
+    doReturn(STORE_NAME).when(store).getName();
     List<Version> versions = new ArrayList();
     version = mock(Version.class);
     // start with NO_OP for warmup to succeed
@@ -71,7 +72,7 @@ public class TestDictionaryRetrievalService {
     doReturn(KAFKA_TOPIC_NAME).when(version).kafkaTopicName();
     versions.add(version);
     doReturn(versions).when(store).getVersions();
-    doReturn(version).when(store).getVersion(anyInt());
+    doReturn(version).when(store).getVersion(VERSION_NUMBER);
     stores.add(store);
     doReturn(stores).when(metadataRepository).getAllStores();
     doReturn(store).when(metadataRepository).getStore(any());
@@ -214,12 +215,22 @@ public class TestDictionaryRetrievalService {
         // Verify that the downloading future map contains this version
         assertTrue(downloadingDictionaryFutures.containsKey(KAFKA_TOPIC_NAME));
       });
+
+      // Now make version 1 retired
+      doReturn(null).when(store).getVersion(VERSION_NUMBER);
+      storeChangeListener.handleStoreChanged(store);
+      TestUtils.waitForNonDeterministicAssertion(MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS, TimeUnit.SECONDS, () -> {
+        // Verify that DictionaryRetrievalService#handleVersionRetirement is called for the retired version
+        verify(compressorFactory, atLeastOnce()).removeVersionSpecificCompressor(KAFKA_TOPIC_NAME);
+      });
     } finally {
       if (dictionaryRetrievalService != null) {
         dictionaryRetrievalService.stop();
         dictionaryRetrievalService.close();
         // reset to NO_OP for next test
         doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
+        // Reset version 1 back to active
+        doReturn(version).when(store).getVersion(VERSION_NUMBER);
       }
     }
   }
