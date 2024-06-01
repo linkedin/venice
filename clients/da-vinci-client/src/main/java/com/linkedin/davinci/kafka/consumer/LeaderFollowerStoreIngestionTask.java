@@ -31,6 +31,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -2199,7 +2200,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       validateRecordBeforeProducingToLocalKafka(consumerRecord, partitionConsumptionState, kafkaUrl, kafkaClusterId);
 
-      if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+      boolean isRealTimeMsg = consumerRecord.getTopicPartition().getPubSubTopic().isRealTime();
+      if (isRealTimeMsg) {
         recordRegionHybridConsumptionStats(
             kafkaClusterId,
             consumerRecord.getPayloadSize(),
@@ -2217,11 +2219,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        validateMessage(
-            this.kafkaDataIntegrityValidatorForLeaders,
-            consumerRecord,
-            isEndOfPushReceived,
-            partitionConsumptionState);
+        if (isGlobalRtDivEnabled) {
+          validateMessage(
+              isRealTimeMsg ? PartitionTracker.TopicType.REALTIME_TOPIC : PartitionTracker.TopicType.VERSION_TOPIC,
+              this.kafkaDataIntegrityValidatorForLeaders,
+              consumerRecord,
+              isEndOfPushReceived,
+              partitionConsumptionState);
+        } else {
+          validateMessage(
+              PartitionTracker.TopicType.VERSION_TOPIC,
+              this.kafkaDataIntegrityValidatorForLeaders,
+              consumerRecord,
+              isEndOfPushReceived,
+              partitionConsumptionState);
+        }
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!isEndOfPushReceived) {
