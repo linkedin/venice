@@ -80,6 +80,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
+import static com.linkedin.venice.ConfigKeys.SERVER_GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INITIAL_WINDOW_SIZE;
@@ -536,6 +537,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int nonCurrentVersionAAWCLeaderQuotaRecordsPerSecond;
   private final int nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond;
   private final int channelOptionWriteBufferHighBytes;
+  private final boolean isGlobalRtDivEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -892,6 +894,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     channelOptionWriteBufferHighBytes = (int) serverProperties
         .getSizeInBytes(SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES, WriteBufferWaterMark.DEFAULT.high()); // default
                                                                                                                        // 64KB
+    this.isGlobalRtDivEnabled = serverProperties.getBoolean(SERVER_GLOBAL_RT_DIV_ENABLED, false);
     if (channelOptionWriteBufferHighBytes <= 0) {
       throw new VeniceException("Invalid channel option write buffer high bytes: " + channelOptionWriteBufferHighBytes);
     }
@@ -1599,5 +1602,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getQuotaEnforcementCapacityMultiple() {
     return quotaEnforcementCapacityMultiple;
+  }
+
+  public boolean isGlobalRtDivEnabled() {
+    return isGlobalRtDivEnabled;
   }
 }

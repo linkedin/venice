@@ -38,6 +38,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -333,6 +334,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
+  protected final boolean isGlobalRtDivEnabled;
   protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
   protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
 
@@ -500,6 +502,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordLevelMetricEnabled = new AtomicBoolean(
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
+    this.isGlobalRtDivEnabled = serverConfig.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
@@ -1529,7 +1532,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The reason to transform the internal state only during checkpointing is that the intermediate checksum
      * generation is an expensive operation.
      */
-    this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(pcs.getPartition(), pcs.getOffsetRecord());
+    this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(
+        PartitionTracker.TopicType.VERSION_TOPIC,
+        pcs.getPartition(),
+        pcs.getOffsetRecord());
     // update the offset metadata in the OffsetRecord.
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(kafkaVersionTopic, pcs);
@@ -1862,7 +1868,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hybridStoreConfig.isPresent());
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-        kafkaDataIntegrityValidator.setPartitionState(partition, offsetRecord);
+        kafkaDataIntegrityValidator
+            .setPartitionState(PartitionTracker.TopicType.VERSION_TOPIC, partition, offsetRecord);
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
@@ -2876,6 +2883,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
            * the last message of the sequence, which is not a chunk but rather the manifest.
            */
           validateMessage(
+              PartitionTracker.TopicType.VERSION_TOPIC,
               this.kafkaDataIntegrityValidator,
               consumerRecord,
               endOfPushReceived,
@@ -3030,6 +3038,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 3. For any DIV errors happened to records which is after logCompactionDelayInMs, the errors will be ignored.
    **/
   protected void validateMessage(
+      PartitionTracker.TopicType type,
       KafkaDataIntegrityValidator validator,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
@@ -3053,7 +3062,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     });
 
     try {
-      validator.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+      validator.validateMessage(type, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
     } catch (FatalDataValidationException fatalException) {
       divErrorMetricCallback.accept(fatalException);
       /**
@@ -3082,7 +3091,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Run a dummy validation to update DIV metadata.
          */
-        validator.validateMessage(consumerRecord, true, Lazy.TRUE);
+        validator.validateMessage(type, consumerRecord, true, Lazy.TRUE);
       }
     }
   }
@@ -3093,7 +3102,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
    */
   protected void cloneProducerStates(int partition, KafkaDataIntegrityValidator validator) {
-    this.kafkaDataIntegrityValidator.cloneProducerStates(partition, validator);
+    this.kafkaDataIntegrityValidator
+        .cloneProducerStates(PartitionTracker.TopicType.VERSION_TOPIC, partition, validator);
+    this.kafkaDataIntegrityValidator
+        .cloneProducerStates(PartitionTracker.TopicType.REALTIME_TOPIC, partition, validator);
   }
 
   /**
