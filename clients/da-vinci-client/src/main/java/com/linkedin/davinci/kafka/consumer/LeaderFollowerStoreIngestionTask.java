@@ -31,6 +31,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -2178,15 +2179,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();
     while (iter.hasNext()) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
+      boolean isRealTimeMsg = record.getTopicPartition().getPubSubTopic().isRealTime();
       try {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        validateMessage(
-            this.kafkaDataIntegrityValidatorForLeaders,
-            record,
-            isEndOfPushReceived,
-            partitionConsumptionState);
+        if (!isGlobalRtDivEnabled) {
+          validateMessage(
+              PartitionTracker.TopicType.VERSION_TOPIC,
+              this.kafkaDataIntegrityValidatorForLeaders,
+              record,
+              isEndOfPushReceived,
+              partitionConsumptionState);
+        } else {
+          validateMessage(
+              isRealTimeMsg ? PartitionTracker.TopicType.REALTIME_TOPIC : PartitionTracker.TopicType.VERSION_TOPIC,
+              this.kafkaDataIntegrityValidatorForLeaders,
+              record,
+              isEndOfPushReceived,
+              partitionConsumptionState);
+        }
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!isEndOfPushReceived) {

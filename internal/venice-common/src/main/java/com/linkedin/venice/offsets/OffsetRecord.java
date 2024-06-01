@@ -73,6 +73,7 @@ public class OffsetRecord {
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
     emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
     emptyPartitionState.pendingReportIncrementalPushVersions = new ArrayList<>();
+    emptyPartitionState.setRealtimeTopicProducerStates(new VeniceConcurrentHashMap<>());
     return emptyPartitionState;
   }
 
@@ -145,6 +146,18 @@ public class OffsetRecord {
 
   public synchronized Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
     return this.partitionState.producerStates;
+  }
+
+  public synchronized void setRealtimeTopicProducerState(GUID producerGuid, ProducerPartitionState state) {
+    this.partitionState.getRealtimeTopicProducerStates().put(guidToUtf8(producerGuid), state);
+  }
+
+  public synchronized void removeRealTimeTopicProducerState(GUID producerGuid) {
+    this.partitionState.getRealtimeTopicProducerStates().remove(guidToUtf8(producerGuid));
+  }
+
+  public synchronized Map<CharSequence, ProducerPartitionState> getRealTimeProducerState() {
+    return this.partitionState.getRealtimeTopicProducerStates();
   }
 
   public synchronized ProducerPartitionState getProducerPartitionState(GUID producerGuid) {

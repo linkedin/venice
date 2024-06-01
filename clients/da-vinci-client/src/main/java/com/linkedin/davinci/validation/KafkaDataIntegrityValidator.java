@@ -74,19 +74,20 @@ public class KafkaDataIntegrityValidator {
     partitionTrackers.remove(partition);
   }
 
-  public void setPartitionState(int partition, OffsetRecord offsetRecord) {
-    registerPartition(partition).setPartitionState(offsetRecord, this.maxAgeInMs);
+  public void setPartitionState(PartitionTracker.TopicType type, int partition, OffsetRecord offsetRecord) {
+    registerPartition(partition).setPartitionState(type, offsetRecord, this.maxAgeInMs);
   }
 
   /**
    * Run a thorough DIV check on the message, including UNREGISTERED_PRODUCER, MISSING, CORRUPT and DUPLICATE.
    */
   public void validateMessage(
+      PartitionTracker.TopicType type,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
     PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
-    partitionTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+    partitionTracker.validateMessage(type, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
   }
 
   /**
@@ -96,18 +97,24 @@ public class KafkaDataIntegrityValidator {
    * @param partition to extract info for
    * @param offsetRecord to modify
    */
-  public void updateOffsetRecordForPartition(int partition, OffsetRecord offsetRecord) {
+  public void updateOffsetRecordForPartition(
+      PartitionTracker.TopicType type,
+      int partition,
+      OffsetRecord offsetRecord) {
     PartitionTracker partitionTracker = registerPartition(partition);
     if (this.maxAgeInMs != DISABLED) {
-      partitionTracker.clearExpiredStateAndUpdateOffsetRecord(offsetRecord, this.maxAgeInMs);
+      partitionTracker.clearExpiredStateAndUpdateOffsetRecord(type, offsetRecord, this.maxAgeInMs);
     } else {
-      partitionTracker.updateOffsetRecord(offsetRecord);
+      partitionTracker.updateOffsetRecord(type, offsetRecord);
     }
   }
 
-  public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
+  public void cloneProducerStates(
+      PartitionTracker.TopicType type,
+      int partition,
+      KafkaDataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
-    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker);
+    this.partitionTrackers.get(partition).cloneProducerStates(type, destPartitionTracker);
   }
 
   /**
@@ -126,14 +133,18 @@ public class KafkaDataIntegrityValidator {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
     PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
-    partitionTracker.checkMissingMessage(consumerRecord, errorMetricCallback, this.kafkaLogCompactionDelayInMs);
+    partitionTracker.checkMissingMessage(
+        PartitionTracker.TopicType.VERSION_TOPIC,
+        consumerRecord,
+        errorMetricCallback,
+        this.kafkaLogCompactionDelayInMs);
   }
 
   /** N.B. Intended for tests */
   int getNumberOfTrackedProducerGUIDs() {
     Set<GUID> guids = new HashSet<>();
     for (PartitionTracker partitionTracker: this.partitionTrackers.values()) {
-      guids.addAll(partitionTracker.getTrackedGUIDs());
+      guids.addAll(partitionTracker.getTrackedGUIDs(PartitionTracker.TopicType.VERSION_TOPIC));
     }
     return guids.size();
   }
