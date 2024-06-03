@@ -5,6 +5,7 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
+import com.linkedin.davinci.notifier.VeniceChangelogBootstrapListener;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
@@ -66,6 +67,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -98,6 +101,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final Map<Integer, AtomicLong> partitionToPutMessageCount = new VeniceConcurrentHashMap<>();
   protected final Map<Integer, AtomicLong> partitionToDeleteMessageCount = new VeniceConcurrentHashMap<>();
+  protected final AtomicInteger partitionBootstrapCounter = new AtomicInteger(0);
+  protected final Map<Integer, AtomicBoolean> partitionToBootstrapCompletedFlag = new VeniceConcurrentHashMap<>();
+  protected final VeniceChangelogBootstrapListener changelogBootstrapListener;
+  protected final AtomicBoolean checkBootstrapProgress;
+  protected final long bootstrapLagOffsetTimestamp;
 
   protected final RecordDeserializer<K> keyDeserializer;
   private final D2ControllerClient d2ControllerClient;
@@ -120,6 +128,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final BasicConsumerStats changeCaptureStats;
   protected final HeartbeatReporterThread heartbeatReporterThread;
+  protected final BootstrapReporterThread bootstrapReporterThread;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -156,6 +165,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         VeniceProperties.empty(),
         null);
     this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
+    this.changelogBootstrapListener = changelogClientConfig.getChangelogBootstrapListener();
+    this.checkBootstrapProgress =
+        (changelogBootstrapListener == null) ? new AtomicBoolean(false) : new AtomicBoolean(true);
+    this.bootstrapReporterThread = (changelogBootstrapListener == null) ? null : new BootstrapReporterThread();
+    this.bootstrapLagOffsetTimestamp = (changelogBootstrapListener == null)
+        ? System.currentTimeMillis()
+        : System.currentTimeMillis() - changelogBootstrapListener.getBootstrapTimestampDeltaInSeconds();
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
       Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
@@ -168,7 +184,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
       this.specificValueClass = null;
       LOGGER.info("Using generic value deserializer");
-
     }
 
     LOGGER.info(
@@ -185,6 +200,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
+    if (checkBootstrapProgress.get()) {
+      partitionBootstrapCounter.set(partitions.size());
+    }
     return internalSubscribe(partitions, null);
   }
 
@@ -196,6 +214,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         if (changeCaptureStats != null) {
           if (!heartbeatReporterThread.isAlive()) {
             heartbeatReporterThread.start();
+          }
+          if (bootstrapReporterThread != null && !bootstrapReporterThread.isAlive()) {
+            bootstrapReporterThread.start();
           }
         }
       } catch (InterruptedException e) {
@@ -273,7 +294,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return seekToBeginningOfPush(
         pubSubConsumer.getAssignment()
             .stream()
-            .map(topicPartition -> topicPartition.getPartitionNumber())
+            .map(PubSubTopicPartition::getPartitionNumber)
             .collect(Collectors.toSet()));
   }
 
@@ -335,7 +356,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return seekToEndOfPush(
         pubSubConsumer.getAssignment()
             .stream()
-            .map(topicPartition -> topicPartition.getPartitionNumber())
+            .map(PubSubTopicPartition::getPartitionNumber)
             .collect(Collectors.toSet()));
   }
 
@@ -537,6 +558,19 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               message.getKey().getKey(),
               message.getValue().getProducerMetadata().getMessageTimestamp())) {
             break;
+          }
+          if (checkBootstrapProgress.get() && controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
+              && Arrays.equals(message.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+            long messageTimestamp = message.getValue().producerMetadata.messageTimestamp;
+            long lag = bootstrapLagOffsetTimestamp - messageTimestamp;
+            if (lag <= 0) {
+              partitionToBootstrapCompletedFlag
+                  .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new AtomicBoolean(false));
+              if (partitionToBootstrapCompletedFlag.get(pubSubTopicPartition.getPartitionNumber())
+                  .compareAndSet(false, true)) {
+                partitionBootstrapCounter.decrementAndGet();
+              }
+            }
           }
           if (includeControlMessage) {
             pubSubMessages.add(
@@ -974,6 +1008,32 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
       }
       LOGGER.info("Lag Monitoring thread interrupted!  Shutting down...");
+    }
+  }
+
+  private class BootstrapReporterThread extends Thread {
+    BootstrapReporterThread() {
+      super("Ingestion-Bootstrap-Reporter-Service-Thread");
+    }
+
+    @Override
+    public void run() {
+      while (!Thread.interrupted()) {
+        if (partitionBootstrapCounter.get() == 0) {
+          if (changelogBootstrapListener != null) {
+            changelogBootstrapListener.handleBootstrapCompleted();
+          }
+          LOGGER.info("Bootstrap completed. Shutting down...");
+          break;
+        }
+        try {
+          TimeUnit.SECONDS.sleep(1L);
+        } catch (InterruptedException e) {
+          // We've received an interrupt which is to be expected, so we'll just leave the loop and log
+          break;
+        }
+      }
+      LOGGER.info("Bootstrap thread interrupted!  Shutting down...");
     }
   }
 }

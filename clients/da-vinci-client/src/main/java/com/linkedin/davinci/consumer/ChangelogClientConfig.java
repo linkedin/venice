@@ -1,6 +1,7 @@
 package com.linkedin.davinci.consumer;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.notifier.VeniceChangelogBootstrapListener;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.schema.SchemaReader;
@@ -9,12 +10,13 @@ import org.apache.avro.specific.SpecificRecord;
 
 
 public class ChangelogClientConfig<T extends SpecificRecord> {
+  private final ClientConfig<T> innerClientConfig;
+
   private Properties consumerProperties;
   private SchemaReader schemaReader;
   private String viewName;
 
   private String consumerName = "";
-  private ClientConfig<T> innerClientConfig;
   private D2ControllerClient d2ControllerClient;
 
   private String controllerD2ServiceName;
@@ -22,6 +24,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private String bootstrapFileSystemPath;
   private long versionSwapDetectionIntervalTimeInMs = 600000L;
+  private VeniceChangelogBootstrapListener changelogBootstrapListener = null;
 
   /**
    * This will be used in BootstrappingVeniceChangelogConsumer to determine when to sync updates with the underlying
@@ -192,6 +195,16 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public ChangelogClientConfig setChangelogBootstrapListener(
+      VeniceChangelogBootstrapListener changelogBootstrapListener) {
+    this.changelogBootstrapListener = changelogBootstrapListener;
+    return this;
+  }
+
+  public VeniceChangelogBootstrapListener getChangelogBootstrapListener() {
+    return changelogBootstrapListener;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -207,7 +220,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setVersionSwapDetectionIntervalTimeInMs(config.getVersionSwapDetectionIntervalTimeInMs())
         .setRocksDBBlockCacheSizeInBytes(config.getRocksDBBlockCacheSizeInBytes())
         .setConsumerName(config.consumerName)
-        .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval());
+        .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
+        .setChangelogBootstrapListener(config.getChangelogBootstrapListener());
     return newConfig;
   }
 }
