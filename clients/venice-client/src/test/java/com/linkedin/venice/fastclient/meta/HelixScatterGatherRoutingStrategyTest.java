@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,13 +75,21 @@ public class HelixScatterGatherRoutingStrategyTest {
 
   @Test
   public void testGetReplicasWithoutReachingRequiredCount() {
-    List<String> replicas = Arrays.asList(instance1);
-    runTest(replicas, 0, 2, Arrays.asList(instance1));
+    List<String> replicas = Collections.singletonList(instance1);
+    runTest(replicas, 0, 2, Collections.singletonList(instance1));
   }
 
   @Test
   public void testGetReplicasWithoutAnyFilteredReplicas() {
-    List<String> replicas = Arrays.asList();
-    runTest(replicas, 0, 2, Arrays.asList());
+    List<String> replicas = Collections.emptyList();
+    runTest(replicas, 0, 2, Collections.emptyList());
+  }
+
+  @Test
+  public void testLargeRequestId() {
+    List<String> replicas = Collections.singletonList(instance1);
+    long requestId = Integer.MAX_VALUE;
+    requestId += 100;
+    runTest(replicas, requestId, 1, Collections.singletonList(instance1));
   }
 }
