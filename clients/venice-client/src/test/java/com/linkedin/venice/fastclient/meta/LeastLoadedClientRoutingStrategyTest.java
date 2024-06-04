@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.testng.annotations.Test;
 
@@ -99,5 +100,19 @@ public class LeastLoadedClientRoutingStrategyTest {
         new boolean[] { true, false, true, true, true, true },
         new int[] { 100, 1, 2, 3, 4, 2 });
     runTest(instanceHealthMonitor, replicas, 0, 2, Arrays.asList(instance2, instance3, instance6));
+  }
+
+  @Test
+  public void testLargeRequestId() {
+    String[] instances = new String[] { instance1, instance2, instance3 };
+    List<String> replicas = Arrays.asList(instances);
+    InstanceHealthMonitor instanceHealthMonitor = mockInstanceHealthyMonitor(
+        instances,
+        new boolean[] { false, false, false },
+        new boolean[] { true, true, true },
+        new int[] { 0, 0, 0 });
+    long requestId = Integer.MAX_VALUE;
+    requestId += 100;
+    runTest(instanceHealthMonitor, replicas, requestId, 1, Collections.singletonList(instance3));
   }
 }

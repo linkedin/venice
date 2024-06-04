@@ -28,7 +28,7 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
       return Collections.emptyList();
     }
     int replicaCnt = replicas.size();
-    int startPos = (int) requestId % replicaCnt;
+    int startPos = (int) (requestId % replicaCnt);
     List<String> availReplicas = new ArrayList<>();
     for (int i = 0; i < replicaCnt; ++i) {
       String replica = replicas.get((i + startPos) % replicaCnt);
