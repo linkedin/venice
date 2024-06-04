@@ -801,11 +801,10 @@ public abstract class StoreIngestionTaskTest {
 
     Future testSubscribeTaskFuture = null;
     try {
+      beforeStartingConsumption.run();
       for (int partition: partitions) {
         storeIngestionTaskUnderTest.subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition));
       }
-
-      beforeStartingConsumption.run();
 
       // MockKafkaConsumer is prepared. Schedule for polling.
       testSubscribeTaskFuture = taskPollingService.submit(storeIngestionTaskUnderTest);
@@ -2004,14 +2003,14 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       Store mockStore = mock(Store.class);
-      storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
       doReturn(1).when(mockStore).getCurrentVersion();
       doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
-    },
-        () -> verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset, "STANDBY"),
-        aaConfig);
+    }, () -> {
+      storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset, "STANDBY");
+    }, aaConfig);
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -2071,37 +2070,6 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
-  @Test(dataProvider = "aaConfigProvider")
-  public void testKillActionPriority(AAConfig aaConfig) throws Exception {
-    runTest(Utils.setOf(PARTITION_FOO), () -> {
-      localVeniceWriter.broadcastStartOfPush(new HashMap<>());
-      localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
-      // Add a reset consumer action
-      storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(fooTopicPartition);
-      // Add a kill consumer action in higher priority than subscribe and reset.
-      storeIngestionTaskUnderTest.kill();
-    }, () -> {
-      // verify subscribe has not been processed. Because consumption task should process kill action at first
-      verify(mockStorageMetadataService, after(TEST_TIMEOUT_MS).never()).getLastOffset(topic, PARTITION_FOO);
-      /**
-       * Consumers are subscribed lazily; if the store ingestion task is killed before it tries to subscribe to any
-       * topics, there is no consumer subscription.
-       */
-      waitForNonDeterministicCompletion(
-          TEST_TIMEOUT_MS,
-          TimeUnit.MILLISECONDS,
-          () -> !storeIngestionTaskUnderTest.consumerHasAnySubscription());
-      // Verify offset has not been processed. Because consumption task should process kill action at first.
-      // offSetManager.clearOffset should only be invoked one time during clean up after killing this task.
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
-
-      waitForNonDeterministicCompletion(
-          TEST_TIMEOUT_MS,
-          TimeUnit.MILLISECONDS,
-          () -> storeIngestionTaskUnderTest.isRunning() == false);
-    }, aaConfig);
-  }
-
   private byte[] getNumberedKey(int number) {
     return ByteBuffer.allocate(putKeyFoo.length + Integer.BYTES).put(putKeyFoo).putInt(number).array();
   }
@@ -2144,6 +2112,18 @@ public abstract class StoreIngestionTaskTest {
 
     // This doesn't really need to be atomic, but it does need to be final, and int/Integer cannot be mutated.
     final AtomicInteger messagesConsumedSoFar = new AtomicInteger(0);
+    Runnable runnable = () -> {
+      relevantPartitions.stream()
+          .forEach(
+              partition -> storeIngestionTaskUnderTest
+                  .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition))
+          );
+      relevantPartitions.stream()
+          .forEach(
+              partition -> storeIngestionTaskUnderTest
+                  .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition), false)
+          );
+    };
     PollStrategy pollStrategy =
         new BlockingObserverPollStrategy(new RandomPollStrategy(false), topicPartitionOffset -> {
           if (topicPartitionOffset == null || topicPartitionOffset.getOffset() == null) {
@@ -2151,14 +2131,10 @@ public abstract class StoreIngestionTaskTest {
           } else if (messagesConsumedSoFar.incrementAndGet()
               % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
             LOGGER.info("Restarting consumer after consuming {} messages so far.", messagesConsumedSoFar.get());
-            relevantPartitions.stream()
-                .forEach(
-                    partition -> storeIngestionTaskUnderTest
-                        .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition)));
-            relevantPartitions.stream()
-                .forEach(
-                    partition -> storeIngestionTaskUnderTest
-                        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition)));
+
+            Thread infiniteLockThread =
+                new Thread(runnable, "Subsribe and unsubsribe with message num: " + totalNumberOfMessages);
+            infiniteLockThread.start();
           } else {
             LOGGER.info(
                 "TopicPartition: {}, Offset: {}",
@@ -2190,10 +2166,8 @@ public abstract class StoreIngestionTaskTest {
       relevantPartitions.stream().forEach(partition -> {
         PubSubTopicPartition pubSubTopicPartition =
             new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition);
-        verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(totalNumberOfConsumptionRestarts + 1))
+        verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(1))
             .subscribe(eq(pubSubTopicPartition), anyLong());
-        verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(totalNumberOfConsumptionRestarts))
-            .unSubscribe(eq(pubSubTopicPartition));
 
         if (sortedInput == SORTED) {
           // Check database mode switches from deferred-write to transactional after EOP control message

@@ -107,6 +107,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -135,6 +137,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -326,6 +329,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
 
+  protected final ResourceAutoClosableLockManager partitionLockManager;
+
+  private final AtomicBoolean killedActionReceived;
+
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -360,6 +367,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling
     // kill message
     this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
+    this.partitionLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
 
     /**
      * Use the max of the two values to avoid the case where the producer state max age is set to a value that is less
@@ -382,6 +390,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
+    this.killedActionReceived = new AtomicBoolean(false);
     this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
 
     this.storeBufferService = builder.getStoreBufferService();
@@ -555,10 +564,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition, boolean isHelixTriggeredAction) {
     throwIfNotRunning();
-    partitionToPendingConsumerActionCountMap
-        .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
-        .incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+    processConsumerActionOrEnqueue(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
   }
 
   public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
@@ -572,13 +578,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       boolean isHelixTriggeredAction) {
     throwIfNotRunning();
-    partitionToPendingConsumerActionCountMap
-        .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
-        .incrementAndGet();
     ConsumerAction consumerAction =
         new ConsumerAction(UNSUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
-
-    consumerActionsQueue.add(consumerAction);
+    processConsumerActionOrEnqueue(consumerAction);
     return consumerAction.getFuture();
   }
 
@@ -591,10 +593,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void resetPartitionConsumptionOffset(PubSubTopicPartition topicPartition) {
     throwIfNotRunning();
-    partitionToPendingConsumerActionCountMap
-        .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
-        .incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(RESET_OFFSET, topicPartition, nextSeqNum(), false));
+    processConsumerActionOrEnqueue(new ConsumerAction(RESET_OFFSET, topicPartition, nextSeqNum(), false));
   }
 
   public String getStoreName() {
@@ -1535,10 +1534,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Consumes the kafka actions messages in the queue.
+   * Consumes the kafka actions messages in the queue, when consumer action processing without enqueue is not enabled.
+   * When it is enabled, it only deals with KILL ACTION.
    */
   private void processConsumerActions(Store store) throws InterruptedException {
     Instant startTime = Instant.now();
+    if (serverConfig.isProcessConsumerActionWithoutEnqueueEnabled() && killedActionReceived.get()) {
+      LOGGER.info("Kill this consumer task for Topic: {}", versionTopic);
+      // Throw the exception here to break the consumption loop, and then this task is marked as error status.
+      throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + versionTopic);
+    }
     for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
       ConsumerAction action = consumerActionsQueue.peek();
@@ -1596,6 +1601,64 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (emitMetrics.get()) {
       hostLevelIngestionStats.recordProcessConsumerActionLatency(Duration.between(startTime, Instant.now()).toMillis());
     }
+  }
+
+  protected void processConsumerActionOrEnqueue(ConsumerAction action) {
+    if (action == null) {
+      return;
+    }
+    if (!serverConfig.isProcessConsumerActionWithoutEnqueueEnabled()) {
+      partitionToPendingConsumerActionCountMap.computeIfAbsent(action.getPartition(), x -> new AtomicInteger(0))
+          .incrementAndGet();
+      consumerActionsQueue.add(action);
+      return;
+    }
+    if (action.getType().equals(ConsumerActionType.KILL)) {
+      killedActionReceived.set(true);
+      return;
+    }
+
+    Store store = storeRepository.getStore(storeName);
+    final long actionProcessStartTimeInMs = System.currentTimeMillis();
+    try {
+      LOGGER.info(
+          "Starting consumer action {}. Latency from creating action to starting action {}ms",
+          action,
+          LatencyUtils.getElapsedTimeFromMsToMs(action.getCreateTimestampInMs()));
+      try (AutoCloseableLock ignore = partitionLockManager.getLockForResource(action.getTopicPartition())) {
+        action.incrementAttempt();
+        if (killedActionReceived.get()) {
+          throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + versionTopic);
+        }
+        processConsumerAction(action, store);
+        action.getFuture().complete(null);
+      }
+      LOGGER.info(
+          "Finished consumer action {} in {}ms",
+          action,
+          LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs));
+    } catch (InterruptedException e) {
+      LOGGER.info("{} interrupted, skipping error reporting because server is shutting down", ingestionTaskName, e);
+    } catch (Throwable e) {
+      if (action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS) {
+        LOGGER.warn("Failed to process consumer action {}, will retry later.", action, e);
+        return;
+      }
+      LOGGER.error(
+          "Failed to execute consumer action {} after {} attempts. Total elapsed time: {}ms",
+          action,
+          action.getAttemptsCount(),
+          LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs),
+          e);
+      // Mark action as failed since it has exhausted all the retries.
+      action.getFuture().completeExceptionally(e);
+      // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
+      PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
+      if (state != null && !state.isCompletionReported()) {
+        reportError("Error when processing consumer action: " + action, action.getPartition(), new VeniceException(e));
+      }
+    }
+
   }
 
   /**
@@ -2159,7 +2222,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         errorMessage += ". Consumption will be halted.";
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
-        unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition));
+        // As unsubscription needs to wait for all records drilled and then proceed, wait here will cause endless wait.
+        Runnable runnable = () -> unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition));
+        CompletableFuture.runAsync(runnable);
       } else {
         LOGGER.warn(
             "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}",
@@ -3666,7 +3731,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
               LOGGER.info(msg);
             }
-            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition));
+            // As unsubscription needs to wait for all records drilled and then proceed, wait here will cause endless
+            // wait.
+            Runnable runnable = () -> unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition));
+            CompletableFuture.runAsync(runnable);
           }
         } else {
           ingestionNotificationDispatcher.reportProgress(partitionConsumptionState);
