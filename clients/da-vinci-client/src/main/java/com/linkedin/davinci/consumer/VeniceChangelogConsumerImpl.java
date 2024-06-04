@@ -98,6 +98,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final Map<Integer, AtomicLong> partitionToPutMessageCount = new VeniceConcurrentHashMap<>();
   protected final Map<Integer, AtomicLong> partitionToDeleteMessageCount = new VeniceConcurrentHashMap<>();
+  protected final Map<Integer, Long> partitionToBootstrapHeartbeatLag = new VeniceConcurrentHashMap<>();
+  protected final long startTimestamp;
 
   protected final RecordDeserializer<K> keyDeserializer;
   private final D2ControllerClient d2ControllerClient;
@@ -150,7 +152,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     Schema keySchema = schemaReader.getKeySchema();
     this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
     this.chunkAssembler = new ChunkAssembler(storeName);
-
+    this.startTimestamp = System.currentTimeMillis();
+    LOGGER.info("VeniceChangelogConsumer created at timestamp: {}", startTimestamp);
     this.storeRepository = new ThinClientMetaStoreBasedRepository(
         changelogClientConfig.getInnerClientConfig(),
         VeniceProperties.empty(),
@@ -185,6 +188,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
+    for (int partition: partitions) {
+      partitionToBootstrapHeartbeatLag.put(partition, Long.MAX_VALUE);
+    }
     return internalSubscribe(partitions, null);
   }
 
@@ -437,6 +443,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return this.seekToTimestamps(partitionsToSeek);
   }
 
+  @Override
+  public boolean isCaughtUp(long lagThresholdTimestamp) {
+    return partitionToBootstrapHeartbeatLag.values().stream().allMatch(x -> x <= lagThresholdTimestamp);
+  }
+
   protected CompletableFuture<Void> internalSeek(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
@@ -537,6 +548,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               message.getKey().getKey(),
               message.getValue().getProducerMetadata().getMessageTimestamp())) {
             break;
+          }
+          if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
+              && Arrays.equals(message.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+            partitionToBootstrapHeartbeatLag.put(
+                pubSubTopicPartition.getPartitionNumber(),
+                startTimestamp - message.getValue().producerMetadata.messageTimestamp);
           }
           if (includeControlMessage) {
             pubSubMessages.add(
