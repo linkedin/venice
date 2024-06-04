@@ -63,7 +63,7 @@ public class VeniceChangelogConsumerClientFactory {
   }
 
   public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId) {
-    return getChangelogConsumer(storeName, null);
+    return getChangelogConsumer(storeName, consumerId, null);
   }
 
   /**
