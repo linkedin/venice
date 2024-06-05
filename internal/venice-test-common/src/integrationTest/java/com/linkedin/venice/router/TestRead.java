@@ -1,24 +1,39 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.router.api.RouterResourceType.TYPE_BLOB_DISCOVERY;
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
-import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_BLOB_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CURRENT_VERSION;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_HEALTH_CHECK;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
-import static com.linkedin.venice.utils.concurrent.BlockingQueueType.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.concurrent.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
+import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.BlobDiscoveryResponse;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -28,10 +43,15 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.router.api.VenicePathParser;
@@ -43,10 +63,12 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -54,13 +76,20 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -76,7 +105,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -89,15 +118,19 @@ public abstract class TestRead {
   private String storeVersionName;
   private int valueSchemaId;
   private String storeName;
-  private int storePartition;
+  private String[] clusterNames;
+  private String parentControllerURLs;
+  private VeniceMultiClusterWrapper multiClusterVenice;
   private final String readDisabledStoreName = Utils.getUniqueString("read_disabled_store");
-
-  private final String blobTransferEnabledStoreName = Utils.getUniqueString("blob_transfer_enabled_store");
 
   private String routerAddr;
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object, Object> veniceWriter;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+
+  private static final String INT_KEY_SCHEMA = "\"int\"";
+  private static final String INT_VALUE_SCHEMA = "\"int\"";
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_FIELD_NAME = "int_field";
   private static final String UNUSED_FIELD_NAME = "unused_field";
@@ -125,11 +158,56 @@ public abstract class TestRead {
     return veniceCluster;
   }
 
-  @BeforeClass(alwaysRun = true)
-  public void setUp() throws VeniceClientException, ExecutionException, InterruptedException {
+  @BeforeMethod
+  public void setUp(Method method) throws VeniceClientException, ExecutionException, InterruptedException {
     if (!isTestEnabled()) {
       return;
     }
+    if ("testBlobDiscovery".equals(method.getName())) {
+      setUpForBlobTransfer();
+    } else {
+      setUpTestRead();
+    }
+  }
+
+  public void setUpForBlobTransfer() {
+    Utils.thisIsLocalhost();
+    Properties parentControllerProps = new Properties();
+    parentControllerProps.put(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+        1,
+        2,
+        1,
+        1,
+        3,
+        1,
+        3,
+        Optional.of(parentControllerProps),
+        Optional.empty(),
+        Optional.empty(),
+        false);
+    multiClusterVenice = multiRegionMultiClusterWrapper.getChildRegions().get(0);
+    clusterNames = multiClusterVenice.getClusterNames();
+    parentControllerURLs = multiRegionMultiClusterWrapper.getParentControllers()
+        .stream()
+        .map(VeniceControllerWrapper::getControllerUrl)
+        .collect(Collectors.joining(","));
+
+    for (String cluster: clusterNames) {
+      try (ControllerClient controllerClient =
+          new ControllerClient(cluster, multiClusterVenice.getControllerConnectString())) {
+        // Verify the participant store is up and running in child region
+        String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
+        TestUtils.waitForNonDeterministicPushCompletion(
+            Version.composeKafkaTopic(participantStoreName, 1),
+            controllerClient,
+            5,
+            TimeUnit.MINUTES);
+      }
+    }
+  }
+
+  public void setUpTestRead() throws VeniceClientException, ExecutionException, InterruptedException {
     /**
      * The following config is used to detect Netty resource leaking.
      * If memory leak happens, you will see the following log message:
@@ -188,7 +266,6 @@ public abstract class TestRead {
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-    storePartition = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
     // Update default quota
     updateStore(0, MAX_KEY_LIMIT);
@@ -270,6 +347,7 @@ public abstract class TestRead {
     }
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
     if (d2Client != null) {
       d2Client.shutdown(null);
     }
@@ -338,26 +416,26 @@ public abstract class TestRead {
 
         double maxInflightRequestCountAfterQueries =
             getAggregateRouterMetricValue(".total--in_flight_request_count.Max");
-        Assert.assertTrue(maxInflightRequestCountAfterQueries > 0.0, "There should be in-flight requests now!");
+        assertTrue(maxInflightRequestCountAfterQueries > 0.0, "There should be in-flight requests now!");
 
         // Check retry requests
-        Assert.assertTrue(
+        assertTrue(
             getAggregateRouterMetricValue(".total--retry_count.LambdaStat") > 0,
             "After " + rounds + " reads, there should be some single-get retry requests");
-        Assert.assertTrue(
+        assertTrue(
             getAggregateRouterMetricValue(".total--retry_delay.Avg") > 0,
             "After " + rounds + " reads, there should be some single-get retry requests");
-        Assert.assertTrue(
+        assertTrue(
             getAggregateRouterMetricValue(".total--multiget_streaming_retry_count.LambdaStat") > 0,
             "After " + rounds + " reads, there should be some batch-get retry requests");
 
         // Check Router connection pool metrics
         if (getStorageNodeClientType() == StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT) {
           // TODO: add connection pool stats for netty client
-          Assert.assertTrue(
+          assertTrue(
               getAggregateRouterMetricValue(".connection_pool--total_max_connection_count.LambdaStat") > 0,
               "Max connection count must be positive");
-          Assert.assertTrue(
+          assertTrue(
               getMaxRouterMetricValue(".connection_pool--connection_lease_request_latency.Max") > 0,
               "Connection lease max latency should be positive");
           assertEquals(
@@ -368,11 +446,11 @@ public abstract class TestRead {
               getAggregateRouterMetricValue(".connection_pool--total_pending_connection_request_count.LambdaStat"),
               0.0d,
               "Pending connection request count should be 0 since test queries are finished");
-          Assert.assertTrue(
+          assertTrue(
               getAggregateRouterMetricValue(".connection_pool--total_idle_connection_count.LambdaStat") > 0,
               "There should be some idle connections since test queries are finished");
 
-          Assert.assertTrue(
+          assertTrue(
               getAggregateRouterMetricValue(".localhost--max_connection_count.Gauge") > 0,
               "Max connection count must be positive");
           assertEquals(
@@ -383,17 +461,17 @@ public abstract class TestRead {
               getAggregateRouterMetricValue(".localhost--pending_connection_request_count.Gauge"),
               0.0d,
               "Pending connection request count should be 0 since test queries are finished");
-          Assert.assertTrue(
+          assertTrue(
               getAggregateRouterMetricValue(".localhost--idle_connection_count.Gauge") > 0,
               "There should be some idle connections since test queries are finished");
         }
 
-        Assert.assertTrue(getAggregateRouterMetricValue(".localhost--response_waiting_time.50thPercentile") > 0);
-        Assert.assertTrue(
+        assertTrue(getAggregateRouterMetricValue(".localhost--response_waiting_time.50thPercentile") > 0);
+        assertTrue(
             getAggregateRouterMetricValue(".localhost--multiget_streaming_response_waiting_time.50thPercentile") > 0);
 
-        Assert.assertTrue(getAggregateRouterMetricValue(".localhost--request.Count") > 0);
-        Assert.assertTrue(getAggregateRouterMetricValue(".localhost--multiget_streaming_request.Count") > 0);
+        assertTrue(getAggregateRouterMetricValue(".localhost--request.Count") > 0);
+        assertTrue(getAggregateRouterMetricValue(".localhost--multiget_streaming_request.Count") > 0);
 
         // Each round:
         // 1. We do MAX_KEY_LIMIT * 2 because we do a batch get and a batch compute
@@ -410,8 +488,7 @@ public abstract class TestRead {
           Assert.assertEquals(getMaxServerMetricValue(".total--multiget_request_part_count.Max"), 1.0);
           if (readComputeEnabled) {
             Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
-            Assert.assertTrue(
-                getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
+            assertTrue(getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
             Assert.assertEquals(getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"), 0.0);
             Assert.assertEquals(
                 clientMetrics.getMetric("." + storeName + "--compute_streaming_multiget_fallback.OccurrenceRate")
@@ -421,16 +498,16 @@ public abstract class TestRead {
             Assert.assertEquals(
                 getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"),
                 (double) MAX_KEY_LIMIT);
-            Assert.assertTrue(
+            assertTrue(
                 clientMetrics.getMetric("." + storeName + "--compute_streaming_multiget_fallback.OccurrenceRate")
                     .value() > 0);
           }
         }
 
         // Verify storage node metrics
-        Assert.assertTrue(getMaxServerMetricValue(".total--records_consumed.Rate") > 0.0);
-        Assert.assertTrue(getMaxServerMetricValue(".total--multiget_request_size_in_bytes.Max") > 0.0);
-        Assert.assertTrue(getMaxServerMetricValue(".total--compute_request_size_in_bytes.Max") > 0.0);
+        assertTrue(getMaxServerMetricValue(".total--records_consumed.Rate") > 0.0);
+        assertTrue(getMaxServerMetricValue(".total--multiget_request_size_in_bytes.Max") > 0.0);
+        assertTrue(getMaxServerMetricValue(".total--compute_request_size_in_bytes.Max") > 0.0);
 
         for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
           Map<String, ? extends Metric> metrics = veniceServerWrapper.getMetricsRepository().metrics();
@@ -445,7 +522,7 @@ public abstract class TestRead {
                   value,
                   (double) StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code,
                   "Got NULL_STORAGE_ENGINE_STATS!");
-              Assert.assertTrue(value > 0.0, "Disk usage for current version should be positive. Got: " + value);
+              assertTrue(value > 0.0, "Disk usage for current version should be positive. Got: " + value);
             }
           });
         }
@@ -498,7 +575,7 @@ public abstract class TestRead {
           storeClient.get(KEY_PREFIX + i).get();
         } catch (ExecutionException e) {
           Throwable cause = e.getCause();
-          Assert.assertTrue(cause instanceof VeniceClientHttpException);
+          assertTrue(cause instanceof VeniceClientHttpException);
           Assert.assertEquals(
               ((VeniceClientHttpException) cause).getHttpStatus(),
               HttpResponseStatus.TOO_MANY_REQUESTS.code());
@@ -506,7 +583,7 @@ public abstract class TestRead {
         }
       }
       long runTimeMs = System.currentTimeMillis() - startTime;
-      Assert.assertTrue(
+      assertTrue(
           quotaExceptionsCount > 0,
           "There were no quota exceptions at all for single gets! " + "(Test too slow? " + runTimeMs + " ms for "
               + numberOfRequests + " requests)");
@@ -553,10 +630,10 @@ public abstract class TestRead {
           storeClient.batchGet(keySet).get();
         } catch (ExecutionException e) {
           Throwable cause = e.getCause();
-          Assert.assertTrue(
+          assertTrue(
               cause instanceof VeniceClientHttpException,
               "Wanted " + VeniceClientHttpException.class.getSimpleName() + " but instead got: " + cause);
-          Assert.assertTrue(
+          assertTrue(
               cause.getMessage().contains("Quota exceeded"),
               "Did not get the expected exception message: " + cause.getMessage());
           quotaExceptionsCountForBatchGet++;
@@ -577,7 +654,7 @@ public abstract class TestRead {
           runTimeForBatchGetMs,
           queriesSent,
           quotaExceptionsCountForBatchGet);
-      Assert.assertTrue(
+      assertTrue(
           quotaExceptionsCountForBatchGet > 0,
           "There were no quota exceptions at all for batch gets! " + "(Test too slow? " + runTimeForBatchGetMs
               + " ms for " + numberOfRequests + " requests)");
@@ -634,7 +711,7 @@ public abstract class TestRead {
       ObjectMapper mapper = ObjectMapperFactory.getInstance();
       D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse =
           mapper.readValue(responseBody.getBytes(), D2ServiceDiscoveryResponse.class);
-      Assert.assertFalse(d2ServiceDiscoveryResponse.isError());
+      assertFalse(d2ServiceDiscoveryResponse.isError());
       Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
       Assert.assertEquals(
           d2ServiceDiscoveryResponse.getD2Service(),
@@ -764,61 +841,156 @@ public abstract class TestRead {
     assertEquals(metricsRepository.metrics().get(badRequestMetric).value(), 1.0d);
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testBlobDiscovery() {
+  @Test(timeOut = 4 * Time.MINUTES_PER_HOUR)
+  public void testBlobDiscovery() throws Exception {
     if (!isTestEnabled()) {
       return;
     }
 
-    Map<CharSequence, Integer> instanceResultsFromPushStatusStore = new HashMap<CharSequence, Integer>() {
-      {
-        put("ltx1-test.prod.linkedin.com_137", 1);
-        put("ltx1-test1.prod.linkedin.com_137", 1);
-        put("ltx1-test2.prod.linkedin.com_137", 1);
+    assertTrue(clusterNames.length > 1, "Insufficient clusters for this test to be meaningful");
+    int initialKeyCount = 10;
+    List<String> stores = new ArrayList<>();
+    // Create a new store in each cluster and setup their corresponding meta system store.
+    List<PubSubBrokerWrapper> pubSubBrokerWrappers = multiClusterVenice.getClusters()
+        .values()
+        .stream()
+        .map(VeniceClusterWrapper::getPubSubBrokerWrapper)
+        .collect(Collectors.toList());
+    Map<String, String> additionalPubSubProperties =
+        PubSubBrokerWrapper.getBrokerDetailsForClients(pubSubBrokerWrappers);
+
+    for (int index = 0; index < clusterNames.length; index++) {
+      final int value = index;
+      String cluster = clusterNames[index];
+      // Create the venice stores and materialize the corresponding meta system store for each store.
+      try (ControllerClient parentControllerClient = new ControllerClient(cluster, parentControllerURLs)) {
+        String storeName = Utils.getUniqueString("test-store");
+        stores.add(storeName);
+
+        assertFalse(
+            parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, INT_VALUE_SCHEMA)
+                .isError());
+
+        PubSubProducerAdapterFactory pubSubProducerAdapterFactory = multiClusterVenice.getClusters()
+            .get(cluster)
+            .getPubSubBrokerWrapper()
+            .getPubSubClientsFactory()
+            .getProducerAdapterFactory();
+        VersionCreationResponse response = TestUtils.createVersionWithBatchData(
+            parentControllerClient,
+            storeName,
+            INT_KEY_SCHEMA,
+            INT_VALUE_SCHEMA,
+            IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)),
+            pubSubProducerAdapterFactory,
+            additionalPubSubProperties);
+        // Verify the data can be ingested by classical Venice before proceeding.
+        TestUtils.waitForNonDeterministicPushCompletion(
+            response.getKafkaTopic(),
+            parentControllerClient,
+            30,
+            TimeUnit.SECONDS);
+        makeSureSystemStoresAreOnline(parentControllerClient, storeName);
+        multiClusterVenice.getClusters().get(cluster).refreshAllRouterMetaData();
       }
-    };
-
-    try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
-        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
-        .build()) {
-
-      client.start();
-
-      veniceCluster.updateStore(storeName, new UpdateStoreQueryParams().setBlobTransferEnabled(true));
-
-      /*
-      Optional<String> veniceRouterUrl = veniceCluster.getVeniceRouters().stream()
-          .map(vr -> vr.getAddress())
-          .findFirst();
-      */
-
-      String veniceRouterUrl = veniceCluster.getAllControllersURLs();
-
-      String url = String.format(
-          "%s/%s?store_name=%s&store_version=%s&store_partition=%s",
-          veniceRouterUrl,
-          TYPE_BLOB_DISCOVERY,
-          storeName,
-          2,
-          0);
-      HttpGet routerRequest =
-          new HttpGet(veniceCluster.getRandomRouterURL() + "/" + TYPE_CURRENT_VERSION + "/" + storeName);
-      HttpResponse response = client.execute(routerRequest, null).get();
-      String responseBody;
-      try (InputStream bodyStream = response.getEntity().getContent()) {
-        responseBody = IOUtils.toString(bodyStream);
-      }
-      Assert.assertEquals(
-          response.getStatusLine().getStatusCode(),
-          HttpStatus.SC_OK,
-          "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
-      ObjectMapper mapper = ObjectMapperFactory.getInstance();
-      BlobDiscoveryResponse blobDiscoveryResponse =
-          mapper.readValue(responseBody.getBytes(), BlobDiscoveryResponse.class);
-      Assert.assertEquals(blobDiscoveryResponse.getLiveNodeHostNames().size(), 3);
-      LOGGER.info(responseBody);
-    } catch (Exception e) {
-      fail("Unexpected exception", e);
     }
+
+    VeniceProperties backendConfig =
+        new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+            .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+            .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+            .build();
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    D2Client daVinciD2 = D2TestUtils.getAndStartD2Client(multiClusterVenice.getZkServerWrapper().getAddress());
+
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        daVinciD2,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig)) {
+      List<DaVinciClient<Integer, Object>> clients = new ArrayList<>();
+      for (int i = 0; i < stores.size(); i++) {
+        String store = stores.get(i);
+        DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(store, daVinciConfig);
+        client.subscribeAll().get();
+        for (int k = 0; k < initialKeyCount; k++) {
+          assertEquals(client.get(k).get(), i);
+        }
+        clients.add(client);
+      }
+      // Verify new push works
+      final int newValue = 1000;
+      try (ControllerClient parentControllerClient = new ControllerClient(clusterNames[0], parentControllerURLs)) {
+        PubSubProducerAdapterFactory pubSubProducerAdapterFactory = multiClusterVenice.getClusters()
+            .get(clusterNames[0])
+            .getPubSubBrokerWrapper()
+            .getPubSubClientsFactory()
+            .getProducerAdapterFactory();
+        VersionCreationResponse versionCreationResponse = TestUtils.createVersionWithBatchData(
+            parentControllerClient,
+            stores.get(0),
+            INT_KEY_SCHEMA,
+            INT_VALUE_SCHEMA,
+            IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)),
+            pubSubProducerAdapterFactory,
+            additionalPubSubProperties);
+        TestUtils.waitForNonDeterministicPushCompletion(
+            versionCreationResponse.getKafkaTopic(),
+            parentControllerClient,
+            60,
+            TimeUnit.SECONDS);
+      }
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
+        for (int k = 0; k < initialKeyCount; k++) {
+          assertEquals(clients.get(0).get(k).get(), newValue);
+        }
+      });
+
+      String aNewStoreName = stores.get(0);
+      VeniceClusterWrapper vcw = multiClusterVenice.getClusters().get(clusterNames[0]);
+
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
+        vcw.updateStore(aNewStoreName, new UpdateStoreQueryParams().setBlobTransferEnabled(true));
+      });
+
+      String routerURL = vcw.getRandomRouterURL();
+      try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
+          .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
+          .build()) {
+        client.start();
+
+        String uri = routerURL + "/" + TYPE_BLOB_DISCOVERY + "?store_name=" + aNewStoreName
+            + "&store_version=1&store_partition=1";
+        HttpGet routerRequest = new HttpGet(uri);
+        HttpResponse response = client.execute(routerRequest, null).get();
+        String responseBody;
+        try (InputStream bodyStream = response.getEntity().getContent()) {
+          responseBody = IOUtils.toString(bodyStream);
+        }
+        Assert.assertEquals(
+            response.getStatusLine().getStatusCode(),
+            HttpStatus.SC_OK,
+            "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
+        ObjectMapper mapper = ObjectMapperFactory.getInstance();
+        BlobDiscoveryResponse blobDiscoveryResponse =
+            mapper.readValue(responseBody.getBytes(), BlobDiscoveryResponse.class);
+        Assert.assertEquals(blobDiscoveryResponse.getLiveNodeHostNames().size(), 0);
+        LOGGER.info(responseBody);
+      } catch (Exception e) {
+        fail("Unexpected exception", e);
+      }
+    } finally {
+      D2ClientUtils.shutdownClient(daVinciD2);
+    }
+  }
+
+  private void makeSureSystemStoresAreOnline(ControllerClient controllerClient, String storeName) {
+    String metaSystemStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
+    TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreTopic, controllerClient, 30, TimeUnit.SECONDS);
+    String daVinciPushStatusStore =
+        Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
+    TestUtils.waitForNonDeterministicPushCompletion(daVinciPushStatusStore, controllerClient, 30, TimeUnit.SECONDS);
   }
 }

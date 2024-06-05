@@ -326,7 +326,7 @@ public class RouterServer extends AbstractVeniceService {
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
 
     D2Client d2Client = D2ClientFactory.getD2Client(config.getZkConnection(), Optional.empty());
-    String d2ServiceName = config.getClusterToServerD2Map().get(config.getClusterName());
+    String d2ServiceName = config.getClusterToD2Map().get(config.getClusterName());
     this.pushStatusStoreReader = new PushStatusStoreReader(
         d2Client,
         d2ServiceName,
