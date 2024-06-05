@@ -189,7 +189,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     for (int partition: partitions) {
-      partitionToBootstrapState.put(partition, false);
+      getPartitionToBootstrapState().put(partition, false);
     }
     return internalSubscribe(partitions, null);
   }
@@ -445,7 +445,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public boolean isCaughtUp() {
-    return partitionToBootstrapState.values().stream().allMatch(x -> x);
+    return getPartitionToBootstrapState().values().stream().allMatch(x -> x);
+  }
+
+  Map<Integer, Boolean> getPartitionToBootstrapState() {
+    return partitionToBootstrapState;
   }
 
   protected CompletableFuture<Void> internalSeek(
@@ -549,12 +553,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               message.getValue().getProducerMetadata().getMessageTimestamp())) {
             break;
           }
-          if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
-              && Arrays.equals(message.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-            if (startTimestamp - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
-              partitionToBootstrapState.put(pubSubTopicPartition.getPartitionNumber(), true);
-            }
-          }
+          maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition, startTimestamp);
           if (includeControlMessage) {
             pubSubMessages.add(
                 new ImmutableChangeCapturePubSubMessage<>(
@@ -578,6 +577,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       changeCaptureStats.recordRecordsConsumed(pubSubMessages.size());
     }
     return pubSubMessages;
+  }
+
+  boolean maybeUpdatePartitionToBootstrapMap(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message,
+      PubSubTopicPartition pubSubTopicPartition,
+      long startTimestamp) {
+    ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
+    if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
+        && Arrays.equals(message.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+      if (startTimestamp - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
+        getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
+        return true;
+      }
+    }
+    return false;
   }
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
