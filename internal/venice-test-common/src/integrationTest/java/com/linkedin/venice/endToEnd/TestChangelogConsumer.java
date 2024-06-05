@@ -782,7 +782,7 @@ public class TestChangelogConsumer {
       VeniceChangelogConsumer<Utf8, TestChangelogValue> specificChangelogConsumer =
           veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "0", TestChangelogValue.class);
       specificChangelogConsumer.subscribeAll().get();
-      Assert.assertFalse(specificChangelogConsumer.isCaughtUp(0));
+      Assert.assertFalse(specificChangelogConsumer.isCaughtUp());
 
       Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
           new HashMap<>();
@@ -794,7 +794,7 @@ public class TestChangelogConsumer {
             polledChangeEventsList,
             specificChangelogConsumer);
         Assert.assertEquals(polledChangeEventsList.size(), 100);
-        Assert.assertTrue(specificChangelogConsumer.isCaughtUp(0));
+        Assert.assertTrue(specificChangelogConsumer.isCaughtUp());
       });
 
       Assert.assertTrue(

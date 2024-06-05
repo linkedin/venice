@@ -444,8 +444,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @Override
-  public boolean isCaughtUp(long lagThresholdTimestamp) {
-    return partitionToBootstrapHeartbeatLag.values().stream().allMatch(x -> x <= lagThresholdTimestamp);
+  public boolean isCaughtUp() {
+    return partitionToBootstrapHeartbeatLag.values().stream().allMatch(x -> x <= TimeUnit.MINUTES.toMillis(1));
   }
 
   protected CompletableFuture<Void> internalSeek(
