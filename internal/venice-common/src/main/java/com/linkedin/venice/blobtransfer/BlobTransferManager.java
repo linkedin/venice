@@ -1,0 +1,37 @@
+package com.linkedin.venice.blobtransfer;
+
+import com.linkedin.venice.exceptions.VeniceResourceNotFoundException;
+import java.io.InputStream;
+import java.util.concurrent.CompletionStage;
+
+
+/**
+ *
+ * A BlobTransferManager is responsible for transferring blobs between two entities, either that Peer to Peer or node to
+ * a blob store and vice versa. The underlying blob client is responsible for the actual transfer of the blob.
+ * @param <T> the type of the object from the underlying blob client to indicate the upload status. It can be a blob ID
+ *           indicating the blob has been uploaded or an enum representing the status of the blob transfer.
+ */
+public interface BlobTransferManager<T> extends AutoCloseable {
+  /**
+   * Get the blobs for the given storeName and partition
+   * @param storeName
+   * @param partition
+   * @return the InputStream of the blob
+   * @throws VeniceResourceNotFoundException
+   */
+  CompletionStage<InputStream> get(String storeName, int partition) throws VeniceResourceNotFoundException;
+
+  /**
+   * Put the blob for the given storeName and partition
+   * @param storeName
+   * @param partition
+   * @return the type of the object returned from the underlying blob client to indicate the upload status
+   */
+  CompletionStage<T> put(String storeName, int partition);
+
+  /**
+   * Close the blob transfer manager and related resources
+   */
+  void close() throws Exception;
+}
