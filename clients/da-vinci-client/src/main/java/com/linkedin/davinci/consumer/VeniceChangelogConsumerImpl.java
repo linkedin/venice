@@ -98,7 +98,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final Map<Integer, AtomicLong> partitionToPutMessageCount = new VeniceConcurrentHashMap<>();
   protected final Map<Integer, AtomicLong> partitionToDeleteMessageCount = new VeniceConcurrentHashMap<>();
-  protected final Map<Integer, Long> partitionToBootstrapHeartbeatLag = new VeniceConcurrentHashMap<>();
+  protected final Map<Integer, Boolean> partitionToBootstrapState = new VeniceConcurrentHashMap<>();
   protected final long startTimestamp;
 
   protected final RecordDeserializer<K> keyDeserializer;
@@ -189,7 +189,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     for (int partition: partitions) {
-      partitionToBootstrapHeartbeatLag.put(partition, Long.MAX_VALUE);
+      partitionToBootstrapState.put(partition, false);
     }
     return internalSubscribe(partitions, null);
   }
@@ -445,7 +445,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public boolean isCaughtUp() {
-    return partitionToBootstrapHeartbeatLag.values().stream().allMatch(x -> x <= TimeUnit.MINUTES.toMillis(1));
+    return partitionToBootstrapState.values().stream().allMatch(x -> x);
   }
 
   protected CompletableFuture<Void> internalSeek(
@@ -551,9 +551,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           }
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
               && Arrays.equals(message.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-            partitionToBootstrapHeartbeatLag.put(
-                pubSubTopicPartition.getPartitionNumber(),
-                startTimestamp - message.getValue().producerMetadata.messageTimestamp);
+            if (startTimestamp - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
+              partitionToBootstrapState.put(pubSubTopicPartition.getPartitionNumber(), true);
+            }
           }
           if (includeControlMessage) {
             pubSubMessages.add(
