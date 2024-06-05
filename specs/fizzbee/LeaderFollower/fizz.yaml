@@ -1,0 +1,14 @@
+liveness: strict
+deadlock_detection: true
+options:
+  max_actions: 200
+  max_concurrent_actions: 1
+actionOptions:
+  ClientProducesToVenice:
+    # Limit the number of times ClientProducesToVenice can be executed.
+    max_actions: 3
+  DemoteLeader:
+    # Limit the number of times DemoteLeader can be executed.
+    # Note: The PromoteLeader action is not limited, it must execute at least 1 more than the number of times
+    # a leader can be demoted, to ensure there is eventually be at least 1 leader.
+    max_actions: 1

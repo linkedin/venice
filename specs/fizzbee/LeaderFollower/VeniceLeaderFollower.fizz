@@ -1,0 +1,174 @@
+# The FizzBee specification for the Leader-Follower replication protocol
+# used in Venice data storage platform.
+# The TLA+ equivalent of this specification can be found at:
+# https://github.com/linkedin/venice/tree/main/specs/TLA%2B/LeaderFollower
+# Summary of the protocol:
+# - The protocol consists of N nodes, each of which can be in one of two states: LEADER or FOLLOWER.
+# - Any node can assume the role of a leader if there is no leader at this moment (The leader election is
+#   not modelled in this spec.
+# - Clients publish messages to the real-time topic, which is consumed by the leader.
+# - The leader appends the consumed messages to the version topic.
+# - The followers consume messages from the version topic.
+#
+# The protocol is correct if the persisted records of all nodes are eventually consistent.
+
+# Note: The comments in this spec are written as a tutorial for the FizzBee language.
+# In a real example, the comments should describe why you do what you do, not what you do.
+
+# Assertions are specified with assertion keyword. The body of the assertion is similar
+# to a python function returning a boolean.
+always eventually assertion ReplicasConsistent:
+    for i in NODE_IDS:
+        for j in range(i + 1, len(nodes)):
+            # Check if the persisted records of the current pair of nodes are equal
+            if nodes[i]['persistedRecords'] != nodes[j]['persistedRecords']:
+                return False
+
+    return True
+
+
+# Currently, FizzBee does not support parameters. So, we have to define these as variables with uppercase.
+KEYS = ('key1', 'key2')
+VALUES = ('value1', 'value2')
+LEADER = 'LEADER'
+FOLLOWER = 'FOLLOWER'
+N_NODES = 3
+NODE_IDS = range(N_NODES)
+
+
+# Init is a special action called when the model starts. It is used to initialize the state of the model.
+action Init:
+
+    # Initialize the state of each node
+    real_time_topic = []
+    version_topic = []
+    nodes = [
+        {
+            'state': 'FOLLOWER',
+            # If true, the node became a leader, but not yet caught up with the version topic.
+            'newly_promoted': False,
+
+            'rtOffset': 0,
+            'vtOffset': 0,
+
+            'persistedRecords': {}
+        }
+        for i in NODE_IDS
+    ]
+
+
+# The action keyword is used to define an action. The atomic keyword implies
+# there are no yield points within the statements.
+atomic action PromoteLeader:
+    # A FOLLOWER ca be promoted to be a LEADER if and only if there is no leader in the system.
+
+    if [node for node in nodes if node['state'] == 'LEADER']:
+        return
+    # `any` is a special keyword that creates non-determinism or alternate timelines.
+    # This is similar in structure to `for`, but in each timeline, only one of the
+    # non-deterministic choices is executed.
+    any id in NODE_IDS:
+        nodes[id]['state'] = 'LEADER'
+        nodes[id]['newly_promoted'] = True
+
+
+atomic action DemoteLeader:
+    any id in NODE_IDS:
+        if nodes[id]['state'] == 'LEADER':
+            nodes[id]['state'] = 'FOLLOWER'
+            nodes[id]['newly_promoted'] = False
+
+
+atomic action ClientProducesToVenice:
+    if len(real_time_topic) == 0:
+        # This reduces the state space, because if there are no messages in the real-time topic,
+        # first message being (k1,v1) is equivalent to first message being one of [(k1,v2),(k2,v1),(k2,v2)].
+        # This reduces the state space by 75%
+        # Doesn't affect the correctness of the model.
+        real_time_topic.append((KEYS[0], VALUES[0]))
+    else:
+        any kv in [(k, v) for k in KEYS for v in VALUES]:
+            real_time_topic.append(kv)
+
+
+# The fair keyword implies this action is weakly fair. That is, the action is always enabled,
+# it will eventually happen.
+atomic fair action NewLeaderCatchup:
+  any id in NODE_IDS:
+    if nodes[id]['state'] == 'LEADER' and nodes[id]['newly_promoted']:
+        if nodes[id]['vtOffset'] < len(version_topic):
+            version_topic_consume(id)
+        else:
+            nodes[id]['newly_promoted'] = False
+
+
+# The fair keyword implies this action is weakly fair. That is, the action is always enabled,
+# it will eventually happen.
+atomic fair action EstablishedLeaderConsume:
+  any id in NODE_IDS:
+    if nodes[id]['state'] == 'LEADER' and not nodes[id]['newly_promoted']:
+        real_time_consume(id)
+
+
+
+# The strong modifier to the fair keyword implies this action is strongly fair. That is, the action
+# gets enabled repeatedly (that is it may get disabled in between), it will eventually happen.
+atomic fair action FollowerConsume:
+    any id in NODE_IDS:
+        if nodes[id]['state'] == 'FOLLOWER' and nodes[id]['vtOffset'] < len(version_topic):
+            version_topic_consume(id)
+
+
+func real_time_consume(nodeId):
+    # A leader consuming unprocessed msgs from the real-time topic.
+
+    # Check if the node's offset is within the bounds of the real-time topic
+    if nodes[nodeId]['rtOffset'] >= len(real_time_topic):
+        return
+
+    offset, key, value = -1, '', ''
+
+    atomic:
+        offset = nodes[nodeId]['rtOffset']
+        key, value = real_time_topic[offset][0], real_time_topic[offset][1]
+
+        # Append the consumed event to the version topic
+        if (key, value, offset) not in version_topic:
+            version_topic.append((key, value, offset))
+        else:
+            pass
+
+    # Update the node's state and persisted records
+    nodes[nodeId]['persistedRecords'][key] = value
+    atomic:
+        nodes[nodeId]['rtOffset'] += 1
+        nodes[nodeId]['vtOffset'] += 1
+
+
+func version_topic_consume(nodeId):
+    # A node consuming events from the version topic.
+
+    atomic:
+        # Update the node's state and persisted records
+        offset = nodes[nodeId]['vtOffset']
+        key, value, rt_offset = version_topic[offset][0], version_topic[offset][1], version_topic[offset][2]
+        nodes[nodeId]['persistedRecords'][key] = value
+
+    atomic:
+        # Update the node's state and persisted records
+        nodes[nodeId]['rtOffset'] += 1
+        nodes[nodeId]['vtOffset'] += 1
+
+
+atomic action LeaderStaysAsLeader:
+    # This action is a hack to prevent deadlock error in the model checker.
+    # The model checker will identify deadlock error if there is no action to execute.
+    # Sometimes to speed up model checking and limit the infinite state space,
+    # we can limit the number times certain actions can execute.
+    # For example, if we limit the number of times a leader can be demoted, then after
+    # consuming all the messages, and the leader is demoted the specified number of times,
+    # and promoted again, the model checker will not have anything to execute.
+    # This action is a hack to prevent that deadlock error.
+    # If there is already a LEADER, no changes to the system is a valid behavior.
+    if [node for node in nodes if node['state'] == 'LEADER']:
+        pass
