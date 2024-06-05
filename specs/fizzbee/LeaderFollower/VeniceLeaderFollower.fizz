@@ -80,8 +80,15 @@ atomic action DemoteLeader:
 
 
 atomic action ClientProducesToVenice:
-    any kv in [(k, v) for k in KEYS for v in VALUES]:
-        real_time_topic.append(kv)
+    if len(real_time_topic) == 0:
+        # This reduces the state space, because if there are no messages in the real-time topic,
+        # first message being (k1,v1) is equivalent to first message being one of [(k1,v2),(k2,v1),(k2,v2)].
+        # This reduces the state space by 75%
+        # Doesn't affect the correctness of the model.
+        real_time_topic.append((KEYS[0], VALUES[0]))
+    else:
+        any kv in [(k, v) for k in KEYS for v in VALUES]:
+            real_time_topic.append(kv)
 
 
 # The fair keyword implies this action is weakly fair. That is, the action is always enabled,
@@ -112,7 +119,7 @@ atomic fair action FollowerConsume:
             version_topic_consume(id)
 
 
-atomic func real_time_consume(nodeId):
+func real_time_consume(nodeId):
     # A leader consuming unprocessed msgs from the real-time topic.
 
     # Check if the node's offset is within the bounds of the real-time topic
