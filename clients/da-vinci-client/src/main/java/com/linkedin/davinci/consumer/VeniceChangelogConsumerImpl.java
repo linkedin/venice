@@ -543,6 +543,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
       List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
       for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
+        maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
         if (message.getKey().isControlMessage()) {
           ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
           if (handleControlMessage(
@@ -553,7 +554,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               message.getValue().getProducerMetadata().getMessageTimestamp())) {
             break;
           }
-          maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition, startTimestamp);
           if (includeControlMessage) {
             pubSubMessages.add(
                 new ImmutableChangeCapturePubSubMessage<>(
@@ -579,19 +579,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return pubSubMessages;
   }
 
-  boolean maybeUpdatePartitionToBootstrapMap(
+  void maybeUpdatePartitionToBootstrapMap(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message,
-      PubSubTopicPartition pubSubTopicPartition,
-      long startTimestamp) {
-    ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
-    if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
-        && Arrays.equals(message.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-      if (startTimestamp - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
-        getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
-        return true;
-      }
+      PubSubTopicPartition pubSubTopicPartition) {
+    if (System.currentTimeMillis() - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES
+        .toMillis(1)) {
+      getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
     }
-    return false;
   }
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(

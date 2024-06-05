@@ -1,7 +1,6 @@
 package com.linkedin.davinci.consumer;
 
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -237,22 +236,23 @@ public class VeniceChangelogConsumerImplTest {
     Map<Integer, Boolean> bootstrapStateMap = new VeniceConcurrentHashMap<>();
     bootstrapStateMap.put(0, false);
     doReturn(bootstrapStateMap).when(veniceChangelogConsumer).getPartitionToBootstrapState();
-    doCallRealMethod().when(veniceChangelogConsumer).maybeUpdatePartitionToBootstrapMap(any(), any(), anyLong());
+    doCallRealMethod().when(veniceChangelogConsumer).maybeUpdatePartitionToBootstrapMap(any(), any());
+    long currentTimestamp = System.currentTimeMillis();
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topicRepository.getTopic("foo_v1"), 0);
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = START_OF_SEGMENT.getValue();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
-    kafkaMessageEnvelope.producerMetadata.messageTimestamp = TimeUnit.MINUTES.toMillis(8);
+    kafkaMessageEnvelope.producerMetadata.messageTimestamp = currentTimestamp - TimeUnit.MINUTES.toMillis(2);
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message =
         new ImmutablePubSubMessage<>(KafkaKey.HEART_BEAT, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
-    long startTimestamp = TimeUnit.MINUTES.toMillis(10);
-    veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition, startTimestamp);
+
+    veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
     Assert.assertFalse(bootstrapStateMap.get(0));
-    startTimestamp = TimeUnit.MINUTES.toMillis(9);
-    veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition, startTimestamp);
+    kafkaMessageEnvelope.producerMetadata.messageTimestamp = currentTimestamp - TimeUnit.SECONDS.toMillis(30);
+    veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
     Assert.assertTrue(bootstrapStateMap.get(0));
   }
 
