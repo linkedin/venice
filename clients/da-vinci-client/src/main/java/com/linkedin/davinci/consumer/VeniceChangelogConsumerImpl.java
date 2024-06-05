@@ -98,6 +98,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final Map<Integer, AtomicLong> partitionToPutMessageCount = new VeniceConcurrentHashMap<>();
   protected final Map<Integer, AtomicLong> partitionToDeleteMessageCount = new VeniceConcurrentHashMap<>();
+  protected final Map<Integer, Boolean> partitionToBootstrapState = new VeniceConcurrentHashMap<>();
+  protected final long startTimestamp;
 
   protected final RecordDeserializer<K> keyDeserializer;
   private final D2ControllerClient d2ControllerClient;
@@ -150,7 +152,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     Schema keySchema = schemaReader.getKeySchema();
     this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
     this.chunkAssembler = new ChunkAssembler(storeName);
-
+    this.startTimestamp = System.currentTimeMillis();
+    LOGGER.info("VeniceChangelogConsumer created at timestamp: {}", startTimestamp);
     this.storeRepository = new ThinClientMetaStoreBasedRepository(
         changelogClientConfig.getInnerClientConfig(),
         VeniceProperties.empty(),
@@ -185,6 +188,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
+    for (int partition: partitions) {
+      getPartitionToBootstrapState().put(partition, false);
+    }
     return internalSubscribe(partitions, null);
   }
 
@@ -437,6 +443,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return this.seekToTimestamps(partitionsToSeek);
   }
 
+  @Override
+  public boolean isCaughtUp() {
+    return getPartitionToBootstrapState().values().stream().allMatch(x -> x);
+  }
+
+  Map<Integer, Boolean> getPartitionToBootstrapState() {
+    return partitionToBootstrapState;
+  }
+
   protected CompletableFuture<Void> internalSeek(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
@@ -528,6 +543,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
       List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
       for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
+        maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
         if (message.getKey().isControlMessage()) {
           ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
           if (handleControlMessage(
@@ -561,6 +577,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       changeCaptureStats.recordRecordsConsumed(pubSubMessages.size());
     }
     return pubSubMessages;
+  }
+
+  void maybeUpdatePartitionToBootstrapMap(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message,
+      PubSubTopicPartition pubSubTopicPartition) {
+    if (System.currentTimeMillis() - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES
+        .toMillis(1)) {
+      getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
+    }
   }
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
