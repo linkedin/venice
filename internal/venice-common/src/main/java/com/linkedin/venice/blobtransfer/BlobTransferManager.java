@@ -1,8 +1,9 @@
 package com.linkedin.venice.blobtransfer;
 
+import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.StorePartitionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import java.io.BufferedInputStream;
+import java.io.InputStream;
 import java.util.concurrent.CompletionStage;
 
 
@@ -24,10 +25,11 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * Get the blobs for the given storeName and partition
    * @param storeName
    * @param partition
-   * @return the InputStream of the blob
+   * @return the InputStream of the blob. The return type is experimental and may change in the future.
    * @throws StorePartitionNotFoundException
    */
-  CompletionStage<BufferedInputStream> get(String storeName, int partition) throws VeniceNoStoreException;
+  @Experimental
+  CompletionStage<InputStream> get(String storeName, int partition) throws VeniceNoStoreException;
 
   /**
    * Put the blob for the given storeName and partition
