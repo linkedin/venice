@@ -117,7 +117,7 @@ public class TopicManagerE2ETest {
   @AfterMethod(alwaysRun = true)
   public void tearDownMethod() {
     if (pubSubProducerAdapterLazy.isPresent()) {
-      pubSubProducerAdapterLazy.get().close(0, false);
+      pubSubProducerAdapterLazy.get().close(0);
     }
     if (pubSubAdminAdapterLazy.isPresent()) {
       Utils.closeQuietlyWithErrorLogged(pubSubAdminAdapterLazy.get());

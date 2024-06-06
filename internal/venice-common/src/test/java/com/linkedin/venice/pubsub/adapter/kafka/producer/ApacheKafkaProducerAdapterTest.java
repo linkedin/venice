@@ -1,7 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -26,14 +25,12 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -68,7 +65,7 @@ public class ApacheKafkaProducerAdapterTest {
   public void testEnsureProducerIsNotClosedThrowsExceptionWhenProducerIsClosed() {
     ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfigMock, kafkaProducerMock);
     doNothing().when(kafkaProducerMock).close(any());
-    producerAdapter.close(10, false);
+    producerAdapter.close(10);
     producerAdapter.sendMessage(TOPIC_NAME, 0, testKafkaKey, testKafkaValue, null, null);
   }
 
@@ -139,15 +136,6 @@ public class ApacheKafkaProducerAdapterTest {
   }
 
   @Test
-  public void testCloseInvokesProducerFlushAndClose() {
-    doNothing().when(kafkaProducerMock).flush(anyLong(), any(TimeUnit.class));
-    ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfigMock, kafkaProducerMock);
-    producerAdapter.close(10, true);
-    verify(kafkaProducerMock, times(1)).flush(anyLong(), any(TimeUnit.class));
-    verify(kafkaProducerMock, times(1)).close(any(Duration.class));
-  }
-
-  @Test
   public void testFlushInvokesInternalProducerFlushIfProducerIsNotClosed() {
     doNothing().when(kafkaProducerMock).flush();
     ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfigMock, kafkaProducerMock);
@@ -160,7 +148,7 @@ public class ApacheKafkaProducerAdapterTest {
     doNothing().when(kafkaProducerMock).flush();
     doNothing().when(kafkaProducerMock).close();
     ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfigMock, kafkaProducerMock);
-    producerAdapter.close(10, false); // close without flushing
+    producerAdapter.close(10); // close without flushing
     producerAdapter.flush();
     verify(kafkaProducerMock, never()).flush();
   }
@@ -169,7 +157,7 @@ public class ApacheKafkaProducerAdapterTest {
   public void testGetMeasurableProducerMetricsReturnsEmptyMapWhenProducerIsClosed() {
     doNothing().when(kafkaProducerMock).close();
     ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfigMock, kafkaProducerMock);
-    producerAdapter.close(10, false); // close without flushing
+    producerAdapter.close(10); // close without flushing
     Object2DoubleMap<String> metrics = producerAdapter.getMeasurableProducerMetrics();
     assertNotNull(metrics, "Returned metrics cannot be null");
     assertEquals(metrics.size(), 0, "Should return empty metrics when producer is closed");

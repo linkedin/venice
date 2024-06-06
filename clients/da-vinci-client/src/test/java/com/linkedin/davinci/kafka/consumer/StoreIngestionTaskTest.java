@@ -1922,7 +1922,7 @@ public abstract class StoreIngestionTaskTest {
 
     // After the end of push, the venice writer continue puts a corrupt data and end the segment.
     getOffset(veniceWriterCorrupted.put(putKeyFoo, putValueToCorrupt, SCHEMA_ID));
-    veniceWriterCorrupted.endSegment(PARTITION_FOO, true);
+    veniceWriterCorrupted.closePartition(PARTITION_FOO);
 
     // a missing msg
     long fooOffsetToSkip = getOffset(veniceWriterCorrupted.put(putKeyFoo, putValue, SCHEMA_ID));
