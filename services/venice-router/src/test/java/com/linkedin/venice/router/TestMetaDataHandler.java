@@ -1552,8 +1552,8 @@ public class TestMetaDataHandler {
     PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
 
     String storeName = "store";
-    String storeVersion = "3";
-    String storePartition = "30";
+    int storeVersion = 3;
+    int storePartition = 30;
 
     Store store = Mockito.mock(Store.class);
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
@@ -1562,11 +1562,7 @@ public class TestMetaDataHandler {
 
     Mockito.doThrow(new VeniceException("exception"))
         .when(pushStatusStoreReader)
-        .getPartitionStatus(
-            storeName,
-            Integer.valueOf(storeVersion),
-            Integer.valueOf(storePartition),
-            Optional.empty());
+        .getPartitionStatus(storeName, storeVersion, storePartition, Optional.empty());
 
     String requestUri = String.format(
         "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
@@ -1599,8 +1595,8 @@ public class TestMetaDataHandler {
     PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
 
     String storeName = "store_name";
-    String storeVersion = "1";
-    String storePartition = "30";
+    int storeVersion = 1;
+    int storePartition = 30;
 
     Map<CharSequence, Integer> instanceResultsFromPushStatusStore = new HashMap<CharSequence, Integer>() {
       {
@@ -1622,11 +1618,7 @@ public class TestMetaDataHandler {
 
     Mockito.doReturn(instanceResultsFromPushStatusStore)
         .when(pushStatusStoreReader)
-        .getPartitionStatus(
-            storeName,
-            Integer.valueOf(storeVersion),
-            Integer.valueOf(storePartition),
-            Optional.empty());
+        .getPartitionStatus(storeName, storeVersion, storePartition, Optional.empty());
 
     instanceHealth.forEach((instance, isLive) -> {
       Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
@@ -1673,8 +1665,8 @@ public class TestMetaDataHandler {
     PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
 
     String storeName = "store_name";
-    String storeVersion = "1";
-    String storePartition = "30";
+    int storeVersion = 1;
+    int storePartition = 30;
 
     Map<CharSequence, Integer> instanceResultsFromPushStatusStore = new HashMap<CharSequence, Integer>() {
       {

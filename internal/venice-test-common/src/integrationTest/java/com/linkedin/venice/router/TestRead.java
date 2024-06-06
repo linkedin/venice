@@ -242,10 +242,6 @@ public abstract class TestRead {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
-    // veniceCluster.getVeniceRouters().forEach(r -> r.getRoutersClusterManager().getLiveRouterInstances().forEach(x ->
-    // x.));
-    // ServiceFactory.getMoc
-
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET, true); // test parallel lookup
     serverProperties.put(ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, 1); // test bounded queue
