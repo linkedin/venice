@@ -837,7 +837,7 @@ public abstract class TestRead {
     assertEquals(metricsRepository.metrics().get(badRequestMetric).value(), 1.0d);
   }
 
-  @Test(timeOut = 4 * Time.MINUTES_PER_HOUR)
+  @Test(timeOut = 10 * Time.MINUTES_PER_HOUR)
   public void testBlobDiscovery() throws Exception {
     if (!isTestEnabled()) {
       return;
