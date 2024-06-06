@@ -1,6 +1,6 @@
 package com.linkedin.venice.exceptions;
 
-public class StoreVersionNotFoundException extends VeniceException {
+public class StoreVersionNotFoundException extends VeniceNoStoreException {
   public StoreVersionNotFoundException(String storeName, int versionNumber) {
     super("Could not find store-version! Store: " + storeName + "; version: " + versionNumber + ".");
   }
