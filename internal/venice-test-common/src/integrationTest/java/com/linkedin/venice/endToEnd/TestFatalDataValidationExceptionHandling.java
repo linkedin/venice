@@ -333,7 +333,7 @@ public class TestFatalDataValidationExceptionHandling {
         null,
         new LeaderMetadataWrapper(3, 0));
     vw1.flush();
-    vw1.endSegment(0, true);
+    vw1.closePartition(0);
     vw1.flush();
 
     vw3.broadcastEndOfPush(Collections.emptyMap());

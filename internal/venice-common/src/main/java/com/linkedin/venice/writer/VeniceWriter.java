@@ -441,10 +441,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               timeLeftToClose = Math.max(0, closeTimeOutInMs - timeSinceStartOfClose);
             }
 
-            /**
-             * N.B.: We call the overload with a topic name param here for the sake of shared producer...
-             * TODO: Decide whether to keep shared producer or not...
-             */
             producerAdapter.close(timeLeftToClose);
             OPEN_VENICE_WRITER_COUNT.decrementAndGet();
           } catch (Exception e) {
@@ -2015,7 +2011,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param partition in which to end the current segment
    * @return A CompletableFuture which either contains a result if a EOS was sent, or null if none needed to be sent.
    */
-  public CompletableFuture<PubSubProduceResult> endSegment(int partition, boolean finalSegment) {
+  private CompletableFuture<PubSubProduceResult> endSegment(int partition, boolean finalSegment) {
     synchronized (this.partitionLocks[partition]) {
       Segment currentSegment = segments[partition];
       if (currentSegment == null) {

@@ -322,7 +322,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private void endSegment(int partition) {
     // If the VeniceWriter doesn't exist, then no need to end any segment, and this function becomes a no-op
-    veniceWriter.ifPresent(vw -> vw.endSegment(partition, true));
+    veniceWriter.ifPresent(vw -> vw.closePartition(partition));
   }
 
   @Override
