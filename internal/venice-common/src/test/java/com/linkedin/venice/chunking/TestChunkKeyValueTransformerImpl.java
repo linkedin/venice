@@ -1,7 +1,7 @@
 package com.linkedin.venice.chunking;
 
-import static com.linkedin.venice.utils.TestChunkingUtils.createChunkBytes;
-import static com.linkedin.venice.utils.TestChunkingUtils.createChunkedKeySuffix;
+import static com.linkedin.venice.utils.ChunkingTestUtils.createChunkBytes;
+import static com.linkedin.venice.utils.ChunkingTestUtils.createChunkedKeySuffix;
 
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;

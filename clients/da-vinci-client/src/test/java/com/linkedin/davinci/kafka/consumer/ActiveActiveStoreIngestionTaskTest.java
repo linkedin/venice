@@ -80,8 +80,8 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.SystemTime;
-import com.linkedin.venice.utils.TestChunkingUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -314,7 +314,7 @@ public class ActiveActiveStoreIngestionTaskTest {
       stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
     }
     String valueString = stringBuilder.toString();
-    ByteBuffer updatedValueBytes = TestChunkingUtils.prependSchemaId(valueString.getBytes(), 1);
+    ByteBuffer updatedValueBytes = ChunkingTestUtils.prependSchemaId(valueString.getBytes(), 1);
     ByteBuffer updatedRmdBytes = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
     when(consumerRecord.getOffset()).thenReturn(100L);
@@ -483,7 +483,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix1);
     int manifestSchemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
     byte[] chunkedManifestBytes = chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest);
-    chunkedManifestBytes = TestChunkingUtils.prependSchemaId(chunkedManifestBytes, manifestSchemaId).array();
+    chunkedManifestBytes = ChunkingTestUtils.prependSchemaId(chunkedManifestBytes, manifestSchemaId).array();
     byte[] topLevelKey2 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key2);
     byte[] chunkedKey1InKey2 = chunkedKeyWithSuffix1.array();
 
@@ -520,7 +520,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix1);
     chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix2);
     chunkedManifestBytes = chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest);
-    chunkedManifestBytes = TestChunkingUtils.prependSchemaId(chunkedManifestBytes, manifestSchemaId).array();
+    chunkedManifestBytes = ChunkingTestUtils.prependSchemaId(chunkedManifestBytes, manifestSchemaId).array();
     byte[] topLevelKey3 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key3);
     byte[] chunkedKey1InKey3 = chunkedKeyWithSuffix1.array();
     byte[] chunkedKey2InKey3 = chunkedKeyWithSuffix2.array();

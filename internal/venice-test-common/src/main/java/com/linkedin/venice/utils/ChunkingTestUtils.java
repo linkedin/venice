@@ -23,13 +23,13 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
 
-public class TestChunkingUtils {
-  private TestChunkingUtils() {
+public final class ChunkingTestUtils {
+  private ChunkingTestUtils() {
     // Util class
   }
 
   public final static int CHUNK_LENGTH = 10;
-  public final static KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer =
+  public final static KeyWithChunkingSuffixSerializer KEY_WITH_CHUNKING_SUFFIX_SERIALIZER =
       new KeyWithChunkingSuffixSerializer();
 
   public static byte[] createChunkBytes(int startValue, final int chunkLength) {
@@ -85,7 +85,8 @@ public class TestChunkingUtils {
     long newOffset = firstMessageOffset + chunkIndex;
     int newSequenceNumber = firstSequenceNumber + chunkIndex;
     ChunkedKeySuffix chunkKeySuffix = createChunkedKeySuffix(firstSegmentNumber, firstSequenceNumber, chunkIndex);
-    ByteBuffer chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkKeySuffix);
+    ByteBuffer chunkKeyWithSuffix =
+        KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeChunkedKey(serializedKey, chunkKeySuffix);
     KafkaKey kafkaKey = new KafkaKey(PUT, ByteUtils.extractByteArray(chunkKeyWithSuffix));
     KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(PUT, firstSegmentNumber, newSequenceNumber);
 
@@ -104,7 +105,7 @@ public class TestChunkingUtils {
       int numberOfChunks,
       PubSubTopicPartition pubSubTopicPartition) {
     long newOffset = firstMessage.getOffset() + numberOfChunks;
-    byte[] chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(PUT, chunkKeyWithSuffix);
     KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(
         PUT,
@@ -131,7 +132,7 @@ public class TestChunkingUtils {
       byte[] serializedKey,
       byte[] serializedRmd,
       PubSubTopicPartition pubSubTopicPartition) {
-    byte[] chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(DELETE, chunkKeyWithSuffix);
     KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(DELETE, 0, 0);
 
@@ -150,7 +151,7 @@ public class TestChunkingUtils {
       byte[] serializedValue,
       byte[] serializedRmd,
       PubSubTopicPartition pubSubTopicPartition) {
-    byte[] chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(PUT, chunkKeyWithSuffix);
     KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(PUT, 0, 0);
 
@@ -169,7 +170,7 @@ public class TestChunkingUtils {
       byte[] serializedKey,
       byte[] serializedValue,
       PubSubTopicPartition pubSubTopicPartition) {
-    byte[] chunkKeyWithSuffix = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(UPDATE, chunkKeyWithSuffix);
     KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(UPDATE, 0, 0);
 

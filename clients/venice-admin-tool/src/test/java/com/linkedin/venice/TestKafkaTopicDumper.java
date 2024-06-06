@@ -21,7 +21,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.utils.TestChunkingUtils;
+import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.IOException;
@@ -91,18 +91,18 @@ public class TestKafkaTopicDumper {
     String metadataFormat = " ChunkMd=(type:%s, FirstChunkMd=(guid:00000000000000000000000000000000,seg:1,seq:1))";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> chunkMessage = null;
     for (int i = 0; i < numChunks; i++) {
-      chunkMessage = TestChunkingUtils.createChunkedRecord(serializedKey, 1, 1, i, 0, pubSubTopicPartition);
+      chunkMessage = ChunkingTestUtils.createChunkedRecord(serializedKey, 1, 1, i, 0, pubSubTopicPartition);
       String metadataLog = kafkaTopicDumper.getChunkMetadataLog(chunkMessage);
       Assert.assertEquals(metadataLog, String.format(metadataFormat, "WITH_VALUE_CHUNK, ChunkIndex: " + i));
     }
 
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
-        TestChunkingUtils.createChunkValueManifestRecord(serializedKey, chunkMessage, numChunks, pubSubTopicPartition);
+        ChunkingTestUtils.createChunkValueManifestRecord(serializedKey, chunkMessage, numChunks, pubSubTopicPartition);
     String manifestChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(manifestMessage);
     Assert.assertEquals(manifestChunkMetadataLog, String.format(metadataFormat, "WITH_CHUNK_MANIFEST"));
 
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deleteMessage =
-        TestChunkingUtils.createDeleteRecord(serializedKey, null, pubSubTopicPartition);
+        ChunkingTestUtils.createDeleteRecord(serializedKey, null, pubSubTopicPartition);
     String deleteChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(deleteMessage);
     Assert.assertEquals(deleteChunkMetadataLog, " ChunkMd=(type:WITH_FULL_VALUE)");
   }
@@ -210,7 +210,7 @@ public class TestKafkaTopicDumper {
     byte[] serializedRmd = rmdSerializer.serialize(rmdRecord);
     byte[] serializedUpdate = updateSerializer.serialize(updateRecord);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> putMessage =
-        TestChunkingUtils.createPutRecord(serializedKey, serializedValue, serializedRmd, pubSubTopicPartition);
+        ChunkingTestUtils.createPutRecord(serializedKey, serializedValue, serializedRmd, pubSubTopicPartition);
     String returnedLog = kafkaTopicDumper.buildDataRecordLog(putMessage, false);
     String expectedLog = String.format("Key: %s; Value: %s; Schema: %d", keyString, valueRecord, 1);
     Assert.assertEquals(returnedLog, expectedLog);
@@ -220,7 +220,7 @@ public class TestKafkaTopicDumper {
 
     // Test UPDATE
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> updateMessage =
-        TestChunkingUtils.createUpdateRecord(serializedKey, serializedUpdate, pubSubTopicPartition);
+        ChunkingTestUtils.createUpdateRecord(serializedKey, serializedUpdate, pubSubTopicPartition);
     returnedLog = kafkaTopicDumper.buildDataRecordLog(updateMessage, false);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d-%d", keyString, updateRecord, 1, 1);
     Assert.assertEquals(returnedLog, expectedLog);
@@ -230,7 +230,7 @@ public class TestKafkaTopicDumper {
 
     // Test DELETE with and without RMD
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deleteMessage =
-        TestChunkingUtils.createDeleteRecord(serializedKey, serializedRmd, pubSubTopicPartition);
+        ChunkingTestUtils.createDeleteRecord(serializedKey, serializedRmd, pubSubTopicPartition);
     returnedLog = kafkaTopicDumper.buildDataRecordLog(deleteMessage, false);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d", keyString, null, 1);
     Assert.assertEquals(returnedLog, expectedLog);

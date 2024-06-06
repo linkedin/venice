@@ -32,6 +32,8 @@ import java.util.Map;
  * (3) Per store and total: The stat is registered for each store on this host and the total number for this host.
  */
 public class HostLevelIngestionStats extends AbstractVeniceStats {
+  public static final String ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES = "assembled_record_value_size_in_bytes";
+
   // The aggregated bytes ingested rate for the entire host
   private final LongAdderRateGauge totalBytesConsumedRate;
   // The aggregated records ingested rate for the entire host
@@ -276,13 +278,13 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
 
-    String assembledValueSizeSensorName = "assembled_record_value_size_in_bytes";
     this.assembledValueSizeSensor = registerSensor(
-        assembledValueSizeSensorName,
+        ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES,
         new Avg(),
         new Min(),
         new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + assembledValueSizeSensorName));
+        TehutiUtils
+            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES));
 
     String viewTimerSensorName = "total_view_writer_latency";
     this.viewProducerLatencySensor = registerPerStoreAndTotalSensor(

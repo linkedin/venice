@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
@@ -64,6 +65,7 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.tehuti.MetricsUtils;
@@ -117,7 +119,6 @@ public abstract class TestBatch {
   private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
   protected static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
-  public static final String ASSEMBLED_VALUE_SENSOR_NAME = "assembled_record_value_size_in_bytes";
   protected static final int MAX_RECORD_VALUE_SIZE = 3 * 1024 * 1024; // 3 MB apiece
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -628,7 +629,7 @@ public abstract class TestBatch {
         validator);
 
     // Since chunking was not enabled, verify that the assembled record size metrics are not collected
-    assertUnusedPerStoreMetrics(storeName, ASSEMBLED_VALUE_SENSOR_NAME);
+    assertUnusedPerStoreMetrics(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES);
 
     // Re-push with Kafka Input
     testRepush(storeName, validator);
@@ -951,7 +952,7 @@ public abstract class TestBatch {
   }
 
   private List<Double> getPerStoreMetricValues(String storeName, String sensorName) {
-    String metricName = "." + storeName + "--" + sensorName;
+    String metricName = AbstractVeniceStats.getSensorFullName(storeName, sensorName);
     List<VeniceServerWrapper> veniceServers = veniceCluster.getVeniceServers();
     return Arrays.asList(
         MetricsUtils.getMin(metricName + ".Min", veniceServers), // default=Double.MIN_VALUE
@@ -986,10 +987,10 @@ public abstract class TestBatch {
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range. It doesn't work in isolated ingestion mode.
     if (veniceCluster.getVeniceServers().stream().noneMatch(VeniceServerWrapper::isIsolatedIngestionEnabled)) {
-      int minRecordValueSize = 1024 * 1024; // 1MB apiece
-      validatePerStoreMetricsRange(storeName, ASSEMBLED_VALUE_SENSOR_NAME, minRecordValueSize, MAX_RECORD_VALUE_SIZE);
+      int minSize = 1024 * 1024; // 1MB apiece
+      validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, minSize, MAX_RECORD_VALUE_SIZE);
     } else {
-      assertUnusedPerStoreMetrics(storeName, ASSEMBLED_VALUE_SENSOR_NAME);
+      assertUnusedPerStoreMetrics(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES);
     }
   }
 

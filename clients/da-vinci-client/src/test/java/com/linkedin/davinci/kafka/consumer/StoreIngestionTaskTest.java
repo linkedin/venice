@@ -189,13 +189,13 @@ import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SystemTime;
-import com.linkedin.venice.utils.TestChunkingUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -4449,14 +4449,14 @@ public abstract class StoreIngestionTaskTest {
   @Test(dataProvider = "testAssembledValueSizeProvider")
   public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId) throws Exception {
     int numChunks = 10;
-    long expectedRecordSize = (long) numChunks * TestChunkingUtils.CHUNK_LENGTH;
+    long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH;
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
     for (int i = 0; i < numChunks; i++) {
-      messages.add(TestChunkingUtils.createChunkedRecord(putKeyFoo, 1, 1, i, 0, tp));
+      messages.add(ChunkingTestUtils.createChunkedRecord(putKeyFoo, 1, 1, i, 0, tp));
     }
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
-        TestChunkingUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
+        ChunkingTestUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
     messages.add(manifestMessage);
 
     // The only expected real-life case should be when schemaId values are chunk=-10 and manifest=-20

@@ -42,6 +42,7 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.meta.IngestionMode;
@@ -397,9 +398,13 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   public boolean isIsolatedIngestionEnabled() {
-    IngestionMode mode =
-        IngestionMode.valueOf(serverProps.getString(SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString()));
-    return mode == IngestionMode.ISOLATED;
+    try {
+      return IngestionMode.valueOf(
+          serverProps.getString(SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString())) == IngestionMode.ISOLATED;
+    } catch (VeniceMessageException e) {
+      LOGGER.error("Invalid ingestion mode: {}", serverProps.getString(SERVER_INGESTION_MODE));
+    }
+    return false;
   }
 
   @Override
