@@ -27,6 +27,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.MockVeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
@@ -49,7 +50,9 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.MockCircularTime;
@@ -532,6 +535,15 @@ public class TestChangelogConsumer {
       checkpointSet.add(polledChangeEvents.get(Integer.toString(20)).getOffset());
       allChangeEvents.putAll(polledChangeEvents);
       polledChangeEvents.clear();
+
+      // Seek to a bogus checkpoint
+      PubSubPosition badPubSubPosition = new ApacheKafkaOffsetPosition(1337L);
+      VeniceChangeCoordinate badCoordinate =
+          new MockVeniceChangeCoordinate(storeName + "_v777777", badPubSubPosition, 0);
+      Set<VeniceChangeCoordinate> badCheckpointSet = new HashSet<>();
+      badCheckpointSet.add(badCoordinate);
+
+      Assert.assertThrows(() -> veniceChangelogConsumer.seekToCheckpoint(badCheckpointSet));
 
       // Seek the consumer by checkpoint
       veniceChangelogConsumer.seekToCheckpoint(checkpointSet).join();

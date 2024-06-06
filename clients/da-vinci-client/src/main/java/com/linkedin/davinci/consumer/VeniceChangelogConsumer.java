@@ -132,8 +132,10 @@ public interface VeniceChangelogConsumer<K, V> {
    * @param checkpoints
    * @return a future which completes when seek has completed for all partitions
    * @throws VeniceException if seek operation failed for any of the partitions
+   * @throws VeniceCoordinateOutOfRangeException if passed checkpoint is no longer valid
    */
-  CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints);
+  CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints)
+      throws VeniceCoordinateOutOfRangeException;
 
   /**
    * Subscribe all partitions belonging to a specific store.

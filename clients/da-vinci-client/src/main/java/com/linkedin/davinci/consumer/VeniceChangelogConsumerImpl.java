@@ -17,6 +17,7 @@ import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -37,6 +38,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdUtils;
@@ -370,9 +372,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @Override
-  public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
+  public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints)
+      throws VeniceCoordinateOutOfRangeException {
     return CompletableFuture.supplyAsync(() -> {
       for (VeniceChangeCoordinate coordinate: checkpoints) {
+        checkLiveVersion(coordinate.getTopic());
         PubSubTopic topic = pubSubTopicRepository.getTopic(coordinate.getTopic());
         PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, coordinate.getPartition());
         internalSeek(Collections.singleton(coordinate.getPartition()), topic, foo -> {
@@ -384,10 +388,27 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     });
   }
 
-  private void pubSubConsumerSeek(PubSubTopicPartition topicPartition, Long offset) {
+  void checkLiveVersion(String topicName) {
+    Store store = storeRepository.getStore(storeName);
+    try {
+      store.getVersionOrThrow(Version.parseVersionFromVersionTopicName(topicName));
+    } catch (StoreVersionNotFoundException ex) {
+      throw new VeniceCoordinateOutOfRangeException("Checkpoint is off retention!  Version has been deprecated...", ex);
+    }
+  }
+
+  private void pubSubConsumerSeek(PubSubTopicPartition topicPartition, Long offset)
+      throws VeniceCoordinateOutOfRangeException {
     // Offset the seek to next operation inside venice pub sub consumer adapter subscription logic.
     long targetOffset = offset == OffsetRecord.LOWEST_OFFSET ? OffsetRecord.LOWEST_OFFSET : offset - 1;
-    pubSubConsumer.subscribe(topicPartition, targetOffset);
+    try {
+      pubSubConsumer.subscribe(topicPartition, targetOffset);
+    } catch (PubSubTopicDoesNotExistException ex) {
+      throw new VeniceCoordinateOutOfRangeException(
+          "Version does not exist! Checkpoint contained version: " + topicPartition.getTopicName()
+              + " please seek to beginning!",
+          ex);
+    }
     LOGGER.info("Topic partition: {} consumer seek to offset: {}", topicPartition, targetOffset);
   }
 
@@ -467,7 +488,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @FunctionalInterface
   interface SeekFunction {
-    void apply(PubSubTopicPartition partitionToSeek);
+    void apply(PubSubTopicPartition partitionToSeek) throws VeniceCoordinateOutOfRangeException;
   }
 
   private List<PubSubTopicPartition> getPartitionListToSubscribe(
@@ -963,9 +984,24 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     @Override
     public void run() {
       while (!Thread.interrupted()) {
-        for (Long lastHeartbeat: currentVersionLastHeartbeat.values()) {
-          changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat);
+        int maxVersion = -1;
+        int minVersion = Integer.MAX_VALUE;
+        for (Map.Entry<Integer, Long> lastHeartbeat: currentVersionLastHeartbeat.entrySet()) {
+          if (lastHeartbeat.getKey() < minVersion) {
+            minVersion = lastHeartbeat.getKey();
+          }
+          if (lastHeartbeat.getKey() > maxVersion) {
+            maxVersion = lastHeartbeat.getKey();
+          }
+          changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat.getValue());
         }
+        if (minVersion == Integer.MAX_VALUE) {
+          // This is a nicer looking default in metrics then a big number
+          minVersion = -1;
+        }
+        // Record max and min consumed versions
+        changeCaptureStats.recordMaximumConsumingVersion(maxVersion);
+        changeCaptureStats.recordMinimumConsumingVersion(minVersion);
         try {
           TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
