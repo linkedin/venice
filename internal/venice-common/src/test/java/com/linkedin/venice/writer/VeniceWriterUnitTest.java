@@ -551,7 +551,7 @@ public class VeniceWriterUnitTest {
     Supplier<PubSubProducerAdapter> producerSupplier = () -> {
       PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
       // Only graceful closes (those with a non-zero timeout) will throw a TimeoutException
-      doThrow(new TimeoutException()).when(mockedProducer).close(anyString(), longThat(argument -> argument > 0));
+      doThrow(new TimeoutException()).when(mockedProducer).close(longThat(argument -> argument > 0));
       return mockedProducer;
     };
     Function<PubSubProducerAdapter, VeniceWriter> veniceWriterSupplier = mockedProducer -> {
@@ -567,15 +567,15 @@ public class VeniceWriterUnitTest {
     PubSubProducerAdapter mockedProducer = producerSupplier.get();
     VeniceWriter<Object, Object, Object> writer = veniceWriterSupplier.apply(mockedProducer);
     writer.close(gracefulClose);
-    verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(anyString(), longThat(argument -> argument > 0));
-    verify(mockedProducer, times(1)).close(anyString(), longThat(argument -> argument == 0));
+    verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(longThat(argument -> argument > 0));
+    verify(mockedProducer, times(1)).close(longThat(argument -> argument == 0));
 
     // Same test for asyncClose, after reinitializing everything
     mockedProducer = producerSupplier.get();
     writer = veniceWriterSupplier.apply(mockedProducer);
     writer.closeAsync(gracefulClose).get();
-    verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(anyString(), longThat(argument -> argument > 0));
-    verify(mockedProducer, times(1)).close(anyString(), longThat(argument -> argument == 0));
+    verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(longThat(argument -> argument > 0));
+    verify(mockedProducer, times(1)).close(longThat(argument -> argument == 0));
   }
 
   /**

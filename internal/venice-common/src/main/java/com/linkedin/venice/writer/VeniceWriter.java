@@ -408,6 +408,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
       return CompletableFuture.supplyAsync(() -> {
         synchronized (closeLock) {
+          if (isClosed) {
+            return VeniceResourceCloseResult.ALREADY_CLOSED;
+          }
+
           logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
           long timeAtStartOfClose = System.currentTimeMillis();
           try {
@@ -441,7 +445,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
              * N.B.: We call the overload with a topic name param here for the sake of shared producer...
              * TODO: Decide whether to keep shared producer or not...
              */
-            producerAdapter.close(topicName, timeLeftToClose);
+            producerAdapter.close(timeLeftToClose);
             OPEN_VENICE_WRITER_COUNT.decrementAndGet();
           } catch (Exception e) {
             handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
@@ -465,7 +469,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     try {
       if (gracefulClose && retryOnGracefulCloseFailure) {
         logger.info("Ungracefully closing the VeniceWriter for topic: {}, closeTimeOut: 0 ms", topicName);
-        producerAdapter.close(topicName, 0);
+        producerAdapter.close(0);
         OPEN_VENICE_WRITER_COUNT.decrementAndGet();
       }
     } catch (Exception ex) {
@@ -1235,7 +1239,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public void closePartition(int partition) {
     if (segments[partition] != null) {
       logger.debug("Closing partition: {} in VeniceWriter.", partition);
-      endSegment(partition, true);
+      try {
+        endSegment(partition, true).get();
+      } catch (InterruptedException | ExecutionException e) {
+        handleControlMessageProducingException(e, ControlMessageType.END_OF_SEGMENT);
+      }
     }
   }
 

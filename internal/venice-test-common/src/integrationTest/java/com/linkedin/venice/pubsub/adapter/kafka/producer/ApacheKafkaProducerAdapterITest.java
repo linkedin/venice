@@ -287,7 +287,7 @@ public class ApacheKafkaProducerAdapterITest {
    * blocked in Producer::sendMessage() call.
    */
   @Test(timeOut = 30 * MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testProducerCloseCanUnblockSendMessageCallerThread(boolean doFlush) {
+  public void testProducerCloseCanUnblockSendMessageCallerThread(boolean zeroTimeout) {
     ExecutorService executor = Executors.newCachedThreadPool();
     CountDownLatch countDownLatch = new CountDownLatch(1);
 
@@ -313,7 +313,8 @@ public class ApacheKafkaProducerAdapterITest {
       countDownLatch.await();
       // Still wait for some time to make sure blocking sendMessage is inside kafka before closing it.
       Utils.sleep(50);
-      producerAdapter.close(5000);
+      long timeout = zeroTimeout ? 0 : 5000;
+      producerAdapter.close(timeout);
       sendMessageFuture.get(); // this is necessary to check whether expectations in sendMessage thread were met
     } catch (Exception e) {
       fail("Producer closing should have succeeded without an exception", e);

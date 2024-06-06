@@ -54,10 +54,6 @@ public interface PubSubProducerAdapter {
 
   void close(long closeTimeOutMs);
 
-  default void close(String topic, long closeTimeOutMs) {
-    close(closeTimeOutMs);
-  }
-
   Object2DoubleMap<String> getMeasurableProducerMetrics();
 
   String getBrokerAddress();
