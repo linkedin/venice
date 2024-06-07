@@ -21,6 +21,7 @@ import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.utils.SystemTime;
@@ -63,6 +64,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.FLOAT)));
 
   protected final AvroGenericReadComputeStoreClient storeClient;
+  protected final int latestValueSchemaId;
   protected final Schema latestValueSchema;
   protected final String resultSchemaName;
 
@@ -76,8 +78,9 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   private List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
   private List<HadamardProduct> hadamardProducts = new LinkedList<>();
 
-  public AbstractAvroComputeRequestBuilder(AvroGenericReadComputeStoreClient storeClient, Schema latestValueSchema) {
-
+  public AbstractAvroComputeRequestBuilder(AvroGenericReadComputeStoreClient storeClient, SchemaReader schemaReader) {
+    this.latestValueSchemaId = schemaReader.getLatestValueSchemaId();
+    this.latestValueSchema = schemaReader.getValueSchema(latestValueSchemaId);
     if (latestValueSchema.getType() != Schema.Type.RECORD) {
       throw new VeniceClientException("Only value schema with 'RECORD' type is supported");
     }
@@ -88,7 +91,6 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     }
 
     this.storeClient = storeClient;
-    this.latestValueSchema = latestValueSchema;
     this.resultSchemaName =
         ComputeUtils.removeAvroIllegalCharacter(storeClient.getStoreName()) + "_VeniceComputeResult";
 
@@ -489,7 +491,8 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
 
   protected ComputeRequestWrapper generateComputeRequest(SchemaAndToString resultSchema, boolean originallyStreaming) {
     return new ComputeRequestWrapper(
-        this.latestValueSchema,
+        latestValueSchemaId,
+        latestValueSchema,
         resultSchema.getSchema(),
         resultSchema.getToString(),
         getComputeRequestOperations(),

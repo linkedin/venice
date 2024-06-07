@@ -24,11 +24,13 @@ public class ComputeRequestWrapper {
       getFastAvroGenericSerializer(ComputeRequestV3.SCHEMA$);
 
   private final ComputeRequestV3 computeRequest;
+  private final int valueSchemaId;
   private final Schema valueSchema;
   private final List<Schema.Field> operationResultFields;
   private final boolean originallyStreaming;
 
   public ComputeRequestWrapper(
+      int valueSchemaId,
       Schema valueSchema,
       Schema resultSchema,
       String resultSchemaString,
@@ -37,6 +39,7 @@ public class ComputeRequestWrapper {
     this.computeRequest = new ComputeRequestV3();
     this.computeRequest.setResultSchemaStr(resultSchemaString);
     this.computeRequest.setOperations((List) operations);
+    this.valueSchemaId = valueSchemaId;
     this.valueSchema = valueSchema;
     this.operationResultFields = ComputeUtils.getOperationResultFields(operations, resultSchema);
     this.originallyStreaming = originallyStreaming;
@@ -48,6 +51,10 @@ public class ComputeRequestWrapper {
 
   public CharSequence getResultSchemaStr() {
     return this.computeRequest.getResultSchemaStr();
+  }
+
+  public int getValueSchemaID() {
+    return this.valueSchemaId;
   }
 
   public Schema getValueSchema() {

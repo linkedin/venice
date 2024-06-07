@@ -1,0 +1,24 @@
+{
+  "type": "record",
+  "name": "ValueRecord",
+  "doc": "This schema has the same parsing canonical form as RecordValueSchema2",
+  "fields": [
+    {
+      "name": "favorite_number",
+      "type": "long",
+      "default": 0,
+      "doc": "Doc for favorite_number"
+    },
+    {
+      "name": "favorite_color",
+      "type": "string",
+      "default": "blue",
+      "arbitrary_attribute": "arbitrary attribute value"
+    },
+    {
+      "name": "favorite_company",
+      "type": "string",
+      "default": "COMPANY_1"
+    }
+  ]
+}
