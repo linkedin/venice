@@ -64,4 +64,23 @@ public class PubSubSecurityProtocolTest {
       assertEquals(specificEnum.name(), value.name());
     }
   }
+
+  @Test
+  public void testForName() {
+    assertEquals(PubSubSecurityProtocol.forName("plaintext"), PubSubSecurityProtocol.PLAINTEXT);
+    assertEquals(PubSubSecurityProtocol.forName("PLAINTEXT"), PubSubSecurityProtocol.PLAINTEXT);
+    assertEquals(PubSubSecurityProtocol.forName("Plaintext"), PubSubSecurityProtocol.PLAINTEXT);
+
+    assertEquals(PubSubSecurityProtocol.forName("ssl"), PubSubSecurityProtocol.SSL);
+    assertEquals(PubSubSecurityProtocol.forName("SSL"), PubSubSecurityProtocol.SSL);
+    assertEquals(PubSubSecurityProtocol.forName("Ssl"), PubSubSecurityProtocol.SSL);
+
+    assertEquals(PubSubSecurityProtocol.forName("sasl_plaintext"), PubSubSecurityProtocol.SASL_PLAINTEXT);
+    assertEquals(PubSubSecurityProtocol.forName("SASL_PLAINTEXT"), PubSubSecurityProtocol.SASL_PLAINTEXT);
+    assertEquals(PubSubSecurityProtocol.forName("Sasl_Plaintext"), PubSubSecurityProtocol.SASL_PLAINTEXT);
+
+    assertEquals(PubSubSecurityProtocol.forName("sasl_ssl"), PubSubSecurityProtocol.SASL_SSL);
+    assertEquals(PubSubSecurityProtocol.forName("SASL_SSL"), PubSubSecurityProtocol.SASL_SSL);
+    assertEquals(PubSubSecurityProtocol.forName("Sasl_Ssl"), PubSubSecurityProtocol.SASL_SSL);
+  }
 }

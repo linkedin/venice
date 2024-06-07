@@ -35,8 +35,8 @@ public class ApacheKafkaAdminConfigTest {
     properties.put("kafka.bootstrap.servers", "localhost:9092");
     properties.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     properties.put("kafka.sasl.mechanism", SASL_MECHANISM);
-    properties.put("kafka.security.protocol", securityProtocol.name);
-    if (securityProtocol.name.contains("SSL")) {
+    properties.put("kafka.security.protocol", securityProtocol.name());
+    if (securityProtocol.name().contains("SSL")) {
       properties.put("ssl.truststore.location", "-");
       properties.put("ssl.truststore.password", "");
       properties.put("ssl.truststore.type", "JKS");
@@ -49,7 +49,7 @@ public class ApacheKafkaAdminConfigTest {
     Properties adminProperties = serverConfig.getAdminProperties();
     assertEquals(SASL_JAAS_CONFIG, adminProperties.get("sasl.jaas.config"));
     assertEquals(SASL_MECHANISM, adminProperties.get("sasl.mechanism"));
-    assertEquals(securityProtocol.name, adminProperties.get("security.protocol"));
+    assertEquals(securityProtocol.name(), adminProperties.get("security.protocol"));
   }
 
   @Test

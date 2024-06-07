@@ -1114,7 +1114,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
       properties.putAll(sslConfig.get().getKafkaSSLConfig());
     }
-    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
+    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name());
     return new VeniceProperties(properties);
   }
 

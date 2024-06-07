@@ -257,8 +257,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       List<String> regionNames,
       List<PubSubBrokerWrapper> kafkaBrokers) {
     if (serverProperties.isPresent()) {
-      PubSubSecurityProtocol baseSecurityProtocol = PubSubSecurityProtocol
-          .valueOf(serverProperties.get().getProperty(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name));
+      PubSubSecurityProtocol baseSecurityProtocol = PubSubSecurityProtocol.valueOf(
+          serverProperties.get().getProperty(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name()));
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
       Map<String, String> mapping;
@@ -271,7 +271,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           // Testing mixed security on any 2-layer setup with 2 or more DCs.
           securityProtocol = PubSubSecurityProtocol.SSL;
         }
-        mapping.put(KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL, securityProtocol.name);
+        mapping.put(KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL, securityProtocol.name());
 
         // N.B. the first Kafka broker in the list is the parent, which we're excluding from the mapping, so this
         // is why the index here is offset by 1 compared to the cluster ID.
