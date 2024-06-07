@@ -226,6 +226,7 @@ public class ControllerApiConstants {
   public static final String MIN_COMPACTION_LAG_SECONDS = "min_compaction_lag_seconds";
 
   public static final String MAX_COMPACTION_LAG_SECONDS = "max_compaction_lag_seconds";
+  public static final String MAX_RECORD_SIZE_BYTES = "max_record_size_bytes";
 
   public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
 

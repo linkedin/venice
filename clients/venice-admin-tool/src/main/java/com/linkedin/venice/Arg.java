@@ -241,7 +241,8 @@ public enum Arg {
   ),
   MAX_COMPACTION_LAG_SECONDS(
       "max-compaction-lag-seconds", "mxcls", true, "Max compaction lag seconds for version topic of hybrid stores"
-  ), UNUSED_SCHEMA_DELETION_ENABLED("enable-unused-schema-deletion", "usde", true, "Enable unused schema deletion"),
+  ), MAX_RECORD_SIZE_BYTES("max-record-size-bytes", "mrsb", true, "Store-level max record size in bytes"),
+  UNUSED_SCHEMA_DELETION_ENABLED("enable-unused-schema-deletion", "usde", true, "Enable unused schema deletion"),
   PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(
       "interval", "itv", true,
