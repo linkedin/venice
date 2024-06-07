@@ -748,6 +748,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
     valueSchemaToCanonicalSchemaId.put(valueSchema, valueSchemaId);
 
     Integer cachedCanonicalSchemaId = canonicalValueSchemaMapR.getIfPresent(canonicalSchema);
+    // Cache schemas if they're previously unseen or have a higher schema ID than the current cached one. This will
+    // ensure that the later schemas are preferred over old schemas
     if (cachedCanonicalSchemaId == null || cachedCanonicalSchemaId < valueSchemaId) {
       canonicalValueSchemaMapR.put(canonicalSchema, valueSchemaId);
     }
