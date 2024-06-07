@@ -228,7 +228,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         }
 
         if (options.isSslToKafka()) {
-          builder.put(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name);
+          builder.put(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
           builder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
         }
 
