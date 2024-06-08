@@ -54,8 +54,14 @@ def get_next_version(bump_major, bump_minor, remote):
         return format_version(major, minor, 0)
 
     build = version_ints[2]
+    build += 1
 
-    return format_version(major, minor, build + 1)
+    # If build number is 100, increment minor and reset build
+    if build >= 100:
+        minor += 1
+        build = 0
+
+    return format_version(major, minor, build)
 
 
 def get_remote():
