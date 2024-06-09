@@ -25,6 +25,10 @@ public class PushJobSetting implements Serializable {
   public String jobId;
   public String jobExecutionId;
   public String jobServerName;
+  // Path was not serializable till HDFS version 3.0.0, so we use URI instead:
+  // https://issues.apache.org/jira/browse/HADOOP-13519
+  public String sharedTmpDir;
+  public String jobTmpDir;
   public boolean enableSSL;
   public Class<? extends VenicePushJob> vpjEntryClass;
   public String veniceControllerUrl;
@@ -58,7 +62,6 @@ public class PushJobSetting implements Serializable {
   public boolean compressionMetricCollectionEnabled;
   /** Refer {@link VenicePushJobConstants#USE_MAPPER_TO_BUILD_DICTIONARY} **/
   public boolean useMapperToBuildDict;
-  public String useMapperToBuildDictOutputPath;
   public boolean repushTTLEnabled;
   // specify time to drop stale records.
   public long repushTTLStartTimeMs;

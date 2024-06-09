@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.MAPPER_OUTPUT_DIRECTORY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
 import static org.apache.hadoop.mapreduce.MRJobConfig.ID;
 
@@ -9,7 +8,6 @@ import java.io.IOException;
 import org.apache.avro.mapred.AvroOutputFormat;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.mapred.FileAlreadyExistsException;
 import org.apache.hadoop.mapred.FileOutputFormat;
 import org.apache.hadoop.mapred.JobConf;
@@ -30,37 +28,6 @@ import org.apache.logging.log4j.Logger;
 public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictOutputFormat.class);
 
-  private static void createDirectoryWithPermission(FileSystem fs, Path path, String permission) throws IOException {
-    createDirectoryWithPermission(fs, path, permission, false);
-  }
-
-  private static void createDirectoryWithPermission(FileSystem fs, Path path, String permission, boolean deleteIfExists)
-      throws IOException {
-    LOGGER.info("Trying to create path {} with permission {}", path.getName(), permission);
-    boolean createPath = false;
-    // check if the path needs to be created
-    if (fs.exists(path)) {
-      if (deleteIfExists) {
-        LOGGER.info("path {} exists already, but will be deleted and recreated", path);
-        fs.delete(path, true);
-        createPath = true;
-      } else {
-        LOGGER.info("path {} exists already", path);
-      }
-    } else {
-      createPath = true;
-    }
-
-    // create if needed
-    if (createPath) {
-      LOGGER.info("Creating path {} with permission {}", path.getName(), permission);
-      fs.mkdirs(path);
-      // mkdirs(path,permission) didn't set the right permission when
-      // tested in hdfs, so splitting it like this, it works!
-      fs.setPermission(path, new FsPermission(permission));
-    }
-  }
-
   /**
    * 1. The parent directory should be accessible by every user/group (777)
    * 2. unique sub-directory for this VPJ should be accessible only by
@@ -70,21 +37,13 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
    * @param job mapred config
    * @throws IOException
    */
-  protected static void setValidateSchemaAndBuildDictionaryOutputDirPath(JobConf job) throws IOException {
-    // parent directory: Common directory under which all the different push jobs
-    // create their job specific directories.
-    String parentOutputDir = job.get(MAPPER_OUTPUT_DIRECTORY);
-    Path outputPath = new Path(parentOutputDir);
-    FileSystem fs = outputPath.getFileSystem(job);
-    createDirectoryWithPermission(fs, outputPath, "777");
-
+  protected static void setValidateSchemaAndBuildDictionaryOutputDirPath(JobConf job) {
     // store+job specific unique directory under parent directory: already derived in VPJ driver
     // and passed along with the format: {$storeName}-{$JOB_EXEC_ID}-{$randomUniqueString}
     // this job creates it and VPJ driver deletes it after consuming the data in this directory
     // in ValidateSchemaAndBuildDictMapperOutputReader. setting 700 permissions for pii.
     String fullOutputDir = job.get(VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY);
-    outputPath = new Path(fullOutputDir);
-    createDirectoryWithPermission(fs, outputPath, "700");
+    Path outputPath = new Path(fullOutputDir);
 
     LOGGER.info(
         "{} Output will be stored in path: {}",
