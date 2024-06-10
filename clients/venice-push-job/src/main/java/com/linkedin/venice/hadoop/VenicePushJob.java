@@ -197,11 +197,26 @@ public class VenicePushJob implements AutoCloseable {
   private final VeniceProperties props;
   private final String jobId;
 
-  // parent directory: Common directory under which all the different push jobs
-  // create their job specific directories.
+  /**
+   * The temp directory structure for VPJ will be: <br/>
+   * |____{@code $hadoop.tmp.dir} (Specified by env, or default {@code /tmp}) <br/>
+   * | |____venice-push-job (777 permissions) - shared temp space for all VPJ executions ({@code $sharedTempDir}) <br/>
+   * | | |____{@code $jobTmpDir} (700 permissions) - temp space for the current execution ({@code $job.execution.id}_{@literal unique-suffix}) <br/>
+   * | | | |____veniceMapperOutput (700 permissions) <br/>
+   * | | | |____rmd_schemas (700 permissions) <br/>
+   * | | | |____value_schemas (700 permissions) <br/>
+   * | | | |____...features_added_in_the_future (700 permissions) <br/>
+   *  <br/>
+   * Common directory under which all the different push jobs create their job specific directories.
+   * The value of {@code sharedTmpDir} is set to {@code ${hadoop.tmp.dir}/venice-push-job} if {@code ${hadoop.tmp.dir}}
+   * is set. Otherwise, the path is set to {@code /tmp/venice-push-job}.
+   */
   private final Path sharedTmpDir;
 
-  // job specific directory: Unique directory for this VPJ to store intermediate data
+  /**
+   * Job specific directory: Unique directory for this VPJ to store intermediate data. The value of {@code jobTmpDir} is
+   * {@code ${sharedTmpDir}/${job.execution.id}_{unique-suffix}}.
+   */
   private final Path jobTmpDir;
 
   // Lazy state
@@ -748,10 +763,9 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
         }
         if (pushJobSetting.repushTTLEnabled) {
-          // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
-          // by the store name and time like:
-          // RMD schemas: <job_temp_dir>/rmd_<timestamp>
-          // Value schemas: <job_temp_dir>/value_<timestamp>
+          // Build the full path for HDFSRmdSchemaSource:
+          // RMD schemas: <job_temp_dir>/rmd_schemas
+          // Value schemas: <job_temp_dir>/value_schemas
           Path rmdSchemaDir = new Path(jobTmpDir, "rmd_schemas");
           HadoopUtils.createDirectoryWithPermission(rmdSchemaDir, PERMISSION_700);
           Path valueSchemaDir = new Path(jobTmpDir, "value_schemas");

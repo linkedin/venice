@@ -38,10 +38,6 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
    * @throws IOException
    */
   protected static void setValidateSchemaAndBuildDictionaryOutputDirPath(JobConf job) {
-    // store+job specific unique directory under parent directory: already derived in VPJ driver
-    // and passed along with the format: {$storeName}-{$JOB_EXEC_ID}-{$randomUniqueString}
-    // this job creates it and VPJ driver deletes it after consuming the data in this directory
-    // in ValidateSchemaAndBuildDictMapperOutputReader. setting 700 permissions for pii.
     String fullOutputDir = job.get(VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY);
     Path outputPath = new Path(fullOutputDir);
 

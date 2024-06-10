@@ -16,10 +16,6 @@ public final class VenicePushJobConstants {
   private VenicePushJobConstants() {
   }
 
-  public static final String HADOOP_TMP_DIR = "hadoop.tmp.dir";
-  public static final FsPermission PERMISSION_777 = FsPermission.createImmutable((short) 0777);
-  public static final FsPermission PERMISSION_700 = FsPermission.createImmutable((short) 0700);
-
   // Avro input configs
   public static final String LEGACY_AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String LEGACY_AVRO_VALUE_FIELD_PROP = "avro.value.field";
@@ -232,6 +228,14 @@ public final class VenicePushJobConstants {
    */
   public static final PathFilter PATH_FILTER = p -> !p.getName().startsWith("_") && !p.getName().startsWith(".");
 
+  // Configs to control temp paths and their permissions
+  public static final String HADOOP_TMP_DIR = "hadoop.tmp.dir";
+  public static final String TEMP_DIR_PREFIX = "tmp.dir.prefix";
+  // World-readable and world-writable
+  public static final FsPermission PERMISSION_777 = FsPermission.createImmutable((short) 0777);
+  // Only readable and writable by the user running VPJ - restricted access
+  public static final FsPermission PERMISSION_700 = FsPermission.createImmutable((short) 0700);
+
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String DERIVED_SCHEMA_ID_PROP = "derived.schema.id";
   public static final String TOPIC_PROP = "venice.kafka.topic";
@@ -300,7 +304,6 @@ public final class VenicePushJobConstants {
   public static final String REPUSH_TTL_START_TIMESTAMP = "repush.ttl.start.timestamp";
   public static final String RMD_SCHEMA_DIR = "rmd.schema.dir";
   public static final String VALUE_SCHEMA_DIR = "value.schema.dir";
-  public static final String TEMP_DIR_PREFIX = "tmp.dir.prefix";
   public static final int NOT_SET = -1;
 
   /**
