@@ -1,13 +1,8 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_BLOB_DISCOVERY;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.fail;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static org.testng.Assert.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
@@ -21,6 +16,7 @@ import com.linkedin.venice.controllerapi.BlobDiscoveryResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -47,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -58,6 +55,7 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.testng.Assert;
+import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -65,13 +63,10 @@ import org.testng.annotations.Test;
 public class TestBlobDiscovery {
   private static final String INT_KEY_SCHEMA = "\"int\"";
   private static final String INT_VALUE_SCHEMA = "\"int\"";
-
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-
+  String clusterName;
+  String storeName;
   private VeniceMultiClusterWrapper multiClusterVenice;
-
-  String[] clusterNames;
-  String parentControllerURLs;
+  D2Client daVinciD2;
 
   /**
    * Set up a multi-cluster Venice environment with meta system store enabled Venice stores.
@@ -84,22 +79,23 @@ public class TestBlobDiscovery {
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
 
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        1,
-        2,
-        1,
-        1,
-        3,
-        1,
-        3,
-        Optional.of(parentControllerProps),
-        Optional.empty(),
-        Optional.empty(),
-        false);
+    VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            1,
+            2,
+            1,
+            1,
+            3,
+            1,
+            3,
+            Optional.of(parentControllerProps),
+            Optional.empty(),
+            Optional.empty(),
+            false);
 
     multiClusterVenice = multiRegionMultiClusterWrapper.getChildRegions().get(0);
-    clusterNames = multiClusterVenice.getClusterNames();
-    parentControllerURLs = multiRegionMultiClusterWrapper.getParentControllers()
+    String[] clusterNames = multiClusterVenice.getClusterNames();
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getParentControllers()
         .stream()
         .map(VeniceControllerWrapper::getControllerUrl)
         .collect(Collectors.joining(","));
@@ -116,12 +112,9 @@ public class TestBlobDiscovery {
             TimeUnit.MINUTES);
       }
     }
-  }
 
-  @Test(timeOut = 600 * Time.MS_PER_SECOND)
-  public void testBlobDiscovery() throws Exception {
-    String clusterName = clusterNames[0];
-    String storeName = Utils.getUniqueString("test-store");
+    clusterName = clusterNames[0];
+    storeName = Utils.getUniqueString("test-store");
 
     List<PubSubBrokerWrapper> pubSubBrokerWrappers = multiClusterVenice.getClusters()
         .values()
@@ -168,22 +161,30 @@ public class TestBlobDiscovery {
             .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
             .build();
 
-    // here
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    D2Client daVinciD2 = D2TestUtils.getAndStartD2Client(multiClusterVenice.getZkServerWrapper().getAddress());
+    daVinciD2 = D2TestUtils.getAndStartD2Client(multiClusterVenice.getZkServerWrapper().getAddress());
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         daVinciD2,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
         backendConfig)) {
-
       List<DaVinciClient<Integer, Object>> clients = new ArrayList<>();
       DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       client.subscribeAll().get();
       clients.add(client);
+    } catch (ExecutionException | InterruptedException e) {
+      throw new VeniceException(e);
     }
+  }
 
+  @AfterTest
+  public void tearDown() {
+    D2ClientUtils.shutdownClient(daVinciD2);
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testBlobDiscovery() throws Exception {
     VeniceClusterWrapper veniceClusterWrapper = multiClusterVenice.getClusters().get(clusterName);
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
       veniceClusterWrapper.updateStore(storeName, new UpdateStoreQueryParams().setBlobTransferEnabled(true));
@@ -211,11 +212,10 @@ public class TestBlobDiscovery {
       ObjectMapper mapper = ObjectMapperFactory.getInstance();
       BlobDiscoveryResponse blobDiscoveryResponse =
           mapper.readValue(responseBody.getBytes(), BlobDiscoveryResponse.class);
+      // TODO: add another testcase to retrieve >= 1 live nodes
       Assert.assertEquals(blobDiscoveryResponse.getLiveNodeHostNames().size(), 0);
     } catch (Exception e) {
       fail("Unexpected exception", e);
-    } finally {
-      D2ClientUtils.shutdownClient(daVinciD2);
     }
   }
 
