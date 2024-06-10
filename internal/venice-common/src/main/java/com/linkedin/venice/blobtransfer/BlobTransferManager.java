@@ -22,21 +22,26 @@ public interface BlobTransferManager<T> extends AutoCloseable {
 
   /**
    * Get the blobs for the given storeName and partition
+   *
    * @param storeName
+   * @param version
    * @param partition
    * @return the InputStream of the blob. The return type is experimental and may change in the future.
    * @throws VeniceNoStoreException
    */
   @Experimental
-  CompletionStage<? extends InputStream> get(String storeName, int partition) throws VeniceNoStoreException;
+  CompletionStage<? extends InputStream> get(String storeName, int version, int partition)
+      throws VeniceNoStoreException;
 
   /**
    * Put the blob for the given storeName and partition
+   *
    * @param storeName
+   * @param version
    * @param partition
    * @return the type of the object returned from the underlying blob client to indicate the upload status
    */
-  CompletionStage<T> put(String storeName, int partition);
+  CompletionStage<T> put(String storeName, int version, int partition);
 
   /**
    * Close the blob transfer manager and related resources
