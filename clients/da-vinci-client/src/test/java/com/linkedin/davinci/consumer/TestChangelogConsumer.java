@@ -1,4 +1,4 @@
-package com.linkedin.venice.endToEnd;
+package com.linkedin.davinci.consumer;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
@@ -24,14 +24,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
-import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
-import com.linkedin.davinci.consumer.ChangeEvent;
-import com.linkedin.davinci.consumer.ChangelogClientConfig;
-import com.linkedin.davinci.consumer.MockVeniceChangeCoordinate;
-import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
-import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
-import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
-import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -39,6 +31,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.endToEnd.TestChangelogValue;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
