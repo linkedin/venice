@@ -919,4 +919,13 @@ public class Utils {
   public static String getReplicaId(PubSubTopic topic, int partition) {
     return topic + "-" + partition;
   }
+
+  /**
+   * Method to escape file path component to make it a valid file path string/substring.
+   * @param component file path component string
+   * @return Escaped file path component string
+   */
+  public static String escapeFilePathComponent(final String component) {
+    return component.replaceAll("[^a-zA-Z0-9-_/\\.]", "_");
+  }
 }
