@@ -6,9 +6,14 @@ import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_PARTITION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VERSION;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
-import static com.linkedin.venice.router.api.RouterResourceType.*;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_ALL_VALUE_SCHEMA_IDS;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_CURRENT_VERSION;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_GET_UPDATE_SCHEMA;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_LATEST_VALUE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
@@ -17,6 +22,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.TYPE_VALUE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
+import static io.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
@@ -32,6 +38,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -49,9 +56,11 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.router.api.RouterResourceType;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.routerapi.BlobDiscoveryResponse;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
@@ -79,6 +88,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -104,6 +114,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final SystemStoreJSONSerializer SYSTEM_STORE_SERIALIZER = new SystemStoreJSONSerializer();
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
+
+  private final PushStatusStoreReader pushStatusStoreReader;
 
   private final HelixCustomizedViewOfflinePushRepository routingDataRepository;
   private final ReadOnlySchemaRepository schemaRepo;
@@ -131,6 +143,16 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   static final String REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER =
       "Expected partitioner class %s cannot be found.";
 
+  static final String REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER = "Store: %s could not be found in cluster: %s";
+
+  static final String REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS =
+      "Blob Discovery: blob transfer is not enabled or store: %s is not a batch-only store";
+
+  static final String REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS =
+      "Blob Discovery: missing storeName:%s, storeVersion:%s, or storePartition:%s";
+
+  static final String REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE =
+      "Blob Discovery: failed to get the live node hostNames for store:%s version:%s partition:%s";
   private final VeniceVersionFinder veniceVersionFinder;
 
   public MetaDataHandler(
@@ -145,7 +167,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String zkAddress,
       String kafkaBootstrapServers,
       boolean isSslToKafka,
-      VeniceVersionFinder versionFinder) {
+      VeniceVersionFinder versionFinder,
+      PushStatusStoreReader pushStatusStoreReader) {
     super();
     this.routingDataRepository = routingDataRepository;
     this.schemaRepo = schemaRepo;
@@ -159,6 +182,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.kafkaBootstrapServers = kafkaBootstrapServers;
     this.isSslToKafka = isSslToKafka;
     this.veniceVersionFinder = versionFinder;
+    this.pushStatusStoreReader = pushStatusStoreReader;
   }
 
   @Override
@@ -226,6 +250,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           break;
         case TYPE_CURRENT_VERSION:
           handleCurrentVersionLookup(ctx, helper);
+          break;
+        case TYPE_BLOB_DISCOVERY:
+          handleBlobDiscovery(ctx, helper, req);
           break;
         default:
           // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
@@ -474,6 +501,69 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     int currentVersion = veniceVersionFinder.getVersion(storeName, null);
     CurrentVersionResponse response = new CurrentVersionResponse();
     response.setCurrentVersion(currentVersion);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
+  }
+
+  /**
+   * Handles the discovery of blob transfer nodes based on store settings.
+   * Retrieves host names for live DVC nodes ready to transfer blobs.
+   * Only returns host names from nodes that have completed a full push and are active.
+   *
+   * @return a response with a list of host names for live DVC nodes; returns an empty list if no live nodes are found or if conditions are not met
+   */
+  private void handleBlobDiscovery(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request)
+      throws IOException {
+
+    // i.e. /blob_discovery?store_name=storeName&store_version=22&store_partition=2
+    Map<String, String> queryParams = helper.extractQueryParameters(request);
+    String storeName = queryParams.getOrDefault(NAME, "");
+    String storeVersion = queryParams.getOrDefault(STORE_VERSION, "");
+    String storePartition = queryParams.getOrDefault(STORE_PARTITION, "");
+
+    if (StringUtils.isEmpty(storeName) || StringUtils.isEmpty(storeVersion) || StringUtils.isEmpty(storePartition)) {
+      byte[] errBody =
+          (String.format(REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS, storeName, storeVersion, storePartition))
+              .getBytes();
+      setupResponseAndFlush(BAD_REQUEST, errBody, false, ctx);
+      return;
+    }
+
+    Store store = storeRepository.getStore(storeName);
+    if (store == null) {
+      byte[] errBody = (String.format(REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER, storeName, clusterName)).getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+
+    if (!store.isBlobTransferEnabled() || store.isHybrid()) {
+      byte[] errBody = (String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, storeName)).getBytes();
+      setupResponseAndFlush(FORBIDDEN, errBody, false, ctx);
+      return;
+    }
+
+    BlobDiscoveryResponse response = new BlobDiscoveryResponse();
+    try {
+      // gets the instances for a FULL_PUSH for the store's version and partitionId
+      // gets the instance's hostnames from its keys & filter to include only live instances
+      Map<CharSequence, Integer> instances = pushStatusStoreReader.getPartitionStatus(
+          storeName,
+          Integer.parseInt(storeVersion),
+          Integer.parseInt(storePartition),
+          Optional.empty());
+      List<String> liveNodeHostNames = instances.entrySet()
+          .stream()
+          .map(Map.Entry::getKey)
+          .map(CharSequence::toString)
+          .filter(instanceHostName -> pushStatusStoreReader.isInstanceAlive(storeName, instanceHostName))
+          .collect(Collectors.toList());
+      response.setLiveNodeNames(liveNodeHostNames);
+    } catch (VeniceException e) {
+      byte[] errBody =
+          (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();
+      setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+      return;
+    }
+
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
   }
 
