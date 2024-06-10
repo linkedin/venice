@@ -3925,6 +3925,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(futureVersion);
+      LOGGER.info(
+          "Rolling forward current version {} to version {} in store {}",
+          previousVersion,
+          futureVersion,
+          storeName);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, futureVersion);
       return store;
     });
@@ -3960,6 +3965,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
+      LOGGER
+          .info("Rolling back current version {} to version {} in store {}", previousVersion, backupVersion, storeName);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       return store;
     });
@@ -4168,6 +4175,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public Set<Integer> getInUseValueSchemaIds(String clusterName, String storeName) {
+    if (isParent()) {
+      return Collections.emptySet();
+    }
+
     Store store = getStore(clusterName, storeName);
     Set<Integer> schemaIds = new HashSet<>();
 

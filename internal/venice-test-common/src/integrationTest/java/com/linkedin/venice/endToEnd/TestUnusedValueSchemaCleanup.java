@@ -111,7 +111,8 @@ public class TestUnusedValueSchemaCleanup {
       TestUtils.waitForNonDeterministicCompletion(
           20,
           TimeUnit.SECONDS,
-          () -> veniceHelixAdmin.getValueSchemas(CLUSTER_NAMES[0], storeName).size() == 1);
+          () -> veniceHelixAdmin.getValueSchemas(CLUSTER_NAMES[0], storeName).size() == 1
+              && parentControllerClient.getAllValueSchema(storeName).getSchemas().length == 1);
     }
   }
 
