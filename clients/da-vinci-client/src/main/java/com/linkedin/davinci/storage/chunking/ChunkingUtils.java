@@ -57,8 +57,8 @@ import org.apache.avro.io.BinaryDecoder;
  *    b) If it is negative, then it's a {@link ChunkedValueManifest}, and we continue to the next steps.
  * 3. The {@link ChunkedValueManifest} is deserialized, and its chunk keys are extracted.
  * 4. Each chunk key is queried.
- * 5. The chunks are stitched back together using the various adpater interfaces of this package,
- *    depending on whether it is the single get or batch get/compute path that needs to re-assembe
+ * 5. The chunks are stitched back together using the various adapter interfaces of this package,
+ *    depending on whether it is the single get or batch get/compute path that needs to re-assemble
  *    a chunked value.
  */
 public class ChunkingUtils {

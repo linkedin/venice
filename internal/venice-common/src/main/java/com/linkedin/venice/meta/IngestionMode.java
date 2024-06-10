@@ -38,7 +38,7 @@ public enum IngestionMode {
     return intToTypeMap;
   }
 
-  public static IngestionMode valueOf(int value) {
+  public static IngestionMode valueOf(int value) throws VeniceMessageException {
     IngestionMode type = INTEGER_INGESTION_MODE_MAP.get(value);
     if (type == null) {
       throw new VeniceMessageException("Invalid ingestion mode: " + value);

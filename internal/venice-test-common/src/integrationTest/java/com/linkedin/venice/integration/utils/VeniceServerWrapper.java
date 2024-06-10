@@ -26,6 +26,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -41,8 +42,10 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
@@ -392,6 +395,16 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   public int getGrpcPort() {
     return serverProps.getInt(GRPC_READ_SERVER_PORT);
+  }
+
+  public boolean isIsolatedIngestionEnabled() {
+    try {
+      return IngestionMode.valueOf(
+          serverProps.getString(SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString())) == IngestionMode.ISOLATED;
+    } catch (VeniceMessageException e) {
+      LOGGER.error("Invalid ingestion mode: {}", serverProps.getString(SERVER_INGESTION_MODE));
+    }
+    return false;
   }
 
   @Override

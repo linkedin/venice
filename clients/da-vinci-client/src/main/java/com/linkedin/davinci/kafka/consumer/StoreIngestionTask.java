@@ -87,9 +87,11 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
@@ -139,6 +141,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
@@ -322,6 +325,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StorageEngineBackedCompressorFactory compressorFactory;
   protected final Lazy<VeniceCompressor> compressor;
   protected final boolean isChunked;
+  protected final ChunkedValueManifestSerializer manifestSerializer;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
@@ -477,6 +481,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.compressorFactory = builder.getCompressorFactory();
     this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
     this.isChunked = version.isChunkingEnabled();
+    this.manifestSerializer = new ChunkedValueManifestSerializer(true);
     this.msgForLagMeasurement = new String[subPartitionCount];
     for (int i = 0; i < this.msgForLagMeasurement.length; i++) {
       this.msgForLagMeasurement[i] = kafkaVersionTopic + "_" + i;
@@ -3225,6 +3230,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
+
+        if (metricsEnabled && recordLevelMetricEnabled.get()
+            && put.getSchemaId() == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+          try {
+            ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
+                ByteUtils.extractByteArray(put.getPutValue()), // must be done before recordTransformer changes putValue
+                AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+            hostLevelIngestionStats.recordAssembledValueSize(chunkedValueManifest.getSize(), currentTimeMs);
+          } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
+            LOGGER.error("Failed to deserialize ChunkedValueManifest to record assembled value size", e);
+          }
+        }
 
         // Check if put.getSchemaId is positive, if not default to 1
         int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;

@@ -32,6 +32,8 @@ import java.util.Map;
  * (3) Per store and total: The stat is registered for each store on this host and the total number for this host.
  */
 public class HostLevelIngestionStats extends AbstractVeniceStats {
+  public static final String ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES = "assembled_record_value_size_in_bytes";
+
   // The aggregated bytes ingested rate for the entire host
   private final LongAdderRateGauge totalBytesConsumedRate;
   // The aggregated records ingested rate for the entire host
@@ -47,6 +49,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor consumerRecordsQueuePutLatencySensor;
   private final Sensor keySizeSensor;
   private final Sensor valueSizeSensor;
+  private final Sensor assembledValueSizeSensor;
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
   private final Sensor ingestionFailureSensor;
@@ -275,6 +278,14 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
 
+    this.assembledValueSizeSensor = registerSensor(
+        ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES,
+        new Avg(),
+        new Min(),
+        new Max(),
+        TehutiUtils
+            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES));
+
     String viewTimerSensorName = "total_view_writer_latency";
     this.viewProducerLatencySensor = registerPerStoreAndTotalSensor(
         viewTimerSensorName,
@@ -456,6 +467,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordValueSize(long bytes, long currentTimeMs) {
     valueSizeSensor.record(bytes, currentTimeMs);
+  }
+
+  public void recordAssembledValueSize(long bytes, long currentTimeMs) {
+    assembledValueSizeSensor.record(bytes, currentTimeMs);
   }
 
   public void recordIngestionFailure() {
