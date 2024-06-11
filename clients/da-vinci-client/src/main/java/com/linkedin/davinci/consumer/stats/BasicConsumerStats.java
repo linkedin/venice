@@ -11,19 +11,13 @@ import io.tehuti.metrics.stats.Max;
 public class BasicConsumerStats extends AbstractVeniceStats {
   private final Sensor maxLagSensor;
   private final Sensor recordsConsumed;
-  private final Sensor minimumConsumingVersion;
   private final Sensor maximumConsumingVersion;
 
   public BasicConsumerStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
     maxLagSensor = registerSensor("max_partition_lag", new Max());
     recordsConsumed = registerSensor("records_consumed", new Avg(), new Max());
-    minimumConsumingVersion = registerSensor("minimum_consuming_version", new Gauge());
     maximumConsumingVersion = registerSensor("maximum_consuming_version", new Gauge());
-  }
-
-  public void recordMinimumConsumingVersion(int version) {
-    minimumConsumingVersion.record(version);
   }
 
   public void recordMaximumConsumingVersion(int version) {

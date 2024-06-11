@@ -984,24 +984,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     @Override
     public void run() {
       while (!Thread.interrupted()) {
-        int maxVersion = -1;
-        int minVersion = Integer.MAX_VALUE;
         for (Map.Entry<Integer, Long> lastHeartbeat: currentVersionLastHeartbeat.entrySet()) {
-          if (lastHeartbeat.getKey() < minVersion) {
-            minVersion = lastHeartbeat.getKey();
-          }
-          if (lastHeartbeat.getKey() > maxVersion) {
-            maxVersion = lastHeartbeat.getKey();
-          }
           changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat.getValue());
         }
-        if (minVersion == Integer.MAX_VALUE) {
-          // This is a nicer looking default in metrics then a big number
-          minVersion = -1;
-        }
+        int maxVersion = compressorMap.keySet().stream().max((x, y) -> x.compareTo(y)).orElseGet(() -> -1);
         // Record max and min consumed versions
         changeCaptureStats.recordMaximumConsumingVersion(maxVersion);
-        changeCaptureStats.recordMinimumConsumingVersion(minVersion);
         try {
           TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
