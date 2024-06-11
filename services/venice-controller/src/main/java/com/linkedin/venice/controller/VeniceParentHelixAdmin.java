@@ -28,6 +28,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
@@ -2259,6 +2260,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
       Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
       Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
+      Optional<Long> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
 
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();
@@ -2605,6 +2607,9 @@ public class VeniceParentHelixAdmin implements Admin {
             "Store's max compaction lag seconds: " + setStore.maxCompactionLagSeconds + " shouldn't be smaller than "
                 + "store's min compaction lag seconds: " + setStore.minCompactionLagSeconds);
       }
+      setStore.maxRecordSizeBytes =
+          maxRecordSizeBytes.map(addToUpdatedConfigList(updatedConfigsList, MAX_RECORD_SIZE_BYTES))
+              .orElseGet(currStore::getMaxRecordSizeBytes);
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();

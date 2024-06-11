@@ -304,7 +304,7 @@ public interface Store {
 
   long getMaxRecordSizeBytes();
 
-  void setMaxRecordSizeBytes(long maxRecordSizeInBytes);
+  void setMaxRecordSizeBytes(long maxRecordSizeBytes);
 
   void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled);
 

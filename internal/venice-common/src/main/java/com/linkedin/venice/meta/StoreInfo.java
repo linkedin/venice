@@ -780,7 +780,7 @@ public class StoreInfo {
   }
 
   public void setMaxRecordSizeBytes(long maxRecordSizeBytes) {
-    this.maxRecordSizeBytes = maxCompactionLagSeconds;
+    this.maxRecordSizeBytes = maxRecordSizeBytes;
   }
 
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {

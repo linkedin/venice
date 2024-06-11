@@ -608,7 +608,8 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGeneration(parentControllerClient);
         testWriteComputeSchemaEnable(parentControllerClient);
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
-        testUpdateCompactionLag(parentControllerClient);
+        testUpdateCompactionLag(parentControllerClient, childControllerClient);
+        testUpdateMaxRecordSize(parentControllerClient, childControllerClient);
       }
     }
   }
@@ -907,7 +908,9 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(schemaResponse.getSchemas().length, 2);
   }
 
-  private void testUpdateCompactionLag(ControllerClient parentControllerClient) {
+  private void testUpdateCompactionLag(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
     // Adding store
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
@@ -930,11 +933,36 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(parentStoreResponse.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      StoreResponse childStoreResponse = parentControllerClient.getStore(storeName);
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
       Assert.assertEquals(childStoreResponse.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
       Assert.assertEquals(childStoreResponse.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
     });
+  }
 
+  private void testUpdateMaxRecordSize(ControllerClient parentController, ControllerClient childController) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String schemaStr =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\", \"default\": 0.0}]}";
+    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
+    parentController.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+
+    StoreResponse defaultParentStoreResponse = parentController.getStore(storeName);
+    Assert.assertEquals(defaultParentStoreResponse.getStore().getMaxRecordSizeBytes(), -1L);
+
+    final long expectedMaxRecordSizeBytes = 7 * 1024 * 1024;
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setMaxRecordSizeBytes(expectedMaxRecordSizeBytes);
+    parentController.updateStore(storeName, params);
+
+    StoreResponse parentStoreResponse = parentController.getStore(storeName);
+    Assert.assertEquals(parentStoreResponse.getStore().getMaxRecordSizeBytes(), expectedMaxRecordSizeBytes);
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreResponse childStoreResponse = childController.getStore(storeName);
+      Assert.assertEquals(childStoreResponse.getStore().getMaxRecordSizeBytes(), expectedMaxRecordSizeBytes);
+    });
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {

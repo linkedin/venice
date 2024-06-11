@@ -42,6 +42,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
@@ -127,7 +128,7 @@ public enum ControllerRoute {
       READ_COMPUTATION_ENABLED, BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
       BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
       FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
-      PERSONA_NAME
+      PERSONA_NAME, MAX_RECORD_SIZE_BYTES
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   ROLLBACK_TO_BACKUP_VERSION(
       "/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
