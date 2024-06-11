@@ -911,6 +911,7 @@ public class VeniceParentHelixAdminTest {
   private void testUpdateConfigs(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
     testUpdateCompactionLag(parentControllerClient, childControllerClient);
     testUpdateMaxRecordSize(parentControllerClient, childControllerClient);
+    testUpdateBlobTransfer(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -969,6 +970,14 @@ public class VeniceParentHelixAdminTest {
         childClient,
         params -> params.setMaxRecordSizeBytes(expectedMaxRecordSizeBytes),
         response -> Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), expectedMaxRecordSizeBytes));
+  }
+
+  private void testUpdateBlobTransfer(ControllerClient parentClient, ControllerClient childClient) {
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setBlobTransferEnabled(true),
+        response -> Assert.assertTrue(response.getStore().isBlobTransferEnabled()));
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {

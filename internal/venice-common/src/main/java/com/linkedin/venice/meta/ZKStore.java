@@ -225,6 +225,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
+    setBlobTransferEnabled(store.isBlobTransferEnabled());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
