@@ -668,7 +668,9 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   public UpdateStoreQueryParams setMaxRecordSizeBytes(long maxRecordSizeBytes) {
-    return putLong(MAX_RECORD_SIZE_BYTES, maxRecordSizeBytes);
+    long maxSize =
+        (getChunkingEnabled().orElse(false) && maxRecordSizeBytes == -1) ? 10 * 1024 * 1024 : maxRecordSizeBytes;
+    return putLong(MAX_RECORD_SIZE_BYTES, maxSize);
   }
 
   public Optional<Long> getMaxRecordSizeBytes() {

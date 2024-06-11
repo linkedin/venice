@@ -2610,6 +2610,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.maxRecordSizeBytes =
           maxRecordSizeBytes.map(addToUpdatedConfigList(updatedConfigsList, MAX_RECORD_SIZE_BYTES))
               .orElseGet(currStore::getMaxRecordSizeBytes);
+      if (setStore.chunkingEnabled && setStore.maxRecordSizeBytes == -1) {
+        setStore.maxRecordSizeBytes = 10 * 1024 * 1024; // 10MB
+      }
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();

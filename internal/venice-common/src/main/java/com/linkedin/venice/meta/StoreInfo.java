@@ -780,7 +780,8 @@ public class StoreInfo {
   }
 
   public void setMaxRecordSizeBytes(long maxRecordSizeBytes) {
-    this.maxRecordSizeBytes = maxRecordSizeBytes;
+    this.maxRecordSizeBytes =
+        (this.chunkingEnabled && maxRecordSizeBytes == -1) ? 10 * 1024 * 1024 : maxRecordSizeBytes;
   }
 
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
