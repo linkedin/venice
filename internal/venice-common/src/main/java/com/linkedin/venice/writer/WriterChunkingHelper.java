@@ -32,7 +32,7 @@ public class WriterChunkingHelper {
    * @param isChunkAwareCallback boolean flag indicating whether to create chunk
    * @param sizeReport supplier function for size report.
    * @param maxSizeForUserPayloadPerMessageInBytes maximum size for payload in a message
-   * @param keyWithChunkingSuffixSerializer Chuncking suffix serializer for key
+   * @param keyWithChunkingSuffixSerializer Chunking suffix serializer for key
    * @param sendMessageFunction Pass in function for sending message
    * @return Chunked payload arrays and manifest.
    */

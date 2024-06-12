@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
@@ -60,11 +61,14 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
@@ -115,6 +119,7 @@ public abstract class TestBatch {
   private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
   protected static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
+  protected static final int MAX_RECORD_VALUE_SIZE = 3 * 1024 * 1024; // 3 MB apiece
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
 
@@ -622,6 +627,10 @@ public abstract class TestBatch {
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         validator);
+
+    // Since chunking was not enabled, verify that the assembled record size metrics are not collected
+    assertUnusedPerStoreMetrics(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES);
+
     // Re-push with Kafka Input
     testRepush(storeName, validator);
   }
@@ -942,6 +951,28 @@ public abstract class TestBatch {
         MetricsRepository metricsRepository) throws Exception;
   }
 
+  private List<Double> getPerStoreMetricValues(String storeName, String sensorName) {
+    String metricName = AbstractVeniceStats.getSensorFullName(storeName, sensorName);
+    List<VeniceServerWrapper> veniceServers = veniceCluster.getVeniceServers();
+    return Arrays.asList(
+        MetricsUtils.getMin(metricName + ".Min", veniceServers), // default=Double.MIN_VALUE
+        MetricsUtils.getMax(metricName + ".Max", veniceServers), // default=Double.MAX_VALUE
+        MetricsUtils.getAvg(metricName + ".Avg", veniceServers)); // default=NaN
+  }
+
+  private void validatePerStoreMetricsRange(String storeName, String sensorName, double minValue, double maxValue) {
+    getPerStoreMetricValues(storeName, sensorName).forEach(value -> {
+      Assert.assertTrue(value >= minValue, "Metric value expected >= " + minValue + " actual=" + value);
+      Assert.assertTrue(value <= maxValue, "Metric value expected <= " + maxValue + " actual=" + value);
+    });
+  }
+
+  private void assertUnusedPerStoreMetrics(String storeName, String sensorName) {
+    getPerStoreMetricValues(storeName, sensorName).forEach(value -> {
+      Assert.assertTrue(value == Double.MIN_VALUE || value == Double.MAX_VALUE || value.isNaN(), "Needs to be invalid");
+    });
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testLargeValues() throws Exception {
     try {
@@ -951,7 +982,16 @@ public abstract class TestBatch {
       // push is expected to fail because of large values
     }
 
-    testStoreWithLargeValues(true);
+    String storeName = testStoreWithLargeValues(true);
+
+    // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
+    // to the metrics sensor, and are within the correct size range. It doesn't work in isolated ingestion mode.
+    if (veniceCluster.getVeniceServers().stream().noneMatch(VeniceServerWrapper::isIsolatedIngestionEnabled)) {
+      int minSize = 1024 * 1024; // 1MB apiece
+      validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, minSize, MAX_RECORD_VALUE_SIZE);
+    } else {
+      assertUnusedPerStoreMetrics(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT * 3, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -987,18 +1027,17 @@ public abstract class TestBatch {
       boolean isChunkingAllowed,
       Consumer<Properties> extraProps,
       String existingStore) throws Exception {
-    int maxValueSize = 3 * 1024 * 1024; // 3 MB apiece
     int numberOfRecords = 10;
 
     InputFileWriter inputFileWriter = inputDir -> new KeyAndValueSchemas(
-        writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, 0, maxValueSize));
+        writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, 0, MAX_RECORD_VALUE_SIZE));
 
     VPJValidator dataValidator = (avroClient, vsonClient, metricsRepository) -> {
       Set<String> keys = new HashSet<>(10);
 
       // Single gets
       for (int i = 0; i < numberOfRecords; i++) {
-        int expectedSize = maxValueSize / numberOfRecords * (i + 1);
+        int expectedSize = MAX_RECORD_VALUE_SIZE / numberOfRecords * (i + 1);
         String key = Integer.toString(i);
         keys.add(key);
         char[] chars = new char[expectedSize];
@@ -1051,7 +1090,7 @@ public abstract class TestBatch {
       Map<String, String> jsonResults = (Map<String, String>) vsonClient.batchGet(keys).get();
       for (String key: keys) {
         int i = Integer.parseInt(key);
-        int expectedSize = maxValueSize / numberOfRecords * (i + 1);
+        int expectedSize = MAX_RECORD_VALUE_SIZE / numberOfRecords * (i + 1);
         char[] chars = new char[expectedSize];
         Arrays.fill(chars, key.charAt(0));
         String expectedString = new String(chars);

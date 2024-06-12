@@ -4,6 +4,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.schema.SchemaReader;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
@@ -11,11 +12,13 @@ import org.apache.avro.generic.GenericRecord;
 
 
 /**
- * Venice avro generic client to provide read compute operations
+ * Venice avro generic client to provide read compute operations. This interface is internal and is subject to change.
  * @param <K>
  * @param <V>
  */
 public interface AvroGenericReadComputeStoreClient<K, V> extends AvroGenericStoreClient<K, V> {
+  SchemaReader getSchemaReader();
+
   boolean isProjectionFieldValidationEnabled();
 
   @Override
@@ -43,7 +46,7 @@ public interface AvroGenericReadComputeStoreClient<K, V> extends AvroGenericStor
   default ComputeRequestBuilder<K> compute(
       Optional<ClientStats> stats,
       AvroGenericReadComputeStoreClient computeStoreClient) throws VeniceClientException {
-    return new AvroComputeRequestBuilderV3<K>(computeStoreClient, getLatestValueSchema()).setStats(stats)
+    return new AvroComputeRequestBuilderV3<K>(computeStoreClient, getSchemaReader()).setStats(stats)
         .setValidateProjectionFields(isProjectionFieldValidationEnabled());
   }
 

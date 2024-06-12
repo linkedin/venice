@@ -213,6 +213,27 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
+  public void testGetValueSchemaId()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+    AbstractAvroStoreClient mockClient = getMockStoreClient(false);
+
+    final Schema sameCanonicalSchemaAsValueSchema2 =
+        AvroCompatibilityHelper.parse(loadFileAsStringQuietlyWithErrorLogged("SameCanonicalAsRecordValueSchema2.avsc"));
+
+    final Schema invalidValueSchema =
+        AvroCompatibilityHelper.parse(loadFileAsStringQuietlyWithErrorLogged("testSchemaWithNamespace.avsc"));
+
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      Assert.assertEquals(schemaReader.getValueSchemaId(VALUE_SCHEMA_1), 1);
+      Assert.assertEquals(schemaReader.getValueSchemaId(VALUE_SCHEMA_2), 2);
+      Assert.assertEquals(schemaReader.getValueSchemaId(sameCanonicalSchemaAsValueSchema2), 2);
+      VeniceClientException e =
+          Assert.expectThrows(VeniceClientException.class, () -> schemaReader.getValueSchemaId(invalidValueSchema));
+      Assert.assertTrue(e.getMessage().contains("Could not find schema"));
+    }
+  }
+
+  @Test
   public void testGetUpdateSchema()
       throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     AbstractAvroStoreClient storeClient = getMockStoreClient(true);

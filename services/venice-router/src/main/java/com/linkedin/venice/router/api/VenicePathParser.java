@@ -90,6 +90,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
 
   public static final String TYPE_CURRENT_VERSION = RouterResourceType.TYPE_CURRENT_VERSION.toString();
 
+  public static final String TYPE_BLOB_DISCOVERY = RouterResourceType.TYPE_BLOB_DISCOVERY.toString();
+
   private final VeniceVersionFinder versionFinder;
   private final VenicePartitionFinder partitionFinder;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;

@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
@@ -21,9 +22,9 @@ public final class SchemaData {
   private final String storeName;
   private SchemaEntry keySchema;
   private final SparseConcurrentList<SchemaEntry> valueSchemaMap;
-  private final Map<SchemaEntry, Integer> valueSchemaRMap;
+  private final Map<SchemaEntry, Integer> canonicalValueSchemaRMap;
   private final Map<GeneratedSchemaID, DerivedSchemaEntry> updateSchemaMap;
-  private final Map<String, GeneratedSchemaID> updateSchemaRMap;
+  private final Map<String, GeneratedSchemaID> canonicalUpdateSchemaRMap;
   private final Map<RmdVersionId, RmdSchemaEntry> rmdSchemaMap;
   private final List<Object> updateSchemaExistenceSet;
   private final List<Object> rmdSchemaExistenceSet;
@@ -39,10 +40,10 @@ public final class SchemaData {
     this.keySchema = keySchema;
     this.maxValueSchemaId = INVALID_VALUE_SCHEMA_ID;
     this.valueSchemaMap = new SparseConcurrentList<>();
-    this.valueSchemaRMap = new VeniceConcurrentHashMap<>();
+    this.canonicalValueSchemaRMap = new VeniceConcurrentHashMap<>();
 
     this.updateSchemaMap = new VeniceConcurrentHashMap<>();
-    this.updateSchemaRMap = new VeniceConcurrentHashMap<>();
+    this.canonicalUpdateSchemaRMap = new VeniceConcurrentHashMap<>();
 
     this.rmdSchemaMap = new VeniceConcurrentHashMap<>();
 
@@ -75,7 +76,10 @@ public final class SchemaData {
       this.maxValueSchemaId = Math.max(valueSchema.getId(), this.maxValueSchemaId);
     }
     this.valueSchemaMap.set(valueSchema.getId(), valueSchema);
-    this.valueSchemaRMap.put(valueSchema, valueSchema.getId());
+
+    String canonicalSchema = AvroCompatibilityHelper.toParsingForm(valueSchema.getSchema());
+    SchemaEntry canonicalValueSchemaEntry = new SchemaEntry(valueSchema.getId(), canonicalSchema);
+    this.canonicalValueSchemaRMap.putIfAbsent(canonicalValueSchemaEntry, valueSchema.getId());
   }
 
   public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int derivedSchemaId) {
@@ -87,14 +91,14 @@ public final class SchemaData {
   }
 
   public GeneratedSchemaID getDerivedSchemaId(String schemaStr) {
-    return updateSchemaRMap.getOrDefault(schemaStr, GeneratedSchemaID.INVALID);
+    return canonicalUpdateSchemaRMap.getOrDefault(schemaStr, GeneratedSchemaID.INVALID);
   }
 
   public void addDerivedSchema(DerivedSchemaEntry derivedSchemaEntry) {
     GeneratedSchemaID derivedSchemaId =
         new GeneratedSchemaID(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
     updateSchemaMap.put(derivedSchemaId, derivedSchemaEntry);
-    updateSchemaRMap.put(derivedSchemaEntry.getSchemaStr(), derivedSchemaId);
+    canonicalUpdateSchemaRMap.put(derivedSchemaEntry.getSchemaStr(), derivedSchemaId);
     updateSchemaExistenceSet.set(derivedSchemaEntry.getValueSchemaID(), new Object());
   }
 
@@ -102,8 +106,15 @@ public final class SchemaData {
     return maxValueSchemaId;
   }
 
+  /**
+   * Return the schema ID of any schema that has the same parsing canonical form as the schema provided.
+   * @param entry The {@link SchemaEntry} for which the schema ID is needed
+   * @return The ID of the schema that has the same parsing canonical form as the schema provided
+   */
   public int getSchemaID(SchemaEntry entry) {
-    return valueSchemaRMap.getOrDefault(entry, INVALID_VALUE_SCHEMA_ID);
+    String canonicalSchema = AvroCompatibilityHelper.toParsingForm(entry.getSchema());
+    SchemaEntry canonicalValueSchemaEntry = new SchemaEntry(entry.getId(), canonicalSchema);
+    return canonicalValueSchemaRMap.getOrDefault(canonicalValueSchemaEntry, INVALID_VALUE_SCHEMA_ID);
   }
 
   public Collection<SchemaEntry> getValueSchemas() {
@@ -136,6 +147,6 @@ public final class SchemaData {
     // value schema should be unique in store level, same as schema id
     int id = valueSchema.getId();
     valueSchemaMap.remove(id);
-    valueSchemaRMap.remove(valueSchema);
+    canonicalValueSchemaRMap.remove(valueSchema);
   }
 }

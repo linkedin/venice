@@ -189,6 +189,7 @@ import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
@@ -4427,6 +4428,77 @@ public abstract class StoreIngestionTaskTest {
     // Verify transformer error was recorded
     verify(mockVersionedStorageIngestionStats)
         .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+  }
+
+  @DataProvider
+  public static Object[][] testAssembledValueSizeProvider() {
+    Set<Integer> schemaIdSet = new HashSet<>();
+    for (AvroProtocolDefinition avroProtocolDefinition: AvroProtocolDefinition.values()) {
+      avroProtocolDefinition.currentProtocolVersion.ifPresent(schemaIdSet::add);
+    }
+    return DataProviderUtils.allPermutationGenerator(AAConfig.values(), schemaIdSet.toArray());
+  }
+
+  /**
+   * Create messages for a chunked record (in multiple chunks) and its manifest, and verify that the drainer
+   * records the size of the chunked record as described in the size field of the manifest.
+   * Also, verify that metrics are only emitted when the correct schemaId=-20 is on the manifest message,
+   * and not emitted on any other invalid schemaId values.
+   * @throws Exception
+   */
+  @Test(dataProvider = "testAssembledValueSizeProvider")
+  public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId) throws Exception {
+    int numChunks = 10;
+    long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH;
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
+    for (int i = 0; i < numChunks; i++) {
+      messages.add(ChunkingTestUtils.createChunkedRecord(putKeyFoo, 1, 1, i, 0, tp));
+    }
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
+        ChunkingTestUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
+    messages.add(manifestMessage);
+
+    // The only expected real-life case should be when schemaId values are chunk=-10 and manifest=-20
+    boolean useRealSchemaId = testSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
+        try {
+          Put put = (Put) message.getValue().getPayloadUnion();
+          if (!useRealSchemaId) {
+            put.schemaId = testSchemaId;
+          }
+          LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+          when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+          when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+          when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
+
+          storeIngestionTaskUnderTest.produceToStoreBufferService(
+              message,
+              leaderProducedRecordContext,
+              PARTITION_FOO,
+              localKafkaConsumerService.kafkaUrl,
+              System.nanoTime(),
+              System.currentTimeMillis());
+        } catch (InterruptedException e) {
+          throw new VeniceException(e);
+        }
+      }
+    }, aaConfig);
+
+    // Verify that the size of the assembled record was recorded in the metrics only if schemaId=-20
+    HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
+    if (useRealSchemaId) {
+      verify(hostLevelIngestionStats).recordAssembledValueSize(eq(expectedRecordSize), anyLong());
+      verify(hostLevelIngestionStats, times(1)).recordAssembledValueSize(anyLong(), anyLong());
+    } else {
+      verify(hostLevelIngestionStats, times(0)).recordAssembledValueSize(anyLong(), anyLong());
+    }
   }
 
   @Test

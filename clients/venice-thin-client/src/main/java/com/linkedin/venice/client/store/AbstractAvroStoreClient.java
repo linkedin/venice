@@ -196,7 +196,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return transportClient;
   }
 
-  protected SchemaReader getSchemaReader() {
+  @Override
+  public SchemaReader getSchemaReader() {
     return schemaReader;
   }
 
@@ -677,7 +678,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       TransportClientStreamingCallback callback,
       Optional<ClientStats> stats) throws VeniceClientException {
     Map<String, String> headers = new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V3);
-    int schemaId = getSchemaReader().getValueSchemaId(computeRequest.getValueSchema());
+    int schemaId = computeRequest.getValueSchemaID();
     headers.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
     headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));
     if (!clientConfig.isRemoteComputationOnly()) {
@@ -790,6 +791,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return getSchemaReader().getKeySchema();
   }
 
+  @Deprecated
   @Override
   public Schema getLatestValueSchema() {
     return getSchemaReader().getLatestValueSchema();

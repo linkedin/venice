@@ -31,6 +31,7 @@ import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKey
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
@@ -618,9 +619,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     headers.put(
         HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
-    headers.put(
-        VENICE_COMPUTE_VALUE_SCHEMA_ID,
-        Integer.toString(metadata.getValueSchemaId(computeRequest.getValueSchema())));
+    headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(computeRequest.getValueSchemaID()));
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
         getComputeResultRecordDeserializer(resultSchema);
@@ -869,8 +868,14 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return metadata.getKeySchema();
   }
 
+  @Deprecated
   @Override
   public Schema getLatestValueSchema() {
     return metadata.getLatestValueSchema();
+  }
+
+  @Override
+  public SchemaReader getSchemaReader() {
+    return metadata;
   }
 }
