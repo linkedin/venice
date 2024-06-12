@@ -74,6 +74,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.StoreUtils;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -669,9 +670,8 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   public UpdateStoreQueryParams setMaxRecordSizeBytes(long maxRecordSizeBytes) {
-    long maxSize =
-        (getChunkingEnabled().orElse(false) && maxRecordSizeBytes == -1) ? 10 * 1024 * 1024 : maxRecordSizeBytes;
-    return putLong(MAX_RECORD_SIZE_BYTES, maxSize);
+    long maxSizeBytes = StoreUtils.getMaxRecordSizeBytes(getChunkingEnabled().orElse(false), maxRecordSizeBytes);
+    return putLong(MAX_RECORD_SIZE_BYTES, maxSizeBytes);
   }
 
   public Optional<Long> getMaxRecordSizeBytes() {

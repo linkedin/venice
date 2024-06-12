@@ -5,6 +5,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.utils.StoreUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -780,8 +781,7 @@ public class StoreInfo {
   }
 
   public void setMaxRecordSizeBytes(long maxRecordSizeBytes) {
-    this.maxRecordSizeBytes =
-        (this.chunkingEnabled && maxRecordSizeBytes == -1) ? 10 * 1024 * 1024 : maxRecordSizeBytes;
+    this.maxRecordSizeBytes = StoreUtils.getMaxRecordSizeBytes(this.chunkingEnabled, maxRecordSizeBytes);
   }
 
   public void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {

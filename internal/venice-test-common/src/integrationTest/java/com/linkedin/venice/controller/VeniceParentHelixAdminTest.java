@@ -48,6 +48,7 @@ import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -965,7 +966,7 @@ public class VeniceParentHelixAdminTest {
   }
 
   private void testUpdateMaxRecordSize(ControllerClient parentClient, ControllerClient childClient) {
-    final long expectedMaxRecordSizeBytes = 7 * 1024 * 1024;
+    final long expectedMaxRecordSizeBytes = 7L * 1024 * 1024;
     testUpdateConfig(
         parentClient,
         childClient,
@@ -974,7 +975,7 @@ public class VeniceParentHelixAdminTest {
   }
 
   private void testChunkingMaxRecordSize(ControllerClient parentClient, ControllerClient childClient) {
-    final long expectedDefaultMaxRecordSizeBytesWithChunking = 10 * 1024 * 1024;
+    final long expectedDefaultMaxRecordSizeBytesWithChunking = StoreUtils.DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING;
     testUpdateConfig(parentClient, childClient, params -> params.setChunkingEnabled(true), response -> {
       Assert.assertTrue(response.getStore().isChunkingEnabled());
       Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), expectedDefaultMaxRecordSizeBytesWithChunking);

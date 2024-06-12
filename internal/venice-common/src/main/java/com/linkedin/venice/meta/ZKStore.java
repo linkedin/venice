@@ -859,7 +859,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setMaxRecordSizeBytes(long maxRecordSizeBytes) {
     this.storeProperties.maxRecordSizeBytes =
-        (this.storeProperties.chunkingEnabled && maxRecordSizeBytes == -1) ? 10 * 1024 * 1024 : maxRecordSizeBytes;
+        StoreUtils.getMaxRecordSizeBytes(this.storeProperties.chunkingEnabled, maxRecordSizeBytes);
   }
 
   @Override

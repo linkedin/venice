@@ -83,6 +83,7 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -1791,7 +1792,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .setBootstrapToOnlineTimeoutInHours(48)
         .setReplicationFactor(2)
         .setBlobTransferEnabled(false)
-        .setMaxRecordSizeBytes(10L * 1024 * 1024);
+        .setMaxRecordSizeBytes(StoreUtils.DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING);
 
     parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
 
@@ -1826,7 +1827,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
     Assert.assertEquals(updateStore.replicationFactor, 2);
     Assert.assertFalse(updateStore.blobTransferEnabled);
-    Assert.assertEquals(updateStore.maxRecordSizeBytes, 10L * 1024 * 1024);
+    Assert.assertEquals(updateStore.maxRecordSizeBytes, StoreUtils.DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING);
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));

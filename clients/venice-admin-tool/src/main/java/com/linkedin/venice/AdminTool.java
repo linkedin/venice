@@ -1153,11 +1153,7 @@ public class AdminTool {
     longParam(cmd, Arg.MAX_COMPACTION_LAG_SECONDS, p -> params.setMaxCompactionLagSeconds(p), argSet);
     booleanParam(cmd, Arg.UNUSED_SCHEMA_DELETION_ENABLED, p -> params.setUnusedSchemaDeletionEnabled(p), argSet);
     booleanParam(cmd, Arg.BLOB_TRANSFER_ENABLED, p -> params.setBlobTransferEnabled(p), argSet);
-
     longParam(cmd, Arg.MAX_RECORD_SIZE_BYTES, params::setMaxRecordSizeBytes, argSet);
-    if (params.getChunkingEnabled().orElse(false) && params.getMaxRecordSizeBytes().orElse(-1L) == -1L) {
-      params.setMaxRecordSizeBytes(10 * 1024 * 1024);
-    }
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
