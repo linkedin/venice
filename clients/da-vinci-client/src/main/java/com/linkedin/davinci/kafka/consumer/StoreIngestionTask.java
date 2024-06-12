@@ -1376,6 +1376,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
+      if (recordTransformer != null) {
+        recordTransformer.onStartIngestionTask();
+      }
+
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
         processConsumerActions(store);
@@ -3592,6 +3596,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // The operation is executed on a single thread in run method.
     // This method signals the run method to end, which closes the
     // resources before exiting.
+
+    if (recordTransformer != null) {
+      recordTransformer.onEndIngestionTask();
+    }
   }
 
   /**
