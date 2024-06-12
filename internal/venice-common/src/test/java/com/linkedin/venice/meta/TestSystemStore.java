@@ -105,6 +105,7 @@ public class TestSystemStore {
     assertEquals(systemStore.getNativeReplicationSourceFabric(), "");
     assertFalse(systemStore.isDaVinciPushStatusStoreEnabled());
     assertFalse(systemStore.isBlobTransferEnabled());
+    assertEquals(systemStore.getMaxRecordSizeBytes(), -1L);
 
     // All the shared store-level property update should throw exception
     assertThrows(() -> systemStore.setOwner("test"));
@@ -137,6 +138,7 @@ public class TestSystemStore {
     assertThrows(() -> systemStore.setMigrationDuplicateStore(true));
     assertThrows(() -> systemStore.setNativeReplicationSourceFabric(""));
     assertThrows(() -> systemStore.setDaVinciPushStatusStoreEnabled(true));
+    assertThrows(() -> systemStore.setMaxRecordSizeBytes(1L));
 
     // SystemStores property for SystemStore is not supported.
     assertThrows(() -> systemStore.getSystemStores());
