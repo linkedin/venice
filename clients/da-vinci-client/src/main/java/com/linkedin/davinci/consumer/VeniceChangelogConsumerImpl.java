@@ -405,8 +405,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       pubSubConsumer.subscribe(topicPartition, targetOffset);
     } catch (PubSubTopicDoesNotExistException ex) {
       throw new VeniceCoordinateOutOfRangeException(
-          "Version does not exist! Checkpoint contained version: " + topicPartition.getTopicName()
-              + " please seek to beginning!",
+          "Version does not exist! Checkpoint contained version: " + topicPartition.getTopicName() + " for partition "
+              + topicPartition.getPartitionNumber() + "please seek to beginning!",
           ex);
     }
     LOGGER.info("Topic partition: {} consumer seek to offset: {}", topicPartition, targetOffset);
