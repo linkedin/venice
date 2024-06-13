@@ -451,6 +451,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
     if (recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
+      versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
+      versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
     }
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -1377,7 +1379,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
       if (recordTransformer != null) {
+        long startTime = System.currentTimeMillis();
         recordTransformer.onStartIngestionTask();
+        long endTime = System.currentTimeMillis();
+        versionedIngestionStats.recordTransformerLifecycleStartLatency(
+            storeName,
+            versionNumber,
+            LatencyUtils.getElapsedTimeFromMsToMs(startTime),
+            endTime);
       }
 
       while (isRunning()) {
@@ -3598,7 +3607,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // resources before exiting.
 
     if (recordTransformer != null) {
+      long startTime = System.currentTimeMillis();
       recordTransformer.onEndIngestionTask();
+      long endTime = System.currentTimeMillis();
+      versionedIngestionStats.recordTransformerLifecycleEndLatency(
+          storeName,
+          versionNumber,
+          LatencyUtils.getElapsedTimeFromMsToMs(startTime),
+          endTime);
     }
   }
 
