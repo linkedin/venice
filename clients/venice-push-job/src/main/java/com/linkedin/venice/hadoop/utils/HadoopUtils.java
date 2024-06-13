@@ -63,7 +63,7 @@ public class HadoopUtils {
    * @throws IOException
    */
   public static void createDirectoryWithPermission(Path path, FsPermission permission) throws IOException {
-    LOGGER.info("Trying to create path {} with permission {}", path.getName(), permission);
+    LOGGER.info("Trying to create path {} with permission {}", path, permission);
     FileSystem fs = path.getFileSystem(new Configuration());
     // check if the path needs to be created
     if (fs.exists(path)) {
@@ -77,7 +77,7 @@ public class HadoopUtils {
         fs.setPermission(path, permission);
       }
     } else {
-      LOGGER.info("Creating path {} with permission {}", path.getName(), permission);
+      LOGGER.info("Creating path {} with permission {}", path, permission);
       fs.mkdirs(path);
       // mkdirs(path,permission) didn't set the right permission when
       // tested in hdfs, so splitting it like this, it works!
