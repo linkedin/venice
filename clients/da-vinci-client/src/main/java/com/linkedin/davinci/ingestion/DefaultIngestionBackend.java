@@ -1,7 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -13,7 +12,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -24,7 +22,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * The default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
  */
-public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
+public class DefaultIngestionBackend implements IngestionBackend {
   private static final Logger LOGGER = LogManager.getLogger(DefaultIngestionBackend.class);
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
@@ -101,36 +99,8 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void promoteToLeader(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    LOGGER.info("Promoting partition: {} of topic: {} to leader.", partition, storeConfig.getStoreVersionName());
-    getStoreIngestionService().promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
-  }
-
-  @Override
-  public void demoteToStandby(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    LOGGER.info("Demoting partition: {} of topic: {} to standby.", partition, storeConfig.getStoreVersionName());
-    getStoreIngestionService().demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
-  }
-
-  @Override
   public void addIngestionNotifier(VeniceNotifier ingestionListener) {
     getStoreIngestionService().addIngestionNotifier(ingestionListener);
-  }
-
-  @Override
-  public void addPushStatusNotifier(VeniceNotifier pushStatusNotifier) {
-    getStoreIngestionService().addIngestionNotifier(pushStatusNotifier);
-  }
-
-  @Override
-  public void replaceAndAddTestPushStatusNotifier(VeniceNotifier pushStatusNotifier) {
-    getStoreIngestionService().replaceAndAddTestNotifier(pushStatusNotifier);
   }
 
   @Override
@@ -147,11 +117,6 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   @Override
   public KafkaStoreIngestionService getStoreIngestionService() {
     return storeIngestionService;
-  }
-
-  @Override
-  public Map<String, Set<Integer>> getLoadedStoreUserPartitionsMapping() {
-    return storageService.getStoreAndUserPartitionsMapping();
   }
 
   @Override

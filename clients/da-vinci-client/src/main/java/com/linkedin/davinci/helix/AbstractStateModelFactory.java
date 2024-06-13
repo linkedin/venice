@@ -1,7 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -21,7 +21,7 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class AbstractStateModelFactory extends StateModelFactory<StateModel> {
   protected final Logger logger = LogManager.getLogger(getClass());
-  private final VeniceIngestionBackend ingestionBackend;
+  private final IngestionBackend ingestionBackend;
   private final VeniceConfigLoader configService;
   protected final ReadOnlyStoreRepository storeMetadataRepo;
 
@@ -34,7 +34,7 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
   protected final String instanceName;
 
   public AbstractStateModelFactory(
-      VeniceIngestionBackend ingestionBackend,
+      IngestionBackend ingestionBackend,
       VeniceConfigLoader configService,
       ExecutorService executorService,
       ParticipantStateTransitionStats stateTransitionStats,
@@ -80,7 +80,7 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
     return storeMetadataRepo;
   }
 
-  public VeniceIngestionBackend getIngestionBackend() {
+  public IngestionBackend getIngestionBackend() {
     return ingestionBackend;
   }
 

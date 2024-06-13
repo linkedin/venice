@@ -6,13 +6,10 @@ import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.helix.HelixParticipationService;
-import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
-import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
-import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
@@ -43,7 +40,6 @@ import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.ServerReadMetadataRepository;
 import com.linkedin.venice.listener.ServerStoreAclHandler;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -173,7 +169,7 @@ public class VeniceServer {
     }
 
     this.isStarted = new AtomicBoolean(false);
-    this.services = Lazy.of(() -> createServices());
+    this.services = Lazy.of(this::createServices);
     this.veniceConfigLoader = ctx.getVeniceConfigLoader();
     this.metricsRepository = ctx.getMetricsRepository();
     this.icProvider = ctx.getIcProvider();
@@ -311,43 +307,18 @@ public class VeniceServer {
         ? new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled)
         : null;
 
-    // Add extra safeguards here to ensure we have released RocksDB database locks before we initialize storage
-    // services.
-    IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(veniceConfigLoader);
     // Create and add StorageService. storeRepository will be populated by StorageService
-    if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      // Venice Server does not require bootstrap step, so there is no need to open and close all local storage engines.
-      storageService = new StorageService(
-          veniceConfigLoader,
-          storageEngineStats,
-          rocksDBMemoryStats,
-          storeVersionStateSerializer,
-          partitionStateSerializer,
-          metadataRepo,
-          false,
-          false);
-      LOGGER.info("Create {} for ingestion isolation.", MainIngestionStorageMetadataService.class.getName());
-      MainIngestionStorageMetadataService ingestionStorageMetadataService = new MainIngestionStorageMetadataService(
-          veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort(),
-          partitionStateSerializer,
-          new MetadataUpdateStats(metricsRepository),
-          veniceConfigLoader,
-          storageService.getStoreVersionStateSyncer());
-      services.add(ingestionStorageMetadataService);
-      storageMetadataService = ingestionStorageMetadataService;
-    } else {
-      storageService = new StorageService(
-          veniceConfigLoader,
-          storageEngineStats,
-          rocksDBMemoryStats,
-          storeVersionStateSerializer,
-          partitionStateSerializer,
-          metadataRepo);
-      storageEngineMetadataService =
-          new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
-      services.add(storageEngineMetadataService);
-      storageMetadataService = storageEngineMetadataService;
-    }
+    storageService = new StorageService(
+        veniceConfigLoader,
+        storageEngineStats,
+        rocksDBMemoryStats,
+        storeVersionStateSerializer,
+        partitionStateSerializer,
+        metadataRepo);
+    storageEngineMetadataService =
+        new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+    services.add(storageEngineMetadataService);
+    storageMetadataService = storageEngineMetadataService;
     services.add(storageService);
 
     // Create stats for RocksDB
@@ -661,7 +632,7 @@ public class VeniceServer {
           "Shutdown completed in {} ms (or {} minutes) ",
           elapsedTimeInMs,
           TimeUnit.MILLISECONDS.toMinutes(elapsedTimeInMs));
-      if (exceptions.size() > 0) {
+      if (!exceptions.isEmpty()) {
         throw new VeniceException(exceptions.get(0));
       }
       isStarted.set(false);

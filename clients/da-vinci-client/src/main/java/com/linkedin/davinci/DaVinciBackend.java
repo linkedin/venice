@@ -12,8 +12,8 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.ingestion.DaVinciIngestionBackend;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
@@ -102,7 +102,7 @@ public class DaVinciBackend implements Closeable {
   private final ExecutorService ingestionReportExecutor = Executors.newSingleThreadExecutor();
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Optional<ObjectCacheBackend> cacheBackend;
-  private DaVinciIngestionBackend ingestionBackend;
+  private IngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
 
@@ -424,7 +424,6 @@ public class DaVinciBackend implements Closeable {
     ingestionBackend = isIsolatedIngestion()
         ? new IsolatedIngestionBackend(
             configLoader,
-            storeRepository,
             metricsRepository,
             storageMetadataService,
             ingestionService,
@@ -458,7 +457,7 @@ public class DaVinciBackend implements Closeable {
        * {@link KafkaStoreIngestionService#shutdownStoreIngestionTask}, which can take up to 10s to return.
        * So here we use a thread pool to shut down all the subscribed stores concurrently.
        */
-      storeBackendCloseExecutor.submit(() -> storeBackend.close());
+      storeBackendCloseExecutor.submit(storeBackend::close);
     }
     storeBackendCloseExecutor.shutdown();
     try {
@@ -545,7 +544,7 @@ public class DaVinciBackend implements Closeable {
     return ingestionService;
   }
 
-  public DaVinciIngestionBackend getIngestionBackend() {
+  public IngestionBackend getIngestionBackend() {
     return ingestionBackend;
   }
 

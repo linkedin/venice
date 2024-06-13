@@ -20,7 +20,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.ingestion.DaVinciIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.ConfigKeys;
@@ -66,7 +66,7 @@ public class StoreBackendTest {
   Map<String, VersionBackend> versionMap;
   MetricsRepository metricsRepository;
   StorageService storageService;
-  DaVinciIngestionBackend ingestionBackend;
+  IngestionBackend ingestionBackend;
   StorageEngineBackedCompressorFactory compressorFactory;
 
   @BeforeMethod
@@ -84,7 +84,7 @@ public class StoreBackendTest {
     versionMap = new HashMap<>();
     metricsRepository = new MetricsRepository();
     storageService = mock(StorageService.class);
-    ingestionBackend = mock(DaVinciIngestionBackend.class);
+    ingestionBackend = mock(IngestionBackend.class);
     compressorFactory = mock(StorageEngineBackedCompressorFactory.class);
     backend = mock(DaVinciBackend.class);
     when(backend.getExecutor()).thenReturn(executor);

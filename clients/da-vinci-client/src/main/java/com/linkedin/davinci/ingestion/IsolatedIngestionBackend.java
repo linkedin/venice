@@ -1,14 +1,11 @@
 package com.linkedin.davinci.ingestion;
 
-import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.DEMOTE_TO_STANDBY;
-import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.PROMOTE_TO_LEADER;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.REMOVE_PARTITION;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.STOP_CONSUMPTION;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
@@ -20,23 +17,15 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.locks.AutoCloseableLock;
-import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashSet;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -55,8 +44,7 @@ import org.apache.logging.log4j.Logger;
  * The implementation of APIs in this class should consider the states in both main process and child process, as we need
  * to make sure we send the command to the correct process which holds the target storage engine.
  */
-public class IsolatedIngestionBackend extends DefaultIngestionBackend
-    implements DaVinciIngestionBackend, VeniceIngestionBackend {
+public class IsolatedIngestionBackend extends DefaultIngestionBackend implements IngestionBackend {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionBackend.class);
   private static final int RETRY_WAIT_TIME_IN_MS = Time.MS_PER_SECOND;
   private final MainIngestionRequestClient mainIngestionRequestClient;
@@ -64,11 +52,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   private final VeniceConfigLoader configLoader;
   private final ExecutorService completionReportHandlingExecutor = Executors.newFixedThreadPool(10);
   private Process isolatedIngestionServiceProcess;
-  private AtomicBoolean isShuttingDown = new AtomicBoolean(false);
 
   public IsolatedIngestionBackend(
       VeniceConfigLoader configLoader,
-      ReadOnlyStoreRepository storeRepository,
       MetricsRepository metricsRepository,
       StorageMetadataService storageMetadataService,
       KafkaStoreIngestionService storeIngestionService,
@@ -84,7 +70,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     // Create and start the ingestion report listener.
     try {
       mainIngestionMonitorService = new MainIngestionMonitorService(this, configLoader);
-      mainIngestionMonitorService.setStoreRepository(storeRepository);
       mainIngestionMonitorService.setMetricsRepository(metricsRepository);
       mainIngestionMonitorService.setStoreIngestionService(storeIngestionService);
       mainIngestionMonitorService
@@ -134,36 +119,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     }));
 
     return future;
-  }
-
-  @Override
-  public void promoteToLeader(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(topicName, partition, PROMOTE_TO_LEADER, () -> {
-      boolean result = mainIngestionRequestClient.promoteToLeader(topicName, partition);
-      if (result) {
-        getMainIngestionMonitorService().setTopicPartitionToLeaderState(topicName, partition);
-      }
-      return result;
-    }, () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
-  }
-
-  @Override
-  public void demoteToStandby(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(topicName, partition, DEMOTE_TO_STANDBY, () -> {
-      boolean result = mainIngestionRequestClient.demoteToStandby(topicName, partition);
-      if (result) {
-        getMainIngestionMonitorService().setTopicIngestionToFollowerState(topicName, partition);
-      }
-      return result;
-    }, () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
   }
 
   @Override
@@ -223,57 +178,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     }
   }
 
-  @Override
-  public void addPushStatusNotifier(VeniceNotifier pushStatusNotifier) {
-    if (pushStatusNotifier != null) {
-      VeniceNotifier localPushStatusNotifier = new RelayNotifier(pushStatusNotifier) {
-        @Override
-        public void restarted(String kafkaTopic, int partition, long offset, String message) {
-          /**
-           * For push status notifier in main process, we should not report STARTED to push monitor, as END_OF_PUSH_RECEIVED
-           * has been reported by child process, and it will violates push status state machine transition checks.
-           */
-        }
-      };
-      getStoreIngestionService().addIngestionNotifier(localPushStatusNotifier);
-
-      VeniceNotifier isolatedPushStatusNotifier = new RelayNotifier(pushStatusNotifier) {
-        @Override
-        public void completed(String kafkaTopic, int partition, long offset, String message) {
-          // No-op. We should only report COMPLETED once when the partition is ready to serve in main process.
-        }
-      };
-      mainIngestionMonitorService.addPushStatusNotifier(isolatedPushStatusNotifier);
-    }
-  }
-
-  @Override
-  public void prepareForShutdown() {
-    isShuttingDown.set(true);
-  }
-
-  @Override
-  public Map<String, Set<Integer>> getLoadedStoreUserPartitionsMapping() {
-    /**
-     * Merge the loaded store partitions from main process and isolated process.
-     */
-    Map<String, Set<Integer>> localMapping = super.getLoadedStoreUserPartitionsMapping();
-    LoadedStoreUserPartitionMapping isolatedMapping = mainIngestionRequestClient.getLoadedStoreUserPartitionMapping();
-    LOGGER.info(
-        "Got loaded store partition mapping from isolated process: {}",
-        isolatedMapping.storeUserPartitionMapping);
-    isolatedMapping.storeUserPartitionMapping.forEach((storeVersion, storePartitions) -> {
-      localMapping.compute(storeVersion.toString(), (ignored, v) -> {
-        if (v == null) {
-          v = new HashSet<>();
-        }
-        v.addAll(storePartitions);
-        return v;
-      });
-    });
-    return localMapping;
-  }
-
   public void setIsolatedIngestionServiceProcess(Process process) {
     isolatedIngestionServiceProcess = process;
   }
@@ -288,10 +192,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
 
   public MainIngestionRequestClient getMainIngestionRequestClient() {
     return mainIngestionRequestClient;
-  }
-
-  public boolean isShuttingDown() {
-    return isShuttingDown.get();
   }
 
   void removeTopicPartitionLocally(
@@ -416,22 +316,17 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         // Start consumption should set up resource ingestion status for tracking purpose.
         getMainIngestionMonitorService().setVersionPartitionToIsolatedIngestion(topicName, partition);
       }
-      // Acquire read lock here to guard against race condition between Helix state transition and restart of forked
-      // process.
-      try (AutoCloseableLock ignored =
-          AutoCloseableSingleLock.of(getMainIngestionMonitorService().getForkProcessActionLock().readLock())) {
-        try {
-          if (isolatedProcessCommandSupplier.get()) {
-            return;
-          }
-        } catch (Exception e) {
-          if (command.equals(START_CONSUMPTION)) {
-            // Failure in start consumption request should reset the resource ingestion status.
-            LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
-            getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
-          }
-          throw e;
+      try {
+        if (isolatedProcessCommandSupplier.get()) {
+          return;
         }
+      } catch (Exception e) {
+        if (command.equals(START_CONSUMPTION)) {
+          // Failure in start consumption request should reset the resource ingestion status.
+          LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
+          getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
+        }
+        throw e;
       }
 
       /**
@@ -449,18 +344,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
             partition,
             command);
         mainProcessCommandRunnable.run();
-        return;
-      }
-      /**
-       * This is an extra safeguard during server shutdown to make sure we will not stuck in any state transition when
-       * resource metadata is out of sync between main and child process. We will log and skip the stopConsumption action.
-       * In fact, the resources will actually be stopped when {@link KafkaStoreIngestionService} is stopped in both
-       * processed.
-       */
-      if (isShuttingDown()) {
-        LOGGER.warn(
-            "Command {} rejected by remote ingestion process, but will not retry since server is shutting down.",
-            command);
         return;
       }
 
