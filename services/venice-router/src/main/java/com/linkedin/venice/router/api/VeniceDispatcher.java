@@ -157,7 +157,8 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
           throw throwable;
         }
 
-        if (statusCode < HttpStatus.SC_INTERNAL_SERVER_ERROR) {
+        // Do not mark storage node fast for 429 status code
+        if (statusCode < HttpStatus.SC_INTERNAL_SERVER_ERROR && statusCode != HttpStatus.SC_TOO_MANY_REQUESTS) {
           path.markStorageNodeAsFast(storageNode.getNodeId());
         }
 
