@@ -364,6 +364,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
             .setChunkingEnabled(chunkingEnabled)
             .setRmdChunkingEnabled(rmdChunkingEnabled)
             .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(getPartitionCount())
             .setPartitioner(partitioner)
             .build();
     return veniceWriterFactoryFactory.createVeniceWriter(options);
