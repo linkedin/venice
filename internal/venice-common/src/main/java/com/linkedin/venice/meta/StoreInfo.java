@@ -313,7 +313,7 @@ public class StoreInfo {
 
   private long maxCompactionLagSeconds;
 
-  private long maxRecordSizeBytes;
+  private int maxRecordSizeBytes;
 
   private boolean unusedSchemaDeletionEnabled;
 
@@ -776,11 +776,11 @@ public class StoreInfo {
     this.maxCompactionLagSeconds = maxCompactionLagSeconds;
   }
 
-  public long getMaxRecordSizeBytes() {
-    return maxRecordSizeBytes;
+  public int getMaxRecordSizeBytes() {
+    return this.maxRecordSizeBytes;
   }
 
-  public void setMaxRecordSizeBytes(long maxRecordSizeBytes) {
+  public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
     this.maxRecordSizeBytes = StoreUtils.getMaxRecordSizeBytes(this.chunkingEnabled, maxRecordSizeBytes);
   }
 

@@ -2261,7 +2261,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
       Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
       Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
-      Optional<Long> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
+      Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
 
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();

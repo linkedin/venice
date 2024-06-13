@@ -669,13 +669,13 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getLong(MAX_COMPACTION_LAG_SECONDS);
   }
 
-  public UpdateStoreQueryParams setMaxRecordSizeBytes(long maxRecordSizeBytes) {
-    long maxSizeBytes = StoreUtils.getMaxRecordSizeBytes(getChunkingEnabled().orElse(false), maxRecordSizeBytes);
-    return putLong(MAX_RECORD_SIZE_BYTES, maxSizeBytes);
+  public UpdateStoreQueryParams setMaxRecordSizeBytes(int maxRecordSizeBytes) {
+    int maxSizeBytes = StoreUtils.getMaxRecordSizeBytes(getChunkingEnabled().orElse(false), maxRecordSizeBytes);
+    return putInteger(MAX_RECORD_SIZE_BYTES, maxSizeBytes);
   }
 
-  public Optional<Long> getMaxRecordSizeBytes() {
-    return getLong(MAX_RECORD_SIZE_BYTES);
+  public Optional<Integer> getMaxRecordSizeBytes() {
+    return getInteger(MAX_RECORD_SIZE_BYTES);
   }
 
   public UpdateStoreQueryParams setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {

@@ -1343,12 +1343,12 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public long getMaxRecordSizeBytes() {
+  public int getMaxRecordSizeBytes() {
     return this.delegate.getMaxRecordSizeBytes();
   }
 
   @Override
-  public void setMaxRecordSizeBytes(long maxRecordSizeBytes) {
+  public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
     throw new UnsupportedOperationException();
   }
 

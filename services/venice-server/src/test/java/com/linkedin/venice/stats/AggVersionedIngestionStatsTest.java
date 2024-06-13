@@ -151,8 +151,9 @@ public class AggVersionedIngestionStatsTest {
     mockStore.addVersion(version);
     stats.handleStoreChanged(mockStore);
 
+    double v = reporter.query("." + storeName + "--future_version.Gauge").value();
     // expect to see v1's stats on future reporter
-    Assert.assertEquals(reporter.query("." + storeName + "--future_version.Gauge").value(), 1d);
+    Assert.assertEquals(v, 1d);
 
     long consumerTimestampMs = System.currentTimeMillis();
 

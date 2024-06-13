@@ -650,12 +650,12 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public long getMaxRecordSizeBytes() {
+  public int getMaxRecordSizeBytes() {
     return zkSharedStore.getMaxRecordSizeBytes();
   }
 
   @Override
-  public void setMaxRecordSizeBytes(long maxRecordSizeBytes) {
+  public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
     throwUnsupportedOperationException("setMaxRecordSizeBytes");
   }
 

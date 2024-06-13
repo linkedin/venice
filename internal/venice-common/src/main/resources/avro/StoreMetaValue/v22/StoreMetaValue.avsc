@@ -158,7 +158,7 @@
             {"name": "applyTargetVersionFilterForIncPush", "type": "boolean", "default": false, "doc": "Whether or not the target version field in Kafka messages will be used in increment push to RT policy"},
             {"name": "minCompactionLagSeconds", "type": "long", "default": -1, "doc": "Store level min compaction lag config and if not specified, it will use the global config for version topics"},
             {"name": "maxCompactionLagSeconds", "type": "long", "default": -1, "doc": "Store level max compaction lag config and if not specified, 'max.compaction.lag.ms' config won't be setup in the corresponding version topics"},
-            {"name": "maxRecordSizeBytes", "type": "long", "default": -1, "doc": "Store-level max record size in bytes. If not set (-1) and chunking is enabled, a default value of 10MB will be enforced."},
+            {"name": "maxRecordSizeBytes", "type": "int", "default": -1, "doc": "Store-level max record size in bytes. If not set (-1) and chunking is enabled, a default value of 10MB will be enforced."},
             {"name": "unusedSchemaDeletionEnabled", "type": "boolean", "default": false, "doc": "Store level config to indicate whether unused schema deletion is enabled or not."},
             {
               "name": "versions",

@@ -6,10 +6,10 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 
 
 public class StoreUtils {
-  public static final long DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING = 10 * 1024 * 1024; // 10MB
+  public static final int DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING = 10 * 1024 * 1024; // 10MB
 
-  public static long getMaxRecordSizeBytes(boolean chunkingEnabled, long maxRecordSizeBytes) {
-    return (chunkingEnabled && maxRecordSizeBytes == -1L)
+  public static int getMaxRecordSizeBytes(boolean chunkingEnabled, int maxRecordSizeBytes) {
+    return (chunkingEnabled && maxRecordSizeBytes == -1)
         ? DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING
         : maxRecordSizeBytes;
   }

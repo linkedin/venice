@@ -906,7 +906,7 @@ public abstract class StoreIngestionTaskTest {
 
     doReturn(1).when(mockStore).getPartitionCount();
 
-    doReturn(-1L).when(mockStore).getMaxRecordSizeBytes();
+    doReturn(-1).when(mockStore).getMaxRecordSizeBytes();
 
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(-1).when(mockStore).getCurrentVersion();

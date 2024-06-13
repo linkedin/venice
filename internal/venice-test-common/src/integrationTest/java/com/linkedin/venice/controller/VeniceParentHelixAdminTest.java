@@ -966,7 +966,7 @@ public class VeniceParentHelixAdminTest {
   }
 
   private void testUpdateMaxRecordSize(ControllerClient parentClient, ControllerClient childClient) {
-    final long expectedMaxRecordSizeBytes = 7L * 1024 * 1024;
+    final int expectedMaxRecordSizeBytes = 7 * 1024 * 1024;
     testUpdateConfig(
         parentClient,
         childClient,
@@ -975,7 +975,7 @@ public class VeniceParentHelixAdminTest {
   }
 
   private void testChunkingMaxRecordSize(ControllerClient parentClient, ControllerClient childClient) {
-    final long expectedDefaultMaxRecordSizeBytesWithChunking = StoreUtils.DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING;
+    final int expectedDefaultMaxRecordSizeBytesWithChunking = StoreUtils.DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING;
     testUpdateConfig(parentClient, childClient, params -> params.setChunkingEnabled(true), response -> {
       Assert.assertTrue(response.getStore().isChunkingEnabled());
       Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), expectedDefaultMaxRecordSizeBytesWithChunking);

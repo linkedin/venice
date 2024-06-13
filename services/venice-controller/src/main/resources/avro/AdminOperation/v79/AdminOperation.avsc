@@ -621,7 +621,7 @@
             {
               "name": "maxRecordSizeBytes",
               "doc": "Store-level maximum size of any record in bytes",
-              "type": "long",
+              "type": "int",
               "default": -1
             },
             {
