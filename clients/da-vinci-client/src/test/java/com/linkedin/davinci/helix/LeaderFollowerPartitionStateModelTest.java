@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -14,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -31,6 +33,7 @@ import org.testng.annotations.Test;
 
 public class LeaderFollowerPartitionStateModelTest {
   private IngestionBackend ingestionBackend;
+  private KafkaStoreIngestionService storeIngestionService;
   private VeniceStoreVersionConfig storeAndServerConfigs;
   private LeaderFollowerIngestionProgressNotifier notifier;
   private ReadOnlyStoreRepository metadataRepo;
@@ -46,6 +49,8 @@ public class LeaderFollowerPartitionStateModelTest {
   @BeforeMethod
   public void setUp() {
     ingestionBackend = mock(IngestionBackend.class);
+    storeIngestionService = mock(KafkaStoreIngestionService.class);
+    doReturn(storeIngestionService).when(ingestionBackend).getStoreIngestionService();
     storeAndServerConfigs = mock(VeniceStoreVersionConfig.class);
     notifier = mock(LeaderFollowerIngestionProgressNotifier.class);
     metadataRepo = mock(ReadOnlyStoreRepository.class);
