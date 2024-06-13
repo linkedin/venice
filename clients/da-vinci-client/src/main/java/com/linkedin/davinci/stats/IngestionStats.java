@@ -572,7 +572,6 @@ public class IngestionStats {
   }
 
   public void registerTransformerErrorSensor() {
-    // Check to make sure there isn't already a registered transformerErrorSensor
     if (transformerErrorSensor == null) {
       transformerErrorSensor = localMetricRepository.sensor(TRANSFORMER_ERROR_COUNT);
       transformerErrorSensor.add(TRANSFORMER_ERROR_COUNT, transformerErrorCount);
@@ -591,7 +590,6 @@ public class IngestionStats {
   }
 
   public void registerTransformerLatencySensor() {
-    // Check to make sure there isn't already a registered transformerLatencySensor
     if (transformerLatencySensor == null) {
       transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
     }
@@ -602,7 +600,6 @@ public class IngestionStats {
   }
 
   public void registerTransformerLifecycleStartLatencySensor() {
-    // Check to make sure there isn't already a registered transformerLifecycleStartLatencySensor
     if (transformerLifecycleStartLatencySensor == null) {
       transformerLifecycleStartLatencySensor =
           new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_START_LATENCY);
@@ -614,7 +611,6 @@ public class IngestionStats {
   }
 
   public void registerTransformerLifecycleEndLatencySensor() {
-    // Check to make sure there isn't already a registered transformerLifecycleEndLatencySensor
     if (transformerLifecycleEndLatencySensor == null) {
       transformerLifecycleEndLatencySensor =
           new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_END_LATENCY);
