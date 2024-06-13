@@ -1,7 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -17,7 +17,7 @@ public class LeaderFollowerPartitionStateModelDualPoolFactory extends LeaderFoll
   private final ParticipantStateTransitionStats futureVersionStateTransitionStats;
 
   public LeaderFollowerPartitionStateModelDualPoolFactory(
-      VeniceIngestionBackend ingestionBackend,
+      IngestionBackend ingestionBackend,
       VeniceConfigLoader configService,
       ExecutorService executorService,
       ParticipantStateTransitionStats stateTransitionStats,

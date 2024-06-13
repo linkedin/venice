@@ -1,7 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -47,7 +47,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private static final int RETRY_DURATION_MS = 1000;
   private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = (int) TimeUnit.MINUTES.toMillis(5);
 
-  private final VeniceIngestionBackend ingestionBackend;
+  private final IngestionBackend ingestionBackend;
   private final ReadOnlyStoreRepository storeRepository;
   private final VeniceStoreVersionConfig storeAndServerConfigs;
   private final int partition;
@@ -58,7 +58,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
 
   public AbstractPartitionStateModel(
-      VeniceIngestionBackend ingestionBackend,
+      IngestionBackend ingestionBackend,
       ReadOnlyStoreRepository storeRepository,
       VeniceStoreVersionConfig storeAndServerConfigs,
       int partition,
@@ -369,7 +369,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     }
   }
 
-  protected VeniceIngestionBackend getIngestionBackend() {
+  protected IngestionBackend getIngestionBackend() {
     return ingestionBackend;
   }
 

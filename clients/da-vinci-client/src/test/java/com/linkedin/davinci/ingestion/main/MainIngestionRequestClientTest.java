@@ -34,8 +34,6 @@ public class MainIngestionRequestClientTest {
       taskReport.setMessage("TEST MSG");
       when(mockedClientTransport.sendRequestWithRetry(any(), any(), anyInt())).thenReturn(taskReport);
       client.setHttpClientTransport(mockedClientTransport);
-      // leader promotion should return false on execution failure on forked process.
-      Assert.assertFalse(client.promoteToLeader("dummyTopic", 1));
       Assert.assertFalse(client.startConsumption("dummyTopic", 1));
 
       HttpClientTransport mockedBadClientTransport = Mockito.mock(HttpClientTransport.class);
