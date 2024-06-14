@@ -128,7 +128,6 @@ public class PushStatusStoreTest {
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(PARTITION_COUNT)
-                .setAmplificationFactor(1)
                 .setIncrementalPushEnabled(true)));
     return storeName;
   }

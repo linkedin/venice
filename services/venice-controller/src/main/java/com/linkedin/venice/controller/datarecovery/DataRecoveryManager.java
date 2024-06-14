@@ -132,9 +132,8 @@ public class DataRecoveryManager implements Closeable {
       String clusterName,
       String storeName,
       String destinationFabric,
-      int versionNumber,
-      int sourceAmplificationFactor) {
-    verifyStoreIsCapableOfDataRecovery(clusterName, storeName, sourceAmplificationFactor);
+      int versionNumber) {
+    verifyStoreIsCapableOfDataRecovery(clusterName, storeName);
     Store store = veniceAdmin.getStore(clusterName, storeName);
     String topic = Version.composeKafkaTopic(storeName, versionNumber);
     if (store.getCurrentVersion() == versionNumber) {
@@ -155,7 +154,7 @@ public class DataRecoveryManager implements Closeable {
     veniceAdmin.deleteParticipantStoreKillMessage(clusterName, topic);
   }
 
-  private void verifyStoreIsCapableOfDataRecovery(String clusterName, String storeName, int sourceAmplificationFactor) {
+  private void verifyStoreIsCapableOfDataRecovery(String clusterName, String storeName) {
     Store store = veniceAdmin.getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
@@ -166,22 +165,13 @@ public class DataRecoveryManager implements Closeable {
     if (!store.isNativeReplicationEnabled()) {
       throw new VeniceException("Native replication is required for data recovery");
     }
-    // In parent controller we have the information to check if source and destination fabric store configurations will
-    // allow data recovery or not.
-    if (sourceAmplificationFactor != store.getPartitionerConfig().getAmplificationFactor()) {
-      throw new VeniceException("Amplification factor is not the same between source and destination fabric");
-    }
   }
 
   /**
    * Verify that target store version is ready for data recovery.
    */
-  public void verifyStoreVersionIsReadyForDataRecovery(
-      String clusterName,
-      String storeName,
-      int versionNumber,
-      int sourceAmplificationFactor) {
-    verifyStoreIsCapableOfDataRecovery(clusterName, storeName, sourceAmplificationFactor);
+  public void verifyStoreVersionIsReadyForDataRecovery(String clusterName, String storeName, int versionNumber) {
+    verifyStoreIsCapableOfDataRecovery(clusterName, storeName);
     ensureClientConfigIsAvailable("verify store version is ready for data recovery");
     Store store = veniceAdmin.getStore(clusterName, storeName);
     if (store == null) {

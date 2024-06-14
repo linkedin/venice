@@ -41,10 +41,7 @@ public class StatusReportAdapterTest {
     IngestionNotificationDispatcher dispatcher = new IngestionNotificationDispatcher(notifiers, topic, () -> true);
     ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap =
         generateMockedPcsMap(amplificationFactor);
-    AmplificationFactorAdapter amplificationFactorAdapter = mock(AmplificationFactorAdapter.class);
-    when(amplificationFactorAdapter.getAmplificationFactor()).thenReturn(amplificationFactor);
-    StatusReportAdapter statusReportAdapter = new StatusReportAdapter(dispatcher, amplificationFactorAdapter);
-    statusReportAdapter.initializePartitionReportStatus(0);
+    StatusReportAdapter statusReportAdapter = new StatusReportAdapter(dispatcher);
 
     ExecutorService executorService = Executors.newFixedThreadPool(amplificationFactor);
     List<Callable<Void>> callableList = new ArrayList<>();
@@ -73,7 +70,7 @@ public class StatusReportAdapterTest {
       PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
       // Mock pcs APIs
       Mockito.doReturn(i).when(pcs).getPartition();
-      Mockito.doReturn(0).when(pcs).getUserPartition();
+      Mockito.doReturn(0).when(pcs).getPartition();
       Mockito.doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
       Mockito.doReturn(true).when(pcs).isComplete();
       Mockito.doReturn(mockedOffsetRecord).when(pcs).getOffsetRecord();

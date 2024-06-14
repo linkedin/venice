@@ -95,7 +95,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
         partition,
         START_CONSUMPTION,
         () -> mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition),
-        () -> super.startConsumption(storeConfig, partition, leaderState));
+        () -> super.startConsumption(storeConfig, partition));
   }
 
   @Override
@@ -234,22 +234,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     return configLoader;
   }
 
-  void startConsumptionLocally(
-      VeniceStoreVersionConfig storeVersionConfig,
-      int partition,
-      Optional<LeaderFollowerStateType> leaderState) {
-    super.startConsumption(storeVersionConfig, partition, leaderState);
+  void startConsumptionLocally(VeniceStoreVersionConfig storeVersionConfig, int partition) {
+    super.startConsumption(storeVersionConfig, partition);
   }
 
   VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
-      public void completed(
-          String kafkaTopic,
-          int partition,
-          long offset,
-          String message,
-          Optional<LeaderFollowerStateType> leaderState) {
+      public void completed(String kafkaTopic, int partition, long offset, String message) {
         // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
         if (isTopicPartitionHosted(kafkaTopic, partition)) {
           getCompletionHandlingExecutor().submit(() -> {
@@ -261,7 +253,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
               VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
               config.setRestoreDataPartitions(false);
               config.setRestoreMetadataPartition(false);
-              startConsumptionLocally(config, partition, leaderState);
+              startConsumptionLocally(config, partition);
             } catch (Exception e) {
               notifier.error(
                   kafkaTopic,

@@ -27,7 +27,7 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testUpdateChecksum() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, 1, mock(OffsetRecord.class), false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, mock(OffsetRecord.class), false);
     pcs.initializeExpectedChecksum();
     byte[] rmdPayload = new byte[] { 127 };
     byte[] key1 = new byte[] { 1 };
@@ -82,7 +82,7 @@ public class PartitionConsumptionStateTest {
    */
   @Test
   public void testTransientRecordMap() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, 1, mock(OffsetRecord.class), false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, mock(OffsetRecord.class), false);
 
     byte[] key1 = new byte[] { 65, 66, 67, 68 };
     byte[] key2 = new byte[] { 65, 66, 67, 68 };
@@ -129,7 +129,7 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testIsLeaderCompleted() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, 1, mock(OffsetRecord.class), false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, mock(OffsetRecord.class), false);
     // default is LEADER_NOT_COMPLETED
     assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_NOT_COMPLETED);
     assertFalse(pcs.isLeaderCompleted());

@@ -39,7 +39,7 @@ public class LeaderProducerCallbackTest {
     PartitionConsumptionState partitionConsumptionStateMock = mock(PartitionConsumptionState.class);
     LeaderProducedRecordContext leaderProducedRecordContextMock = mock(LeaderProducedRecordContext.class);
     AggVersionedDIVStats statsMock = mock(AggVersionedDIVStats.class);
-    int subPartition = 5;
+    int partition = 5;
     String kafkaUrl = "dc-0.kafka.venice.org";
     long beforeProcessingRecordTimestamp = 67454542;
     String storeName = Utils.getUniqueString("test-store");
@@ -71,7 +71,7 @@ public class LeaderProducerCallbackTest {
           sourceConsumerRecordMock,
           partitionConsumptionStateMock,
           leaderProducedRecordContextMock,
-          subPartition,
+          partition,
           kafkaUrl,
           beforeProcessingRecordTimestamp);
 

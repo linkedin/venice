@@ -13,7 +13,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
 import org.apache.avro.Schema;
-import org.apache.commons.lang.ArrayUtils;
 import org.testng.annotations.DataProvider;
 import org.testng.collections.Lists;
 
@@ -78,31 +77,9 @@ public class DataProviderUtils {
     return new Object[][] { { 1 }, { 3 } };
   }
 
-  @DataProvider(name = "AmplificationFactor-and-ObjectCache", parallel = false)
-  public static Object[][] amplificationFactorAndObjectCacheConfigProvider() {
-    List<Object[]> ampFactorCases = Lists.newArrayList();
-    ampFactorCases.addAll(Arrays.asList(trueAndFalseProvider()));
-    List<Object[]> configCases = Lists.newArrayList();
-    configCases.addAll(Arrays.asList(daVinciConfigProvider()));
-    List<Object[]> resultingArray = Lists.newArrayList();
-
-    for (Object[] ampFactorCase: ampFactorCases) {
-      for (Object[] configCase: configCases) {
-        resultingArray.add(ArrayUtils.addAll(ampFactorCase, configCase));
-      }
-    }
-
-    return resultingArray.toArray(new Object[resultingArray.size()][]);
-  }
-
   @DataProvider(name = "Isolated-Ingestion")
   public static Object[][] isolatedIngestion() {
     return new Object[][] { { IngestionMode.BUILT_IN }, { IngestionMode.ISOLATED } };
-  }
-
-  @DataProvider(name = "Amplification-Factor")
-  public static Object[][] amplificationFactor() {
-    return new Object[][] { { 1 }, { 3 } };
   }
 
   @DataProvider(name = "Chunking-And-Partition-Counts")

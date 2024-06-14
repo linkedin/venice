@@ -435,27 +435,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private int getSubPartitionId(int userPartition, byte[] keyBytes, PerStoreVersionState perStoreVersionState) {
-    int ampFactor = perStoreVersionState.partitionerConfig.getAmplificationFactor();
-    if (ampFactor == 1) {
-      return userPartition;
-    }
-    int subPartitionOffset = perStoreVersionState.partitioner.getPartitionId(keyBytes, ampFactor);
-    return userPartition * ampFactor + subPartitionOffset;
-  }
-
-  private int getSubPartitionId(
-      int userPartition,
-      ByteBuffer keyByteBuffer,
-      PerStoreVersionState perStoreVersionState) {
-    int ampFactor = perStoreVersionState.partitionerConfig.getAmplificationFactor();
-    if (ampFactor == 1) {
-      return userPartition;
-    }
-    int subPartitionOffset = perStoreVersionState.partitioner.getPartitionId(keyByteBuffer, ampFactor);
-    return userPartition * ampFactor + subPartitionOffset;
-  }
-
   private PerStoreVersionState getPerStoreVersionState(String storeVersion) {
     PerStoreVersionState s = perStoreVersionStateMap.computeIfAbsent(storeVersion, this::generatePerStoreVersionState);
     if (s.storageEngine.isClosed()) {
@@ -499,7 +478,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       }
       // specify amplificationFactor as 1 to avoid using UserPartitionAwarePartitioner
       partitioner = PartitionUtils
-          .getVenicePartitioner(partitionerConfig.getPartitionerClass(), 1, new VeniceProperties(partitionerParams));
+          .getVenicePartitioner(partitionerConfig.getPartitionerClass(), new VeniceProperties(partitionerParams));
     }
     AbstractStorageEngine storageEngine = getStorageEngineOrThrow(storeVersion);
     StoreDeserializerCache<GenericRecord> storeDeserializerCache = storeDeserializerCacheMap.computeIfAbsent(
@@ -519,7 +498,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   public ReadResponse handleSingleGetRequest(GetRouterRequest request) {
     String topic = request.getResourceName();
     PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
-    int subPartition = getSubPartitionId(request.getPartition(), request.getKeyBytes(), perStoreVersionState);
     byte[] key = request.getKeyBytes();
 
     AbstractStorageEngine storageEngine = perStoreVersionState.storageEngine;
@@ -528,7 +506,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     response.setCompressionStrategy(storageEngine.getCompressionStrategy());
     response.setDatabaseLookupLatency(0);
 
-    ValueRecord valueRecord = SingleGetChunkingAdapter.get(storageEngine, subPartition, key, isChunked, response);
+    ValueRecord valueRecord =
+        SingleGetChunkingAdapter.get(storageEngine, request.getPartition(), key, isChunked, response);
     response.setValueRecord(valueRecord);
 
     if (keyValueProfilingEnabled) {
@@ -579,9 +558,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           if (responseKeySizeList != null) {
             responseKeySizeList.set(subChunkCur, key.keyBytes.remaining());
           }
-          int subPartitionId = getSubPartitionId(key.partitionId, key.keyBytes, perStoreVersionState);
           MultiGetResponseRecordV1 record =
-              BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
+              BatchGetChunkingAdapter.get(storageEngine, key.partitionId, key.keyBytes, isChunked, responseWrapper);
           if (record == null) {
             if (request.isStreamingRequest()) {
               // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
@@ -636,9 +614,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     responseWrapper.setDatabaseLookupLatency(0);
     boolean isChunked = storageEngine.isChunked();
     for (MultiGetRouterRequestKeyV1 key: keys) {
-      int subPartitionId = getSubPartitionId(key.partitionId, key.keyBytes, perStoreVersionState);
       MultiGetResponseRecordV1 record =
-          BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
+          BatchGetChunkingAdapter.get(storageEngine, key.partitionId, key.keyBytes, isChunked, responseWrapper);
       if (record == null) {
         if (request.isStreamingRequest()) {
           // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
@@ -808,8 +785,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return GenericRecordChunkingAdapter.INSTANCE.get(
         storeVersion.storageEngine,
         key.getPartitionId(),
-        storeVersion.partitioner,
-        storeVersion.partitionerConfig,
         ByteUtils.extractByteArray(key.getKeyBytes()),
         reusableObjects.byteBuffer,
         reusableValueRecord,

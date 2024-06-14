@@ -486,17 +486,15 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 5)
-  public void testIngestionIsolation(boolean isAmplificationFactorEnabled) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT * 5)
+  public void testIngestionIsolation() throws Exception {
     final int partitionCount = 3;
     final int dataPartition = 1;
     int emptyPartition1 = 2;
     int emptyPartition2 = 0;
-    final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
     String storeName = Utils.getUniqueString("store");
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setAmplificationFactor(amplificationFactor)
-        .setPartitionCount(partitionCount)
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setPartitionCount(partitionCount)
         .setPartitionerClass(ConstantVenicePartitioner.class.getName())
         .setPartitionerParams(
             Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(dataPartition)));
@@ -599,23 +597,19 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "AmplificationFactor-and-ObjectCache", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT
+  @Test(dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT
       * 2)
-  public void testHybridStoreWithoutIngestionIsolation(
-      boolean isAmplificationFactorEnabled,
-      DaVinciConfig daVinciConfig) throws Exception {
+  public void testHybridStoreWithoutIngestionIsolation(DaVinciConfig daVinciConfig) throws Exception {
     // Create store
     final int partitionCount = 2;
     final int emptyPartition = 0;
     final int dataPartition = 1;
-    final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
     String storeName = Utils.getUniqueString("store");
 
     // Convert it to hybrid
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setPartitionCount(partitionCount)
-            .setAmplificationFactor(amplificationFactor)
             .setPartitionerParams(
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(dataPartition)));
     setupHybridStore(storeName, paramsConsumer);
@@ -672,16 +666,14 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testHybridStore(boolean isAmplificationFactorEnabled) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testHybridStore() throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
-    final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
     String storeName = Utils.getUniqueString("store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setPartitionCount(partitionCount)
-            .setAmplificationFactor(amplificationFactor)
             .setPartitionerParams(
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition)));
     setupHybridStore(storeName, paramsConsumer);

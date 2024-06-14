@@ -20,7 +20,6 @@ import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -359,7 +358,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         || ingestionReportType.equals(IngestionReportType.ERROR)) {
       String topicName = report.topicName.toString();
       int partitionId = report.partitionId;
-      long offset = report.offset;
 
       // Collect the latest OffsetRecord ByteBuffer array and store version state before consumption stops.
       if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
@@ -376,16 +374,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         } else {
           throw new VeniceException("StoreVersionState does not exist for topic: " + topicName);
         }
-        // Fetch LeaderState from LeaderSubPartition of the user partition.
-        LeaderFollowerStateType leaderState =
-            getStoreIngestionService().getLeaderStateFromPartitionConsumptionState(topicName, partitionId);
-        LOGGER.info(
-            "Ingestion completed for topic: {}, partition: {}, offset: {}, leaderState: {}.",
-            topicName,
-            partitionId,
-            offset,
-            leaderState);
-        report.leaderFollowerState = leaderState.getValue();
       } else {
         LOGGER.error(
             "Ingestion error for topic: {}, partition: {}, error message: {}",

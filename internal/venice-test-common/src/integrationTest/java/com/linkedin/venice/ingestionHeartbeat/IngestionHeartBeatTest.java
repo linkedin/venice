@@ -48,7 +48,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -149,7 +148,7 @@ public class IngestionHeartBeatTest {
     if (isIncrementalPushEnabled) {
       vpjProperties.put(INCREMENTAL_PUSH, true);
     }
-    int amplificationFactor = isAmplificationFactorEnabled ? 2 : 1;
+    int amplificationFactor = 1;
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -165,7 +164,6 @@ public class IngestionHeartBeatTest {
               .setReplicationFactor(2)
               .setNativeReplicationEnabled(true)
               .setActiveActiveReplicationEnabled(isActiveActiveEnabled)
-              .setAmplificationFactor(amplificationFactor)
               .setHybridDataReplicationPolicy(dataReplicationPolicy);
 
       ControllerResponse updateStoreResponse =
@@ -239,17 +237,14 @@ public class IngestionHeartBeatTest {
 
             // VT: verify leader topic partition receives HB from RT, and is forwarded with leader completed
             // header to all VT.
-            List<Integer> subPartitions = PartitionUtils.getSubPartitions(partition, amplificationFactor);
-            for (int subPartition: subPartitions) {
-              verifyHBinKafkaTopic(
-                  pubSubConsumer,
-                  storeName,
-                  subPartition,
-                  isActiveActiveEnabled,
-                  isIncrementalPushEnabled,
-                  dataReplicationPolicy,
-                  false);
-            }
+            verifyHBinKafkaTopic(
+                pubSubConsumer,
+                storeName,
+                partition,
+                isActiveActiveEnabled,
+                isIncrementalPushEnabled,
+                dataReplicationPolicy,
+                false);
           }
         }
       }

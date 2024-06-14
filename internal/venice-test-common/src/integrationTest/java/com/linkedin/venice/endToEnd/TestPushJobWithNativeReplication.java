@@ -221,7 +221,7 @@ public class TestPushJobWithNativeReplication {
   public void testNativeReplicationForBatchPush(int recordCount, int partitionCount) throws Exception {
     motherOfAllTests(
         "testNativeReplicationForBatchPush",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount).setAmplificationFactor(2),
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
@@ -307,7 +307,7 @@ public class TestPushJobWithNativeReplication {
     int recordCount = 10000;
     motherOfAllTests(
         "testNativeReplicationWithLeadershipHandover",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1).setAmplificationFactor(2),
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           Thread pushJobThread = new Thread(() -> TestWriteUtils.runPushJob("Test push job", props));
@@ -369,7 +369,7 @@ public class TestPushJobWithNativeReplication {
     int recordCount = 100;
     motherOfAllTests(
         "testNativeReplicationWithIngestionIsolationInDaVinci",
-        updateStoreParams -> updateStoreParams.setPartitionCount(2).setAmplificationFactor(2),
+        updateStoreParams -> updateStoreParams.setPartitionCount(2),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
@@ -401,7 +401,6 @@ public class TestPushJobWithNativeReplication {
     motherOfAllTests(
         "testNativeReplicationForHybrid",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
-            .setAmplificationFactor(2)
             .setHybridRewindSeconds(TEST_TIMEOUT)
             .setHybridOffsetLagThreshold(2)
             .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE),

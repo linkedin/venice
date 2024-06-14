@@ -2351,7 +2351,6 @@ public class VeniceParentHelixAdmin implements Admin {
         try {
           PartitionUtils.getVenicePartitioner(
               partitionerConfigRecord.partitionerClass.toString(),
-              partitionerConfigRecord.amplificationFactor,
               new VeniceProperties(partitionerConfigRecord.partitionerParams),
               getKeySchema(clusterName, storeName).getSchema());
         } catch (PartitionerSchemaMismatchException e) {

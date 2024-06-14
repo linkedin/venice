@@ -65,7 +65,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
+      int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) throws InterruptedException {
     StoreBufferService chosenSBS =
@@ -74,7 +74,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
         consumerRecord,
         ingestionTask,
         leaderProducedRecordContext,
-        subPartition,
+        partition,
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
   }

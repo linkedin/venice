@@ -59,7 +59,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private final String versionTopic;
   private final String storeName;
   private final int storeVersion;
-  private final int subPartitionCount;
+  private final int partitionCount;
   private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap;
   private final Set<Integer> pausedPartitions;
   private final boolean isHybridQuotaEnabledInServer;
@@ -92,7 +92,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       AbstractStorageEngine storageEngine,
       Store store,
       String versionTopic,
-      int subPartitionCount,
+      int partitionCount,
       Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap,
       boolean isHybridQuotaEnabledInServer,
       boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled,
@@ -105,10 +105,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
         partition -> new StoragePartitionDiskUsage(partition, storageEngine);
     this.storeName = store.getName();
     this.versionTopic = versionTopic;
-    if (subPartitionCount <= 0) {
-      throw new IllegalArgumentException("subPartitionCount must be positive!");
+    if (partitionCount <= 0) {
+      throw new IllegalArgumentException("PartitionCount must be positive!");
     }
-    this.subPartitionCount = subPartitionCount;
+    this.partitionCount = partitionCount;
     this.partitionConsumptionSizeMap = new VeniceConcurrentHashMap<>();
     this.pausedPartitions = VeniceConcurrentHashMap.newKeySet();
     this.storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
@@ -153,7 +153,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
 
   private void setStoreQuota(Store store) {
     this.storeQuotaInBytes = store.getStorageQuotaInByte();
-    this.diskQuotaPerPartition = this.storeQuotaInBytes / this.subPartitionCount;
+    this.diskQuotaPerPartition = this.storeQuotaInBytes / this.partitionCount;
     this.isHybridQuotaEnabledInStoreConfig = store.isHybridStoreDiskQuotaEnabled();
   }
 
@@ -375,11 +375,11 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
 
     // TODO: Remove this config when prod cluster metric is reported correctly.
     if (isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled) {
-      if (subPartitionCount == 0) {
+      if (partitionCount == 0) {
         return 0.;
       }
       quota *= partitionConsumptionSizeMap.size();
-      quota /= subPartitionCount;
+      quota /= partitionCount;
     }
 
     long usage = 0;

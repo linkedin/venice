@@ -122,7 +122,6 @@ public class TestParentControllerWithMultiDataCenter {
           .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
           .setChunkingEnabled(true)
           .setRmdChunkingEnabled(true)
-          .setAmplificationFactor(2)
           .setStorageNodeReadQuotaEnabled(true);
 
       TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);

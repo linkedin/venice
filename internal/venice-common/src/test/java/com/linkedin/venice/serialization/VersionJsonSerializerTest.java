@@ -25,7 +25,6 @@ public class VersionJsonSerializerTest {
     HybridStoreConfig hybridStoreConfig =
         new HybridStoreConfigImpl(100, 1, 10, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    partitionerConfig.setAmplificationFactor(2);
     version.setPartitionerConfig(partitionerConfig);
     DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
     version.setDataRecoveryVersionConfig(dataRecoveryVersionConfig);

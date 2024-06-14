@@ -381,9 +381,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
       VersionCreationResponse store,
       Properties veniceWriterProperties) {
-    int amplificationFactor = store.getAmplificationFactor();
     Integer partitionCount = pushType.isBatchOrStreamReprocessing()
-        ? (store.getPartitions() * amplificationFactor)
+        ? (store.getPartitions())
         /**
          * N.B. There is an issue in the controller where the partition count inside a {@link VersionCreationResponse}
          *      for a non-batch topic is invalid, so in that case we don't rely on it, and let the {@link VeniceWriter}
@@ -393,10 +392,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         : null;
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(store.getPartitionerParams());
-    VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
-        store.getPartitionerClass(),
-        amplificationFactor,
-        new VeniceProperties(partitionerProperties));
+    VenicePartitioner venicePartitioner =
+        PartitionUtils.getVenicePartitioner(store.getPartitionerClass(), new VeniceProperties(partitionerProperties));
     return constructVeniceWriter(
         veniceWriterProperties,
         new VeniceWriterOptions.Builder(store.getKafkaTopic()).setTime(time)

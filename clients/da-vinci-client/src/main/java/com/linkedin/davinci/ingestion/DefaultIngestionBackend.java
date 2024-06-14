@@ -59,7 +59,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
         "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
         storeVersion,
         partition);
-    getStoreIngestionService().startConsumption(storeConfig, partition, leaderState);
+    getStoreIngestionService().startConsumption(storeConfig, partition);
     LOGGER
         .info("Completed starting consumption in ingestion service for store {} partition {}", storeVersion, partition);
   }

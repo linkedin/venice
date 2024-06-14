@@ -79,7 +79,6 @@ import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -594,13 +593,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * Subscribes to partition if required.
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
-   * @param leaderState
    */
   @Override
-  public void startConsumption(
-      VeniceStoreVersionConfig veniceStore,
-      int partitionId,
-      Optional<LeaderFollowerStateType> leaderState) {
+  public void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
 
     final String topic = veniceStore.getStoreVersionName();
 
@@ -650,9 +645,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
       updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
-      storeIngestionTask.subscribePartition(
-          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId),
-          leaderState);
+      storeIngestionTask
+          .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
     }
     LOGGER.info("Started Consuming - Kafka Partition: {}-{}.", topic, partitionId);
   }
@@ -1184,35 +1178,26 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return topicPartitionIngestionContextResponse;
   }
 
-  public LeaderFollowerStateType getLeaderStateFromPartitionConsumptionState(String topicName, int partitionId) {
-    return getStoreIngestionTask(topicName).getLeaderState(partitionId);
-  }
-
   /**
    * This method updates all sub-partitions' latest offset records fetched from isolated ingestion process
    * in main process, so main process's in-memory storage metadata service could be aware of the latest updates and will
    * not re-start the ingestion from scratch.
    */
   public void updatePartitionOffsetRecords(String topicName, int partition, List<ByteBuffer> offsetRecordArray) {
-    int amplificationFactor = PartitionUtils.getAmplificationFactor(metadataRepo, topicName);
-    int offset = amplificationFactor * partition;
-    for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-      byte[] offsetRecordByteArray = offsetRecordArray.get(subPartition - offset).array();
-      OffsetRecord offsetRecord = null;
-      try {
-        offsetRecord = new OffsetRecord(offsetRecordByteArray, partitionStateSerializer);
-      } catch (Exception e) {
-        LOGGER.error(
-            "Caught exception when deserializing offset record byte array: {} for topic: {}, subPartition: {}.",
-            Arrays.toString(offsetRecordByteArray),
-            topicName,
-            subPartition);
-        throw e;
-      }
-      storageMetadataService.put(topicName, subPartition, offsetRecord);
-      LOGGER
-          .info("Updated OffsetRecord: {} for topic: {}, partition: {}", offsetRecord.toString(), topicName, partition);
+    byte[] offsetRecordByteArray = offsetRecordArray.get(partition).array();
+    OffsetRecord offsetRecord;
+    try {
+      offsetRecord = new OffsetRecord(offsetRecordByteArray, partitionStateSerializer);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Caught exception when deserializing offset record byte array: {} for topic: {}, partition: {}.",
+          Arrays.toString(offsetRecordByteArray),
+          topicName,
+          partition);
+      throw e;
     }
+    storageMetadataService.put(topicName, partition, offsetRecord);
+    LOGGER.info("Updated OffsetRecord: {} for topic: {}, partition: {}", offsetRecord.toString(), topicName, partition);
   }
 
   /**
@@ -1224,12 +1209,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public List<ByteBuffer> getPartitionOffsetRecords(String topicName, int partition) {
     List<ByteBuffer> offsetRecordArray = new ArrayList<>();
     StoreIngestionTask storeIngestionTask = getStoreIngestionTask(topicName);
-    int amplificationFactor = storeIngestionTask.getAmplificationFactor();
-    for (int i = 0; i < amplificationFactor; i++) {
-      int subPartitionId = amplificationFactor * partition + i;
-      PartitionConsumptionState pcs = storeIngestionTask.getPartitionConsumptionState(subPartitionId);
-      offsetRecordArray.add(ByteBuffer.wrap(pcs.getOffsetRecord().toBytes()));
-    }
+    PartitionConsumptionState pcs = storeIngestionTask.getPartitionConsumptionState(partition);
+    offsetRecordArray.add(ByteBuffer.wrap(pcs.getOffsetRecord().toBytes()));
     return offsetRecordArray;
   }
 
@@ -1240,11 +1221,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   public void syncTopicPartitionOffset(String topicName, int partition) {
     StoreIngestionTask storeIngestionTask = getStoreIngestionTask(topicName);
-    int amplificationFactor = storeIngestionTask.getAmplificationFactor();
-    for (int i = 0; i < amplificationFactor; i++) {
-      int subPartitionId = amplificationFactor * partition + i;
-      storeIngestionTask.updateOffsetMetadataAndSync(topicName, subPartitionId);
-    }
+    storeIngestionTask.updateOffsetMetadataAndSync(topicName, partition);
   }
 
   public final ReadOnlyStoreRepository getMetadataRepo() {

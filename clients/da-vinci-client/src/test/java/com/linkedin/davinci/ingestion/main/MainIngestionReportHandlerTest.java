@@ -1,6 +1,5 @@
 package com.linkedin.davinci.ingestion.main;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -87,8 +86,8 @@ public class MainIngestionReportHandlerTest {
         Unpooled.wrappedBuffer(
             AvroProtocolDefinition.INGESTION_TASK_REPORT.getSerializer().serialize(null, ingestionTaskReport)));
     ingestionReportHandler.channelRead0(ctx, msg);
-    verify(ingestionNotifier, times(1)).completed(anyString(), anyInt(), anyLong(), anyString(), any());
-    verify(pushStatusNotifier, times(1)).completed(anyString(), anyInt(), anyLong(), anyString(), any());
+    verify(ingestionNotifier, times(1)).completed(anyString(), anyInt(), anyLong(), anyString());
+    verify(pushStatusNotifier, times(1)).completed(anyString(), anyInt(), anyLong(), anyString());
   }
 
   @Test

@@ -48,10 +48,6 @@
       "name": "storeVersionState",
       "type": ["null", "bytes"],
       "default": null
-    },
-    {
-      "name": "leaderFollowerState",
-      "type": "int"
     }
   ]
 }

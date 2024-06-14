@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.ConfigKeys.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
@@ -345,16 +344,13 @@ public class TestUtils {
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
     props.putAll(response.getPartitionerParams());
-    props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
     props.putAll(additionalProperties);
     VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory);
 
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(response.getPartitionerParams());
-    VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
-        response.getPartitionerClass(),
-        response.getAmplificationFactor(),
-        new VeniceProperties(partitionerProperties));
+    VenicePartitioner venicePartitioner = PartitionUtils
+        .getVenicePartitioner(response.getPartitionerClass(), new VeniceProperties(partitionerProperties));
 
     if (compressionStrategy != CompressionStrategy.NO_OP) {
       writeCompressed(
@@ -701,7 +697,6 @@ public class TestUtils {
     VenicePartitioner partitioner = new DefaultVenicePartitioner();
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
-    partitionerConfig.setAmplificationFactor(1);
 
     Version version = new VersionImpl(storeName, 1, "1", partitionCount);
 
