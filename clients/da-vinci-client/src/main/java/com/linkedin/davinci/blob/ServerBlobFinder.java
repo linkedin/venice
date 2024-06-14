@@ -22,23 +22,23 @@ public class ServerBlobFinder implements BlobFinder {
   }
 
   @Override
-  public BlobResponse findBlob(String storeName, int version, int partitionId) {
-    BlobResponse response = new BlobResponse();
+  public BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partitionId) {
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     try {
       String currentVersionResource = Version.composeKafkaTopic(storeName, version);
       // Get the partition assignments for the current version
-      List<String> partitionValues = new ArrayList<>();
+      List<String> hostNames = new ArrayList<>();
       for (Partition partition: customizedViewRepository.getPartitionAssignments(currentVersionResource)
           .getAllPartitions()) {
         if (partition.getId() == partitionId) {
           for (Instance instance: partition.getReadyToServeInstances()) {
             String host = instance.getHost();
-            partitionValues.add(host);
+            hostNames.add(host);
           }
           break;
         }
       }
-      response.setPartitionValues(partitionValues);
+      response.setDiscoveryResult(hostNames);
     } catch (VeniceException e) {
       response.setError(true);
       String errorMsg =

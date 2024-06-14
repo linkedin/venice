@@ -50,11 +50,11 @@ public class ServerBlobFinderTest {
     // Act
     ServerBlobFinder serverBlobFinder =
         new ServerBlobFinder(CompletableFuture.completedFuture(mockCustomizedViewRepository));
-    BlobResponse resultBlobResponse = serverBlobFinder.findBlob(storeName, version, partitionId);
+    BlobPeersDiscoveryResponse resultBlobResponse = serverBlobFinder.discoverBlobPeers(storeName, version, partitionId);
 
     // Assert
     Assert.assertNotNull(resultBlobResponse);
-    Assert.assertEquals(resultBlobResponse.getPartitionValues().size(), 1);
-    Assert.assertEquals(resultBlobResponse.getPartitionValues().get(0), instance2.getHost());
+    Assert.assertEquals(resultBlobResponse.getDiscoveryResult().size(), 1);
+    Assert.assertEquals(resultBlobResponse.getDiscoveryResult().get(0), instance2.getHost());
   }
 }
