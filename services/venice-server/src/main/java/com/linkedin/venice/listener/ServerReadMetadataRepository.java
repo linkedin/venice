@@ -36,7 +36,6 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   private final ServerMetadataServiceStats serverMetadataServiceStats;
   private final ReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
-  // Duplicate this file and make it so that it only retrieves the customizedViewRepository
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private HelixInstanceConfigRepository helixInstanceConfigRepository;
 
@@ -44,7 +43,6 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository storeRepository,
       ReadOnlySchemaRepository schemaRepository,
-      // I need the customizedViewFuture to be not optional but a requirement, u can just delete the optional wrapper
       Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
       Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture) {
     this.serverMetadataServiceStats = new ServerMetadataServiceStats(metricsRepository);
@@ -62,7 +60,6 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
    * @return {@link MetadataResponse} object that holds all the information required for answering a server metadata
    * fetch request.
    */
-
   @Override
   public MetadataResponse getMetadata(String storeName) {
     serverMetadataServiceStats.recordRequestBasedMetadataInvokeCount();
