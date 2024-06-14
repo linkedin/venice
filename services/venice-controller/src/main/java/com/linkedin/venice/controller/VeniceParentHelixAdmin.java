@@ -664,7 +664,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
       SchemaUsageResponse response = controllerClient.getInUseSchemaIds(storeName);
-      if (response.isError() || response.getInUseValueSchemaIds().isEmpty()) {
+      if (response.isError()) {
         if (response.isError()) {
           LOGGER.error(
               "Could not query store from region: " + region + " for cluster: " + clusterName + ". "
@@ -2010,7 +2010,7 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
+      LOGGER.info("Truncating topic {} after rollforward", Version.composeKafkaTopic(storeName, futureVersion));
       truncateKafkaTopic(Version.composeKafkaTopic(storeName, futureVersion));
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
