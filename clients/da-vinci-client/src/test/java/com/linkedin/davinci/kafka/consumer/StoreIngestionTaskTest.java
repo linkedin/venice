@@ -1022,7 +1022,7 @@ public abstract class StoreIngestionTaskTest {
     doAnswer(invocation -> {
       String kafkaUrl = invocation.getArgument(0, String.class);
       StoreIngestionTask storeIngestionTask = invocation.getArgument(1, StoreIngestionTask.class);
-      PubSubTopicPartition topicPartition = invocation.getArgument(2, PubSubTopicPartition.class);
+      TopicPartitionReplicaRole topicPartitionReplicaRole = invocation.getArgument(2, TopicPartitionReplicaRole.class);
       long offset = invocation.getArgument(3, Long.class);
       KafkaConsumerService kafkaConsumerService;
       int kafkaClusterId;
@@ -1034,9 +1034,12 @@ public abstract class StoreIngestionTaskTest {
         kafkaConsumerService = remoteKafkaConsumerService;
         kafkaClusterId = 1;
       }
-      StorePartitionDataReceiver dataReceiver =
-          new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl, kafkaClusterId);
-      kafkaConsumerService.startConsumptionIntoDataReceiver(topicPartition, offset, dataReceiver);
+      StorePartitionDataReceiver dataReceiver = new StorePartitionDataReceiver(
+          storeIngestionTask,
+          topicPartitionReplicaRole.getPubSubTopicPartition(),
+          kafkaUrl,
+          kafkaClusterId);
+      kafkaConsumerService.startConsumptionIntoDataReceiver(topicPartitionReplicaRole, offset, dataReceiver);
 
       if (local) {
         localConsumedDataReceiver = dataReceiver;
@@ -2772,18 +2775,22 @@ public abstract class StoreIngestionTaskTest {
     String rtTopic = Version.composeRealTimeTopic(storeNameWithoutVersionInfo);
     PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopic);
     PubSubTopicPartition fooRtPartition = new PubSubTopicPartitionImpl(rtPubSubTopic, PARTITION_FOO);
+
+    TopicPartitionReplicaRole fooRtPartitionRole =
+        new TopicPartitionReplicaRole(true, true, fooTopicPartition, pubSubTopic);
+
     inMemoryLocalKafkaBroker.createTopic(rtTopic, partitionCount);
     inMemoryRemoteKafkaBroker.createTopic(rtTopic, partitionCount);
 
     aggKafkaConsumerService.subscribeConsumerFor(
         inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
         storeIngestionTaskUnderTest,
-        fooRtPartition,
+        fooRtPartitionRole,
         0);
     aggKafkaConsumerService.subscribeConsumerFor(
         inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(),
         storeIngestionTaskUnderTest,
-        fooRtPartition,
+        fooRtPartitionRole,
         0);
 
     VeniceWriter localRtWriter = getVeniceWriter(rtTopic, new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));

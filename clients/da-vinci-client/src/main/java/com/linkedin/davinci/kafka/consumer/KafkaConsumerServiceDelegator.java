@@ -120,12 +120,13 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
   @Override
   public void startConsumptionIntoDataReceiver(
-      PubSubTopicPartition topicPartition,
+      TopicPartitionReplicaRole topicPartitionReplicaRole,
       long lastReadOffset,
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
     PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
-    getKafkaConsumerService(versionTopic, topicPartition)
-        .startConsumptionIntoDataReceiver(topicPartition, lastReadOffset, consumedDataReceiver);
+    PubSubTopicPartition pubSubTopicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
+    getKafkaConsumerService(versionTopic, pubSubTopicPartition)
+        .startConsumptionIntoDataReceiver(topicPartitionReplicaRole, lastReadOffset, consumedDataReceiver);
   }
 
   @Override

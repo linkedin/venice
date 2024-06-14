@@ -977,8 +977,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         leaderOffsetByKafkaURL);
 
     // subscribe to the new upstream
+    TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
+        true,
+        isCurrentVersion.getAsBoolean(),
+        partitionConsumptionState.getSourceTopicPartition(leaderTopic),
+        versionTopic);
     leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
-      consumerSubscribe(partitionConsumptionState.getSourceTopicPartition(leaderTopic), leaderStartOffset, kafkaURL);
+      consumerSubscribe(topicPartitionReplicaRole, leaderStartOffset, kafkaURL);
     });
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, leaderOffsetByKafkaURL);
@@ -1068,11 +1073,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     // Subscribe new leader topic for all regions.
+    TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
+        true,
+        isCurrentVersion.getAsBoolean(),
+        partitionConsumptionState.getSourceTopicPartition(newSourceTopic),
+        versionTopic);
+
     upstreamOffsetsByKafkaURLs.forEach((kafkaURL, upstreamStartOffset) -> {
-      consumerSubscribe(
-          partitionConsumptionState.getSourceTopicPartition(newSourceTopic),
-          upstreamStartOffset,
-          kafkaURL);
+      consumerSubscribe(topicPartitionReplicaRole, upstreamStartOffset, kafkaURL);
     });
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(partitionConsumptionState, upstreamOffsetsByKafkaURLs);
@@ -1411,7 +1419,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           getTopicPartitionOffsetByKafkaURL(sourceKafkaUrl, sourceTopicPartition, rewindStartTimestamp);
 
       // Subscribe (unsubscribe should have processed correctly regardless of remote broker state)
-      consumerSubscribe(sourceTopicPartition, upstreamOffset, sourceKafkaUrl);
+      TopicPartitionReplicaRole topicPartitionReplicaRole =
+          new TopicPartitionReplicaRole(true, isCurrentVersion.getAsBoolean(), sourceTopicPartition, versionTopic);
+      consumerSubscribe(topicPartitionReplicaRole, upstreamOffset, sourceKafkaUrl);
 
       // syncConsumedUpstreamRTOffsetMapIfNeeded
       Map<String, Long> urlToOffsetMap = new HashMap<>();
