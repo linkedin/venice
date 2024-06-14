@@ -30,7 +30,7 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
   public abstract long getMaxElapsedTimeMSSinceLastPollInConsumerPool();
 
   public abstract void startConsumptionIntoDataReceiver(
-      PubSubTopicPartition topicPartition,
+      TopicPartitionReplicaRole topicPartitionReplicaRole,
       long lastReadOffset,
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver);
 
