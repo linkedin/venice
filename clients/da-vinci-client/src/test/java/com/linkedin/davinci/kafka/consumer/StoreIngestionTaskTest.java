@@ -4419,15 +4419,12 @@ public abstract class StoreIngestionTaskTest {
             System.currentTimeMillis());
       } catch (Exception e) {
         e.printStackTrace();
-        // Verify transformer error was recorded
-        verify(mockVersionedStorageIngestionStats)
-            .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
       }
-    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
 
-    // Verify transformer error was recorded
-    verify(mockVersionedStorageIngestionStats)
-        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+      // Verify transformer error was recorded
+      verify(mockVersionedStorageIngestionStats, timeout(1000))
+          .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+    }, aaConfig, TestStringRecordTransformer::new);
   }
 
   @DataProvider
@@ -4489,16 +4486,16 @@ public abstract class StoreIngestionTaskTest {
           throw new VeniceException(e);
         }
       }
-    }, aaConfig);
 
-    // Verify that the size of the assembled record was recorded in the metrics only if schemaId=-20
-    HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
-    if (useRealSchemaId) {
-      verify(hostLevelIngestionStats).recordAssembledValueSize(eq(expectedRecordSize), anyLong());
-      verify(hostLevelIngestionStats, times(1)).recordAssembledValueSize(anyLong(), anyLong());
-    } else {
-      verify(hostLevelIngestionStats, times(0)).recordAssembledValueSize(anyLong(), anyLong());
-    }
+      // Verify that the size of the assembled record was recorded in the metrics only if schemaId=-20
+      HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
+      if (useRealSchemaId) {
+        verify(hostLevelIngestionStats, timeout(1000)).recordAssembledValueSize(eq(expectedRecordSize), anyLong());
+        verify(hostLevelIngestionStats, timeout(1000).times(1)).recordAssembledValueSize(anyLong(), anyLong());
+      } else {
+        verify(hostLevelIngestionStats, times(0)).recordAssembledValueSize(anyLong(), anyLong());
+      }
+    }, aaConfig);
   }
 
   @Test
