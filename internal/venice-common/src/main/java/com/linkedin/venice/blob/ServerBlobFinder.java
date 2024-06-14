@@ -1,4 +1,4 @@
-package com.linkedin.davinci.blob;
+package com.linkedin.venice.blob;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;

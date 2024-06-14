@@ -1,4 +1,4 @@
-package com.linkedin.davinci.blob;
+package com.linkedin.venice.blob;
 
 import java.util.List;
 

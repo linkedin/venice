@@ -1,4 +1,4 @@
-package com.linkedin.davinci.blob;
+package com.linkedin.venice.blob;
 
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
