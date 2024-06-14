@@ -58,6 +58,8 @@ public class IngestionStats {
   public static final String NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY =
       "nearline_local_broker_to_ready_to_serve_latency";
   public static final String TRANSFORMER_LATENCY = "transformer_latency";
+  public static final String TRANSFORMER_LIFECYCLE_START_LATENCY = "transformer_lifecycle_start_latency";
+  public static final String TRANSFORMER_LIFECYCLE_END_LATENCY = "transformer_lifecycle_end_latency";
   public static final String IDLE_TIME = "idle_time";
   public static final String PRODUCER_CALLBACK_LATENCY = "producer_callback_latency";
   public static final String LEADER_PREPROCESSING_LATENCY = "leader_preprocessing_latency";
@@ -92,6 +94,8 @@ public class IngestionStats {
   private final WritePathLatencySensor nearlineProducerToLocalBrokerLatencySensor;
   private final WritePathLatencySensor nearlineLocalBrokerToReadyToServeLatencySensor;
   private WritePathLatencySensor transformerLatencySensor;
+  private WritePathLatencySensor transformerLifecycleStartLatencySensor;
+  private WritePathLatencySensor transformerLifecycleEndLatencySensor;
   private final WritePathLatencySensor producerCallBackLatency;
   private final WritePathLatencySensor leaderPreprocessingLatency;
   private final WritePathLatencySensor internalPreprocessingLatency;
@@ -568,7 +572,6 @@ public class IngestionStats {
   }
 
   public void registerTransformerErrorSensor() {
-    // Check to make sure there isn't already a registered transformerErrorSensor
     if (transformerErrorSensor == null) {
       transformerErrorSensor = localMetricRepository.sensor(TRANSFORMER_ERROR_COUNT);
       transformerErrorSensor.add(TRANSFORMER_ERROR_COUNT, transformerErrorCount);
@@ -587,9 +590,30 @@ public class IngestionStats {
   }
 
   public void registerTransformerLatencySensor() {
-    // Check to make sure there isn't already a registered transformerLatencySensor
     if (transformerLatencySensor == null) {
       transformerLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LATENCY);
+    }
+  }
+
+  public void recordTransformerLifecycleStartLatency(double value, long currentTimeMs) {
+    transformerLifecycleStartLatencySensor.record(value, currentTimeMs);
+  }
+
+  public void registerTransformerLifecycleStartLatencySensor() {
+    if (transformerLifecycleStartLatencySensor == null) {
+      transformerLifecycleStartLatencySensor =
+          new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_START_LATENCY);
+    }
+  }
+
+  public void recordTransformerLifecycleEndLatency(double value, long currentTimeMs) {
+    transformerLifecycleEndLatencySensor.record(value, currentTimeMs);
+  }
+
+  public void registerTransformerLifecycleEndLatencySensor() {
+    if (transformerLifecycleEndLatencySensor == null) {
+      transformerLifecycleEndLatencySensor =
+          new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, TRANSFORMER_LIFECYCLE_END_LATENCY);
     }
   }
 
