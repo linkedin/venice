@@ -479,6 +479,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
           }
           seekAction.apply(topicPartition);
+
         }
 
       }
@@ -987,9 +988,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         for (Map.Entry<Integer, Long> lastHeartbeat: currentVersionLastHeartbeat.entrySet()) {
           changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat.getValue());
         }
-        int maxVersion = compressorMap.keySet().stream().max((x, y) -> x.compareTo(y)).orElseGet(() -> -1);
+        int maxVersion = -1;
+        int minVersion = Integer.MAX_VALUE;
+        for (PubSubTopicPartition partition: pubSubConsumer.getAssignment()) {
+          int version = Version.parseVersionFromKafkaTopicName(partition.getTopicName());
+          maxVersion = Math.max(maxVersion, version);
+          minVersion = Math.min(minVersion, version);
+        }
+        if (minVersion == Integer.MAX_VALUE) {
+          minVersion = -1;
+        }
+
         // Record max and min consumed versions
         changeCaptureStats.recordMaximumConsumingVersion(maxVersion);
+        changeCaptureStats.recordMinimumConsumingVersion(minVersion);
         try {
           TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
