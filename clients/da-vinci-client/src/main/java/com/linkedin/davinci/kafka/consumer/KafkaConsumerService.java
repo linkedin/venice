@@ -367,10 +367,11 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
   @Override
   public void startConsumptionIntoDataReceiver(
-      PubSubTopicPartition topicPartition,
+      TopicPartitionReplicaRole topicPartitionReplicaRole,
       long lastReadOffset,
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
     PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
+    PubSubTopicPartition topicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
     SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
 
     if (consumer == null) {

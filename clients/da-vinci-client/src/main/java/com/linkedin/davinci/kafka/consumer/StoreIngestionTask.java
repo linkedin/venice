@@ -1847,10 +1847,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
           // Subscribe to local version topic.
-          consumerSubscribe(
-              newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic()),
-              offsetRecord.getLocalVersionTopicOffset(),
-              localKafkaServer);
+          PubSubTopicPartition pubSubTopicPartition =
+              newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
+          TopicPartitionReplicaRole topicPartitionReplicaRole =
+              new TopicPartitionReplicaRole(false, isCurrentVersion.getAsBoolean(), pubSubTopicPartition, versionTopic);
+          consumerSubscribe(topicPartitionReplicaRole, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
           LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         }
         storageUtilizationManager.initPartition(partition);
@@ -3158,7 +3159,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
-  public void consumerSubscribe(PubSubTopicPartition topicPartition, long startOffset, String kafkaURL) {
+  public void consumerSubscribe(TopicPartitionReplicaRole topicPartition, long startOffset, String kafkaURL) {
     final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
