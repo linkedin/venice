@@ -77,33 +77,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
     }
     this.isSorted = sorted;
-    this.leaderRecordHandler = queueLeaderWrites
-        ? (
-            consumerRecord,
-            ingestionTask,
-            leaderProducedRecordContext,
-            partition,
-            kafkaUrl,
-            beforeProcessingRecordTimestamp) -> queueLeaderRecord(
-                consumerRecord,
-                ingestionTask,
-                leaderProducedRecordContext,
-                partition,
-                kafkaUrl,
-                beforeProcessingRecordTimestamp)
-        : (
-            consumerRecord1,
-            ingestionTask1,
-            leaderProducedRecordContext1,
-            partition,
-            kafkaUrl1,
-            beforeProcessingRecordTimestampNs) -> processRecord(
-                consumerRecord1,
-                ingestionTask1,
-                leaderProducedRecordContext1,
-                partition,
-                kafkaUrl1,
-                beforeProcessingRecordTimestampNs);
+    this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
     this.storeBufferServiceStats = new StoreBufferServiceStats(
         metricsRepository,
         this::getTotalMemoryUsage,
