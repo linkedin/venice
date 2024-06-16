@@ -49,14 +49,24 @@ import org.apache.spark.sql.types.YearMonthIntervalType;
 
 
 /**
- * https://spark.apache.org/docs/latest/sql-data-sources-avro.html
- * https://spark.apache.org/docs/latest/sql-ref-datatypes.html
- * https://github.com/apache/spark/blob/master/connector/avro/src/main/scala/org/apache/spark/sql/avro/AvroSerializer.scala
- * https://avro.apache.org/docs/1.11.1/specification/
+ * A utility class to convert Spark SQL Row to an Avro GenericRecord with the specified schema. This has been written in
+ * accordance with the following resources:
+ * <ul>
+ *   <li><a href="https://spark.apache.org/docs/latest/sql-data-sources-avro.html">Spark Avro data source documentation</a></li>
+ *   <li><a href="https://avro.apache.org/docs/1.11.1/spec.html">Avro specification</a></li>
+ *   <li><a href="https://github.com/apache/spark/blob/master/connector/avro/src/main/scala/org/apache/spark/sql/avro/AvroSerializer.scala">Spark's internal Catalyst type to Avro bytes implementation</a></li>
+ * </ul>
  *
- * Convert Row -> Avro Record with the specified schema
+ * Spark's implementation is not ideal to be used directly for two reasons:
+ * <ul>
+ *   <li>It cannot handle complex unions in the version of Spark that we use (3.1.1). The support was added in 3.4.0.</li>
+ *   <li>It converts directly to Avro binary that we need to deserialize, and that incurs an additional serde cost.</li>
+ * </ul>
  */
-public class RowToAvroConverter {
+public final class RowToAvroConverter {
+  private RowToAvroConverter() {
+  }
+
   private static final Conversions.DecimalConversion DECIMAL_CONVERTER = new Conversions.DecimalConversion();
 
   public static GenericRecord convert(Row row, Schema schema) {

@@ -1,15 +1,6 @@
 package com.linkedin.venice.hadoop.spark.datawriter.jobs;
 
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.GLOB_FILTER_PATTERN;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.SCHEMA_STRING_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VSON_PUSH;
 import static com.linkedin.venice.hadoop.spark.SparkConstants.DEFAULT_SCHEMA;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -26,7 +17,6 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
-import org.apache.spark.sql.RuntimeConfig;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
@@ -49,17 +39,6 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
   }
 
   private Dataset<Row> getAvroDataFrame(SparkSession sparkSession, PushJobSetting pushJobSetting) {
-    RuntimeConfig sparkConf = sparkSession.conf();
-    sparkConf.set(KEY_FIELD_PROP, pushJobSetting.keyField);
-    sparkConf.set(VALUE_FIELD_PROP, pushJobSetting.valueField);
-    sparkConf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
-    sparkConf.set(SCHEMA_STRING_PROP, pushJobSetting.inputDataSchemaString);
-    if (pushJobSetting.generatePartialUpdateRecordFromInput) {
-      sparkConf.set(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, String.valueOf(true));
-      sparkConf.set(UPDATE_SCHEMA_STRING_PROP, pushJobSetting.valueSchemaString);
-    }
-    sparkConf.set(VSON_PUSH, String.valueOf(false));
-
     Dataset<Row> df =
         sparkSession.read().format("avro").option("pathGlobFilter", GLOB_FILTER_PATTERN).load(pushJobSetting.inputURI);
 
@@ -88,12 +67,8 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     return df;
   }
 
+  @Deprecated
   private Dataset<Row> getVsonDataFrame(SparkSession sparkSession, PushJobSetting pushJobSetting) {
-    RuntimeConfig sparkConf = sparkSession.conf();
-    sparkConf.set(VSON_PUSH, String.valueOf(true));
-    sparkConf.set(FILE_KEY_SCHEMA, pushJobSetting.vsonInputKeySchemaString);
-    sparkConf.set(FILE_VALUE_SCHEMA, pushJobSetting.vsonInputValueSchemaString);
-
     JavaRDD<Row> rdd = sparkSession.sparkContext()
         .sequenceFile(pushJobSetting.inputURI, BytesWritable.class, BytesWritable.class)
         .toJavaRDD()
