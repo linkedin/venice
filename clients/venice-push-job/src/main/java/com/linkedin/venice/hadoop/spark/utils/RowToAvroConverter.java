@@ -52,10 +52,7 @@ import org.apache.spark.sql.types.YearMonthIntervalType;
  * https://spark.apache.org/docs/latest/sql-ref-datatypes.html
  * https://avro.apache.org/docs/1.11.1/specification/
  *
- * Convert Row -> Avro Record. Not convert StructType -> Avro Schema
- *
- * The scope is not the full Spark catalyst types. But only the ones that are supported by Avro.
- * Eventually, we probably need to support the full range of Spark types.
+ * Convert Row -> Avro Record with the specified schema
  */
 public class RowToAvroConverter {
   private static final Conversions.DecimalConversion DECIMAL_CONVERTER = new Conversions.DecimalConversion();
@@ -377,10 +374,9 @@ public class RowToAvroConverter {
     }
 
     // Now, handle complex unions: member0, member1, ...
-    // TODO(nithakka): Handle complex union types: If a branch of the union is "null", then it is skipped in the
-    // Catalyst schema.
+    // If a branch of the union is "null", then it is skipped in the Catalyst schema.
     // So, [ "null", "int", "string" ], [ "int", "null", "string" ], [ "int", "string", "null" ], will all be parsed as
-    // member0 -> IntegerType, member1 -> StringType.
+    // StructType { member0 -> IntegerType, member1 -> StringType }.
     Validate.isInstanceOf(StructType.class, dataType, "Expected StructType, got: " + dataType.getClass().getName());
     Validate.isInstanceOf(Row.class, o, "Expected Row, got: " + o.getClass().getName());
     Row row = (Row) o;
