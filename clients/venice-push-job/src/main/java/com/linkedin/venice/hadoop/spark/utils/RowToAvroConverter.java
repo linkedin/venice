@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.Period;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -260,7 +261,7 @@ public class RowToAvroConverter {
         Validate.isTrue(
             bytes.length == schema.getFixedSize(),
             "Fixed size mismatch. Expected: " + schema.getFixedSize() + ", got: " + bytes.length);
-        return new GenericData.Fixed(schema, bytes);
+        return AvroCompatibilityHelper.newFixed(schema, bytes);
       }
 
       if (o instanceof ByteBuffer) {
@@ -268,7 +269,7 @@ public class RowToAvroConverter {
         Validate.isTrue(
             bytes.remaining() == schema.getFixedSize(),
             "Fixed size mismatch. Expected: " + schema.getFixedSize() + ", got: " + bytes.remaining());
-        return new GenericData.Fixed(schema, ByteUtils.extractByteArray(bytes));
+        return AvroCompatibilityHelper.newFixed(schema, ByteUtils.extractByteArray(bytes));
       }
 
       throw new IllegalArgumentException("Unsupported byte array type: " + o.getClass().getName());
@@ -445,7 +446,7 @@ public class RowToAvroConverter {
     LogicalType logicalType = schema.getLogicalType();
     if (logicalType == null) {
       if (needLogicalType) {
-        throw new IllegalArgumentException("Expected Avro logical type to be present, got: " + logicalType);
+        throw new IllegalArgumentException("Expected Avro logical type to be present, got schema: " + schema);
       } else {
         return null;
       }
@@ -458,6 +459,6 @@ public class RowToAvroConverter {
     }
 
     throw new IllegalArgumentException(
-        "Expected Avro logical type to be one of: " + expectedTypes + ", got: " + logicalType);
+        "Expected Avro logical type to be one of: " + Arrays.toString(expectedTypes) + ", got: " + logicalType);
   }
 }
