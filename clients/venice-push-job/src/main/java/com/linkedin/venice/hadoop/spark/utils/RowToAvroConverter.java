@@ -5,14 +5,17 @@ import com.linkedin.venice.utils.ByteUtils;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.sql.Date;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Period;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Conversions;
 import org.apache.avro.LogicalType;
 import org.apache.avro.LogicalTypes;
@@ -28,6 +31,7 @@ import org.apache.spark.sql.types.BooleanType;
 import org.apache.spark.sql.types.ByteType;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DateType;
+import org.apache.spark.sql.types.DayTimeIntervalType;
 import org.apache.spark.sql.types.DecimalType;
 import org.apache.spark.sql.types.DoubleType;
 import org.apache.spark.sql.types.FloatType;
@@ -40,6 +44,7 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.types.TimestampNTZType;
 import org.apache.spark.sql.types.TimestampType;
+import org.apache.spark.sql.types.YearMonthIntervalType;
 
 
 /**
@@ -129,16 +134,21 @@ public class RowToAvroConverter {
       return (int) localDate.toEpochDay();
     }
 
-    // ByteType
     if (dataType instanceof ByteType) {
       Validate.isInstanceOf(Byte.class, o, "Expected Integer, got: " + o.getClass().getName());
       return ((Byte) o).intValue();
     }
 
-    // ShortType
     if (dataType instanceof ShortType) {
       Validate.isInstanceOf(Short.class, o, "Expected Integer, got: " + o.getClass().getName());
       return ((Short) o).intValue();
+    }
+
+    // Spark default Avro converter converts YearMonthIntervalType to int type
+    // This is not the type read by Spark's native Avro reader, but added to support YearMonthIntervalType
+    if (dataType instanceof YearMonthIntervalType) {
+      Validate.isInstanceOf(Period.class, o, "Expected Period, got: " + o.getClass().getName());
+      return ((Period) o).getMonths();
     }
 
     throw new IllegalArgumentException("Unsupported data type: " + dataType);
@@ -174,19 +184,15 @@ public class RowToAvroConverter {
       return ChronoUnit.MICROS.between(Instant.EPOCH, instant);
     }
 
+    // Spark default Avro converter converts TimestampNTZType to int type
+    // This is not the type read by Spark's native Avro reader, but added to support TimestampNTZType
     // Avro logical types "local-timestamp-millis" and "local-timestamp-micros" are read as LongType in Spark
     if (dataType instanceof TimestampNTZType) {
       LogicalType logicalType =
           validateLogicalType(schema, false, LogicalTypes.localTimestampMicros(), LogicalTypes.localTimestampMillis());
+      Validate.isInstanceOf(java.time.LocalDateTime.class, o, "Expected LocalDateTime, got: " + o.getClass().getName());
 
-      LocalDateTime localDateTime;
-      if (o instanceof java.time.LocalDateTime) {
-        localDateTime = ((java.time.LocalDateTime) o);
-      } else {
-        throw new IllegalArgumentException(
-            "Unsupported timestamp type: " + o.getClass().getName() + ". Expected java.time.LocalDateTime");
-      }
-
+      LocalDateTime localDateTime = ((java.time.LocalDateTime) o);
       LocalDateTime epoch = LocalDateTime.of(1970, 1, 1, 0, 0, 0);
 
       if (logicalType == null || logicalType == LogicalTypes.localTimestampMillis()) {
@@ -194,6 +200,14 @@ public class RowToAvroConverter {
       }
 
       return ChronoUnit.MICROS.between(epoch, localDateTime);
+    }
+
+    // Spark default Avro converter converts DayTimeIntervalType to long type
+    // This is not the type read by Spark's native Avro reader, but added to support DayTimeIntervalType
+    if (dataType instanceof DayTimeIntervalType) {
+      Validate.isInstanceOf(Duration.class, o, "Expected Duration, got: " + o.getClass().getName());
+      Duration duration = (Duration) o;
+      return TimeUnit.SECONDS.toMicros(duration.getSeconds()) + TimeUnit.NANOSECONDS.toMicros(duration.getNano());
     }
 
     throw new IllegalArgumentException("Unsupported data type: " + dataType);
