@@ -51,6 +51,7 @@ import org.apache.spark.sql.types.YearMonthIntervalType;
 /**
  * https://spark.apache.org/docs/latest/sql-data-sources-avro.html
  * https://spark.apache.org/docs/latest/sql-ref-datatypes.html
+ * https://github.com/apache/spark/blob/master/connector/avro/src/main/scala/org/apache/spark/sql/avro/AvroSerializer.scala
  * https://avro.apache.org/docs/1.11.1/specification/
  *
  * Convert Row -> Avro Record with the specified schema
