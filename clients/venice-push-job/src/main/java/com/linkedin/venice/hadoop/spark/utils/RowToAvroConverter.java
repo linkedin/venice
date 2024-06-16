@@ -7,6 +7,8 @@ import java.nio.ByteBuffer;
 import java.sql.Date;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +38,7 @@ import org.apache.spark.sql.types.ShortType;
 import org.apache.spark.sql.types.StringType;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.sql.types.TimestampNTZType;
 import org.apache.spark.sql.types.TimestampType;
 
 
@@ -50,7 +53,6 @@ import org.apache.spark.sql.types.TimestampType;
  * Eventually, we probably need to support the full range of Spark types.
  */
 public class RowToAvroConverter {
-  private static LogicalTypes.Decimal TYPE_DECIMAL = LogicalTypes.decimal(0);
   private static final Conversions.DecimalConversion DECIMAL_CONVERTER = new Conversions.DecimalConversion();
 
   public static GenericRecord convert(Row row, Schema schema) {
@@ -151,7 +153,8 @@ public class RowToAvroConverter {
 
     // Avro logical types "timestamp-millis" and "timestamp-micros" are read as LongType in Spark
     if (dataType instanceof TimestampType) {
-      LogicalType logicalType = validateLogicalType(schema, LogicalTypes.timeMicros(), LogicalTypes.timeMillis());
+      LogicalType logicalType =
+          validateLogicalType(schema, false, LogicalTypes.timeMicros(), LogicalTypes.timeMillis());
 
       Instant instant;
       if (o instanceof java.time.Instant) {
@@ -164,14 +167,33 @@ public class RowToAvroConverter {
                 + ". Expected java.time.Instant or java.sql.Timestamp");
       }
 
-      long nanos = instant.getNano();
-      long micros = nanos / 1000;
-
-      if (logicalType == LogicalTypes.timeMicros()) {
-        return instant.getEpochSecond() * 1000 * 1000 + micros;
+      if (logicalType == null || logicalType == LogicalTypes.timeMicros()) {
+        return ChronoUnit.MILLIS.between(Instant.EPOCH, instant);
       }
 
-      return instant.toEpochMilli();
+      return ChronoUnit.MICROS.between(Instant.EPOCH, instant);
+    }
+
+    // Avro logical types "local-timestamp-millis" and "local-timestamp-micros" are read as LongType in Spark
+    if (dataType instanceof TimestampNTZType) {
+      LogicalType logicalType =
+          validateLogicalType(schema, false, LogicalTypes.localTimestampMicros(), LogicalTypes.localTimestampMillis());
+
+      LocalDateTime localDateTime;
+      if (o instanceof java.time.LocalDateTime) {
+        localDateTime = ((java.time.LocalDateTime) o);
+      } else {
+        throw new IllegalArgumentException(
+            "Unsupported timestamp type: " + o.getClass().getName() + ". Expected java.time.LocalDateTime");
+      }
+
+      LocalDateTime epoch = LocalDateTime.of(1970, 1, 1, 0, 0, 0);
+
+      if (logicalType == null || logicalType == LogicalTypes.localTimestampMillis()) {
+        return ChronoUnit.MILLIS.between(epoch, localDateTime);
+      }
+
+      return ChronoUnit.MICROS.between(epoch, localDateTime);
     }
 
     throw new IllegalArgumentException("Unsupported data type: " + dataType);
@@ -209,7 +231,8 @@ public class RowToAvroConverter {
     }
 
     if (dataType instanceof DecimalType) {
-      validateLogicalType(schema, TYPE_DECIMAL);
+      DecimalType decimalType = (DecimalType) dataType;
+      validateLogicalType(schema, LogicalTypes.decimal(decimalType.precision(), decimalType.scale()));
       Validate.isInstanceOf(BigDecimal.class, o, "Expected BigDecimal, got: " + o.getClass().getName());
       BigDecimal decimal = (BigDecimal) o;
       LogicalTypes.Decimal l = (LogicalTypes.Decimal) schema.getLogicalType();
@@ -241,7 +264,8 @@ public class RowToAvroConverter {
     }
 
     if (dataType instanceof DecimalType) {
-      validateLogicalType(schema, TYPE_DECIMAL);
+      DecimalType decimalType = (DecimalType) dataType;
+      validateLogicalType(schema, LogicalTypes.decimal(decimalType.precision(), decimalType.scale()));
       Validate.isInstanceOf(BigDecimal.class, o, "Expected BigDecimal, got: " + o.getClass().getName());
       BigDecimal decimal = (BigDecimal) o;
       Conversions.DecimalConversion DECIMAL_CONVERTER = new Conversions.DecimalConversion();
@@ -404,16 +428,21 @@ public class RowToAvroConverter {
   }
 
   private static LogicalType validateLogicalType(Schema schema, LogicalType... expectedTypes) {
+    return validateLogicalType(schema, true, expectedTypes);
+  }
+
+  private static LogicalType validateLogicalType(Schema schema, boolean needLogicalType, LogicalType... expectedTypes) {
     LogicalType logicalType = schema.getLogicalType();
-    Validate.notNull(logicalType, "Expected Avro logical type to be present, got: " + logicalType);
+    if (logicalType == null) {
+      if (needLogicalType) {
+        throw new IllegalArgumentException("Expected Avro logical type to be present, got: " + logicalType);
+      } else {
+        return null;
+      }
+    }
 
     for (LogicalType expectedType: expectedTypes) {
-      // Decimal is not a singleton
-      if (expectedType instanceof LogicalTypes.Decimal) {
-        return expectedType;
-      }
-
-      if (expectedType == logicalType) {
+      if (logicalType.equals(expectedType)) {
         return expectedType;
       }
     }
