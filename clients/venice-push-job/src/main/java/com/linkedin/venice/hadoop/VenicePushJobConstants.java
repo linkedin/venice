@@ -227,6 +227,7 @@ public final class VenicePushJobConstants {
    * ignore hdfs files with prefix "_" and "."
    */
   public static final PathFilter PATH_FILTER = p -> !p.getName().startsWith("_") && !p.getName().startsWith(".");
+  public static final String GLOB_FILTER_PATTERN = "[^_.]*";
 
   // Configs to control temp paths and their permissions
   public static final String HADOOP_TMP_DIR = "hadoop.tmp.dir";

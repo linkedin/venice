@@ -765,7 +765,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchFromETLWithForUnionWithNullSchema() throws Exception {
+  public void testBatchFromETLForUnionWithNullSchema() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUnionWithNullSchema(inputDir);
       return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITH_NULL_SCHEMA);
@@ -792,7 +792,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchFromETLWithForUnionWithoutNullSchema() throws Exception {
+  public void testBatchFromETLForUnionWithoutNullSchema() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUnionWithoutNullSchema(inputDir);
       return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA);
@@ -1409,7 +1409,7 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBatchJobSnapshots(Boolean isKakfaPush) throws Exception {
+  public void testBatchJobSnapshots(Boolean isKafkaPush) throws Exception {
 
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 1; i <= 100; i++) {
@@ -1427,7 +1427,7 @@ public abstract class TestBatch {
     deleteDirectory(Paths.get(BASE_DATA_PATH_1).toFile());
     deleteDirectory(Paths.get(BASE_DATA_PATH_2).toFile());
 
-    if (isKakfaPush) {
+    if (isKafkaPush) {
       testRepush(storeName, validator);
     } else {
       testBatchStore(
