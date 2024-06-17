@@ -18,7 +18,7 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -383,7 +383,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null);
     parentAdmin.initStorageCluster(clusterName);
 
-    Assert.assertThrows(
+    assertThrows(
         VeniceStoreAlreadyExistsException.class,
         () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
   }
@@ -404,7 +404,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     // Add store again now with an existing exception
-    Assert.assertThrows(
+    assertThrows(
         VeniceException.class,
         () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
   }
@@ -423,12 +423,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
     parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM);
-    Assert.assertThrows(
+    assertThrows(
         ConfigurationException.class,
         () -> parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM + 1));
-    Assert.assertThrows(
-        ConfigurationException.class,
-        () -> parentAdmin.setStorePartitionCount(clusterName, storeName, -1));
+    assertThrows(ConfigurationException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, -1));
   }
 
   @Test
@@ -611,9 +609,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
     parentAdmin.initStorageCluster(clusterName);
-    Assert.assertThrows(
-        VeniceNoStoreException.class,
-        () -> parentAdmin.setStoreWriteability(clusterName, storeName, false));
+    assertThrows(VeniceNoStoreException.class, () -> parentAdmin.setStoreWriteability(clusterName, storeName, false));
   }
 
   @Test
@@ -852,7 +848,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.PROGRESS);
 
-      Assert.assertThrows(
+      assertThrows(
           VeniceException.class,
           () -> partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId2, 1, 1));
     }
@@ -1313,7 +1309,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
     doReturn(mock(VeniceAdminStats.class)).when(mockHelixVeniceClusterResources).getVeniceAdminStats();
 
-    Assert.assertThrows(
+    assertThrows(
         VeniceException.class,
         () -> mockParentAdmin.incrementVersionIdempotent(
             clusterName,
@@ -1542,7 +1538,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         incrementalPushVersion);
 
     doReturn(true).when(internalAdmin).isTopicTruncated(Version.composeRealTimeTopic(storeName));
-    Assert.assertThrows(
+    assertThrows(
         VeniceException.class,
         () -> parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED));
   }
@@ -1926,14 +1922,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.initStorageCluster(clusterName);
     // When user disable hybrid but also try to manually turn on A/A or Incremental Push, update operation should fail
     // loudly.
-    Assert.assertThrows(
+    assertThrows(
         () -> parentAdmin.updateStore(
             clusterName,
             storeName,
             new UpdateStoreQueryParams().setHybridRewindSeconds(-1)
                 .setHybridOffsetLagThreshold(-1)
                 .setActiveActiveReplicationEnabled(true)));
-    Assert.assertThrows(
+    assertThrows(
         () -> parentAdmin.updateStore(
             clusterName,
             storeName,
@@ -2086,21 +2082,21 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
     parentAdmin.initStorageCluster(clusterName);
 
-    Assert.assertThrows(
+    assertThrows(
         () -> parentAdmin.updateStore(
             clusterName,
             storeName,
             new UpdateStoreQueryParams().setPartitionerClass("com.linkedin.im.a.bad.man").setAmplificationFactor(-1)));
     verify(veniceWriter, times(0)).put(any(), any(), anyInt());
 
-    Assert.assertThrows(
+    assertThrows(
         () -> parentAdmin.updateStore(
             clusterName,
             storeName,
             new UpdateStoreQueryParams().setWriteComputationEnabled(true).setAmplificationFactor(2)));
     verify(veniceWriter, times(0)).put(any(), any(), anyInt());
 
-    Assert.assertThrows(
+    assertThrows(
         () -> parentAdmin.updateStore(
             clusterName,
             storeName,
@@ -2108,13 +2104,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(0)).put(any(), any(), anyInt());
 
     store.setWriteComputationEnabled(true);
-    Assert.assertThrows(
+    assertThrows(
         () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAmplificationFactor(2)));
     verify(veniceWriter, times(0)).put(any(), any(), anyInt());
 
     store.setWriteComputationEnabled(false);
     store.setActiveActiveReplicationEnabled(true);
-    Assert.assertThrows(
+    assertThrows(
         () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAmplificationFactor(2)));
     verify(veniceWriter, times(0)).put(any(), any(), anyInt());
 
@@ -2338,7 +2334,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // not be called
     doReturn(SystemTime.INSTANCE.getMilliseconds() - Time.MS_PER_MINUTE).when(internalAdmin)
         .getInMemoryTopicCreationTime(Version.composeKafkaTopic(storeName, 1));
-    Assert.assertThrows(
+    assertThrows(
         VeniceException.class,
         () -> mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false));
     verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, latestTopic, true);
@@ -2613,13 +2609,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testAclException() {
     String storeName = "test-store-authorizer";
-    Assert.assertThrows(
+    assertThrows(
         VeniceUnsupportedOperationException.class,
         () -> parentAdmin.updateAclForStore(clusterName, storeName, ""));
-    Assert.assertThrows(
-        VeniceUnsupportedOperationException.class,
-        () -> parentAdmin.getAclForStore(clusterName, storeName));
-    Assert.assertThrows(
+    assertThrows(VeniceUnsupportedOperationException.class, () -> parentAdmin.getAclForStore(clusterName, storeName));
+    assertThrows(
         VeniceUnsupportedOperationException.class,
         () -> parentAdmin.deleteAclForStore(clusterName, storeName));
   }
@@ -2778,5 +2772,85 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           e.getMessage(),
           "One of the targeted region invalidRegion is not a valid region in cluster test");
     }
+  }
+
+  @Test
+  public void testGetFinalReturnStatus() {
+    Map<String, ExecutionStatus> statuses = new HashMap<>();
+    Set<String> childRegions = new HashSet<>();
+    childRegions.add("region1");
+    childRegions.add("region2");
+    childRegions.add("region3");
+    ExecutionStatus finalStatus;
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.COMPLETED);
+    statuses.put("region2", ExecutionStatus.COMPLETED);
+    statuses.put("region3", ExecutionStatus.COMPLETED);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.COMPLETED);
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.COMPLETED);
+    statuses.put("region2", ExecutionStatus.PROGRESS);
+    statuses.put("region3", ExecutionStatus.COMPLETED);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.PROGRESS);
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.COMPLETED);
+    statuses.put("region2", ExecutionStatus.ERROR);
+    statuses.put("region3", ExecutionStatus.COMPLETED);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.ERROR);
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.COMPLETED);
+    statuses.put("region2", ExecutionStatus.ERROR);
+    statuses.put("region3", ExecutionStatus.UNKNOWN);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 1, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.UNKNOWN);
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.UNKNOWN);
+    statuses.put("region2", ExecutionStatus.ERROR);
+    statuses.put("region3", ExecutionStatus.UNKNOWN);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 2, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.PROGRESS);
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.COMPLETED);
+    statuses.put("region2", ExecutionStatus.COMPLETED);
+    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.COMPLETED);
+    statuses.put("region2", ExecutionStatus.COMPLETED);
+    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.COMPLETED);
+    statuses.put("region2", ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
+    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.COMPLETED);
+    statuses.put("region2", ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED);
+    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
+
+    statuses.clear();
+    statuses.put("region1", ExecutionStatus.COMPLETED);
+    statuses.put("region2", ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED);
+    statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
+    finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
+    assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
   }
 }
