@@ -18,7 +18,8 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -281,18 +282,18 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.getValue());
 
     StoreCreation storeCreationMessage = (StoreCreation) adminMessage.payloadUnion;
-    Assert.assertEquals(storeCreationMessage.clusterName.toString(), clusterName);
-    Assert.assertEquals(storeCreationMessage.storeName.toString(), storeName);
-    Assert.assertEquals(storeCreationMessage.owner.toString(), owner);
-    Assert.assertEquals(storeCreationMessage.keySchema.definition.toString(), keySchemaStr);
-    Assert.assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
+    assertEquals(storeCreationMessage.clusterName.toString(), clusterName);
+    assertEquals(storeCreationMessage.storeName.toString(), storeName);
+    assertEquals(storeCreationMessage.owner.toString(), owner);
+    assertEquals(storeCreationMessage.keySchema.definition.toString(), keySchemaStr);
+    assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
   }
 
   @Test
@@ -357,16 +358,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       byte[] keyBytes = keyCaptor.getValue();
       byte[] valueBytes = valueCaptor.getValue();
       int schemaId = schemaCaptor.getValue();
-      Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      Assert.assertEquals(keyBytes.length, 0);
+      assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+      assertEquals(keyBytes.length, 0);
       AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-      Assert.assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.getValue());
+      assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.getValue());
       StoreCreation storeCreationMessage = (StoreCreation) adminMessage.payloadUnion;
-      Assert.assertEquals(storeCreationMessage.clusterName.toString(), cluster);
-      Assert.assertEquals(storeCreationMessage.storeName.toString(), storeName);
-      Assert.assertEquals(storeCreationMessage.owner.toString(), owner);
-      Assert.assertEquals(storeCreationMessage.keySchema.definition.toString(), keySchemaStr);
-      Assert.assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
+      assertEquals(storeCreationMessage.clusterName.toString(), cluster);
+      assertEquals(storeCreationMessage.storeName.toString(), storeName);
+      assertEquals(storeCreationMessage.owner.toString(), owner);
+      assertEquals(storeCreationMessage.keySchema.definition.toString(), keySchemaStr);
+      assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
     }
 
   }
@@ -471,17 +472,17 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.VALUE_SCHEMA_CREATION.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.VALUE_SCHEMA_CREATION.getValue());
 
     ValueSchemaCreation valueSchemaCreationMessage = (ValueSchemaCreation) adminMessage.payloadUnion;
-    Assert.assertEquals(valueSchemaCreationMessage.clusterName.toString(), clusterName);
-    Assert.assertEquals(valueSchemaCreationMessage.storeName.toString(), storeName);
-    Assert.assertEquals(valueSchemaCreationMessage.schema.definition.toString(), valueSchemaStr);
-    Assert.assertEquals(valueSchemaCreationMessage.schemaId, valueSchemaId);
+    assertEquals(valueSchemaCreationMessage.clusterName.toString(), clusterName);
+    assertEquals(valueSchemaCreationMessage.storeName.toString(), storeName);
+    assertEquals(valueSchemaCreationMessage.schema.definition.toString(), valueSchemaStr);
+    assertEquals(valueSchemaCreationMessage.schemaId, valueSchemaId);
   }
 
   @Test
@@ -515,11 +516,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         adminOperationSerializer.deserialize(ByteBuffer.wrap(valueCaptor.getValue()), schemaCaptor.getValue());
     DerivedSchemaCreation derivedSchemaCreation = (DerivedSchemaCreation) adminMessage.payloadUnion;
 
-    Assert.assertEquals(derivedSchemaCreation.clusterName.toString(), clusterName);
-    Assert.assertEquals(derivedSchemaCreation.storeName.toString(), storeName);
-    Assert.assertEquals(derivedSchemaCreation.schema.definition.toString(), derivedSchemaStr);
-    Assert.assertEquals(derivedSchemaCreation.valueSchemaId, valueSchemaId);
-    Assert.assertEquals(derivedSchemaCreation.derivedSchemaId, derivedSchemaId);
+    assertEquals(derivedSchemaCreation.clusterName.toString(), clusterName);
+    assertEquals(derivedSchemaCreation.storeName.toString(), storeName);
+    assertEquals(derivedSchemaCreation.schema.definition.toString(), derivedSchemaStr);
+    assertEquals(derivedSchemaCreation.valueSchemaId, valueSchemaId);
+    assertEquals(derivedSchemaCreation.derivedSchemaId, derivedSchemaId);
   }
 
   @Test
@@ -547,15 +548,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_READ.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_READ.getValue());
 
     DisableStoreRead disableStoreRead = (DisableStoreRead) adminMessage.payloadUnion;
-    Assert.assertEquals(disableStoreRead.clusterName.toString(), clusterName);
-    Assert.assertEquals(disableStoreRead.storeName.toString(), storeName);
+    assertEquals(disableStoreRead.clusterName.toString(), clusterName);
+    assertEquals(disableStoreRead.storeName.toString(), storeName);
   }
 
   @Test
@@ -583,15 +584,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_WRITE.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_WRITE.getValue());
 
     PauseStore pauseStore = (PauseStore) adminMessage.payloadUnion;
-    Assert.assertEquals(pauseStore.clusterName.toString(), clusterName);
-    Assert.assertEquals(pauseStore.storeName.toString(), storeName);
+    assertEquals(pauseStore.clusterName.toString(), clusterName);
+    assertEquals(pauseStore.storeName.toString(), storeName);
   }
 
   @Test
@@ -637,15 +638,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_READ.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_READ.getValue());
 
     EnableStoreRead enableStoreRead = (EnableStoreRead) adminMessage.payloadUnion;
-    Assert.assertEquals(enableStoreRead.clusterName.toString(), clusterName);
-    Assert.assertEquals(enableStoreRead.storeName.toString(), storeName);
+    assertEquals(enableStoreRead.clusterName.toString(), clusterName);
+    assertEquals(enableStoreRead.storeName.toString(), storeName);
   }
 
   @Test
@@ -673,15 +674,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_WRITE.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_WRITE.getValue());
 
     ResumeStore resumeStore = (ResumeStore) adminMessage.payloadUnion;
-    Assert.assertEquals(resumeStore.clusterName.toString(), clusterName);
-    Assert.assertEquals(resumeStore.storeName.toString(), storeName);
+    assertEquals(resumeStore.clusterName.toString(), clusterName);
+    assertEquals(resumeStore.storeName.toString(), storeName);
   }
 
   @Test
@@ -714,15 +715,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue());
 
     KillOfflinePushJob killJob = (KillOfflinePushJob) adminMessage.payloadUnion;
-    Assert.assertEquals(killJob.clusterName.toString(), clusterName);
-    Assert.assertEquals(killJob.kafkaTopic.toString(), pubSubTopic.getName());
+    assertEquals(killJob.clusterName.toString(), clusterName);
+    assertEquals(killJob.kafkaTopic.toString(), pubSubTopic.getName());
   }
 
   @Test
@@ -923,7 +924,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           1,
           Optional.empty(),
           false);
-      Assert.assertEquals(newVersion, version);
+      assertEquals(newVersion, version);
     }
   }
 
@@ -1118,7 +1119,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Version.PushType.BATCH,
           null,
           -1);
-      Assert.assertEquals(newVersion, version);
+      assertEquals(newVersion, version);
     }
   }
 
@@ -1462,7 +1463,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
     verify(storeRepo).updateStore(storeCaptor.capture());
     Store capturedStore = storeCaptor.getValue();
-    Assert.assertEquals(capturedStore.getVersions().size(), VeniceParentHelixAdmin.STORE_VERSION_RETENTION_COUNT);
+    assertEquals(capturedStore.getVersions().size(), VeniceParentHelixAdmin.STORE_VERSION_RETENTION_COUNT);
 
     for (int i = 1; i <= 3; ++i) {
       Assert.assertFalse(capturedStore.containsVersion(i));
@@ -1516,7 +1517,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testGetIncrementalPushVersion() {
     String storeName = "testStore";
     Version incrementalPushVersion = new VersionImpl(storeName, 1);
-    Assert.assertEquals(
+    assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
         incrementalPushVersion);
 
@@ -1533,7 +1534,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
 
     doReturn(false).when(internalAdmin).isTopicTruncated(Version.composeRealTimeTopic(storeName));
-    Assert.assertEquals(
+    assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
         incrementalPushVersion);
 
@@ -1563,8 +1564,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     // Verify clients work as expected
     for (ExecutionStatus status: ExecutionStatus.values()) {
-      Assert
-          .assertEquals(clientMap.get(status).queryJobStatus("topic", Optional.empty()).getStatus(), status.toString());
+      assertEquals(clientMap.get(status).queryJobStatus("topic", Optional.empty()).getStatus(), status.toString());
     }
     Assert.assertTrue(clientMap.get(null).queryJobStatus("topic", Optional.empty()).isError());
 
@@ -1593,72 +1593,72 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(Version.PushType.BATCH).when(version).getPushType();
     Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", completeMap);
     Map<String, String> extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
     verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic1_v1");
-    Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
 
     completeMap.put("cluster-slow", clientMap.get(ExecutionStatus.NOT_CREATED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic2_v1", completeMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED); // Do we want this to be
-                                                                                             // Progress? limitation of
-                                                                                             // ordering used in
-                                                                                             // aggregation code
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED); // Do we want this to be
+                                                                                      // Progress? limitation of
+                                                                                      // ordering used in
+                                                                                      // aggregation code
     verify(internalAdmin, never()).truncateKafkaTopic("topic2_v1");
-    Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("cluster-slow"), ExecutionStatus.NOT_CREATED.toString());
+    assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("cluster-slow"), ExecutionStatus.NOT_CREATED.toString());
 
     Map<String, ControllerClient> progressMap = new HashMap<>();
     progressMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
     progressMap.put("cluster3", clientMap.get(ExecutionStatus.NOT_CREATED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic3_v1", progressMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
     verify(internalAdmin, never()).truncateKafkaTopic("topic3_v1");
-    Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
-    Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
+    assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
+    assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
 
     progressMap.put("cluster5", clientMap.get(ExecutionStatus.NEW));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic4_v1", progressMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW);
     verify(internalAdmin, never()).truncateKafkaTopic("topic4_v1");
-    Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
-    Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
-    Assert.assertEquals(extraInfo.get("cluster5"), ExecutionStatus.NEW.toString());
+    assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
+    assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
+    assertEquals(extraInfo.get("cluster5"), ExecutionStatus.NEW.toString());
 
     progressMap.put("cluster7", clientMap.get(ExecutionStatus.PROGRESS));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic5_v1", progressMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     verify(internalAdmin, never()).truncateKafkaTopic("topic5_v1");
     ;
-    Assert.assertEquals(extraInfo.get("cluster7"), ExecutionStatus.PROGRESS.toString());
+    assertEquals(extraInfo.get("cluster7"), ExecutionStatus.PROGRESS.toString());
 
     progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic6_v1", progressMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     verify(internalAdmin, never()).truncateKafkaTopic("topic6_v1");
-    Assert.assertEquals(extraInfo.get("cluster9"), ExecutionStatus.STARTED.toString());
+    assertEquals(extraInfo.get("cluster9"), ExecutionStatus.STARTED.toString());
 
     progressMap.put("cluster11", clientMap.get(ExecutionStatus.END_OF_PUSH_RECEIVED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic7_v1", progressMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     verify(internalAdmin, never()).truncateKafkaTopic("topic7_v1");
-    Assert.assertEquals(extraInfo.get("cluster11"), ExecutionStatus.END_OF_PUSH_RECEIVED.toString());
+    assertEquals(extraInfo.get("cluster11"), ExecutionStatus.END_OF_PUSH_RECEIVED.toString());
 
     progressMap.put("cluster13", clientMap.get(ExecutionStatus.COMPLETED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic8_v1", progressMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     verify(internalAdmin, never()).truncateKafkaTopic("topic8_v1");
-    Assert.assertEquals(extraInfo.get("cluster13"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("cluster13"), ExecutionStatus.COMPLETED.toString());
 
     // 1 unreachable data center is UNKNOWN; it keeps trying until timeout
     Map<String, ControllerClient> failCompleteMap = new HashMap<>();
@@ -1668,11 +1668,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     failCompleteMap.put("failcluster", clientMap.get(null));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8_v1", failCompleteMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.UNKNOWN);
-    Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("failcluster"), ExecutionStatus.UNKNOWN.toString());
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.UNKNOWN);
+    assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("failcluster"), ExecutionStatus.UNKNOWN.toString());
 
     // 2 problematic fabrics. One is failing completely and one is returning error response. It should still get the
     // status of other fabrics and return UNKNOWN for the unreachable fabrics.
@@ -1683,10 +1683,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     failCompleteMap.put("completelyFailingFabric", completelyFailingClient);
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8_v1", failCompleteMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(extraInfo.get("fabric1"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("fabric2"), ExecutionStatus.COMPLETED.toString());
-    Assert.assertEquals(extraInfo.get("failFabric"), ExecutionStatus.UNKNOWN.toString());
-    Assert.assertEquals(extraInfo.get("completelyFailingFabric"), ExecutionStatus.UNKNOWN.toString());
+    assertEquals(extraInfo.get("fabric1"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("fabric2"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(extraInfo.get("failFabric"), ExecutionStatus.UNKNOWN.toString());
+    assertEquals(extraInfo.get("completelyFailingFabric"), ExecutionStatus.UNKNOWN.toString());
     Assert.assertTrue(
         offlineJobStatus.getExtraDetails().get("completelyFailingFabric").contains(completelyFailingExceptionMessage));
 
@@ -1695,38 +1695,38 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic10_v1", errorMap);
     extraInfo = offlineJobStatus.getExtraInfo();
     verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic10_v1");
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
-    Assert.assertEquals(extraInfo.get("cluster-err"), ExecutionStatus.ERROR.toString());
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+    assertEquals(extraInfo.get("cluster-err"), ExecutionStatus.ERROR.toString());
 
     errorMap.put("cluster-complete", clientMap.get(ExecutionStatus.COMPLETED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic11_v1", errorMap);
     extraInfo = offlineJobStatus.getExtraInfo();
     verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic11_v1");
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
-    Assert.assertEquals(extraInfo.get("cluster-complete"), ExecutionStatus.COMPLETED.toString());
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+    assertEquals(extraInfo.get("cluster-complete"), ExecutionStatus.COMPLETED.toString());
 
     // Test whether errored topics will be truncated or not when 'maxErroredTopicNumToKeep' is > 0.
     parentAdmin.setMaxErroredTopicNumToKeep(2);
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic12_v1", errorMap);
     extraInfo = offlineJobStatus.getExtraInfo();
     verify(internalAdmin, never()).truncateKafkaTopic("topic12_v1");
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     // Reset
     parentAdmin.setMaxErroredTopicNumToKeep(0);
 
     errorMap.put("cluster-new", clientMap.get(ExecutionStatus.NEW));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic13_v1", errorMap);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW); // Do we want this to be Progress?
-                                                                                     // limitation of ordering used in
-                                                                                     // aggregation code
-    Assert.assertEquals(extraInfo.get("cluster-new"), ExecutionStatus.NEW.toString());
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW); // Do we want this to be Progress?
+                                                                              // limitation of ordering used in
+                                                                              // aggregation code
+    assertEquals(extraInfo.get("cluster-new"), ExecutionStatus.NEW.toString());
 
     doReturn(true).when(store).isIncrementalPushEnabled();
     doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
     completeMap.remove("cluster-slow");
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic2_v1", completeMap);
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
     verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic2_v1");
 
   }
@@ -1758,14 +1758,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertEquals(updateStore.incrementalPushEnabled, true);
+    assertEquals(updateStore.incrementalPushEnabled, true);
     Assert.assertTrue(updateStore.blobTransferEnabled);
 
     long readQuota = 100L;
@@ -1795,31 +1795,28 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     schemaId = schemaCaptor.getValue();
     adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertEquals(updateStore.clusterName.toString(), clusterName);
-    Assert.assertEquals(updateStore.storeName.toString(), storeName);
-    Assert.assertEquals(updateStore.readQuotaInCU, readQuota, "New read quota should be written into kafka message.");
-    Assert.assertEquals(
-        updateStore.enableReads,
-        readability,
-        "New read readability should be written into kafka message.");
-    Assert.assertEquals(
+    assertEquals(updateStore.clusterName.toString(), clusterName);
+    assertEquals(updateStore.storeName.toString(), storeName);
+    assertEquals(updateStore.readQuotaInCU, readQuota, "New read quota should be written into kafka message.");
+    assertEquals(updateStore.enableReads, readability, "New read readability should be written into kafka message.");
+    assertEquals(
         updateStore.currentVersion,
         AdminConsumptionTask.IGNORED_CURRENT_VERSION,
         "As we don't pass any current version into updateStore, a magic version number should be used to prevent current version being overrided in prod region.");
     Assert.assertNotNull(
         updateStore.hybridStoreConfig,
         "Hybrid store config should result in something not null in the avro object");
-    Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 135L);
-    Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
-    Assert.assertEquals(updateStore.hybridStoreConfig.bufferReplayPolicy, REWIND_FROM_SOP.getValue());
-    Assert.assertEquals(updateStore.accessControlled, accessControlled);
-    Assert.assertEquals(updateStore.bootstrapToOnlineTimeoutInHours, 48);
-    Assert.assertEquals(updateStore.partitionerConfig.amplificationFactor, 1);
-    Assert.assertEquals(updateStore.partitionerConfig.partitionerParams.toString(), testPartitionerParams.toString());
-    Assert.assertEquals(
+    assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 135L);
+    assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
+    assertEquals(updateStore.hybridStoreConfig.bufferReplayPolicy, REWIND_FROM_SOP.getValue());
+    assertEquals(updateStore.accessControlled, accessControlled);
+    assertEquals(updateStore.bootstrapToOnlineTimeoutInHours, 48);
+    assertEquals(updateStore.partitionerConfig.amplificationFactor, 1);
+    assertEquals(updateStore.partitionerConfig.partitionerParams.toString(), testPartitionerParams.toString());
+    assertEquals(
         updateStore.partitionerConfig.partitionerClass.toString(),
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
-    Assert.assertEquals(updateStore.replicationFactor, 2);
+    assertEquals(updateStore.replicationFactor, 2);
     Assert.assertFalse(updateStore.blobTransferEnabled);
     // Disable Access Control
     accessControlled = false;
@@ -1830,7 +1827,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     schemaId = schemaCaptor.getValue();
     adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertEquals(updateStore.accessControlled, accessControlled);
+    assertEquals(updateStore.accessControlled, accessControlled);
 
     // Update the store twice with the same parameter to make sure get methods in UpdateStoreQueryParams class can work
     // properly.
@@ -1857,8 +1854,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Assert.assertTrue(e.getClass().isAssignableFrom(VeniceHttpException.class));
       Assert.assertTrue(e instanceof VeniceHttpException);
       VeniceHttpException veniceHttpException = (VeniceHttpException) e;
-      Assert.assertEquals(veniceHttpException.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-      Assert.assertEquals(veniceHttpException.getErrorType(), ErrorType.INVALID_SCHEMA);
+      assertEquals(veniceHttpException.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
+      assertEquals(veniceHttpException.getErrorType(), ErrorType.INVALID_SCHEMA);
     }
   }
 
@@ -1888,7 +1885,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     int schemaId = schemaCaptor.getValue();
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertEquals(
+    assertEquals(
         updateStore.nativeReplicationSourceFabric.toString(),
         "dc1",
         "Native replication source fabric does not match after updating the store!");
@@ -2023,9 +2020,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     int schemaId = schemaCaptor.getValue();
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertEquals(updateStore.getViews().size(), 2);
+    assertEquals(updateStore.getViews().size(), 2);
     Assert.assertTrue(updateStore.getViews().containsKey("changeCapture"));
-    Assert.assertEquals(
+    assertEquals(
         updateStore.getViews().get("changeCapture").viewClassName.toString(),
         ChangeCaptureView.class.getCanonicalName());
     Assert.assertTrue(updateStore.getViews().get("changeCapture").viewParameters.isEmpty());
@@ -2065,7 +2062,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     int schemaId = schemaCaptor.getValue();
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertEquals(updateStore.getViews().size(), 0);
+    assertEquals(updateStore.getViews().size(), 0);
   }
 
   @Test
@@ -2148,16 +2145,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.DELETE_STORE.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.DELETE_STORE.getValue());
 
     DeleteStore deleteStore = (DeleteStore) adminMessage.payloadUnion;
-    Assert.assertEquals(deleteStore.clusterName.toString(), clusterName);
-    Assert.assertEquals(deleteStore.storeName.toString(), storeName);
-    Assert.assertEquals(deleteStore.largestUsedVersionNumber, 0);
+    assertEquals(deleteStore.clusterName.toString(), clusterName);
+    assertEquals(deleteStore.storeName.toString(), storeName);
+    assertEquals(deleteStore.largestUsedVersionNumber, 0);
   }
 
   @Test
@@ -2166,9 +2163,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(regionCount);
     Map<String, Integer> result =
         parentAdmin.getCurrentVersionForMultiRegions(clusterName, "test", controllerClientMap);
-    Assert.assertEquals(result.size(), regionCount, "Should return the current versions for all regions.");
+    assertEquals(result.size(), regionCount, "Should return the current versions for all regions.");
     for (int i = 0; i < regionCount; i++) {
-      Assert.assertEquals(result.get("region" + i).intValue(), i);
+      assertEquals(result.get("region" + i).intValue(), i);
     }
   }
 
@@ -2184,11 +2181,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     Map<String, Integer> result =
         parentAdmin.getCurrentVersionForMultiRegions(clusterName, "test", controllerClientMap);
-    Assert.assertEquals(result.size(), regionCount, "Should return the current versions for all regions.");
+    assertEquals(result.size(), regionCount, "Should return the current versions for all regions.");
     for (int i = 0; i < regionCount - 1; i++) {
-      Assert.assertEquals(result.get("region" + i).intValue(), i);
+      assertEquals(result.get("region" + i).intValue(), i);
     }
-    Assert.assertEquals(
+    assertEquals(
         result.get("region4").intValue(),
         AdminConsumptionTask.IGNORED_CURRENT_VERSION,
         "Met an error while querying a current version from a region, should return -1.");
@@ -2223,7 +2220,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
     Assert.assertFalse(versionTopics.isEmpty());
     PubSubTopic latestTopic = versionTopics.get(0);
-    Assert.assertEquals(latestTopic, pubSubTopicRepository.getTopic(storeName + "_v3"));
+    assertEquals(latestTopic, pubSubTopicRepository.getTopic(storeName + "_v3"));
     Assert.assertTrue(topicList.containsAll(versionTopics));
     Assert.assertTrue(versionTopics.containsAll(topicList));
   }
@@ -2284,7 +2281,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .getOffLinePushStatus(clusterName, latestTopic);
     Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertTrue(currentPush.isPresent());
-    Assert.assertEquals(currentPush.get(), latestTopic);
+    assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(2)).getOffLinePushStatus(clusterName, latestTopic);
 
     // When there is a regular topic and the job status is 'UNKNOWN' in some region,
@@ -2305,7 +2302,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .getOffLinePushStatus(clusterName, latestTopic);
     currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertTrue(currentPush.isPresent());
-    Assert.assertEquals(currentPush.get(), latestTopic);
+    assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(12)).getOffLinePushStatus(clusterName, latestTopic);
 
     // When there is a regular topic and the job status is 'UNKNOWN' in some region for the first time,
@@ -2317,7 +2314,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS));
     currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertTrue(currentPush.isPresent());
-    Assert.assertEquals(currentPush.get(), latestTopic);
+    assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
 
     // When there is a regular topic, but there is no corresponding version
@@ -2505,7 +2502,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Assert.assertFalse(partialMockParentAdmin.isJobKilled(version.kafkaTopicName()));
         }
       } else {
-        Assert.assertEquals(
+        assertEquals(
             partialMockParentAdmin.incrementVersionIdempotent(
                 clusterName,
                 storeName,
@@ -2590,14 +2587,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Assert.assertTrue(e.getMessage().contains("due to existing exception"));
     }
     // store B should still be able to process admin operations.
-    Assert.assertEquals(
+    assertEquals(
         parentAdmin.incrementVersionIdempotent(clusterName, storeB, "", 3, 3),
         storeBVersion,
         "Unexpected new version returned");
 
     doReturn(null).when(internalAdmin).getLastExceptionForStore(clusterName, storeA);
     // Store A is unblocked and should be able to process admin operations now.
-    Assert.assertEquals(
+    assertEquals(
         parentAdmin.incrementVersionIdempotent(clusterName, storeA, "", 3, 3),
         storeAVersion,
         "Unexpected new version returned");
@@ -2646,15 +2643,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
+    assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(keyBytes.length, 0);
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
+    assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
-    Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
+    assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
+    assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
 
     store.setHybridStoreConfig(
         new HybridStoreConfigImpl(
@@ -2734,12 +2731,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(s).when(internalAdmin).getStore(anyString(), anyString());
 
     RegionPushDetails details = internalAdmin.getRegionPushDetails(clusterName, storeName, true);
-    Assert.assertEquals(details.getPushEndTimestamp(), now.plusHours(1).toString());
-    Assert.assertEquals(details.getVersions().size(), 1);
-    Assert.assertEquals(details.getCurrentVersion().intValue(), 1);
-    Assert.assertEquals(details.getPartitionDetails().size(), numOfPartition);
+    assertEquals(details.getPushEndTimestamp(), now.plusHours(1).toString());
+    assertEquals(details.getVersions().size(), 1);
+    assertEquals(details.getCurrentVersion().intValue(), 1);
+    assertEquals(details.getPartitionDetails().size(), numOfPartition);
     for (int i = 0; i < numOfPartition; i++) {
-      Assert.assertEquals(details.getPartitionDetails().get(i).getReplicaDetails().size(), replicationFactor);
+      assertEquals(details.getPartitionDetails().get(i).getReplicaDetails().size(), replicationFactor);
     }
 
     doReturn(null).when(internalAdmin).getStore(anyString(), anyString());
@@ -2768,9 +2765,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1);
       Assert.fail("Test should fail, but doesn't");
     } catch (VeniceException e) {
-      Assert.assertEquals(
-          e.getMessage(),
-          "One of the targeted region invalidRegion is not a valid region in cluster test");
+      assertEquals(e.getMessage(), "One of the targeted region invalidRegion is not a valid region in cluster test");
     }
   }
 

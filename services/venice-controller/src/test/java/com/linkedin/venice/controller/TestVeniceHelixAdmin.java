@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
