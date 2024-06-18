@@ -1189,10 +1189,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       offsetRecord = new OffsetRecord(offsetRecordByteArray, partitionStateSerializer);
     } catch (Exception e) {
       LOGGER.error(
-          "Caught exception when deserializing offset record byte array: {} for topic: {}, partition: {}.",
+          "Caught exception when deserializing offset record byte array: {} for replica: {}",
           Arrays.toString(offsetRecordByteArray),
-          topicName,
-          partition);
+          Utils.getReplicaId(topicName, partition));
       throw e;
     }
     storageMetadataService.put(topicName, partition, offsetRecord);

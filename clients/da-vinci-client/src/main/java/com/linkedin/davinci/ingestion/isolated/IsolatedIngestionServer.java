@@ -364,11 +364,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         } else {
           throw new VeniceException("StoreVersionState does not exist for topic: " + topicName);
         }
+        LOGGER.info(
+            "Ingestion completed for replica: {}, offset: {}",
+            Utils.getReplicaId(topicName, partitionId),
+            report.offset);
       } else {
         LOGGER.error(
-            "Ingestion error for topic: {}, partition: {}, error message: {}",
-            topicName,
-            partitionId,
+            "Ingestion error for replica: {}, error message: {}",
+            Utils.getReplicaId(topicName, partitionId),
             report.message);
       }
 

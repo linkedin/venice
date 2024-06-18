@@ -146,8 +146,8 @@ class IngestionNotificationDispatcher {
         // Notifiers will not be sent a completion notification, they should only
         // receive the previously-sent error notification.
         LOGGER.error(
-            "Processing completed WITH ERRORS for Partition: {}, Last Offset: {}",
-            pcs.getPartition(),
+            "Processing completed WITH ERRORS for Replica: {}, Last Offset: {}",
+            pcs.getReplicaId(),
             pcs.getLatestProcessedLocalVersionTopicOffset());
         return false;
       }
@@ -295,7 +295,7 @@ class IngestionNotificationDispatcher {
         pcs.errorReported();
       }, () -> {
         StringBuilder logMessage = new StringBuilder();
-        logMessage.append("Partition: ").append(pcs.getPartition()).append(" has already been ");
+        logMessage.append("Replica: ").append(pcs.getReplicaId()).append(" has already been ");
         boolean report = true;
 
         if (pcs.isComplete()) {
@@ -326,13 +326,13 @@ class IngestionNotificationDispatcher {
         pcs.errorReported();
       }, () -> {
         if (pcs.isErrorReported()) {
-          LOGGER.warn("Partition: {} has been reported as error before.", pcs.getPartition());
+          LOGGER.warn("Replica: {} has been reported as error before.", pcs.getReplicaId());
           return false;
         }
-        // Once a replica is completed, there is not need to kill the state transition.
+        // Once a replica is completed, there is no need to kill the state transition.
         if (pcs.isCompletionReported()) {
           LOGGER.warn(
-              "Partition: {} has been marked as completed, so an error will not be reported...",
+              "Replica: {} has been marked as completed, so an error will not be reported...",
               pcs.getReplicaId());
           return false;
         }
