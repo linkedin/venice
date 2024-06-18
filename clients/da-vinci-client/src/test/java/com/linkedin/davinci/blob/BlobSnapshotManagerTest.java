@@ -13,6 +13,7 @@ import java.util.HashMap;
 import org.rocksdb.Checkpoint;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -56,8 +57,24 @@ public class BlobSnapshotManagerTest {
 
     blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
 
-    verify(mockCheckpoint, times(2)).createCheckpoint(
+    verify(mockCheckpoint, times(1)).createCheckpoint(
         BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID)
             + "/.snapshot_files");
+  }
+
+  @Test
+  public void testSameSnapshotWhenConcurrentUsers() throws RocksDBException {
+    RocksDB mockRocksDB = mock(RocksDB.class);
+    Checkpoint mockCheckpoint = mock(Checkpoint.class);
+    BlobSnapshotManager blobSnapshotManager = spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME));
+    doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
+    doNothing().when(mockCheckpoint)
+        .createCheckpoint(
+            BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
+    blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+
+    Assert.assertEquals(blobSnapshotManager.getConcurrentUsers(mockRocksDB, STORE_NAME, PARTITION_ID), 3);
   }
 }

@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,10 +22,11 @@ public class BlobSnapshotManager {
   }
 
   private static final Logger LOGGER = LogManager.getLogger(BlobSnapshotManager.class);
-  Map<String, Map<Integer, AtomicLong>> concurrentSnapshotUsers;
+  HashMap<String, Map<Integer, AtomicLong>> concurrentSnapshotUsers;
   HashMap<String, HashMap<Integer, Long>> snapShotTimestamps;
-  Long snapshotRetentionTime = TimeUnit.MINUTES.toMillis(10);
+  Long snapshotRetentionTime;
 
+  // Initialized the snapshot manger for this specific dbDir
   public BlobSnapshotManager(String basePath, long snapshotRetentionTime) {
     this.basePath = basePath;
     this.snapshotRetentionTime = snapshotRetentionTime;
@@ -43,6 +43,7 @@ public class BlobSnapshotManager {
     return System.currentTimeMillis() - snapshotTimestamp > this.snapshotRetentionTime;
   }
 
+  // Updates the snapshot of the hybdrid store
   private void updateHybridSnapshot(RocksDB rocksDB, String topicName, int partitionId) {
     String fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(this.basePath, topicName, partitionId);
     if (fullPathForPartitionDBSnapshot.isEmpty()) {
@@ -62,6 +63,8 @@ public class BlobSnapshotManager {
     }
   }
 
+  // Checks if the snapshot is stale, if it is and no one is using it, it updates the snapshot, otherwise it increases
+  // the count of people using the snapshot
   public void getHybridSnapshot(RocksDB rocksDB, String topicName, int partitionId) {
     if (rocksDB == null || topicName == null) {
       throw new IllegalArgumentException("RocksDB instance and topicName cannot be null");
@@ -78,11 +81,19 @@ public class BlobSnapshotManager {
         updateHybridSnapshot(rocksDB, topicName, partitionId);
         snapShotTimestamps.get(topicName).put(partitionId, System.currentTimeMillis());
       }
+      if (getConcurrentUsers(rocksDB, topicName, partitionId) == 0) {
+        concurrentSnapshotUsers.get(topicName).put(partitionId, new AtomicLong(1));
+      } else {
+        concurrentSnapshotUsers.get(topicName).get(partitionId).incrementAndGet();
+      }
       return;
     }
     try {
-      if (concurrentSnapshotUsers.get(topicName).get(partitionId) != null) {
+      if (concurrentSnapshotUsers.get(topicName).get(partitionId) != null
+          && concurrentSnapshotUsers.get(topicName).get(partitionId).get() >= 0) {
         concurrentSnapshotUsers.get(topicName).get(partitionId).incrementAndGet();
+      } else {
+        concurrentSnapshotUsers.get(topicName).put(partitionId, new AtomicLong(1));
       }
       LOGGER.info("Retrieved preexisting snapshot in directory: {}", fullPathForPartitionDBSnapshot);
     } catch (Exception e) {
@@ -90,10 +101,16 @@ public class BlobSnapshotManager {
     }
   }
 
-  public Long getSnapshotTimeStamp(String topicName, int partitionId) {
-    if (snapShotTimestamps.get(topicName) == null || snapShotTimestamps.get(topicName).get(partitionId) == null) {
-      return null;
+  public int getConcurrentUsers(RocksDB rocksDB, String topicName, int partitionId) {
+    if (rocksDB == null || topicName == null) {
+      throw new IllegalArgumentException("RocksDB instance and topicName cannot be null");
     }
-    return snapShotTimestamps.get(topicName).get(partitionId);
+    if (!concurrentSnapshotUsers.containsKey(topicName)) {
+      return 0;
+    }
+    if (!concurrentSnapshotUsers.get(topicName).containsKey(partitionId)) {
+      return 0;
+    }
+    return concurrentSnapshotUsers.get(topicName).get(partitionId).intValue();
   }
 }
