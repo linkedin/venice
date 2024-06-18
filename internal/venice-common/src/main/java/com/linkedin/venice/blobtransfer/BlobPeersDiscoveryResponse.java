@@ -1,5 +1,8 @@
 package com.linkedin.venice.blobtransfer;
 
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
+import java.util.ArrayList;
 import java.util.List;
 
 
@@ -32,6 +35,15 @@ public class BlobPeersDiscoveryResponse {
 
   public List<String> getDiscoveryResult() {
     return this.hostNameList;
+  }
+
+  public void addPartition(Partition partition) {
+    List<String> hostNames = new ArrayList<>();
+    for (Instance instance: partition.getReadyToServeInstances()) {
+      String host = instance.getHost();
+      hostNames.add(host);
+    }
+    setDiscoveryResult(hostNames);
   }
 
 }

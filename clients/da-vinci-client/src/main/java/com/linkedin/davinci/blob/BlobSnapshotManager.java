@@ -24,9 +24,11 @@ public class BlobSnapshotManager {
   private static final Logger LOGGER = LogManager.getLogger(BlobSnapshotManager.class);
   HashMap<String, Map<Integer, AtomicLong>> concurrentSnapshotUsers;
   HashMap<String, HashMap<Integer, Long>> snapShotTimestamps;
-  Long snapshotRetentionTime;
+  long snapshotRetentionTime;
 
-  // Initialized the snapshot manger for this specific dbDir
+  /**
+   * Constructor for the BlobSnapshotManager
+   */
   public BlobSnapshotManager(String basePath, long snapshotRetentionTime) {
     this.basePath = basePath;
     this.snapshotRetentionTime = snapshotRetentionTime;
@@ -34,16 +36,19 @@ public class BlobSnapshotManager {
     this.concurrentSnapshotUsers = new HashMap<>();
   }
 
-  // Checks if the current snapshot of the partition is stale
+  /**
+   * Checks if the current snapshot of the partition is stale
+   */
   private boolean isSnapshotStale(String topicName, int partitionId) {
-    if (snapShotTimestamps.get(topicName) == null || snapShotTimestamps.get(topicName).get(partitionId) == null) {
+    if (!snapShotTimestamps.containsKey(topicName) || !snapShotTimestamps.get(topicName).containsKey(partitionId)) {
       return true;
     }
-    long snapshotTimestamp = snapShotTimestamps.get(topicName).get(partitionId);
-    return System.currentTimeMillis() - snapshotTimestamp > this.snapshotRetentionTime;
+    return System.currentTimeMillis() - snapShotTimestamps.get(topicName).get(partitionId) > snapshotRetentionTime;
   }
 
-  // Updates the snapshot of the hybdrid store
+  /**
+   * Updates the snapshot of the hybrid store
+   */
   private void updateHybridSnapshot(RocksDB rocksDB, String topicName, int partitionId) {
     String fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(this.basePath, topicName, partitionId);
     if (fullPathForPartitionDBSnapshot.isEmpty()) {
@@ -52,7 +57,7 @@ public class BlobSnapshotManager {
     try {
       Checkpoint checkpoint = createCheckpoint(rocksDB);
 
-      LOGGER.info("Start creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
+      LOGGER.info("Creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
       checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
 
       LOGGER.info("Finished creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
@@ -63,13 +68,14 @@ public class BlobSnapshotManager {
     }
   }
 
-  // Checks if the snapshot is stale, if it is and no one is using it, it updates the snapshot, otherwise it increases
-  // the count of people using the snapshot
+  /**
+   * Checks if the snapshot is stale, if it is and no one is using it, it updates the snapshot,
+   * otherwise it increases the count of people using the snapshot
+   */
   public void getHybridSnapshot(RocksDB rocksDB, String topicName, int partitionId) {
     if (rocksDB == null || topicName == null) {
       throw new IllegalArgumentException("RocksDB instance and topicName cannot be null");
     }
-
     String fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(this.basePath, topicName, partitionId);
     if (!snapShotTimestamps.containsKey(topicName)) {
       snapShotTimestamps.put(topicName, new HashMap<>());
@@ -105,10 +111,8 @@ public class BlobSnapshotManager {
     if (rocksDB == null || topicName == null) {
       throw new IllegalArgumentException("RocksDB instance and topicName cannot be null");
     }
-    if (!concurrentSnapshotUsers.containsKey(topicName)) {
-      return 0;
-    }
-    if (!concurrentSnapshotUsers.get(topicName).containsKey(partitionId)) {
+    if (!concurrentSnapshotUsers.containsKey(topicName)
+        || !concurrentSnapshotUsers.get(topicName).containsKey(partitionId)) {
       return 0;
     }
     return concurrentSnapshotUsers.get(topicName).get(partitionId).intValue();

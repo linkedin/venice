@@ -22,6 +22,8 @@ public class BlobSnapshotManagerTest {
   private static final String STORE_NAME = Utils.getUniqueString("sstTest");
   private static final int PARTITION_ID = 0;
   private static final String BASE_PATH = Utils.getUniqueTempPath("sstTest");
+  private static final String DB_DIR =
+      BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID);
 
   @Test
   public void testHybridSnapshot() throws RocksDBException {
@@ -35,9 +37,7 @@ public class BlobSnapshotManagerTest {
 
     blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
 
-    verify(mockCheckpoint, times(1)).createCheckpoint(
-        BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID)
-            + "/.snapshot_files");
+    verify(mockCheckpoint, times(1)).createCheckpoint(DB_DIR + "/.snapshot_files");
   }
 
   @Test
@@ -46,9 +46,7 @@ public class BlobSnapshotManagerTest {
     Checkpoint mockCheckpoint = mock(Checkpoint.class);
     BlobSnapshotManager blobSnapshotManager = spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME));
     doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
-    doNothing().when(mockCheckpoint)
-        .createCheckpoint(
-            BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
+    doNothing().when(mockCheckpoint).createCheckpoint(DB_DIR);
     blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
     HashMap<String, HashMap<Integer, Long>> snapShotTimestamps = new HashMap<>();
     snapShotTimestamps.put(STORE_NAME, new HashMap<>());
@@ -57,9 +55,7 @@ public class BlobSnapshotManagerTest {
 
     blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
 
-    verify(mockCheckpoint, times(1)).createCheckpoint(
-        BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID)
-            + "/.snapshot_files");
+    verify(mockCheckpoint, times(1)).createCheckpoint(DB_DIR + "/.snapshot_files");
   }
 
   @Test
