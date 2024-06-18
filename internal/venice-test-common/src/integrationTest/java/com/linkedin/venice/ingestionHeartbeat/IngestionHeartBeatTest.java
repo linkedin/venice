@@ -48,7 +48,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -121,7 +120,7 @@ public class IngestionHeartBeatTest {
   }
 
   @DataProvider
-  public static Object[][] ampFactorAndAAConfigAndIncPushAndDRPProvider() {
+  public static Object[][] AAConfigAndIncPushAndDRPProvider() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean isActiveActiveEnabled = (boolean) permutation[1];
       DataReplicationPolicy dataReplicationPolicy = (DataReplicationPolicy) permutation[3];
@@ -129,12 +128,11 @@ public class IngestionHeartBeatTest {
         return false;
       }
       return true;
-    }, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataReplicationPolicy.values());
+    }, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataReplicationPolicy.values());
   }
 
-  @Test(dataProvider = "ampFactorAndAAConfigAndIncPushAndDRPProvider", timeOut = TEST_TIMEOUT_MS)
+  @Test(dataProvider = "AAConfigAndIncPushAndDRPProvider", timeOut = TEST_TIMEOUT_MS)
   public void testIngestionHeartBeat(
-      boolean isAmplificationFactorEnabled,
       boolean isActiveActiveEnabled,
       boolean isIncrementalPushEnabled,
       DataReplicationPolicy dataReplicationPolicy) throws IOException, InterruptedException {
@@ -149,7 +147,6 @@ public class IngestionHeartBeatTest {
     if (isIncrementalPushEnabled) {
       vpjProperties.put(INCREMENTAL_PUSH, true);
     }
-    int amplificationFactor = isAmplificationFactorEnabled ? 2 : 1;
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -165,17 +162,10 @@ public class IngestionHeartBeatTest {
               .setReplicationFactor(2)
               .setNativeReplicationEnabled(true)
               .setActiveActiveReplicationEnabled(isActiveActiveEnabled)
-              .setAmplificationFactor(amplificationFactor)
               .setHybridDataReplicationPolicy(dataReplicationPolicy);
 
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
-      if (isAmplificationFactorEnabled && isActiveActiveEnabled) {
-        assertTrue(
-            updateStoreResponse.isError(),
-            "Update store should fail when both amplification factor and active-active replication are enabled");
-        return;
-      }
 
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
 
@@ -239,17 +229,14 @@ public class IngestionHeartBeatTest {
 
             // VT: verify leader topic partition receives HB from RT, and is forwarded with leader completed
             // header to all VT.
-            List<Integer> subPartitions = PartitionUtils.getSubPartitions(partition, amplificationFactor);
-            for (int subPartition: subPartitions) {
-              verifyHBinKafkaTopic(
-                  pubSubConsumer,
-                  storeName,
-                  subPartition,
-                  isActiveActiveEnabled,
-                  isIncrementalPushEnabled,
-                  dataReplicationPolicy,
-                  false);
-            }
+            verifyHBinKafkaTopic(
+                pubSubConsumer,
+                storeName,
+                partition,
+                isActiveActiveEnabled,
+                isIncrementalPushEnabled,
+                dataReplicationPolicy,
+                false);
           }
         }
       }

@@ -8,8 +8,6 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -182,44 +180,9 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         compressor);
   }
 
-  public T get(
-      AbstractStorageEngine store,
-      int userPartition,
-      VenicePartitioner partitioner,
-      PartitionerConfig partitionerConfig,
-      byte[] key,
-      ByteBuffer reusedRawValue,
-      T reusedValue,
-      BinaryDecoder reusedDecoder,
-      boolean isChunked,
-      ReadResponse response,
-      int readerSchemaId,
-      StoreDeserializerCache<T> storeDeserializerCache,
-      VeniceCompressor compressor) {
-    int subPartition = userPartition;
-    int amplificationFactor = partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
-    if (amplificationFactor > 1) {
-      int subPartitionOffset = partitioner.getPartitionId(key, amplificationFactor);
-      subPartition = userPartition * amplificationFactor + subPartitionOffset;
-    }
-    return get(
-        store,
-        subPartition,
-        key,
-        reusedRawValue,
-        reusedValue,
-        reusedDecoder,
-        isChunked,
-        response,
-        readerSchemaId,
-        storeDeserializerCache,
-        compressor);
-  }
-
   public void getByPartialKey(
       AbstractStorageEngine store,
       int userPartition,
-      PartitionerConfig partitionerConfig,
       byte[] keyPrefixBytes,
       T reusedValue,
       BinaryDecoder reusedDecoder,
@@ -235,25 +198,19 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       throw new VeniceException("Filtering by key prefix is not supported when chunking is enabled.");
     }
 
-    int subPartition;
-    int amplificationFactor = partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
-
-    int subPartitionCount = (userPartition + 1) * amplificationFactor;
-    for (subPartition = userPartition * amplificationFactor; subPartition < subPartitionCount; subPartition++) {
-      ChunkingUtils.getFromStorageByPartialKey(
-          this,
-          store,
-          subPartition,
-          keyPrefixBytes,
-          reusedValue,
-          keyRecordDeserializer,
-          reusedDecoder,
-          response,
-          readerSchemaId,
-          storeDeserializerCache,
-          compressor,
-          computingCallback);
-    }
+    ChunkingUtils.getFromStorageByPartialKey(
+        this,
+        store,
+        userPartition,
+        keyPrefixBytes,
+        reusedValue,
+        keyRecordDeserializer,
+        reusedDecoder,
+        response,
+        readerSchemaId,
+        storeDeserializerCache,
+        compressor,
+        computingCallback);
   }
 
   private final DecompressingDecoderWrapperValueOnly<byte[], T> byteArrayDecompressingDecoderValueOnly = (

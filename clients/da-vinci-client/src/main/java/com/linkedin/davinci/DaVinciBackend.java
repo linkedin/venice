@@ -564,20 +564,20 @@ public class DaVinciBackend implements Closeable {
     return compressorFactory;
   }
 
-  protected void reportPushStatus(String kafkaTopic, int subPartition, ExecutionStatus status) {
-    reportPushStatus(kafkaTopic, subPartition, status, Optional.empty());
+  protected void reportPushStatus(String kafkaTopic, int partition, ExecutionStatus status) {
+    reportPushStatus(kafkaTopic, partition, status, Optional.empty());
   }
 
   protected void reportPushStatus(
       String kafkaTopic,
-      int subPartition,
+      int partition,
       ExecutionStatus status,
       Optional<String> incrementalPushVersion) {
     VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
     if (versionBackend != null && versionBackend.isReportingPushStatus()) {
       Version version = versionBackend.getVersion();
       pushStatusStoreWriter
-          .writePushStatus(version.getStoreName(), version.getNumber(), subPartition, status, incrementalPushVersion);
+          .writePushStatus(version.getStoreName(), version.getNumber(), partition, status, incrementalPushVersion);
     }
   }
 

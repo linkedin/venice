@@ -99,7 +99,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
      * Force amplification factor == 1 to avoid using UserPartitionAwarePartitioner, as we are hiding amp factor concept
      * for Router and Helix
      */
-    return PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(), 1, partitionerProperties);
+    return PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(), partitionerProperties);
   }
 
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {

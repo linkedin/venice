@@ -124,13 +124,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   private VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
       VersionCreationResponse versionCreationResponse,
       Properties veniceWriterProperties) {
-    int amplificationFactor = versionCreationResponse.getAmplificationFactor();
     Integer partitionCount = versionCreationResponse.getPartitions();
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(versionCreationResponse.getPartitionerParams());
     VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
         versionCreationResponse.getPartitionerClass(),
-        amplificationFactor,
         new VeniceProperties(partitionerProperties));
     return constructVeniceWriter(
         veniceWriterProperties,

@@ -27,9 +27,9 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -290,10 +290,8 @@ public class StorageService extends AbstractVeniceService {
     LOGGER.info("Opening store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
     AbstractStorageEngine engine = openStore(storeConfig, initialStoreVersionStateSupplier);
     synchronized (engine) {
-      for (int subPartition: getSubPartition(storeConfig.getStoreVersionName(), partitionId)) {
-        if (!engine.containsPartition(subPartition)) {
-          engine.addStoragePartition(subPartition);
-        }
+      if (!engine.containsPartition(partitionId)) {
+        engine.addStoragePartition(partitionId);
       }
     }
     LOGGER.info("Opened store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
@@ -401,9 +399,7 @@ public class StorageService extends AbstractVeniceService {
       removeStoragePartition(kafkaTopic, partition);
       return;
     }
-    for (int subPartition: getSubPartition(kafkaTopic, partition)) {
-      storageEngine.dropPartition(subPartition);
-    }
+    storageEngine.dropPartition(partition);
     Set<Integer> remainingPartitions = storageEngine.getPartitionIds();
     LOGGER.info("Dropped partition {} of {}, remaining partitions={}", partition, kafkaTopic, remainingPartitions);
 
@@ -425,9 +421,7 @@ public class StorageService extends AbstractVeniceService {
       LOGGER.warn("Storage engine {} does not exist, ignoring close partition request.", kafkaTopic);
       return;
     }
-    for (int subPartition: getSubPartition(kafkaTopic, partition)) {
-      storageEngine.closePartition(subPartition);
-    }
+    storageEngine.closePartition(partition);
   }
 
   public synchronized void removeStorageEngine(String kafkaTopic) {
@@ -488,13 +482,12 @@ public class StorageService extends AbstractVeniceService {
   }
 
   public List<Integer> getUserPartitions(String kafkaTopicName) {
-    int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, kafkaTopicName);
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopicName);
     if (storageEngine == null) {
       LOGGER.warn("Local storage engine does not exist for topic: {}", kafkaTopicName);
       return Collections.emptyList();
     }
-    return PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
+    return new ArrayList<Integer>(storageEngine.getPartitionIds());
   }
 
   public void closeAllStorageEngines() {
@@ -521,7 +514,6 @@ public class StorageService extends AbstractVeniceService {
     Map<String, Set<Integer>> storePartitionMapping = new HashMap<>();
     for (AbstractStorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
       String storeName = engine.getStoreVersionName();
-      int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, storeName);
       Set<Integer> partitionIdSet = new HashSet<>();
       /**
        * The reason to use {@link AbstractStorageEngine#getPersistedPartitionIds()} here is that
@@ -529,7 +521,7 @@ public class StorageService extends AbstractVeniceService {
        */
       ((Set<Integer>) engine.getPersistedPartitionIds()).stream().forEach(partitionId -> {
         if (!AbstractStorageEngine.isMetadataPartition(partitionId)) {
-          partitionIdSet.add(PartitionUtils.getUserPartition(partitionId, amplificationFactor));
+          partitionIdSet.add(partitionId);
         }
         storePartitionMapping.put(storeName, partitionIdSet);
       });
@@ -571,11 +563,6 @@ public class StorageService extends AbstractVeniceService {
     if (lastException != null) {
       throw lastException;
     }
-  }
-
-  private List<Integer> getSubPartition(String topicName, int partition) {
-    return PartitionUtils
-        .getSubPartitions(partition, PartitionUtils.getAmplificationFactor(storeRepository, topicName));
   }
 
   private boolean isReplicationMetadataEnabled(String topicName, PersistenceType persistenceType) {

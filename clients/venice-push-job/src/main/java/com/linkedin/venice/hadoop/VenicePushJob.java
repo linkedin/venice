@@ -2258,7 +2258,6 @@ public class VenicePushJob implements AutoCloseable {
     setting.topicCompressionStrategy = versionCreationResponse.getCompressionStrategy();
     setting.partitionerClass = versionCreationResponse.getPartitionerClass();
     setting.partitionerParams = versionCreationResponse.getPartitionerParams();
-    setting.amplificationFactor = versionCreationResponse.getAmplificationFactor();
 
     setting.chunkingEnabled = setting.isChunkingEnabled && !Version.isRealTimeTopic(setting.topic);
     setting.rmdChunkingEnabled = setting.chunkingEnabled && setting.isRmdChunkingEnabled;
@@ -2311,18 +2310,13 @@ public class VenicePushJob implements AutoCloseable {
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(pushJobSetting));
       Properties partitionerProperties = new Properties();
       partitionerProperties.putAll(pushJobSetting.partitionerParams);
-      VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(
-          pushJobSetting.partitionerClass,
-          pushJobSetting.amplificationFactor,
-          new VeniceProperties(partitionerProperties));
+      VenicePartitioner partitioner = PartitionUtils
+          .getVenicePartitioner(pushJobSetting.partitionerClass, new VeniceProperties(partitionerProperties));
 
       VeniceWriterOptions vwOptions =
           new VeniceWriterOptions.Builder(pushJobSetting.topic).setUseKafkaKeySerializer(true)
               .setPartitioner(partitioner)
-              .setPartitionCount(
-                  Version.isVersionTopic(pushJobSetting.topic)
-                      ? pushJobSetting.partitionCount * pushJobSetting.amplificationFactor
-                      : pushJobSetting.partitionCount)
+              .setPartitionCount(pushJobSetting.partitionCount)
               .build();
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(vwOptions);
       LOGGER.info("Created VeniceWriter: {}", newVeniceWriter);

@@ -15,7 +15,7 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
+      int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) throws InterruptedException;
 

@@ -1080,7 +1080,6 @@ public class AdminTool {
     integerParam(cmd, Arg.PARTITION_COUNT, p -> params.setPartitionCount(p), argSet);
     genericParam(cmd, Arg.PARTITIONER_CLASS, s -> s, p -> params.setPartitionerClass(p), argSet);
     stringMapParam(cmd, Arg.PARTITIONER_PARAMS, p -> params.setPartitionerParams(p), argSet);
-    integerParam(cmd, Arg.AMPLIFICATION_FACTOR, p -> params.setAmplificationFactor(p), argSet);
     integerParam(cmd, Arg.VERSION, p -> params.setCurrentVersion(p), argSet);
     integerParam(cmd, Arg.LARGEST_USED_VERSION_NUMBER, p -> params.setLargestUsedVersionNumber(p), argSet);
     booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p), argSet);

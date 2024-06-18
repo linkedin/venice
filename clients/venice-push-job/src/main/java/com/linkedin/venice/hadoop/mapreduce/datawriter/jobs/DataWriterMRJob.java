@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.jobs;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.ConfigKeys.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
@@ -136,7 +135,6 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     if (pushJobSetting.partitionerParams != null) {
       pushJobSetting.partitionerParams.forEach(conf::set);
     }
-    conf.setInt(AMPLIFICATION_FACTOR, pushJobSetting.amplificationFactor);
     if (pushJobSetting.sslToKafka) {
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
@@ -307,7 +305,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       jobConf.setPartitionerClass(partitionerClass);
     }
     jobConf.setReduceSpeculativeExecution(vpjProperties.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false));
-    int partitionCount = pushJobSetting.partitionCount * pushJobSetting.amplificationFactor;
+    int partitionCount = pushJobSetting.partitionCount;
     jobConf.setInt(PARTITION_COUNT, partitionCount);
     jobConf.setNumReduceTasks(partitionCount);
     jobConf.setMapOutputKeyClass(BytesWritable.class);

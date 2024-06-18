@@ -5,7 +5,6 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import io.tehuti.utils.Utils;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 
@@ -20,7 +19,6 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private final PubSubTopicPartition topicPartition;
   private final int sequenceNumber;
   private final LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker;
-  private final LeaderFollowerStateType leaderState;
 
   private int attempts = 0;
 
@@ -34,7 +32,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
       PubSubTopicPartition topicPartition,
       int sequenceNumber,
       boolean isHelixTriggeredAction) {
-    this(type, topicPartition, sequenceNumber, null, Optional.empty(), isHelixTriggeredAction);
+    this(type, topicPartition, sequenceNumber, null, isHelixTriggeredAction);
   }
 
   public ConsumerAction(
@@ -42,31 +40,11 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
       PubSubTopicPartition topicPartition,
       int sequenceNumber,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker,
-      boolean isHelixTriggeredAction) {
-    this(type, topicPartition, sequenceNumber, checker, Optional.empty(), isHelixTriggeredAction);
-  }
-
-  public ConsumerAction(
-      ConsumerActionType type,
-      PubSubTopicPartition topicPartition,
-      int sequenceNumber,
-      Optional<LeaderFollowerStateType> leaderState,
-      boolean isHelixTriggeredAction) {
-    this(type, topicPartition, sequenceNumber, null, leaderState, isHelixTriggeredAction);
-  }
-
-  private ConsumerAction(
-      ConsumerActionType type,
-      PubSubTopicPartition topicPartition,
-      int sequenceNumber,
-      LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker,
-      Optional<LeaderFollowerStateType> leaderState,
       boolean isHelixTriggeredAction) {
     this.type = type;
     this.topicPartition = Utils.notNull(topicPartition);
     this.sequenceNumber = sequenceNumber;
     this.checker = checker;
-    this.leaderState = leaderState.orElse(LeaderFollowerStateType.STANDBY);
     this.isHelixTriggeredAction = isHelixTriggeredAction;
   }
 
@@ -100,10 +78,6 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   public LeaderFollowerPartitionStateModel.LeaderSessionIdChecker getLeaderSessionIdChecker() {
     return checker;
-  }
-
-  public LeaderFollowerStateType getLeaderState() {
-    return leaderState;
   }
 
   public long getCreateTimestampInMs() {
@@ -155,7 +129,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     ConsumerAction other = (ConsumerAction) obj;
 
     return topicPartition.equals(other.topicPartition) && sequenceNumber == other.sequenceNumber
-        && type.equals(other.type) && leaderState.equals(other.leaderState);
+        && type.equals(other.type);
   }
 
   @Override
@@ -164,7 +138,6 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     result = result * 31 + topicPartition.hashCode();
     result = result * 31 + sequenceNumber;
     result = result * 31 + type.hashCode();
-    result = result * 31 + leaderState.hashCode();
     return result;
   }
 
@@ -178,7 +151,6 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
         new PubSubTopicPartitionImpl(topic, 0),
         sequenceNumber,
         null,
-        Optional.empty(),
         false);
   }
 }
