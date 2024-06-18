@@ -7,6 +7,7 @@ import static com.linkedin.venice.compression.CompressionStrategy.ZSTD_WITH_DICT
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.IngestionMode;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -59,6 +60,11 @@ public class DataProviderUtils {
   @DataProvider(name = "Five-True-and-False")
   public static Object[][] fiveBoolean() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
+  }
+
+  @DataProvider(name = "CheckpointingSupported-CheckSum-Types")
+  public static Object[][] checkpointingSupportedCheckSumTypes() {
+    return new Object[][] { { CheckSumType.MD5 }, { CheckSumType.INCDIGEST } };
   }
 
   @DataProvider(name = "dv-client-config-provider")
