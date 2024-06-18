@@ -120,7 +120,7 @@ public class IngestionHeartBeatTest {
   }
 
   @DataProvider
-  public static Object[][] ampFactorAndAAConfigAndIncPushAndDRPProvider() {
+  public static Object[][] AAConfigAndIncPushAndDRPProvider() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean isActiveActiveEnabled = (boolean) permutation[1];
       DataReplicationPolicy dataReplicationPolicy = (DataReplicationPolicy) permutation[3];
@@ -128,12 +128,11 @@ public class IngestionHeartBeatTest {
         return false;
       }
       return true;
-    }, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataReplicationPolicy.values());
+    }, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataReplicationPolicy.values());
   }
 
-  @Test(dataProvider = "ampFactorAndAAConfigAndIncPushAndDRPProvider", timeOut = TEST_TIMEOUT_MS)
+  @Test(dataProvider = "AAConfigAndIncPushAndDRPProvider", timeOut = TEST_TIMEOUT_MS)
   public void testIngestionHeartBeat(
-      boolean isAmplificationFactorEnabled,
       boolean isActiveActiveEnabled,
       boolean isIncrementalPushEnabled,
       DataReplicationPolicy dataReplicationPolicy) throws IOException, InterruptedException {
@@ -148,7 +147,6 @@ public class IngestionHeartBeatTest {
     if (isIncrementalPushEnabled) {
       vpjProperties.put(INCREMENTAL_PUSH, true);
     }
-    int amplificationFactor = 1;
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -168,12 +166,6 @@ public class IngestionHeartBeatTest {
 
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
-      if (isAmplificationFactorEnabled && isActiveActiveEnabled) {
-        assertTrue(
-            updateStoreResponse.isError(),
-            "Update store should fail when both amplification factor and active-active replication are enabled");
-        return;
-      }
 
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
 
