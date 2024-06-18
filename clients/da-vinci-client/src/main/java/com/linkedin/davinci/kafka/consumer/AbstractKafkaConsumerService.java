@@ -43,4 +43,6 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
   public abstract Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFromConsumer(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition);
+
+  public abstract Set<PubSubTopicPartition> getAllSubscribedTopicPartitionsFor(PubSubTopic versionTopic);
 }

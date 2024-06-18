@@ -428,6 +428,18 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         : consumerService.getLatestOffsetBasedOnMetrics(versionTopic, pubSubTopicPartition);
   }
 
+  public Map<String, Set<PubSubTopicPartition>> getAllSubscribedTopicPartitionsFor(PubSubTopic versionTopic) {
+    Map<String, Set<PubSubTopicPartition>> kafkaUrlToPubSubTopicPartitions = new HashMap<>();
+    for (Map.Entry<String, AbstractKafkaConsumerService> entry: kafkaServerToConsumerServiceMap.entrySet()) {
+      AbstractKafkaConsumerService consumerService = entry.getValue();
+      if (entry.getValue().hasAnySubscriptionFor(versionTopic)) {
+        kafkaUrlToPubSubTopicPartitions
+            .put(entry.getKey(), consumerService.getAllSubscribedTopicPartitionsFor(versionTopic));
+      }
+    }
+    return kafkaUrlToPubSubTopicPartitions;
+  }
+
   /**
    * This will be called when an ingestion task is killed. {@link AggKafkaConsumerService}
    * will try to stop all subscription associated with the given version topic.

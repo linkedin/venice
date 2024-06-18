@@ -5,6 +5,7 @@ import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.VERSION_ROLE_CHANGE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -330,6 +331,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
 
+  private final StoreVersionRoleChangedListener storeVersionRoleChangedListener;
+
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -472,6 +475,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
+    this.storeVersionRoleChangedListener = new StoreVersionRoleChangedListener(versionTopic, isCurrentVersion, this);
+    this.storeRepository.registerStoreDataChangedListener(storeVersionRoleChangedListener);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -557,6 +562,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition) {
     subscribePartition(topicPartition, true);
+  }
+
+  public void versionRoleChange() {
+    throwIfNotRunning();
+    for (int partition: partitionConsumptionStateMap.keySet()) {
+      PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
+      partitionToPendingConsumerActionCountMap.computeIfAbsent(partition, x -> new AtomicInteger(0)).incrementAndGet();
+      consumerActionsQueue.add(new ConsumerAction(VERSION_ROLE_CHANGE, pubSubTopicPartition, nextSeqNum(), false));
+    }
   }
 
   /**
@@ -1834,13 +1848,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
         reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
-          // Subscribe to local version topic.
-          PubSubTopicPartition pubSubTopicPartition =
-              newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
-          TopicPartitionReplicaRole topicPartitionReplicaRole =
-              new TopicPartitionReplicaRole(false, isCurrentVersion.getAsBoolean(), pubSubTopicPartition, versionTopic);
-          consumerSubscribe(topicPartitionReplicaRole, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
-          LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
+        // Subscribe to local version topic.
+        PubSubTopicPartition pubSubTopicPartition =
+            newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
+        TopicPartitionReplicaRole topicPartitionReplicaRole =
+            new TopicPartitionReplicaRole(false, isCurrentVersion.getAsBoolean(), pubSubTopicPartition, versionTopic);
+        consumerSubscribe(topicPartitionReplicaRole, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
+        LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:

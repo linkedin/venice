@@ -9,7 +9,7 @@ public enum ConsumerActionType {
    * KILL action has higher priority than others, so that once KILL action is added to the action queue,
    * we will process it immediately to avoid doing throw-away works.
    */
-  KILL(2), STANDBY_TO_LEADER(1), LEADER_TO_STANDBY(1);
+  KILL(2), STANDBY_TO_LEADER(1), LEADER_TO_STANDBY(1), VERSION_ROLE_CHANGE(1);
 
   /**
    * Higher number means higher priority; ConsumerAction with higher priority will be in the front
