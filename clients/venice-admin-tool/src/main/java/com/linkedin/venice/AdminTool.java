@@ -573,6 +573,9 @@ public class AdminTool {
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
           break;
+        case CLONE_VENICE_ZK_PATHS:
+          cloneVeniceZKPaths(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -3089,6 +3092,14 @@ public class AdminTool {
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
+  }
+
+  private static void cloneVeniceZKPaths(CommandLine cmd) {
+    CloneVeniceZKPaths.clone(
+        getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL),
+        getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL),
+        getRequiredArgument(cmd, Arg.CLUSTER_LIST),
+        getRequiredArgument(cmd, Arg.BASE_PATH));
   }
 
   private static void configureStoreView(CommandLine cmd) {
