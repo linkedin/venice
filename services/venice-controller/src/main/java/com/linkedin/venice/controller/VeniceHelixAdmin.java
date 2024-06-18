@@ -302,6 +302,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ExecutionStatus.NEW,
       ExecutionStatus.NOT_CREATED,
       ExecutionStatus.END_OF_PUSH_RECEIVED,
+      ExecutionStatus.DVC_INGESTION_ERROR_OTHER,
+      ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL,
+      ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+      ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
       ExecutionStatus.ERROR,
       ExecutionStatus.WARNING,
       ExecutionStatus.COMPLETED,
@@ -5969,8 +5973,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   // The method merges push status from Venice Server replicas and online Da Vinci hosts and return the unified status.
-  private ExecutionStatus getOverallPushStatus(ExecutionStatus veniceStatus, ExecutionStatus daVinciStatus) {
-    List<ExecutionStatus> statuses = Arrays.asList(veniceStatus.getRootStatus(), daVinciStatus.getRootStatus());
+  protected static ExecutionStatus getOverallPushStatus(ExecutionStatus veniceStatus, ExecutionStatus daVinciStatus) {
+    List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
     statuses.sort(Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
     return statuses.get(0);
   }
