@@ -24,8 +24,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATI
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -221,8 +219,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate server.properties in config directory
       int listenPort = TestUtils.getFreePort();
-      int ingestionIsolationApplicationPort = TestUtils.getFreePort();
-      int ingestionIsolationServicePort = TestUtils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
           .put(ADMIN_PORT, TestUtils.getFreePort())
           .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
@@ -238,8 +234,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(KAFKA_READ_CYCLE_DELAY_MS, 50)
           .put(SERVER_DISK_FULL_THRESHOLD, 0.99) // Minimum free space is required in tests
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
-          .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, ingestionIsolationApplicationPort)
-          .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, ingestionIsolationServicePort)
           .put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L))
           .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
           .put(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 10)

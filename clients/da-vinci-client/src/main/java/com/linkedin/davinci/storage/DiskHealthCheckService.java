@@ -111,7 +111,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
     }
 
     try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
-      if (LatencyUtils.getLatencyInMS(lastStatusUpdateTimeInNS) > healthCheckTimeoutMs) {
+      if (LatencyUtils.getElapsedTimeFromNSToMS(lastStatusUpdateTimeInNS) > healthCheckTimeoutMs) {
         /**
          * Disk operation hangs so the status has not been updated for {@link healthCheckTimeoutMs};
          * mark the host as unhealthy.

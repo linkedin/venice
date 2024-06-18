@@ -242,7 +242,8 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       }
       return responseFuture.whenComplete((response, throwable) -> {
         RouteHttpStats perRouteStats = perRouteStatsByType.getStatsByType(requestType);
-        perRouteStats.recordResponseWaitingTime(storageNode.getHost(), LatencyUtils.getLatencyInMS(startTime));
+        perRouteStats
+            .recordResponseWaitingTime(storageNode.getHost(), LatencyUtils.getElapsedTimeFromNSToMS(startTime));
         routeHttpRequestStats.recordFinishedRequest(storageNode.getNodeId());
         pendingRequestThrottler.take();
         responseFutureMap.remove(requestId);

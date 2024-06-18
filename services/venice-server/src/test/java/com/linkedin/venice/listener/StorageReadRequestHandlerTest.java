@@ -77,7 +77,9 @@ import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -89,6 +91,7 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -112,6 +115,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -379,6 +383,7 @@ public class StorageReadRequestHandlerTest {
     // Mock the AdminResponse from ingestion task
     AdminResponse expectedAdminResponse = new AdminResponse();
     PartitionConsumptionState state = new PartitionConsumptionState(
+        Utils.getReplicaId(topic, expectedPartitionId),
         expectedPartitionId,
         1,
         new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),
@@ -513,7 +518,8 @@ public class StorageReadRequestHandlerTest {
     Set<Object> keySet = new HashSet<>(Arrays.asList(keyString, missingKeyString));
     AvroGenericReadComputeStoreClient storeClient = mock(AvroGenericReadComputeStoreClient.class);
     doReturn("test-store").when(storeClient).getStoreName();
-    new AvroComputeRequestBuilderV3<>(storeClient, valueRecord.getSchema())
+    Schema keySchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation("\"string\"");
+    new AvroComputeRequestBuilderV3<>(storeClient, getMockSchemaReader(keySchema, valueRecord.getSchema()))
         .dotProduct("listField", Collections.singletonList(4.0f), "dotProduct")
         .hadamardProduct("listField", Collections.singletonList(5.0f), "hadamardProduct")
         .execute(keySet);
@@ -696,5 +702,15 @@ public class StorageReadRequestHandlerTest {
     verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture());
 
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), BAD_REQUEST);
+  }
+
+  private SchemaReader getMockSchemaReader(Schema keySchema, Schema valueSchema) {
+    SchemaReader schemaReader = mock(SchemaReader.class);
+    doReturn(keySchema).when(schemaReader).getKeySchema();
+    doReturn(valueSchema).when(schemaReader).getValueSchema(1);
+    doReturn(valueSchema).when(schemaReader).getLatestValueSchema();
+    doReturn(1).when(schemaReader).getLatestValueSchemaId();
+    doReturn(1).when(schemaReader).getValueSchemaId(valueSchema);
+    return schemaReader;
   }
 }

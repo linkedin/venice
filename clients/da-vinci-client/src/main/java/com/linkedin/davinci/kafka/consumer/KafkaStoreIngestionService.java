@@ -680,7 +680,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     final String topic = veniceStoreVersionConfig.getStoreVersionName();
-
+    LOGGER.info("Promoting partition: {} of topic: {} to leader.", partitionId, topic);
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
       if (consumerTask != null && consumerTask.isRunning()) {
@@ -698,7 +698,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     final String topic = veniceStoreVersionConfig.getStoreVersionName();
-
+    LOGGER.info("Demoting partition: {} of topic: {} to standby.", partitionId, topic);
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
       if (consumerTask != null && consumerTask.isRunning()) {
@@ -729,7 +729,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               "Partition: {} of topic: {} has stopped consumption in {} ms.",
               partition,
               topicName,
-              LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+              LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
           return;
         }
         sleep(retryIntervalInMs);
@@ -878,7 +878,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                 "Partition: {} of topic: {} has stopped consumption in {} ms.",
                 partitionId,
                 topicName,
-                LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+                LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
             return;
           }
           sleep((long) sleepSeconds * Time.MS_PER_SECOND);

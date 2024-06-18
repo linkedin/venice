@@ -4,6 +4,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.schema.SchemaReader;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -23,6 +24,11 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   // for testing
   public InternalAvroStoreClient<K, V> getInnerStoreClient() {
     return innerStoreClient;
+  }
+
+  @Override
+  public SchemaReader getSchemaReader() {
+    return innerStoreClient.getSchemaReader();
   }
 
   @Override

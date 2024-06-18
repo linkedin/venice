@@ -126,7 +126,7 @@ public class PubSubAdminAdapterTest {
   public void tearDownMethod() {
     Utils.closeQuietlyWithErrorLogged(pubSubAdminAdapter);
     if (pubSubProducerAdapterLazy.isPresent()) {
-      pubSubProducerAdapterLazy.get().close(0, false);
+      pubSubProducerAdapterLazy.get().close(0);
     }
     if (pubSubConsumerAdapterLazy.isPresent()) {
       Utils.closeQuietlyWithErrorLogged(pubSubConsumerAdapterLazy.get());

@@ -4,8 +4,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
-import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
-import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.PushStatusNotifier;
@@ -23,7 +22,6 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -83,7 +81,7 @@ public class HelixParticipationService extends AbstractVeniceService
   private final ReadOnlyStoreRepository helixReadOnlyStoreRepository;
   private final ReadOnlySchemaRepository helixReadOnlySchemaRepository;
   private final MetricsRepository metricsRepository;
-  private final VeniceIngestionBackend ingestionBackend;
+  private final IngestionBackend ingestionBackend;
   private final CompletableFuture<SafeHelixManager> managerFuture; // complete this future when the manager is connected
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
   private PushStatusStoreWriter statusStoreWriter;
@@ -131,20 +129,10 @@ public class HelixParticipationService extends AbstractVeniceService
     if (!(storeIngestionService instanceof KafkaStoreIngestionService)) {
       throw new VeniceException("Expecting " + KafkaStoreIngestionService.class.getName() + " for ingestion backend!");
     }
-    if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      this.ingestionBackend = new IsolatedIngestionBackend(
-          veniceConfigLoader,
-          helixReadOnlyStoreRepository,
-          metricsRepository,
-          storageMetadataService,
-          (KafkaStoreIngestionService) storeIngestionService,
-          storageService);
-    } else {
-      this.ingestionBackend = new DefaultIngestionBackend(
-          storageMetadataService,
-          (KafkaStoreIngestionService) storeIngestionService,
-          storageService);
-    }
+    this.ingestionBackend = new DefaultIngestionBackend(
+        storageMetadataService,
+        (KafkaStoreIngestionService) storeIngestionService,
+        storageService);
   }
 
   // Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
@@ -242,9 +230,8 @@ public class HelixParticipationService extends AbstractVeniceService
   @Override
   public void stopInner() throws IOException {
     LOGGER.info("Attempting to stop HelixParticipation service.");
-    ingestionBackend.prepareForShutdown();
     if (helixManager != null) {
-      resetAllInstanceCVStates(partitionPushStatusAccessor, ingestionBackend, logger);
+      resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger);
     } else {
       logger.error("Can't reset instance CV states since HelixManager is null");
     }
@@ -365,8 +352,8 @@ public class HelixParticipationService extends AbstractVeniceService
         // our
         // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
         checkBeforeJoinInCluster();
-        helixManager.addPreConnectCallback(
-            () -> resetAllInstanceCVStates(partitionPushStatusAccessor, ingestionBackend, logger));
+        helixManager
+            .addPreConnectCallback(() -> resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger));
         helixManager.connect();
         managerFuture.complete(helixManager);
       } catch (Exception e) {
@@ -382,7 +369,8 @@ public class HelixParticipationService extends AbstractVeniceService
           helixReadOnlyStoreRepository,
           instance.getNodeId());
 
-      ingestionBackend.addPushStatusNotifier(pushStatusNotifier);
+      ingestionBackend.getStoreIngestionService().addIngestionNotifier(pushStatusNotifier);
+
       /**
        * Complete the accessor future after the accessor is created && the notifier is added.
        * This is for blocking the {@link AbstractPartitionStateModel #setupNewStorePartition()} until
@@ -398,11 +386,11 @@ public class HelixParticipationService extends AbstractVeniceService
 
   static void resetAllInstanceCVStates(
       HelixPartitionStatusAccessor accessor,
-      VeniceIngestionBackend ingestionBackend,
+      StorageService storageService,
       Logger currentLogger) {
     // Get all hosted stores
     currentLogger.info("Started resetting all instance CV states");
-    Map<String, Set<Integer>> storePartitionMapping = ingestionBackend.getLoadedStoreUserPartitionsMapping();
+    Map<String, Set<Integer>> storePartitionMapping = storageService.getStoreAndUserPartitionsMapping();
     storePartitionMapping.forEach((storeName, partitionIds) -> {
       partitionIds.forEach(partitionId -> {
         try {
@@ -418,7 +406,7 @@ public class HelixParticipationService extends AbstractVeniceService
 
   // test only
   public void replaceAndAddTestIngestionNotifier(VeniceNotifier notifier) {
-    ingestionBackend.replaceAndAddTestPushStatusNotifier(notifier);
+    ingestionBackend.getStoreIngestionService().replaceAndAddTestNotifier(notifier);
   }
 
   public Instance getInstance() {

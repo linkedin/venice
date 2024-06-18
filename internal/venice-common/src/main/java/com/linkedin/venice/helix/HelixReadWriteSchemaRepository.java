@@ -144,8 +144,6 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   /**
    * This function is used to retrieve value schema id for the given store and schema. Attempts to get the schema that
    * matches exactly. If multiple matching schemas are found then the id of the latest added schema is returned.
-   * If the store has auto-register schema from push job enabled then if the schema's differ by default value or doc field,
-   * they are treated as different schema.
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
    * @throws {@link org.apache.avro.SchemaParseException} if the schema is invalid;
@@ -157,29 +155,13 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   public int getValueSchemaId(String storeName, String valueSchemaStr) {
     preCheckStoreCondition(storeName);
 
-    Store store = storeRepository.getStoreOrThrow(storeName);
     Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
 
-    /**
-     * If the store is set to auto-register schema from push job, then do exact match (ie compare doc/default value).
-     *    if no such schema exists, return INVALID_VALUE_SCHEMA_ID which would trigger auto register the new schema
-     *    in the KafkaPushJob#validateValueSchema.
-     * else try to do canonical match ignoring doc/default value and return the largest schema id from the list of such matches.
-     */
-    if (store.isSchemaAutoRegisterFromPushJobEnabled()) {
-      List<SchemaEntry> matches = AvroSchemaUtils.filterSchemas(valueSchemaEntry, valueSchemas);
-
-      return matches.isEmpty() ? SchemaData.INVALID_VALUE_SCHEMA_ID : getSchemaEntryWithLargestId(matches).getId();
-    }
-
-    return getValueSchemaIdCanonicalMatch(storeName, valueSchemas, valueSchemaEntry);
+    return getValueSchemaIdCanonicalMatch(valueSchemas, valueSchemaEntry);
   }
 
-  private int getValueSchemaIdCanonicalMatch(
-      String storeName,
-      Collection<SchemaEntry> valueSchemas,
-      SchemaEntry valueSchemaEntry) {
+  private int getValueSchemaIdCanonicalMatch(Collection<SchemaEntry> valueSchemas, SchemaEntry valueSchemaEntry) {
     List<SchemaEntry> canonicalizedMatches = AvroSchemaUtils.filterCanonicalizedSchemas(valueSchemaEntry, valueSchemas);
     int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
     if (!canonicalizedMatches.isEmpty()) {

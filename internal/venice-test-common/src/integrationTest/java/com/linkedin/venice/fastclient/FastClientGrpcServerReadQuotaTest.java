@@ -26,7 +26,7 @@ public class FastClientGrpcServerReadQuotaTest extends AbstractClientEndToEndSet
   @Test(timeOut = TIME_OUT)
   public void testGrpcServerReadQuota() throws Exception {
     GrpcClientConfig grpcClientConfig = new GrpcClientConfig.Builder().setR2Client(r2Client)
-        .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
+        .setNettyServerToGrpcAddress(veniceCluster.getNettyServerToGrpcAddress())
         .setSSLFactory(SslUtils.getVeniceLocalSslFactory())
         .build();
 

@@ -300,7 +300,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           if (request.shouldRequestBeTerminatedEarly()) {
             throw new VeniceRequestEarlyTerminationException(request.getStoreName());
           }
-          double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
+          double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
           int queueLen = executor.getQueue().size();
           ReadResponse response;
           switch (request.getRequestType()) {
@@ -754,7 +754,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
       record.keyIndex = key.getKeyIndex();
       record.value = ByteBuffer.wrap(resultSerializer.serialize(result));
-      response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
+      response.addReadComputeSerializationLatency(LatencyUtils.getElapsedTimeFromNSToMS(serializeStartTimeInNS));
       response.addReadComputeOutputSize(record.value.remaining());
       response.addRecord(record);
       return true;
@@ -793,7 +793,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         reusableObjects.computeContext,
         reusableValueRecord,
         reusableResultRecord);
-    response.addReadComputeLatency(LatencyUtils.getLatencyInMS(computeStartTimeInNS));
+    response.addReadComputeLatency(LatencyUtils.getElapsedTimeFromNSToMS(computeStartTimeInNS));
     return reusableResultRecord;
   }
 

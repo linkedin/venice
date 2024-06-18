@@ -685,7 +685,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           LOGGER.info(
               "Enabling disabled replicas for instances {} took {} ms",
               newInstances.stream().map(Instance::getNodeId).collect(Collectors.joining(",")),
-              LatencyUtils.getElapsedTimeInMs(startTime));
+              LatencyUtils.getElapsedTimeFromMsToMs(startTime));
         }
 
         @Override
@@ -3263,7 +3263,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       deleteHelixResource(clusterName, resourceName);
       LOGGER.info("Killing offline push for: {} in cluster: {}", resourceName, clusterName);
       killOfflinePush(clusterName, resourceName, true);
+
+      // Check DIV error in the push status before stopping the monitor.
+      boolean hasFatalDataValidationError = hasFatalDataValidationError(pushMonitor, resourceName);
       stopMonitorOfflinePush(clusterName, resourceName, true, isForcedDelete);
+
       Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
       if (deletedVersion.isPresent()) {
         // Do not delete topic during store migration
@@ -3271,8 +3275,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!store.isMigrating()) {
           // Not using deletedVersion.get().kafkaTopicName() because it's incorrect for Zk shared stores.
           String versionTopicName = Version.composeKafkaTopic(storeName, deletedVersion.get().getNumber());
-          if (fatalDataValidationFailureRetentionMs != -1
-              && hasFatalDataValidationError(pushMonitor, versionTopicName)) {
+          if (fatalDataValidationFailureRetentionMs != -1 && hasFatalDataValidationError) {
             truncateKafkaTopic(versionTopicName, fatalDataValidationFailureRetentionMs);
           } else {
             truncateKafkaTopic(versionTopicName);
@@ -3325,7 +3328,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       OfflinePushStatus offlinePushStatus = pushMonitor.getOfflinePushOrThrow(topicName);
       return offlinePushStatus.hasFatalDataValidationError();
     } catch (VeniceException e) {
-      LOGGER.warn("Failed to get offline push status for topic: {}", topicName, e);
+      LOGGER.warn("Failed to get offline push status for topic: {}. It might not exist anymore.", topicName);
       return false;
     }
   }
@@ -3541,7 +3544,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         PushJobDetails jobDetails = getPushJobDetails(storeVersionKey);
         if (jobDetails != null) {
           /** Use {@link PushJobDetails.reportTimestamp} to approximate time of topic creation.*/
-          if (LatencyUtils.getElapsedTimeInMs(jobDetails.reportTimestamp) > fatalDataValidationFailureRetentionMs) {
+          if (LatencyUtils
+              .getElapsedTimeFromMsToMs(jobDetails.reportTimestamp) > fatalDataValidationFailureRetentionMs) {
             return true;
           }
         }
@@ -3921,6 +3925,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(futureVersion);
+      LOGGER.info(
+          "Rolling forward current version {} to version {} in store {}",
+          previousVersion,
+          futureVersion,
+          storeName);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, futureVersion);
       return store;
     });
@@ -3956,6 +3965,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
+      LOGGER
+          .info("Rolling back current version {} to version {} in store {}", previousVersion, backupVersion, storeName);
       realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       return store;
     });
@@ -4164,6 +4175,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public Set<Integer> getInUseValueSchemaIds(String clusterName, String storeName) {
+    if (isParent()) {
+      return Collections.emptySet();
+    }
+
     Store store = getStore(clusterName, storeName);
     Set<Integer> schemaIds = new HashSet<>();
 

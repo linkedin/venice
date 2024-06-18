@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.Metric;
@@ -145,14 +144,9 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
-  public void close(int closeTimeOutMs, boolean doFlush) {
+  public void close(long closeTimeOutMs) {
     if (producer == null) {
       return; // producer has been closed already
-    }
-    if (doFlush) {
-      // Flush out all the messages in the producer buffer
-      producer.flush(closeTimeOutMs, TimeUnit.MILLISECONDS);
-      LOGGER.info("Flushed all the messages in producer before closing");
     }
     producer.close(Duration.ofMillis(closeTimeOutMs));
     // Recycle the internal buffer allocated by KafkaProducer ASAP.

@@ -17,6 +17,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -79,29 +80,28 @@ public class StatTrackingStoreClientTest {
     }
 
     @Override
-    protected SchemaReader getSchemaReader() {
+    public SchemaReader getSchemaReader() {
       SchemaReader mockSchemaReader = mock(SchemaReader.class);
       doReturn(Schema.create(Schema.Type.STRING)).when(mockSchemaReader).getKeySchema();
+      doReturn(1).when(mockSchemaReader).getLatestValueSchemaId();
+      doReturn(VALUE_SCHEMA).when(mockSchemaReader).getValueSchema(1);
       return mockSchemaReader;
-    }
-
-    @Override
-    public Schema getLatestValueSchema() {
-      return Schema.parse(VALUE_SCHEMA);
     }
   }
 
-  private static final String VALUE_SCHEMA = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"record_schema\",\n"
-      + "\t\"fields\": [\n"
-      + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0, \"doc\": \"doc for int_field\"},\n"
-      + "\t\t{\"name\": \"float_field\", \"type\": \"float\", \"doc\": \"doc for float_field\"},\n" + "\t\t{\n"
-      + "\t\t\t\"name\": \"record_field\",\n" + "\t\t\t\"namespace\": \"com.linkedin.test\",\n" + "\t\t\t\"type\": {\n"
-      + "\t\t\t\t\"name\": \"Record1\",\n" + "\t\t\t\t\"type\": \"record\",\n" + "\t\t\t\t\"fields\": [\n"
-      + "\t\t\t\t\t{\"name\": \"nested_field1\", \"type\": \"double\", \"doc\": \"doc for nested field\"}\n"
-      + "\t\t\t\t]\n" + "\t\t\t}\n" + "\t\t},\n"
-      + "\t\t{\"name\": \"float_array_field1\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
-      + "\t\t{\"name\": \"float_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
-      + "\t\t{\"name\": \"int_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"int\"}}\n" + "\t]\n" + "}";
+  private static final Schema VALUE_SCHEMA = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(
+      "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"record_schema\",\n" + "\t\"fields\": [\n"
+          + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0, \"doc\": \"doc for int_field\"},\n"
+          + "\t\t{\"name\": \"float_field\", \"type\": \"float\", \"doc\": \"doc for float_field\"},\n" + "\t\t{\n"
+          + "\t\t\t\"name\": \"record_field\",\n" + "\t\t\t\"namespace\": \"com.linkedin.test\",\n"
+          + "\t\t\t\"type\": {\n" + "\t\t\t\t\"name\": \"Record1\",\n" + "\t\t\t\t\"type\": \"record\",\n"
+          + "\t\t\t\t\"fields\": [\n"
+          + "\t\t\t\t\t{\"name\": \"nested_field1\", \"type\": \"double\", \"doc\": \"doc for nested field\"}\n"
+          + "\t\t\t\t]\n" + "\t\t\t}\n" + "\t\t},\n"
+          + "\t\t{\"name\": \"float_array_field1\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
+          + "\t\t{\"name\": \"float_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
+          + "\t\t{\"name\": \"int_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"int\"}}\n" + "\t]\n"
+          + "}");
 
   private static final Set<String> keys = new HashSet<>();
   static {

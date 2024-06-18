@@ -71,8 +71,8 @@ public abstract class AbstractRecordStreamDecoder<ENVELOPE, K, V> implements Rec
   public void onHeaderReceived(Map<String, String> headers) {
     callback.getStats()
         .ifPresent(
-            stats -> stats
-                .recordRequestSubmissionToResponseHandlingTime(LatencyUtils.getLatencyInMS(preSubmitTimeInNS)));
+            stats -> stats.recordRequestSubmissionToResponseHandlingTime(
+                LatencyUtils.getElapsedTimeFromNSToMS(preSubmitTimeInNS)));
     isStreamingResponse = headers.containsKey(HttpConstants.VENICE_STREAMING_RESPONSE);
     String schemaIdHeader = headers.get(HttpConstants.VENICE_SCHEMA_ID);
     if (schemaIdHeader != null) {
@@ -224,8 +224,8 @@ public abstract class AbstractRecordStreamDecoder<ENVELOPE, K, V> implements Rec
           callback.onDeserializationCompletion(completedException, successfulKeyCnt.get(), duplicateEntryCount);
           callback.getStats()
               .ifPresent(
-                  stats -> stats.recordResponseDeserializationTime(
-                      LatencyUtils.convertLatencyFromNSToMS(deserializationTimeInNS.sum())));
+                  stats -> stats
+                      .recordResponseDeserializationTime(LatencyUtils.convertNSToMS(deserializationTimeInNS.sum())));
         });
   }
 

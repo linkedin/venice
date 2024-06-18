@@ -3,7 +3,7 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 
 
 public class LeaderFollowerParticipantModelFactoryTest {
-  private VeniceIngestionBackend mockIngestionBackend;
+  private IngestionBackend mockIngestionBackend;
   private VeniceConfigLoader mockConfigLoader;
   private VeniceServerConfig mockServerConfig;
   private VeniceStoreVersionConfig mockStoreConfig;
@@ -52,7 +52,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
 
   @BeforeMethod
   public void setupTestCase() {
-    mockIngestionBackend = Mockito.mock(VeniceIngestionBackend.class);
+    mockIngestionBackend = Mockito.mock(IngestionBackend.class);
     mockConfigLoader = Mockito.mock(VeniceConfigLoader.class);
     mockServerConfig = Mockito.mock(VeniceServerConfig.class);
     mockStoreConfig = Mockito.mock(VeniceStoreVersionConfig.class);

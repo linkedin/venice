@@ -17,6 +17,7 @@ import java.util.Map;
 public class MetadataResponse {
   private boolean isError;
   private String message;
+
   private final MetadataResponseRecord responseRecord;
 
   public MetadataResponse() {

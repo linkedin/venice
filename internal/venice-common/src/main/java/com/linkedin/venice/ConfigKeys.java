@@ -2065,6 +2065,12 @@ public class ConfigKeys {
   public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
 
   /**
+   * Source of truth admin adapter type, mainly for avoiding topic discrepancy between multiple pub sub systems.
+   */
+  public static final String PUB_SUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS =
+      "pub.sub.of.source.of.truth.admin.adapter.factory.class";
+
+  /**
    * Venice router's principal name used for ssl. Default should contain "venice-router".
    */
   public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
@@ -2142,4 +2148,17 @@ public class ConfigKeys {
    */
   public static final String SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED =
       "server.record.level.metrics.when.bootstrapping.current.version.enabled";
+
+  /**
+   * Time interval for checking dangling topics between 2 different types of pub sub backends.
+   */
+  public static final String CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND =
+      "controller.dangling.topic.clean.up.interval.second";
+
+  /**
+   * To avoid potential risk of race condition, if a topic is identified as dangling topic in number of times beyond
+   * this defined threshold, then this topic could be deleted.
+   */
+  public static final String CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP =
+      "controller.dangling.topic.occurrence.threshold.for.cleanup";
 }

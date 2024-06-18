@@ -31,6 +31,7 @@ import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKey
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
@@ -144,7 +145,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     String resourceName = getResourceName(currentVersion);
     long nanoTsBeforeSerialization = System.nanoTime();
     byte[] keyBytes = keySerializer.serialize(key);
-    requestContext.requestSerializationTime = LatencyUtils.getLatencyInMS(nanoTsBeforeSerialization);
+    requestContext.requestSerializationTime = LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSerialization);
     int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
     String b64EncodedKeyBytes = EncodingUtils.base64EncodeToString(keyBytes);
 
@@ -275,7 +276,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             finalRouteRequestFuture.complete(SC_NOT_FOUND);
             if (!receivedSuccessfulResponse.getAndSet(true)) {
               requestContext.requestSubmissionToResponseHandlingTime =
-                  LatencyUtils.getLatencyInMS(nanoTsBeforeSendingRequest);
+                  LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
 
               valueFuture.complete(null);
             }
@@ -284,7 +285,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
               finalRouteRequestFuture.complete(SC_OK);
               if (!receivedSuccessfulResponse.getAndSet(true)) {
                 requestContext.requestSubmissionToResponseHandlingTime =
-                    LatencyUtils.getLatencyInMS(nanoTsBeforeSendingRequest);
+                    LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
                 CompressionStrategy compressionStrategy = response.getCompressionStrategy();
                 long nanoTsBeforeDecompression = System.nanoTime();
                 ByteBuffer data = decompressRecord(
@@ -292,11 +293,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                     ByteBuffer.wrap(response.getBody()),
                     requestContext.currentVersion,
                     metadata.getCompressor(compressionStrategy, requestContext.currentVersion));
-                requestContext.decompressionTime = LatencyUtils.getLatencyInMS(nanoTsBeforeDecompression);
+                requestContext.decompressionTime = LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDecompression);
                 long nanoTsBeforeDeserialization = System.nanoTime();
                 RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
                 V value = tryToDeserialize(deserializer, data, response.getSchemaId(), key);
-                requestContext.responseDeserializationTime = LatencyUtils.getLatencyInMS(nanoTsBeforeDeserialization);
+                requestContext.responseDeserializationTime =
+                    LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDeserialization);
                 requestContext.successRequestKeyCount.incrementAndGet();
                 valueFuture.complete(value);
               }
@@ -337,7 +339,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         if (allFailed) {
           // Only fail the request if all the transport futures are completed exceptionally.
           requestContext.requestSubmissionToResponseHandlingTime =
-              LatencyUtils.getLatencyInMS(nanoTsBeforeSendingRequest);
+              LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
           valueFuture.completeExceptionally(throwable);
         }
         return null;
@@ -617,9 +619,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     headers.put(
         HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
-    headers.put(
-        VENICE_COMPUTE_VALUE_SCHEMA_ID,
-        Integer.toString(metadata.getValueSchemaId(computeRequest.getValueSchema())));
+    headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(computeRequest.getValueSchemaID()));
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
         getComputeResultRecordDeserializer(resultSchema);
@@ -868,8 +868,14 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return metadata.getKeySchema();
   }
 
+  @Deprecated
   @Override
   public Schema getLatestValueSchema() {
     return metadata.getLatestValueSchema();
+  }
+
+  @Override
+  public SchemaReader getSchemaReader() {
+    return metadata;
   }
 }

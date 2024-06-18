@@ -1,7 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -43,12 +43,11 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class AbstractPartitionStateModel extends StateModel {
   protected final Logger logger = LogManager.getLogger(getClass());
-  private static final String STORE_PARTITION_DESCRIPTION_FORMAT = "%s-%d";
   private static final int RETRY_COUNT = 5;
   private static final int RETRY_DURATION_MS = 1000;
   private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = (int) TimeUnit.MINUTES.toMillis(5);
 
-  private final VeniceIngestionBackend ingestionBackend;
+  private final IngestionBackend ingestionBackend;
   private final ReadOnlyStoreRepository storeRepository;
   private final VeniceStoreVersionConfig storeAndServerConfigs;
   private final int partition;
@@ -59,7 +58,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
 
   public AbstractPartitionStateModel(
-      VeniceIngestionBackend ingestionBackend,
+      IngestionBackend ingestionBackend,
       ReadOnlyStoreRepository storeRepository,
       VeniceStoreVersionConfig storeAndServerConfigs,
       int partition,
@@ -69,8 +68,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     this.storeRepository = storeRepository;
     this.storeAndServerConfigs = storeAndServerConfigs;
     this.partition = partition;
-    this.storePartitionDescription =
-        String.format(STORE_PARTITION_DESCRIPTION_FORMAT, storeAndServerConfigs.getStoreVersionName(), partition);
+    this.storePartitionDescription = Utils.getReplicaId(storeAndServerConfigs.getStoreVersionName(), partition);
     /**
      * We cannot block here because helix manager connection depends on the state model constructing in helix logic.
      * If we block here in the constructor, it will cause deadlocks.
@@ -371,7 +369,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     }
   }
 
-  protected VeniceIngestionBackend getIngestionBackend() {
+  protected IngestionBackend getIngestionBackend() {
     return ingestionBackend;
   }
 

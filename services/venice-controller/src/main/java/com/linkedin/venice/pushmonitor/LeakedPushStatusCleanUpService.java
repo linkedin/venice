@@ -150,7 +150,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
                   if (leakedPushStatusCounter++ < MAX_LEAKED_VERSION_TO_KEEP) {
                     // If the leaked resources have been lingering for a while, we should still delete them.
                     offlinePushAccessor.getOfflinePushStatusCreationTime(kafkaTopic).ifPresent(creationTime -> {
-                      long lingerTime = LatencyUtils.getElapsedTimeInMs(creationTime);
+                      long lingerTime = LatencyUtils.getElapsedTimeFromMsToMs(creationTime);
                       if (lingerTime > leakedResourceAllowedLingerTimeInMs) {
                         logger.info(
                             "The leaked push status has been lingering over {}ms, add to deletion list: {}",

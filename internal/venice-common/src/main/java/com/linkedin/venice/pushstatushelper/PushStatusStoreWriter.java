@@ -189,7 +189,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     LOGGER.info(
         "Removed push status store writer for store {} in {}ms.",
         storeName,
-        LatencyUtils.getLatencyInMS(veniceWriterRemovingStartTimeInNs));
+        LatencyUtils.getElapsedTimeFromNSToMS(veniceWriterRemovingStartTimeInNs));
   }
 
   @Override

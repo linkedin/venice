@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka.chunk;
 
-import static com.linkedin.venice.chunking.TestChunkingUtils.createChunkBytes;
-import static com.linkedin.venice.chunking.TestChunkingUtils.createChunkedKeySuffix;
+import static com.linkedin.venice.utils.ChunkingTestUtils.createChunkBytes;
+import static com.linkedin.venice.utils.ChunkingTestUtils.createChunkedKeySuffix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;

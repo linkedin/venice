@@ -10,12 +10,9 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessStats;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.locks.AutoCloseableLock;
-import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -25,7 +22,6 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -33,7 +29,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -57,7 +52,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final ExecutorService longRunningTaskExecutor = Executors.newSingleThreadExecutor();
   private final MainIngestionRequestClient heartbeatClient;
   private final Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
-  private final Map<String, Map<Integer, Boolean>> topicPartitionLeaderStatusMap = new VeniceConcurrentHashMap<>();
   private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
 
@@ -67,7 +61,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private IsolatedIngestionProcessStats isolatedIngestionProcessStats;
   private MainIngestionStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService storeIngestionService;
-  private ReadOnlyStoreRepository storeRepository;
   private final VeniceConfigLoader configLoader;
   /**
    * Heartbeat timeout acknowledge disconnection between main and forked processes. After this timeout, main process
@@ -76,12 +69,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
    */
   private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
-
-  /**
-   * This RW lock is introduced to make sure when forked process crashes and restarts, it will first resume all ongoing
-   * ingestion and restore LEADER replica status correctly, before accepting any new Helix topic partition state transition.
-   */
-  private final ReentrantReadWriteLock forkProcessActionLock = new ReentrantReadWriteLock();
 
   public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader) {
     this.configLoader = configLoader;
@@ -170,25 +157,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     return storeIngestionService;
   }
 
-  public void setStoreRepository(ReadOnlyStoreRepository storeRepository) {
-    this.storeRepository = storeRepository;
-  }
-
-  public boolean isTopicPartitionInLeaderState(String topicName, int partitionId) {
-    return getTopicPartitionLeaderStatusMap().getOrDefault(topicName, Collections.emptyMap())
-        .getOrDefault(partitionId, false);
-  }
-
-  public void setTopicPartitionToLeaderState(String topicName, int partitionId) {
-    getTopicPartitionLeaderStatusMap().computeIfAbsent(topicName, x -> new VeniceConcurrentHashMap<>())
-        .put(partitionId, true);
-  }
-
-  public void setTopicIngestionToFollowerState(String topicName, int partitionId) {
-    getTopicPartitionLeaderStatusMap().computeIfAbsent(topicName, x -> new VeniceConcurrentHashMap<>())
-        .put(partitionId, false);
-  }
-
   public MainPartitionIngestionStatus getTopicPartitionIngestionStatus(String topicName, int partitionId) {
     MainTopicIngestionStatus topicIngestionStatus = getTopicIngestionStatusMap().get(topicName);
     if (topicIngestionStatus != null) {
@@ -212,16 +180,11 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     if (partitionIngestionStatus != null) {
       partitionIngestionStatus.removePartitionIngestionStatus(partitionId);
     }
-    Map<Integer, Boolean> partitionLeaderStatus = getTopicPartitionLeaderStatusMap().get(topicName);
-    if (partitionLeaderStatus != null) {
-      partitionLeaderStatus.remove(partitionId);
-    }
     LOGGER.info("Ingestion status removed from main process for topic: {}, partition: {}", topicName, partitionId);
   }
 
   public void cleanupTopicState(String topicName) {
     getTopicIngestionStatusMap().remove(topicName);
-    getTopicPartitionLeaderStatusMap().remove(topicName);
     LOGGER.info("Ingestion status removed from main process for topic: {}", topicName);
   }
 
@@ -278,35 +241,27 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   int resumeOngoingIngestionTasks() {
     AtomicInteger count = new AtomicInteger();
-    try (AutoCloseableLock ignored = AutoCloseableSingleLock.of(getForkProcessActionLock().writeLock())) {
-      try (MainIngestionRequestClient client = createClient()) {
-        Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = getTopicIngestionStatusMap();
-        LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicIngestionStatusMap.keySet());
-        // Re-open metadata partitions in child process for all previously subscribed topics.
-        topicIngestionStatusMap.keySet().forEach(client::openStorageEngine);
-        // All previously subscribed topics are stored in the keySet of this topic partition map.
-        topicIngestionStatusMap.forEach((topic, partitionStatus) -> {
-          partitionStatus.getPartitionIngestionStatusSet().forEach((partition, status) -> {
-            if (status.equals(MainPartitionIngestionStatus.ISOLATED)) {
-              try {
-                client.startConsumption(topic, partition);
-                LOGGER.info(
-                    "Recovered ingestion task in isolated process for topic: {}, partition: {}",
-                    topic,
-                    partition);
-                count.addAndGet(1);
-                if (isTopicPartitionInLeaderState(topic, partition)) {
-                  client.promoteToLeader(topic, partition);
-                  LOGGER.info("Delivered leader promotion message for topic: {}, partition: {}", topic, partition);
-                }
-              } catch (Exception e) {
-                LOGGER.warn("Recovery of ingestion failed for topic: {}, partition: {}", topic, partition, e);
-              }
+    try (MainIngestionRequestClient client = createClient()) {
+      Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = getTopicIngestionStatusMap();
+      LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicIngestionStatusMap.keySet());
+      // Re-open metadata partitions in child process for all previously subscribed topics.
+      topicIngestionStatusMap.keySet().forEach(client::openStorageEngine);
+      // All previously subscribed topics are stored in the keySet of this topic partition map.
+      topicIngestionStatusMap.forEach((topic, partitionStatus) -> {
+        partitionStatus.getPartitionIngestionStatusSet().forEach((partition, status) -> {
+          if (status.equals(MainPartitionIngestionStatus.ISOLATED)) {
+            try {
+              client.startConsumption(topic, partition);
+              LOGGER
+                  .info("Recovered ingestion task in isolated process for topic: {}, partition: {}", topic, partition);
+              count.addAndGet(1);
+            } catch (Exception e) {
+              LOGGER.warn("Recovery of ingestion failed for topic: {}, partition: {}", topic, partition, e);
             }
-          });
+          }
         });
-        LOGGER.info("Resumed {} topic partition ingestion tasks.", count.get());
-      }
+      });
+      LOGGER.info("Resumed {} topic partition ingestion tasks.", count.get());
     }
     return count.get();
   }
@@ -359,16 +314,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     return topicIngestionStatusMap;
   }
 
-  public Map<String, Map<Integer, Boolean>> getTopicPartitionLeaderStatusMap() {
-    return topicPartitionLeaderStatusMap;
-  }
-
   IsolatedIngestionProcessStats getIsolatedIngestionProcessStats() {
     return isolatedIngestionProcessStats;
   }
-
-  public ReentrantReadWriteLock getForkProcessActionLock() {
-    return forkProcessActionLock;
-  }
-
 }

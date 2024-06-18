@@ -189,6 +189,7 @@ import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
@@ -1922,7 +1923,7 @@ public abstract class StoreIngestionTaskTest {
 
     // After the end of push, the venice writer continue puts a corrupt data and end the segment.
     getOffset(veniceWriterCorrupted.put(putKeyFoo, putValueToCorrupt, SCHEMA_ID));
-    veniceWriterCorrupted.endSegment(PARTITION_FOO, true);
+    veniceWriterCorrupted.closePartition(PARTITION_FOO);
 
     // a missing msg
     long fooOffsetToSkip = getOffset(veniceWriterCorrupted.put(putKeyFoo, putValue, SCHEMA_ID));
@@ -3437,8 +3438,12 @@ public abstract class StoreIngestionTaskTest {
             null);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
-    PartitionConsumptionState partitionConsumptionState =
-        new PartitionConsumptionState(PARTITION_FOO, amplificationFactor, mockOffsetRecord, true);
+    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(
+        Utils.getReplicaId(topic, PARTITION_FOO),
+        PARTITION_FOO,
+        amplificationFactor,
+        mockOffsetRecord,
+        true);
 
     long producerTimestamp = System.currentTimeMillis();
     LeaderMetadataWrapper mockLeaderMetadataWrapper = mock(LeaderMetadataWrapper.class);
@@ -3722,7 +3727,8 @@ public abstract class StoreIngestionTaskTest {
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
-    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(0, 1, offsetRecord, false);
+    PartitionConsumptionState partitionConsumptionState =
+        new PartitionConsumptionState(Utils.getReplicaId(versionTopicName, 0), 0, 1, offsetRecord, false);
 
     long localVersionTopicOffset = 100L;
     long remoteVersionTopicOffset = 200L;
@@ -4064,7 +4070,8 @@ public abstract class StoreIngestionTaskTest {
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
-    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(0, 1, offsetRecord, false);
+    PartitionConsumptionState partitionConsumptionState =
+        new PartitionConsumptionState(Utils.getReplicaId(pubSubTopic, 0), 0, 1, offsetRecord, false);
 
     storeIngestionTaskUnderTest.updateLeaderTopicOnFollower(partitionConsumptionState);
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
@@ -4412,15 +4419,83 @@ public abstract class StoreIngestionTaskTest {
             System.currentTimeMillis());
       } catch (Exception e) {
         e.printStackTrace();
-        // Verify transformer error was recorded
-        verify(mockVersionedStorageIngestionStats)
-            .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
       }
-    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
 
-    // Verify transformer error was recorded
-    verify(mockVersionedStorageIngestionStats)
-        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+      // Verify transformer error was recorded
+      verify(mockVersionedStorageIngestionStats, timeout(1000))
+          .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+    }, aaConfig, TestStringRecordTransformer::new);
+  }
+
+  @DataProvider
+  public static Object[][] testAssembledValueSizeProvider() {
+    Set<Integer> schemaIdSet = new HashSet<>();
+    for (AvroProtocolDefinition avroProtocolDefinition: AvroProtocolDefinition.values()) {
+      avroProtocolDefinition.currentProtocolVersion.ifPresent(schemaIdSet::add);
+    }
+    return DataProviderUtils.allPermutationGenerator(AAConfig.values(), schemaIdSet.toArray());
+  }
+
+  /**
+   * Create messages for a chunked record (in multiple chunks) and its manifest, and verify that the drainer
+   * records the size of the chunked record as described in the size field of the manifest.
+   * Also, verify that metrics are only emitted when the correct schemaId=-20 is on the manifest message,
+   * and not emitted on any other invalid schemaId values.
+   * @throws Exception
+   */
+  @Test(dataProvider = "testAssembledValueSizeProvider")
+  public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId) throws Exception {
+    int numChunks = 10;
+    long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH;
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
+    for (int i = 0; i < numChunks; i++) {
+      messages.add(ChunkingTestUtils.createChunkedRecord(putKeyFoo, 1, 1, i, 0, tp));
+    }
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
+        ChunkingTestUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
+    messages.add(manifestMessage);
+
+    // The only expected real-life case should be when schemaId values are chunk=-10 and manifest=-20
+    boolean useRealSchemaId = testSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
+        try {
+          Put put = (Put) message.getValue().getPayloadUnion();
+          if (!useRealSchemaId) {
+            put.schemaId = testSchemaId;
+          }
+          LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+          when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+          when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+          when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
+
+          storeIngestionTaskUnderTest.produceToStoreBufferService(
+              message,
+              leaderProducedRecordContext,
+              PARTITION_FOO,
+              localKafkaConsumerService.kafkaUrl,
+              System.nanoTime(),
+              System.currentTimeMillis());
+        } catch (InterruptedException e) {
+          throw new VeniceException(e);
+        }
+      }
+
+      // Verify that the size of the assembled record was recorded in the metrics only if schemaId=-20
+      HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
+      if (useRealSchemaId) {
+        verify(hostLevelIngestionStats, timeout(1000)).recordAssembledValueSize(eq(expectedRecordSize), anyLong());
+        verify(hostLevelIngestionStats, timeout(1000).times(1)).recordAssembledValueSize(anyLong(), anyLong());
+      } else {
+        verify(hostLevelIngestionStats, times(0)).recordAssembledValueSize(anyLong(), anyLong());
+      }
+    }, aaConfig);
   }
 
   @Test
@@ -4492,6 +4567,7 @@ public abstract class StoreIngestionTaskTest {
     verify(mockStats1).recordBenignLeaderOffsetRewind(storeName, version);
 
     // Benign rewind
+    final long messageOffset = 10;
     KafkaKey key = new KafkaKey(MessageType.PUT, "test_key".getBytes());
     KafkaMessageEnvelope messsageEnvelope = new KafkaMessageEnvelope();
     LeaderMetadata leaderMetadata = new LeaderMetadata();
@@ -4511,7 +4587,7 @@ public abstract class StoreIngestionTaskTest {
         new PubSubTopicPartitionImpl(
             new TestPubSubTopic("test_store_v1", "test_store", PubSubTopicType.VERSION_TOPIC),
             1),
-        10,
+        messageOffset,
         -1,
         1000);
     AbstractStorageEngine mockStorageEngine2 = mock(AbstractStorageEngine.class);
@@ -4553,6 +4629,8 @@ public abstract class StoreIngestionTaskTest {
             .checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, 10, 11, mockTask2));
     assertTrue(
         exception.getMessage().contains("Failing the job because lossy rewind happens before receiving EndOfPush."));
+    // Verify that the VT offset is also in the error message
+    assertTrue(exception.getMessage().contains("received message at offset: " + messageOffset));
     verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
   }
 

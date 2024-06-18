@@ -242,7 +242,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     if (timeValue != null) {
       // TODO: When a batch get throws a quota exception, the ROUTER_SERVER_TIME is missing, so we can't record anything
       // here...
-      double latency = LatencyUtils.convertLatencyFromNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
+      double latency = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordLatency(storeName, latency);
       if (HEALTHY_STATUSES.contains(responseStatus)) {
         routerStats.getStatsByType(RequestType.SINGLE_GET)
@@ -262,17 +262,17 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
     timeValue = allMetrics.get(ROUTER_RESPONSE_WAIT_TIME);
     if (timeValue != null) {
-      double waitingTime = LatencyUtils.convertLatencyFromNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
+      double waitingTime = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordResponseWaitingTime(storeName, waitingTime);
     }
     timeValue = allMetrics.get(ROUTER_PARSE_URI);
     if (timeValue != null) {
-      double parsingTime = LatencyUtils.convertLatencyFromNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
+      double parsingTime = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordRequestParsingLatency(storeName, parsingTime);
     }
     timeValue = allMetrics.get(ROUTER_ROUTING_TIME);
     if (timeValue != null) {
-      double routingTime = LatencyUtils.convertLatencyFromNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
+      double routingTime = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordRequestRoutingLatency(storeName, routingTime);
     }
     if (HEALTHY_STATUSES.contains(responseStatus) && !venicePath.isStreamingRequest()) {
@@ -476,7 +476,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
        * The following metric is actually measuring the deserialization/decompression/re-serialization.
        * Since all the overhead is introduced by the value compression, it might be fine to track them altogether.
        */
-      stats.recordDecompressionTime(storeName, LatencyUtils.convertLatencyFromNSToMS(decompressionTimeInNs));
+      stats.recordDecompressionTime(storeName, LatencyUtils.convertNSToMS(decompressionTimeInNs));
     }
 
     FullHttpResponse multiGetResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);

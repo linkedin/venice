@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -134,13 +135,12 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               version -> handleVersionRetirement(version.kafkaTopicName(), "Version status " + version.getStatus()));
 
       // For versions that have been retired, delete dictionary.
-      downloadingDictionaryFutures.keySet()
-          .stream()
-          // Filter those topics which belong to the current store
-          .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(store.getName()))
-          // Filter those topics which are retired
-          .filter(topic -> store.getVersion(Version.parseVersionFromKafkaTopicName(topic)) != null)
-          .forEach(topic -> handleVersionRetirement(topic, "Version retired"));
+      for (String topic: downloadingDictionaryFutures.keySet()) {
+        if (Version.parseStoreFromKafkaTopicName(topic).equals(store.getName())
+            && store.getVersion(Version.parseVersionFromKafkaTopicName(topic)) == null) {
+          handleVersionRetirement(topic, "Version retired");
+        }
+      }
     }
   };
 
@@ -243,9 +243,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         sslFactory.isPresent());
     CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
 
-    storageNodeClient.sendRequest(request, responseFuture);
-
     return CompletableFuture.supplyAsync(() -> {
+      storageNodeClient.sendRequest(request, responseFuture);
       VeniceException exception = null;
       try {
         byte[] dictionary = getDictionaryFromResponse(
@@ -480,6 +479,11 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     // Shutdown the internal clean up executor of redundant exception filter.
     redundantExceptionFilter.shutdown();
+  }
+
+  // For testing only
+  Map<String, CompletableFuture<Void>> getDownloadingDictionaryFutures() {
+    return downloadingDictionaryFutures;
   }
 
   // Visible for testing

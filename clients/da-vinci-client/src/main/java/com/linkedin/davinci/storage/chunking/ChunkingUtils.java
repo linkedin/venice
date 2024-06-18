@@ -57,8 +57,8 @@ import org.apache.avro.io.BinaryDecoder;
  *    b) If it is negative, then it's a {@link ChunkedValueManifest}, and we continue to the next steps.
  * 3. The {@link ChunkedValueManifest} is deserialized, and its chunk keys are extracted.
  * 4. Each chunk key is queried.
- * 5. The chunks are stitched back together using the various adpater interfaces of this package,
- *    depending on whether it is the single get or batch get/compute path that needs to re-assembe
+ * 5. The chunks are stitched back together using the various adapter interfaces of this package,
+ *    depending on whether it is the single get or batch get/compute path that needs to re-assemble
  *    a chunked value.
  */
 public class ChunkingUtils {
@@ -166,7 +166,7 @@ public class ChunkingUtils {
           // User-defined schema, thus not a chunked value.
 
           if (response != null) {
-            response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+            response.addDatabaseLookupLatency(LatencyUtils.getElapsedTimeFromNSToMS(databaseLookupStartTimeInNS));
           }
 
           GenericRecord deserializedKey = keyRecordDeserializer.deserialize(key);
@@ -315,7 +315,7 @@ public class ChunkingUtils {
       // User-defined schema, thus not a chunked value. Early termination.
 
       if (response != null) {
-        response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+        response.addDatabaseLookupLatency(LatencyUtils.getElapsedTimeFromNSToMS(databaseLookupStartTimeInNS));
         response.addValueSize(valueLength);
       }
       return adapter.constructValue(
@@ -378,7 +378,7 @@ public class ChunkingUtils {
     }
 
     if (response != null) {
-      response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+      response.addDatabaseLookupLatency(LatencyUtils.getElapsedTimeFromNSToMS(databaseLookupStartTimeInNS));
       response.addValueSize(actualSize);
       response.incrementMultiChunkLargeValueCount();
     }

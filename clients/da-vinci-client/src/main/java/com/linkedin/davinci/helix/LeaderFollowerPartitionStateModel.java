@@ -1,7 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -16,6 +16,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -65,7 +66,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   private final HeartbeatMonitoringService heartbeatMonitoringService;
 
   public LeaderFollowerPartitionStateModel(
-      VeniceIngestionBackend ingestionBackend,
+      IngestionBackend ingestionBackend,
       VeniceStoreVersionConfig storeAndServerConfigs,
       int partition,
       LeaderFollowerIngestionProgressNotifier notifier,
@@ -108,12 +109,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
         setupNewStorePartition();
         logger.info(
-            "Completed setting up new store partition for {} partition {}. Total elapsed time: {} ms",
-            resourceName,
-            getPartition(),
-            LatencyUtils.getLatencyInMS(startTimeForSettingUpNewStorePartitionInNs));
+            "Completed setting up the replica: {}. Total elapsed time: {} ms",
+            Utils.getReplicaId(resourceName, getPartition()),
+            LatencyUtils.getElapsedTimeFromNSToMS(startTimeForSettingUpNewStorePartitionInNs));
       } catch (Exception e) {
-        logger.error("Failed to set up new store partition for {} partition {}", resourceName, getPartition(), e);
+        logger.error("Failed to set up the new replica: {}", Utils.getReplicaId(resourceName, getPartition()), e);
         if (isRegularStoreCurrentVersion) {
           notifier.stopConsumption(resourceName, getPartition());
         }
@@ -146,7 +146,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(
         message,
         context,
-        () -> getIngestionBackend().promoteToLeader(getStoreAndServerConfigs(), getPartition(), checker));
+        () -> getIngestionBackend().getStoreIngestionService()
+            .promoteToLeader(getStoreAndServerConfigs(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
@@ -160,7 +161,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(
         message,
         context,
-        () -> getIngestionBackend().demoteToStandby(getStoreAndServerConfigs(), getPartition(), checker));
+        () -> getIngestionBackend().getStoreIngestionService()
+            .demoteToStandby(getStoreAndServerConfigs(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
@@ -183,7 +185,10 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         int version = Version.parseVersionFromKafkaTopicName(resourceName);
         isCurrentVersion = getStoreRepo().getStoreOrThrow(storeName).getCurrentVersion() == version;
       } catch (VeniceNoStoreException e) {
-        logger.warn("Failed to determine if the resource is current version", e);
+        logger.warn(
+            "Failed to determine if the resource is current version. Replica: {}",
+            Utils.getReplicaId(message.getResourceName(), getPartition()),
+            e);
       }
       if (isCurrentVersion) {
         // Only do graceful drop for current version resources that are being queried
@@ -227,16 +232,15 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       Version version = res.getSecond();
       if (store == null) {
         logger.error(
-            "Failed to get store for resource: {}-{}. Will not update lag monitor.",
-            resourceName,
-            getPartition());
+            "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
+            Utils.getReplicaId(resourceName, getPartition()),
+            trigger);
         return;
       }
       if (version == null && !isNullVersionValid) {
         logger.error(
-            "Failed to get version for resource: {}-{} with trigger: {}. Will not update lag monitor.",
-            resourceName,
-            getPartition(),
+            "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
+            Utils.getReplicaId(resourceName, getPartition()),
             trigger);
         return;
       }
@@ -247,7 +251,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       }
       lagMonFunction.accept(version, getPartition());
     } catch (Exception e) {
-      logger.error("Failed to update lag monitor for resource: {}-{}", resourceName, getPartition(), e);
+      logger.error(
+          "Failed to update lag monitor for replica: {} with trigger: {}",
+          Utils.getReplicaId(resourceName, getPartition()),
+          trigger,
+          e);
     }
   }
 

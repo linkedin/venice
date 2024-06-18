@@ -29,7 +29,7 @@ public class HelixScatterGatherRoutingStrategy extends AbstractClientRoutingStra
     }
     // select replicas from the selected group, going down the groups if more replicas are needed
     int groupCnt = helixGroupInfo.getGroupIds().size();
-    int startPos = (int) requestId % groupCnt;
+    int startPos = (int) (requestId % groupCnt);
     List<String> selectedReplicas = new ArrayList<>();
     for (int i = 0; i < groupCnt; i++) {
       int groupId = helixGroupInfo.getGroupIds().get((i + startPos) % groupCnt);

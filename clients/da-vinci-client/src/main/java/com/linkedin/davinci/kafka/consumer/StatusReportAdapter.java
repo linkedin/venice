@@ -217,11 +217,12 @@ public class StatusReportAdapter {
         }
       }
       if (updatedCount == amplificationFactor) {
-        maybeReportStatus(status, versionAwareStatus, report, logStatus);
+        maybeReportStatus(partitionConsumptionState.getReplicaId(), status, versionAwareStatus, report, logStatus);
       }
     }
 
     private void maybeReportStatus(
+        String replicaId,
         SubPartitionStatus status,
         String versionAwareStatus,
         Runnable report,
@@ -229,7 +230,11 @@ public class StatusReportAdapter {
       // This is a safeguard to make sure we only report exactly once for each status.
       if (statusReportIndicatorMap.get(versionAwareStatus).compareAndSet(false, true)) {
         if (logStatus) {
-          LOGGER.info("Reporting status {} for user partition: {}.", versionAwareStatus, userPartition);
+          LOGGER.info(
+              "Reporting status {} for user partition: {}. ReplicaId: {}",
+              versionAwareStatus,
+              userPartition,
+              replicaId);
         }
         report.run();
         if (status.equals(COMPLETED)) {

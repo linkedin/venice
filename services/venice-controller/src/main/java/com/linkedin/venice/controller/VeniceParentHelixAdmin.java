@@ -664,7 +664,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
       SchemaUsageResponse response = controllerClient.getInUseSchemaIds(storeName);
-      if (response.isError() || response.getInUseValueSchemaIds().isEmpty()) {
+      if (response.isError()) {
         if (response.isError()) {
           LOGGER.error(
               "Could not query store from region: " + region + " for cluster: " + clusterName + ". "
@@ -2010,7 +2010,7 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
+      LOGGER.info("Truncating topic {} after rollforward", Version.composeKafkaTopic(storeName, futureVersion));
       truncateKafkaTopic(Version.composeKafkaTopic(storeName, futureVersion));
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
@@ -2711,14 +2711,22 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.updatedConfigsList = Collections.emptyList();
       }
 
+      final boolean readComputeJustEnabled =
+          readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
+      boolean needToGenerateSupersetSchema =
+          !currStore.isSystemStore() && (readComputeJustEnabled || partialUpdateJustEnabled);
+      if (needToGenerateSupersetSchema) {
+        // dry run to make sure superset schema generation can work
+        getSupersetSchemaGenerator(clusterName)
+            .generateSupersetSchemaFromSchemas(getValueSchemas(clusterName, storeName));
+      }
+
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
-      final boolean readComputeJustEnabled =
-          readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
-      if ((!currStore.isSystemStore()) && (readComputeJustEnabled || partialUpdateJustEnabled)) {
+      if (needToGenerateSupersetSchema) {
         addSupersetSchemaForStore(clusterName, storeName, currStore.isActiveActiveReplicationEnabled());
       }
       if (partialUpdateJustEnabled) {

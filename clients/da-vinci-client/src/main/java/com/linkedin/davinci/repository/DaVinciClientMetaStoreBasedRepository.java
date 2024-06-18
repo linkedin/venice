@@ -16,6 +16,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
@@ -123,7 +124,8 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   @Override
   public int getValueSchemaId(String storeName, String valueSchemaStr) {
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE) {
-      return metaStoreSchemaReader.getValueSchemaId(Schema.parse(valueSchemaStr));
+      return metaStoreSchemaReader
+          .getValueSchemaId(AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(valueSchemaStr));
     } else {
       return super.getValueSchemaId(storeName, valueSchemaStr);
     }

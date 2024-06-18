@@ -122,6 +122,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.mockito.AdditionalAnswers;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -358,6 +359,30 @@ public class AdminConsumptionTaskTest {
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
     verify(admin, timeout(TIMEOUT)).killOfflinePush(clusterName, storeTopicName, false);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testRecordConsumptionLag() throws InterruptedException, IOException {
+    // The store doesn't exist
+    doReturn(false).when(admin).hasStore(clusterName, storeName);
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager("remote.pubsub");
+    doReturn(new HashMap<>()).when(mockKafkaConsumer).poll(anyLong());
+
+    AdminConsumptionTask task =
+        Mockito.spy(getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, "remote.pubsub", 3));
+    doReturn(-1L).when(task).getConsumptionLagUpdateIntervalInMs();
+    executor.submit(task);
+
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> verify(task, times(1)).recordConsumptionLag());
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
   @Test(timeOut = TIMEOUT)

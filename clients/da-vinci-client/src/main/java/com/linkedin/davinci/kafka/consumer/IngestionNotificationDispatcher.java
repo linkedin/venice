@@ -188,7 +188,7 @@ class IngestionNotificationDispatcher {
 
     NotificationRecord lastRecord = lastQuotaStatusReported.get(partitionId);
     if (lastRecord.getStatus() != status
-        || LatencyUtils.getLatencyInMS(lastRecord.getTimeStampInMs()) >= QUOTA_REPORT_INTERVAL) {
+        || LatencyUtils.getElapsedTimeFromMsToMs(lastRecord.getTimeStampInMs()) >= QUOTA_REPORT_INTERVAL) {
       lastQuotaStatusReported.put(partitionId, new NotificationRecord(System.currentTimeMillis(), status));
       return true;
     }

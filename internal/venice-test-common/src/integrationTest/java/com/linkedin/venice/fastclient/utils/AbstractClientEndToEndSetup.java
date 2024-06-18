@@ -405,7 +405,7 @@ public abstract class AbstractClientEndToEndSetup {
   protected void setUpGrpcFastClient(ClientConfig.ClientConfigBuilder clientConfigBuilder) {
     GrpcClientConfig grpcClientConfig = new GrpcClientConfig.Builder().setR2Client(r2Client)
         .setSSLFactory(SslUtils.getVeniceLocalSslFactory())
-        .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
+        .setNettyServerToGrpcAddress(veniceCluster.getNettyServerToGrpcAddress())
         .build();
 
     clientConfigBuilder.setGrpcClientConfig(grpcClientConfig).setUseGrpc(true);

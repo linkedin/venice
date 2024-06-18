@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
@@ -33,6 +34,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
@@ -111,6 +114,7 @@ import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
@@ -328,6 +332,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final PubSubClientsFactory pubSubClientsFactory;
 
+  private final PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory;
+
+  private final long danglingTopicCleanupIntervalSeconds;
+  private final int danglingTopicOccurrenceThresholdForCleanup;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -502,8 +511,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
      */
     this.zkSharedMetaSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
-    this.pushStatusStoreHeartbeatExpirationTimeInSeconds =
-        props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
+    this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(
+        PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS,
+        DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS);
     this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.daVinciPushStatusScanEnabled =
         props.getBoolean(DAVINCI_PUSH_STATUS_SCAN_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
@@ -572,6 +582,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.useDaVinciSpecificExecutionStatusForError =
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
+    this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
+    this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
+    this.danglingTopicOccurrenceThresholdForCleanup =
+        props.getInt(CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP, 3);
   }
 
   private void validateActiveActiveConfigs() {
@@ -1060,6 +1074,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return pubSubClientsFactory;
   }
 
+  public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
+    return sourceOfTruthAdminAdapterFactory;
+  }
+
   /**
    * The config should follow the format below:
    * CHILD_CLUSTER_URL_PREFIX.fabricName1=controllerUrls_in_fabric1
@@ -1151,6 +1169,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
 
     return outputMap;
+  }
+
+  public long getDanglingTopicCleanupIntervalSeconds() {
+    return danglingTopicCleanupIntervalSeconds;
+  }
+
+  public int getDanglingTopicOccurrenceThresholdForCleanup() {
+    return danglingTopicOccurrenceThresholdForCleanup;
   }
 
   /**
