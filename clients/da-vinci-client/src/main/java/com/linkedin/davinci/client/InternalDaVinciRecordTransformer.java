@@ -38,7 +38,9 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       startLatch.await();
       return (O) this.recordTransformer.put(key, value);
     } catch (InterruptedException e) {
-      throw new AssertionError("Unexpected Interruption", e);
+      // Restore the interrupt status
+      Thread.currentThread().interrupt();
+      return null;
     }
   }
 
