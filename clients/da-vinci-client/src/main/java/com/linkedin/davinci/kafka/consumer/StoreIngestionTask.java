@@ -3019,10 +3019,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // TODO: remove this condition check after fixing the bug that drainer in leaders is validating RT DIV info
       if (consumerRecord.getValue().producerMetadata.messageSequenceNumber != 1) {
+        String regionName = RegionNameUtil.getRegionName(consumerRecord, serverConfig.getKafkaClusterIdToAliasMap());
         LOGGER.warn(
-            "Data integrity validation problem with incoming record from topic-partition: {} and offset: {}, "
+            "Data integrity validation problem with incoming record from topic-partition: {}{} and offset: {}, "
                 + "but consumption will continue since EOP is already received for replica: {}. Msg: {}",
             consumerRecord.getTopicPartition(),
+            regionName == null || regionName.isEmpty() ? "" : "/" + regionName,
             consumerRecord.getOffset(),
             partitionConsumptionState.getReplicaId(),
             warningException.getMessage());
