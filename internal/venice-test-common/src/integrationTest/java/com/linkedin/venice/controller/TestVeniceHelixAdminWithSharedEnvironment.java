@@ -479,8 +479,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         1);
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     veniceAdmin.setStorePartitionerConfig(clusterName, storeName, partitionerConfig);
-    Version newVersion = veniceAdmin
-        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitionCount, 2);
 
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, true);
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isIncrementalPushEnabled());

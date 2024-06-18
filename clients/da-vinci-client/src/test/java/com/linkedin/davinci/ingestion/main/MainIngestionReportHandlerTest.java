@@ -77,7 +77,6 @@ public class MainIngestionReportHandlerTest {
     ingestionTaskReport.topicName = "topic";
     ingestionTaskReport.partitionId = 0;
     ingestionTaskReport.message = "";
-    ingestionTaskReport.offsetRecordArray = Collections.emptyList();
 
     FullHttpRequest msg = new DefaultFullHttpRequest(
         HttpVersion.HTTP_1_1,

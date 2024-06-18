@@ -43,13 +43,10 @@ import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.StorageResponseObject;
-import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -66,9 +63,7 @@ import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -84,7 +79,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -131,18 +125,12 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
 
   private static class PerStoreVersionState {
-    final PartitionerConfig partitionerConfig;
-    final VenicePartitioner partitioner;
     final StoreDeserializerCache<GenericRecord> storeDeserializerCache;
     AbstractStorageEngine storageEngine;
 
     public PerStoreVersionState(
-        PartitionerConfig partitionerConfig,
-        VenicePartitioner partitioner,
         AbstractStorageEngine storageEngine,
         StoreDeserializerCache<GenericRecord> storeDeserializerCache) {
-      this.partitionerConfig = partitionerConfig;
-      this.partitioner = partitioner;
       this.storageEngine = storageEngine;
       this.storeDeserializerCache = storeDeserializerCache;
     }
@@ -451,40 +439,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private PerStoreVersionState generatePerStoreVersionState(String storeVersion) {
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersion);
-    PartitionerConfig partitionerConfig;
-    try {
-      int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersion);
-      Store store = metadataRepository.getStoreOrThrow(storeName);
-      Version version = store.getVersionOrThrow(versionNumber);
-      partitionerConfig = version.getPartitionerConfig();
-      if (partitionerConfig == null) {
-        /**
-         * If we did find the version in the metadata, and its partitioner config is null (common case) then we want
-         * to distinguish this by caching the default partitioner, otherwise we will end up re-executing this
-         * closure repeatedly and needlessly.
-         */
-        partitionerConfig = new PartitionerConfigImpl();
-      }
-    } catch (VeniceException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new VeniceException("Can not acquire partitionerConfig.", e);
-    }
-    VenicePartitioner partitioner = null;
-    if (partitionerConfig.getAmplificationFactor() > 1) {
-      Properties partitionerParams = new Properties();
-      if (partitionerConfig.getPartitionerParams() != null) {
-        partitionerParams.putAll(partitionerConfig.getPartitionerParams());
-      }
-      // specify amplificationFactor as 1 to avoid using UserPartitionAwarePartitioner
-      partitioner = PartitionUtils
-          .getVenicePartitioner(partitionerConfig.getPartitionerClass(), new VeniceProperties(partitionerParams));
-    }
     AbstractStorageEngine storageEngine = getStorageEngineOrThrow(storeVersion);
     StoreDeserializerCache<GenericRecord> storeDeserializerCache = storeDeserializerCacheMap.computeIfAbsent(
         storeName,
         s -> new AvroStoreDeserializerCache<>(this.schemaRepository, s, this.fastAvroEnabled));
-    return new PerStoreVersionState(partitionerConfig, partitioner, storageEngine, storeDeserializerCache);
+    return new PerStoreVersionState(storageEngine, storeDeserializerCache);
   }
 
   private AbstractStorageEngine getStorageEngineOrThrow(String storeVersion) {
