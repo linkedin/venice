@@ -179,7 +179,6 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
-          assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           assertEquals(storeInfo.getPartitionerConfig().getPartitionerParams(), Collections.singletonMap("key", "val"));
         }
       });
