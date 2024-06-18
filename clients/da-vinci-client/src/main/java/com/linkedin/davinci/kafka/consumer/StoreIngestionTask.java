@@ -559,12 +559,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
-    consumerActionsQueue.add(
-        new ConsumerAction(
-            SUBSCRIBE,
-            new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), topicPartition.getPartitionNumber()),
-            nextSeqNum(),
-            isHelixTriggeredAction));
+    consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
   }
 
   public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
@@ -581,11 +576,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
-    ConsumerAction consumerAction = new ConsumerAction(
-        UNSUBSCRIBE,
-        new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), topicPartition.getPartitionNumber()),
-        nextSeqNum(),
-        isHelixTriggeredAction);
+    ConsumerAction consumerAction =
+        new ConsumerAction(UNSUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
 
     consumerActionsQueue.add(consumerAction);
     return consumerAction.getFuture();
@@ -603,12 +595,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
-    consumerActionsQueue.add(
-        new ConsumerAction(
-            RESET_OFFSET,
-            new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), topicPartition.getPartitionNumber()),
-            nextSeqNum(),
-            false));
+    consumerActionsQueue.add(new ConsumerAction(RESET_OFFSET, topicPartition, nextSeqNum(), false));
   }
 
   public String getStoreName() {
@@ -1037,7 +1024,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (partitionConsumptionState != null) {
         partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       }
-      if (!shouldProcessRecord(record, topicPartition.getPartitionNumber())) {
+      if (!shouldProcessRecord(record)) {
         if (partitionConsumptionState != null) {
           partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
         }
@@ -2021,11 +2008,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Common record check for different state models:
    * check whether server continues receiving messages after EOP for a batch-only store.
    */
-  protected boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record, int partition) {
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+  protected boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(record.getPartition());
 
     if (partitionConsumptionState == null) {
-      String msg = "PCS for replica: " + Utils.getReplicaId(kafkaVersionTopic, partition)
+      String msg = "PCS for replica: " + Utils.getReplicaId(kafkaVersionTopic, record.getPartition())
           + " is null. Skipping incoming record with topic-partition: {} and offset: {}";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
@@ -2034,7 +2021,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (partitionConsumptionState.isErrorReported()) {
-      String msg = "Replica:  " + Utils.getReplicaId(kafkaVersionTopic, partition)
+      String msg = "Replica:  " + Utils.getReplicaId(kafkaVersionTopic, record.getPartition())
           + " is already errored. Skipping incoming record with topic-partition: {} and offset: {}";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
@@ -3078,7 +3065,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean consumerHasSubscription(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
-    int partitionId = partitionConsumptionState.getSourceTopicPartitionNumber(topic);
+    int partitionId = partitionConsumptionState.getPartition();
     return aggKafkaConsumerService
         .hasConsumerAssignedFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
@@ -3115,7 +3102,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public void consumerResetOffset(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
-    int partitionId = partitionConsumptionState.getSourceTopicPartitionNumber(topic);
+    int partitionId = partitionConsumptionState.getPartition();
     aggKafkaConsumerService.resetOffsetFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 

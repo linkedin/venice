@@ -14,6 +14,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -257,8 +258,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         record.setValueManifest(chunkedValueManifest);
         record.setRmdManifest(chunkedRmdManifest);
       } else if (partitionConsumptionState.isEndOfPushReceived()) {
-        String msg = "Transient record is missing when trying to update value/RMD manifest for topic "
-            + ingestionTask.getKafkaVersionTopic() + " partition: " + partition;
+        String msg = "Transient record is missing when trying to update value/RMD manifest for resource: "
+            + Utils.getReplicaId(ingestionTask.getKafkaVersionTopic(), partition);
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
           LOGGER.error(msg);
         }

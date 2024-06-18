@@ -1158,12 +1158,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public TopicPartitionIngestionContextResponse getTopicPartitionIngestionContext(
       String versionTopic,
       String topicName,
-      Integer partitionNum) {
+      int partitionId) {
     TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
         new TopicPartitionIngestionContextResponse();
     PubSubTopic pubSubVersionTopic = pubSubTopicRepository.getTopic(versionTopic);
     PubSubTopic requestTopic = pubSubTopicRepository.getTopic(topicName);
-    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(requestTopic, partitionNum);
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(requestTopic, partitionId);
     try {
       byte[] topicPartitionInfo = aggKafkaConsumerService.getIngestionInfoFor(pubSubVersionTopic, pubSubTopicPartition);
       topicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(topicPartitionInfo);
@@ -1171,8 +1171,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       topicPartitionIngestionContextResponse.setError(true);
       topicPartitionIngestionContextResponse.setMessage(e.getMessage());
       LOGGER.error(
-          "Error on get topic partition ingestion context for version topic: " + versionTopic + ", topic name: "
-              + topicName + ", partition number: " + partitionNum,
+          "Error on get topic partition ingestion context for resource: " + Utils.getReplicaId(topicName, partitionId),
           e);
     }
     return topicPartitionIngestionContextResponse;
@@ -1197,7 +1196,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       throw e;
     }
     storageMetadataService.put(topicName, partition, offsetRecord);
-    LOGGER.info("Updated OffsetRecord: {} for topic: {}, partition: {}", offsetRecord.toString(), topicName, partition);
+    LOGGER.info(
+        "Updated OffsetRecord: {} for resource: {} ",
+        offsetRecord.toString(),
+        Utils.getReplicaId(topicName, partition));
   }
 
   /**

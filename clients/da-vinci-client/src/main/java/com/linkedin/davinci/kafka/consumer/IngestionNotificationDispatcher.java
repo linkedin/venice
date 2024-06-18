@@ -329,7 +329,7 @@ class IngestionNotificationDispatcher {
         if (pcs.isCompletionReported()) {
           LOGGER.warn(
               "Partition: {} has been marked as completed, so an error will not be reported...",
-              pcs.getPartition());
+              pcs.getReplicaId());
           return false;
         }
         return true;

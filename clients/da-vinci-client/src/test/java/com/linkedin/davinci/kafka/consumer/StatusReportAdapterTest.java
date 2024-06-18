@@ -34,7 +34,7 @@ public class StatusReportAdapterTest {
   public void testStatusReportWithAmpFactor() {
     recordStatusList.clear();
     String topic = "test_v1";
-    int amplificationFactor = 3;
+    int amplificationFactor = 1;
     VeniceNotifier notifier = getNotifier();
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
     notifiers.add(notifier);

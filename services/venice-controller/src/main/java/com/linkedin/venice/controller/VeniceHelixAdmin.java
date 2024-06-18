@@ -24,7 +24,7 @@ import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
 import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;
-import static com.linkedin.venice.views.ViewUtils.SUB_PARTITION_COUNT;
+import static com.linkedin.venice.views.ViewUtils.PARTITION_COUNT;
 import static com.linkedin.venice.views.ViewUtils.USE_FAST_KAFKA_OPERATION_TIMEOUT;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
@@ -2253,7 +2253,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceProperties kafkaTopicConfigs = topicNameAndConfigs.getValue();
       topicManager.createTopic(
           kafkaTopic,
-          kafkaTopicConfigs.getInt(SUB_PARTITION_COUNT),
+          kafkaTopicConfigs.getInt(PARTITION_COUNT),
           kafkaTopicConfigs.getInt(KAFKA_REPLICATION_FACTOR),
           kafkaTopicConfigs.getBoolean(ETERNAL_TOPIC_RETENTION_ENABLED),
           kafkaTopicConfigs.getBoolean(LOG_COMPACTION_ENABLED),
@@ -2622,7 +2622,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             Properties veniceViewProperties = new Properties();
-            veniceViewProperties.put(SUB_PARTITION_COUNT, numberOfPartitions);
+            veniceViewProperties.put(PARTITION_COUNT, numberOfPartitions);
             veniceViewProperties.put(USE_FAST_KAFKA_OPERATION_TIMEOUT, useFastKafkaOperationTimeout);
             veniceViewProperties.putAll(clusterConfig.getProps().toProperties());
             veniceViewProperties.put(LOG_COMPACTION_ENABLED, false);

@@ -552,22 +552,13 @@ public class PartitionConsumptionState {
    * @return
    */
   public TransientRecord mayRemoveTransientRecord(int kafkaClusterId, long kafkaConsumedOffset, byte[] key) {
-    TransientRecord removed = transientRecordMap.computeIfPresent(ByteArrayKey.wrap(key), (k, v) -> {
+    return transientRecordMap.computeIfPresent(ByteArrayKey.wrap(key), (k, v) -> {
       if (v.kafkaClusterId == kafkaClusterId && v.kafkaConsumedOffset == kafkaConsumedOffset) {
         return null;
       } else {
         return v;
       }
     });
-    return removed;
-  }
-
-  public int getSourceTopicPartitionNumber(PubSubTopic topic) {
-    if (topic.isRealTime()) {
-      return getPartition();
-    } else {
-      return getPartition();
-    }
   }
 
   public PubSubTopicPartition getSourceTopicPartition(PubSubTopic topic) {
@@ -575,7 +566,7 @@ public class PartitionConsumptionState {
      * TODO: Consider whether the {@link PubSubTopicPartition} instance might be cacheable.
      * It might not be easily cacheable if we pass different topics as input param (which it seems we do).
      */
-    return new PubSubTopicPartitionImpl(topic, getSourceTopicPartitionNumber(topic));
+    return new PubSubTopicPartitionImpl(topic, getPartition());
   }
 
   public int getTransientRecordMapSize() {

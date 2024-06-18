@@ -331,13 +331,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
-    consumerActionsQueue.add(
-        new ConsumerAction(
-            STANDBY_TO_LEADER,
-            new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), topicPartition.getPartitionNumber()),
-            nextSeqNum(),
-            checker,
-            true));
+    consumerActionsQueue.add(new ConsumerAction(STANDBY_TO_LEADER, topicPartition, nextSeqNum(), checker, true));
   }
 
   @Override
@@ -348,13 +342,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
-    consumerActionsQueue.add(
-        new ConsumerAction(
-            LEADER_TO_STANDBY,
-            new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), topicPartition.getPartitionNumber()),
-            nextSeqNum(),
-            checker,
-            true));
+    consumerActionsQueue.add(new ConsumerAction(LEADER_TO_STANDBY, topicPartition, nextSeqNum(), checker, true));
   }
 
   @Override
@@ -1735,12 +1723,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * for leader, it's possible that it consumers from real-time topic or GF topic.
    */
   @Override
-  protected boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record, int partition) {
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+  protected boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(record.getPartition());
     if (partitionConsumptionState == null) {
       LOGGER.info(
           "Skipping message as partition is no longer actively subscribed. Replica: {}",
-          Utils.getReplicaId(versionTopic, partition));
+          Utils.getReplicaId(versionTopic, record.getPartition()));
       return false;
     }
     switch (partitionConsumptionState.getLeaderFollowerState()) {
@@ -1813,7 +1801,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         break;
     }
 
-    return super.shouldProcessRecord(record, partition);
+    return super.shouldProcessRecord(record);
   }
 
   /**
@@ -3277,14 +3265,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean shouldLog) {
     int partition = pcs.getPartition();
     long latestLeaderOffset;
-    int partitionToGetLatestOffsetFor;
-    partitionToGetLatestOffsetFor = partition;
     latestLeaderOffset =
         getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, sourceRealTimeTopicKafkaURL);
-
     PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    long lastOffsetInRealTimeTopic =
-        getTopicPartitionEndOffSet(sourceRealTimeTopicKafkaURL, leaderTopic, partitionToGetLatestOffsetFor);
+    long lastOffsetInRealTimeTopic = getTopicPartitionEndOffSet(sourceRealTimeTopicKafkaURL, leaderTopic, partition);
 
     if (lastOffsetInRealTimeTopic < 0) {
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException("Got a negative lastOffsetInRealTimeTopic")) {
@@ -3491,10 +3475,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
 
-    if (heartBeatFutures.size() > 0) {
+    if (!heartBeatFutures.isEmpty()) {
       CompletableFuture.allOf(heartBeatFutures.values().toArray(new CompletableFuture[0]))
           .whenCompleteAsync((ignore, throwable) -> {
-            if (failedPartitions.size() > 0) {
+            if (!failedPartitions.isEmpty()) {
               int numFailedPartitions = failedPartitions.size();
               String logMessage = String.format(
                   "Send ingestion heartbeat for %d partitions of topic %s: %d succeeded, %d failed for partitions: %s",
