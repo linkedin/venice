@@ -34,7 +34,7 @@ import org.apache.logging.log4j.Logger;
  *    accordingly.
  * 4: Report replica status changes if the above actions affect them.
  *      TODO: Consider whether this is tech debt and if we could/should decouple status reporting from this class.
- *            This would allow us to stop passing in the {@link #statusReportAdapter} which in turn may allow us
+ *            This would allow us to stop passing in the {@link #ingestionNotificationDispatcher} which in turn may allow us
  *            to stop mutating the entries in {@link #partitionConsumptionStateMap} (in which case, we could pass
  *            a map where the values are a read-only interface implemented by {@link PartitionConsumptionState}
  *            and thus preventing mutations of this state from here).
@@ -64,7 +64,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private final Set<Integer> pausedPartitions;
   private final boolean isHybridQuotaEnabledInServer;
   private final boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
-  private final StatusReportAdapter statusReportAdapter;
+  private final IngestionNotificationDispatcher ingestionNotificationDispatcher;
   private final TopicPartitionConsumerFunction pausePartition;
   private final TopicPartitionConsumerFunction resumePartition;
 
@@ -96,7 +96,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap,
       boolean isHybridQuotaEnabledInServer,
       boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled,
-      StatusReportAdapter statusReportAdapter,
+      IngestionNotificationDispatcher ingestionNotificationDispatcher,
       TopicPartitionConsumerFunction pausePartition,
       TopicPartitionConsumerFunction resumePartition) {
     this.partitionConsumptionStateMap = partitionConsumptionStateMap;
@@ -115,7 +115,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.isHybridQuotaEnabledInServer = isHybridQuotaEnabledInServer;
     this.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled =
         isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
-    this.statusReportAdapter = statusReportAdapter;
+    this.ingestionNotificationDispatcher = ingestionNotificationDispatcher;
     this.pausePartition = pausePartition;
     this.resumePartition = resumePartition;
     setStoreQuota(store);
@@ -147,7 +147,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    */
   private void reportStoreQuotaNotViolated() {
     for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
-      statusReportAdapter.reportQuotaNotViolated(partitionConsumptionState);
+      ingestionNotificationDispatcher.reportQuotaNotViolated(partitionConsumptionState);
     }
   }
 
@@ -256,7 +256,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
      * we check if the partition is in paused partitions to decide whether to resume it, we may never resume it.
      */
     if (isStorageQuotaExceeded(storagePartitionDiskUsage)) {
-      statusReportAdapter.reportQuotaViolated(pcs);
+      ingestionNotificationDispatcher.reportQuotaViolated(pcs);
 
       /**
        * If the version is already online but the completion has not been reported, we directly
@@ -264,7 +264,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
        * Otherwise, it could induce error replicas during rebalance for online version.
        */
       if (isVersionOnline() && !pcs.isCompletionReported()) {
-        statusReportAdapter.reportCompleted(pcs);
+        ingestionNotificationDispatcher.reportCompleted(pcs);
       }
 
       /**
@@ -290,7 +290,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       /**
        *  Paused partitions could be resumed
        */
-      statusReportAdapter.reportQuotaNotViolated(pcs);
+      ingestionNotificationDispatcher.reportQuotaNotViolated(pcs);
       if (isPartitionPausedIngestion(partition)) {
         resumePartition(partition, consumingTopic);
         LOGGER.info("Quota available for store {} partition {}, resumed this partition.", storeName, partition);

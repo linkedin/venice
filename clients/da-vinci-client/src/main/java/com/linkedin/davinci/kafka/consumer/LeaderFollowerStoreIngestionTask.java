@@ -951,7 +951,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } catch (Exception e) {
       LOGGER.error(errorMsg, e);
       versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
-      statusReportAdapter.reportError(Collections.singletonList(partitionConsumptionState), errorMsg, e);
+      ingestionNotificationDispatcher.reportError(Collections.singletonList(partitionConsumptionState), errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
   }
@@ -1107,7 +1107,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     if (isDataRecoveryCompleted) {
       partitionConsumptionState.setDataRecoveryCompleted(true);
-      statusReportAdapter.reportDataRecoveryCompleted(partitionConsumptionState);
+      ingestionNotificationDispatcher.reportDataRecoveryCompleted(partitionConsumptionState);
     }
   }
 
@@ -1154,7 +1154,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           "More than one Kafka server urls in TopicSwitch control message, " + "TopicSwitch.sourceKafkaServers: "
               + kafkaServerUrls);
     }
-    statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
+    ingestionNotificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState);
 
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     PubSubTopic newSourceTopic = pubSubTopicRepository.getTopic(newSourceTopicName);
@@ -1545,7 +1545,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       ingestionTask.getVersionedDIVStats()
           .recordPotentiallyLossyLeaderOffsetRewind(ingestionTask.getStoreName(), ingestionTask.getVersionNumber());
       VeniceException e = new VeniceException(logMsg);
-      ingestionTask.getStatusReportAdapter()
+      ingestionTask.getIngestionNotificationDispatcher()
           .reportError(Collections.singletonList(partitionConsumptionState), logMsg, e);
       throw e;
     }
@@ -1687,7 +1687,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partition,
           pcs.getLatestProcessedLocalVersionTopicOffset());
       if (lag <= 0) {
-        statusReportAdapter.reportCatchUpVersionTopicOffsetLag(pcs);
+        ingestionNotificationDispatcher.reportCatchUpVersionTopicOffsetLag(pcs);
 
         /**
          * Relax to report completion
@@ -2098,7 +2098,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * The caller of this function should only process this {@param consumerRecord} further if the return is
    * {@link DelegateConsumerRecordResult#QUEUED_TO_DRAINER}.
    *
-   * This function assumes {@link #shouldProcessRecord(PubSubMessage, int)} has been called which happens in
+   * This function assumes {@link #shouldProcessRecord(PubSubMessage)} has been called which happens in
    * {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, PubSubTopicPartition, String, int)}
    * before calling this and the it was decided that this record needs to be processed. It does not perform any
    * validation check on the PartitionConsumptionState object to keep the goal of the function simple and not overload.

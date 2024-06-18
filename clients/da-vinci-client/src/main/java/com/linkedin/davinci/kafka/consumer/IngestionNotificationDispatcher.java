@@ -121,6 +121,10 @@ class IngestionNotificationDispatcher {
     });
   }
 
+  void reportCompleted(PartitionConsumptionState pcs) {
+    reportCompleted(pcs, false);
+  }
+
   /**
    * @param forceCompletion a flag that forces the completion announcement even there are still
    *                        offset lags. It's only used in

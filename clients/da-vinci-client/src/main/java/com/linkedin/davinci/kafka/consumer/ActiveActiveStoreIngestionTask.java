@@ -1099,7 +1099,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long offset,
       PartitionConsumptionState partitionConsumptionState) {
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
-    statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
+    ingestionNotificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState);
     final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     PubSubTopic newSourceTopic = pubSubTopicRepository.getTopic(newSourceTopicName);
 

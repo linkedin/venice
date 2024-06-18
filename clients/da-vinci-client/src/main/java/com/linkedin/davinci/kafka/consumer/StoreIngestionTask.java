@@ -295,7 +295,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final boolean isIsolatedIngestion;
 
-  protected final StatusReportAdapter statusReportAdapter;
+  protected final IngestionNotificationDispatcher ingestionNotificationDispatcher;
 
   protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
@@ -429,9 +429,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ? new DefaultVenicePartitioner()
         : PartitionUtils.getVenicePartitioner(partitionerConfig);
     this.partitionCount = storeVersionPartitionCount;
-    this.statusReportAdapter =
-        new StatusReportAdapter(new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion));
-
+    this.ingestionNotificationDispatcher =
+        new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
@@ -460,7 +459,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Collections.unmodifiableMap(partitionConsumptionStateMap),
         serverConfig.isHybridQuotaEnabled(),
         serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled(),
-        statusReportAdapter,
+        ingestionNotificationDispatcher,
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
@@ -641,7 +640,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     synchronized (this) {
       if (isRunning()) {
         // If task is still running, force close it.
-        statusReportAdapter.reportError(
+        ingestionNotificationDispatcher.reportError(
             partitionConsumptionStateMap.values(),
             KILLED_JOB_MESSAGE + kafkaVersionTopic,
             new VeniceException("Kill the consumer"));
@@ -948,6 +947,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public boolean isReadyToServeAnnouncedWithRTLag() {
     return false;
+  }
+
+  IngestionNotificationDispatcher getIngestionNotificationDispatcher() {
+    return ingestionNotificationDispatcher;
   }
 
   protected abstract boolean isRealTimeBufferReplayStarted(PartitionConsumptionState partitionConsumptionState);
@@ -1394,7 +1397,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     } catch (VeniceIngestionTaskKilledException e) {
       LOGGER.info("{} has been killed.", ingestionTaskName);
-      statusReportAdapter.reportKilled(partitionConsumptionStateMap.values(), e);
+      ingestionNotificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), e);
       doFlush = false;
       if (isCurrentVersion.getAsBoolean()) {
         /**
@@ -1463,9 +1466,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String message,
       Exception consumerEx) {
     if (pcsList.isEmpty()) {
-      statusReportAdapter.reportError(partitionId, message, consumerEx);
+      ingestionNotificationDispatcher.reportError(partitionId, message, consumerEx);
     } else {
-      statusReportAdapter.reportError(pcsList, message, consumerEx);
+      ingestionNotificationDispatcher.reportError(pcsList, message, consumerEx);
     }
   }
 
@@ -1662,7 +1665,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         newPartitionConsumptionState.setStartOfPushTimestamp(storeVersionState.startOfPushTimestamp);
         newPartitionConsumptionState.setEndOfPushTimestamp(storeVersionState.endOfPushTimestamp);
 
-        statusReportAdapter.reportRestarted(newPartitionConsumptionState);
+        ingestionNotificationDispatcher.reportRestarted(newPartitionConsumptionState);
       }
       /**
        * If StoreVersionState doesn't exist, we would create it when we process
@@ -1825,7 +1828,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * releasing latch.
          */
         if (consumptionState != null) {
-          statusReportAdapter.reportStopped(consumptionState);
+          ingestionNotificationDispatcher.reportStopped(consumptionState);
         }
 
         /**
@@ -2154,7 +2157,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
       if (needToUnsub) {
         errorMessage += ". Consumption will be halted.";
-        statusReportAdapter.reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
+        ingestionNotificationDispatcher
+            .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition));
       } else {
         LOGGER.warn(
@@ -2480,7 +2484,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
-    statusReportAdapter.reportStarted(partitionConsumptionState);
+    ingestionNotificationDispatcher.reportStarted(partitionConsumptionState);
     storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
       if (previousStoreVersionState == null) {
         // No other partition of the same topic has started yet, let's initialize the StoreVersionState
@@ -2573,11 +2577,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * here.
      * TODO: sync up offset before invoking dispatcher
      */
-    statusReportAdapter.reportEndOfPushReceived(partitionConsumptionState);
+    ingestionNotificationDispatcher.reportEndOfPushReceived(partitionConsumptionState);
 
     if (isDataRecovery && partitionConsumptionState.isBatchOnly()) {
       partitionConsumptionState.setDataRecoveryCompleted(true);
-      statusReportAdapter.reportDataRecoveryCompleted(partitionConsumptionState);
+      ingestionNotificationDispatcher.reportDataRecoveryCompleted(partitionConsumptionState);
     }
   }
 
@@ -2585,7 +2589,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ControlMessage startOfIncrementalPush,
       PartitionConsumptionState partitionConsumptionState) {
     CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
-    statusReportAdapter.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
+    ingestionNotificationDispatcher
+        .reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
   }
 
   protected void processEndOfIncrementalPush(
@@ -2594,7 +2599,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     // Reset incremental push version
-    statusReportAdapter.reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
+    ingestionNotificationDispatcher
+        .reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
   }
 
   /**
@@ -3663,7 +3669,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition));
           }
         } else {
-          statusReportAdapter.reportProgress(partitionConsumptionState);
+          ingestionNotificationDispatcher.reportProgress(partitionConsumptionState);
         }
       }
     };
@@ -3674,7 +3680,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
-    statusReportAdapter.reportCompleted(partitionConsumptionState, forceCompletion);
+    ingestionNotificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
     LOGGER.info("Replica: {} is ready to serve", partitionConsumptionState.getReplicaId());
   }
 
@@ -3718,11 +3724,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionStateMap.containsKey(userPartition)) {
       pcsList.add(partitionConsumptionStateMap.get(userPartition));
     }
-    statusReportAdapter.reportError(pcsList, message, e);
-  }
-
-  protected StatusReportAdapter getStatusReportAdapter() {
-    return statusReportAdapter;
+    ingestionNotificationDispatcher.reportError(pcsList, message, e);
   }
 
   public boolean isActiveActiveReplicationEnabled() {

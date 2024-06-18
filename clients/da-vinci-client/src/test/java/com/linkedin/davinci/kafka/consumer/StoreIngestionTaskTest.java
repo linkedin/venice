@@ -1312,7 +1312,7 @@ public abstract class StoreIngestionTaskTest {
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRecordLevelMetricForCurrentVersion(boolean enableRecordLevelMetricForCurrentVersionBootstrapping)
       throws Exception {
-    Map<String, Object> extraProps = new HashMap();
+    Map<String, Object> extraProps = new HashMap<>();
     extraProps.put(
         SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED,
         enableRecordLevelMetricForCurrentVersionBootstrapping);
@@ -4545,8 +4545,8 @@ public abstract class StoreIngestionTaskTest {
     when(mockTask2.getStorageEngine()).thenReturn(mockStorageEngine2);
     AggVersionedDIVStats mockStats2 = mock(AggVersionedDIVStats.class);
     when(mockTask2.getVersionedDIVStats()).thenReturn(mockStats2);
-    StatusReportAdapter statusReportAdapter = mock(StatusReportAdapter.class);
-    when(mockTask2.getStatusReportAdapter()).thenReturn(statusReportAdapter);
+    IngestionNotificationDispatcher ingestionNotificationDispatcher = mock(IngestionNotificationDispatcher.class);
+    when(mockTask2.getIngestionNotificationDispatcher()).thenReturn(ingestionNotificationDispatcher);
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, 10, 11, mockTask2);
     verify(mockStats2).recordBenignLeaderOffsetRewind("test_store", 1);
     verify(mockStats2, never()).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
