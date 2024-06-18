@@ -52,6 +52,10 @@ public class BlobSnapshotManager {
   private void updateHybridSnapshot(RocksDB rocksDB, String topicName, int partitionId) {
     String fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(this.basePath, topicName, partitionId);
     if (fullPathForPartitionDBSnapshot.isEmpty()) {
+      LOGGER.error(
+          "Error creating snapshot directory for topic: {} and partition: {} due to not path existing",
+          topicName,
+          partitionId);
       return;
     }
     try {
