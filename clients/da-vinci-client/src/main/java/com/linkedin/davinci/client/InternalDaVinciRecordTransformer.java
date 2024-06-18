@@ -16,7 +16,7 @@ import org.apache.avro.Schema;
  */
 @Experimental
 public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTransformer<K, V, O> {
-  public final DaVinciRecordTransformer recordTransformer;
+  private final DaVinciRecordTransformer recordTransformer;
   private final CountDownLatch startLatch = new CountDownLatch(1);
 
   public InternalDaVinciRecordTransformer(DaVinciRecordTransformer recordTransformer) {
