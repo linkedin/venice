@@ -1183,8 +1183,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * in main process, so main process's in-memory storage metadata service could be aware of the latest updates and will
    * not re-start the ingestion from scratch.
    */
-  public void updatePartitionOffsetRecords(String topicName, int partition, List<ByteBuffer> offsetRecordArray) {
-    byte[] offsetRecordByteArray = offsetRecordArray.get(partition).array();
+  public void updatePartitionOffsetRecords(String topicName, int partition, ByteBuffer offsetRecordByteBuffer) {
+    byte[] offsetRecordByteArray = offsetRecordByteBuffer.array();
     OffsetRecord offsetRecord;
     try {
       offsetRecord = new OffsetRecord(offsetRecordByteArray, partitionStateSerializer);
@@ -1206,12 +1206,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * In theory, PCS should be available in this situation as we haven't unsubscribed from topic. If it is not available,
    * we will throw exception as this is not as expected.
    */
-  public List<ByteBuffer> getPartitionOffsetRecords(String topicName, int partition) {
-    List<ByteBuffer> offsetRecordArray = new ArrayList<>();
+  public ByteBuffer getPartitionOffsetRecords(String topicName, int partition) {
     StoreIngestionTask storeIngestionTask = getStoreIngestionTask(topicName);
     PartitionConsumptionState pcs = storeIngestionTask.getPartitionConsumptionState(partition);
-    offsetRecordArray.add(ByteBuffer.wrap(pcs.getOffsetRecord().toBytes()));
-    return offsetRecordArray;
+    return ByteBuffer.wrap(pcs.getOffsetRecord().toBytes());
   }
 
   /**

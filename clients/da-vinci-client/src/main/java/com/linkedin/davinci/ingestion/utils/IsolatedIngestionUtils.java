@@ -76,7 +76,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.AbstractMap;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -363,7 +362,6 @@ public class IsolatedIngestionUtils {
     report.topicName = kafkaTopic;
     report.partitionId = partitionId;
     report.offset = offset;
-    report.offsetRecordArray = Collections.emptyList();
     return report;
   }
 
@@ -374,7 +372,6 @@ public class IsolatedIngestionUtils {
     report.topicName = kafkaTopic;
     report.partitionId = partitionId;
     report.offset = 0;
-    report.offsetRecordArray = Collections.emptyList();
     return report;
   }
 

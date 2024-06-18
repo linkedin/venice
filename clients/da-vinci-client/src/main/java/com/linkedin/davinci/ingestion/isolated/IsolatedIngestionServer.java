@@ -13,7 +13,6 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
@@ -78,7 +77,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -115,9 +113,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final int servicePort;
   private final ExecutorService longRunningTaskExecutor = Executors.newFixedThreadPool(10);
   private final ExecutorService statusReportingExecutor = Executors.newSingleThreadExecutor();
-  // Leader section id map helps to verify if the leader state transition is valid or not when processing
-  // the message in the queue.
-  private final Map<String, Map<Integer, AtomicLong>> leaderSessionIdMap = new VeniceConcurrentHashMap<>();
   /**
    * This map data structure keeps track of a specific topic-partition (resource) is being ingested in the isolated process.
    * (1) If the topic partition value does not exist, this means this resource is not being maintained in the host.
@@ -326,15 +321,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     if (partitionSubscriptionMap != null) {
       partitionSubscriptionMap.remove(partitionId);
     }
-    Map<Integer, AtomicLong> partitionLeaderSessionIdMap = leaderSessionIdMap.get(topicName);
-    if (partitionLeaderSessionIdMap != null) {
-      partitionLeaderSessionIdMap.remove(partitionId);
-    }
   }
 
   public void cleanupTopicState(String topicName) {
     topicPartitionSubscriptionMap.remove(topicName);
-    leaderSessionIdMap.remove(topicName);
   }
 
   /**
@@ -364,7 +354,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         // Force sync topic partition offsets before shutting down RocksDB and reopen in main process.
         getStoreIngestionService().syncTopicPartitionOffset(topicName, partitionId);
         // Set offset record in ingestion report.
-        report.offsetRecordArray = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
+        report.offsetRecord = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
 
         // Set store version state in ingestion report.
         StoreVersionState storeVersionState = storageMetadataService.getStoreVersionState(topicName);
@@ -390,18 +380,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   public RedundantExceptionFilter getRedundantExceptionFilter() {
     return redundantExceptionFilter;
-  }
-
-  public synchronized LeaderFollowerPartitionStateModel.LeaderSessionIdChecker getLeaderSectionIdChecker(
-      String topicName,
-      int partitionId) {
-    leaderSessionIdMap.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-    Map<Integer, AtomicLong> partitionIdToLeaderSessionIdMap = leaderSessionIdMap.get(topicName);
-    partitionIdToLeaderSessionIdMap.putIfAbsent(partitionId, new AtomicLong(0));
-    AtomicLong leaderSessionId = partitionIdToLeaderSessionIdMap.get(partitionId);
-    return new LeaderFollowerPartitionStateModel.LeaderSessionIdChecker(
-        leaderSessionId.incrementAndGet(),
-        leaderSessionId);
   }
 
   // Set the topic partition state to be unsubscribed.

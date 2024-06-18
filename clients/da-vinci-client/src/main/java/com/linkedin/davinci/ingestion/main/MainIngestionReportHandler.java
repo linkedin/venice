@@ -166,9 +166,9 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     int partitionId = report.partitionId;
     // Sync up offset record & store version state before report ingestion complete to parent process.
     if (mainIngestionMonitorService.getStorageMetadataService() != null) {
-      if (!report.offsetRecordArray.isEmpty()) {
+      if (report.offsetRecord != null) {
         mainIngestionMonitorService.getStoreIngestionService()
-            .updatePartitionOffsetRecords(topicName, partitionId, report.offsetRecordArray);
+            .updatePartitionOffsetRecords(topicName, partitionId, report.offsetRecord);
       }
       if (report.storeVersionState != null) {
         StoreVersionState storeVersionState =

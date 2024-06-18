@@ -149,7 +149,6 @@ public class TestParentControllerWithMultiDataCenter {
           assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
           assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
-          assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           Assert.assertTrue(storeInfo.isChunkingEnabled());
           Assert.assertTrue(storeInfo.isRmdChunkingEnabled());
           assertEquals(storeInfo.getPartitionCount(), 2); // hybrid partition count from the config
