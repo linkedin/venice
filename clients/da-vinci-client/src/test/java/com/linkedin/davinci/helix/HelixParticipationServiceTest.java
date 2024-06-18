@@ -4,7 +4,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -22,16 +22,16 @@ public class HelixParticipationServiceTest {
   @Test
   public void testRestAllInstanceCVStates() {
     HelixPartitionStatusAccessor mockAccessor = mock(HelixPartitionStatusAccessor.class);
-    VeniceIngestionBackend mockBackend = mock(VeniceIngestionBackend.class);
+    StorageService mockStorageService = mock(StorageService.class);
     String resourceV1 = "test_resource_v1";
     String resourceV2 = "test_resource_v2";
     Set<Integer> partitionSet = new HashSet<>(Arrays.asList(1, 2, 3));
     Map<String, Set<Integer>> storePartitionMapping = new HashMap<>();
     storePartitionMapping.put(resourceV1, partitionSet);
     storePartitionMapping.put(resourceV2, partitionSet);
-    doReturn(storePartitionMapping).when(mockBackend).getLoadedStoreUserPartitionsMapping();
+    doReturn(storePartitionMapping).when(mockStorageService).getStoreAndUserPartitionsMapping();
 
-    HelixParticipationService.resetAllInstanceCVStates(mockAccessor, mockBackend, LOGGER);
+    HelixParticipationService.resetAllInstanceCVStates(mockAccessor, mockStorageService, LOGGER);
 
     verify(mockAccessor).deleteReplicaStatus(resourceV1, 1);
     verify(mockAccessor).deleteReplicaStatus(resourceV1, 2);

@@ -985,13 +985,9 @@ public abstract class TestBatch {
     String storeName = testStoreWithLargeValues(true);
 
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
-    // to the metrics sensor, and are within the correct size range. It doesn't work in isolated ingestion mode.
-    if (veniceCluster.getVeniceServers().stream().noneMatch(VeniceServerWrapper::isIsolatedIngestionEnabled)) {
-      int minSize = 1024 * 1024; // 1MB apiece
-      validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, minSize, MAX_RECORD_VALUE_SIZE);
-    } else {
-      assertUnusedPerStoreMetrics(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES);
-    }
+    // to the metrics sensor, and are within the correct size range.
+    int minSize = 1024 * 1024; // 1MB apiece
+    validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, minSize, MAX_RECORD_VALUE_SIZE);
   }
 
   @Test(timeOut = TEST_TIMEOUT * 3, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

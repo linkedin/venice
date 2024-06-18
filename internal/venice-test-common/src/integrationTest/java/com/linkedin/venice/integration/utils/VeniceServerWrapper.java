@@ -24,9 +24,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATI
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -42,10 +39,8 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
@@ -224,8 +219,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate server.properties in config directory
       int listenPort = TestUtils.getFreePort();
-      int ingestionIsolationApplicationPort = TestUtils.getFreePort();
-      int ingestionIsolationServicePort = TestUtils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
           .put(ADMIN_PORT, TestUtils.getFreePort())
           .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
@@ -241,8 +234,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(KAFKA_READ_CYCLE_DELAY_MS, 50)
           .put(SERVER_DISK_FULL_THRESHOLD, 0.99) // Minimum free space is required in tests
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
-          .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, ingestionIsolationApplicationPort)
-          .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, ingestionIsolationServicePort)
           .put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L))
           .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
           .put(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 10)
@@ -395,16 +386,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   public int getGrpcPort() {
     return serverProps.getInt(GRPC_READ_SERVER_PORT);
-  }
-
-  public boolean isIsolatedIngestionEnabled() {
-    try {
-      return IngestionMode.valueOf(
-          serverProps.getString(SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString())) == IngestionMode.ISOLATED;
-    } catch (VeniceMessageException e) {
-      LOGGER.error("Invalid ingestion mode: {}", serverProps.getString(SERVER_INGESTION_MODE));
-    }
-    return false;
   }
 
   @Override

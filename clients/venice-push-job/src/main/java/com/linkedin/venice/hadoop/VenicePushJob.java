@@ -199,16 +199,21 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * The temp directory structure for VPJ will be: <br/>
-   * |____{@code $hadoop.tmp.dir} (Specified by env, or default {@code /tmp}) <br/>
-   * | |____venice-push-job (777 permissions) - shared temp space for all VPJ executions ({@code $sharedTempDir}) <br/>
-   * | | |____{@code $jobTmpDir} (700 permissions) - temp space for the current execution ({@code $job.execution.id}_{@literal unique-suffix}) <br/>
-   * | | | |____veniceMapperOutput (700 permissions) <br/>
-   * | | | |____rmd_schemas (700 permissions) <br/>
-   * | | | |____value_schemas (700 permissions) <br/>
-   * | | | |____...features_added_in_the_future (700 permissions) <br/>
+   * |____{@code $sharedTmpDir} (777 permissions) - shared temp space for all VPJ executions <br/>
+   * | |____{@code $jobTmpDir} (700 permissions) - temp space for the current execution ({@code $job.execution.id}_{@literal unique-suffix}) <br/>
+   * | | |____veniceMapperOutput (700 permissions) <br/>
+   * | | |____rmd_schemas (700 permissions) <br/>
+   * | | |____value_schemas (700 permissions) <br/>
+   * | | |____...features_added_in_the_future (700 permissions) <br/>
    *  <br/>
    * Common directory under which all the different push jobs create their job specific directories.
-   * The value of {@code sharedTmpDir} is set to {@code ${hadoop.tmp.dir}/venice-push-job} if {@code ${hadoop.tmp.dir}}
+   * The value of {@code sharedTmpDir} is obtained by the following steps:
+   * <ol>
+   *   <li>If {@code tmp.dir.prefix} is configured, that is used.</li>
+   *   <li>Otherwise, if {@code hadoop.tmp.dir} is specified in HDFS configs, then {@code ${hadoop.tmp.dir}/venice-push-job} is used.</li>
+   *   <li>Otherwise, {@code /venice-push-job} is used.</li>
+   * </ol>
+   *   {@code ${hadoop.tmp.dir}/venice-push-job} if {@code ${hadoop.tmp.dir}}
    * is set. Otherwise, the path is set to {@code /tmp/venice-push-job}.
    */
   private final Path sharedTmpDir;
@@ -362,8 +367,10 @@ public class VenicePushJob implements AutoCloseable {
     }
     String hadoopTempDir = new Configuration().get(HADOOP_TMP_DIR, "/tmp");
     pushJobSettingToReturn.sharedTmpDir = props.getString(TEMP_DIR_PREFIX, hadoopTempDir + "/venice-push-job");
+    LOGGER.info("Using {} as shared temp directory", pushJobSettingToReturn.sharedTmpDir);
     pushJobSettingToReturn.jobTmpDir = pushJobSettingToReturn.sharedTmpDir + "/"
         + Utils.escapeFilePathComponent(Utils.getUniqueString(pushJobSettingToReturn.jobExecutionId));
+    LOGGER.info("Using {} as this job's temp directory", pushJobSettingToReturn.sharedTmpDir);
     pushJobSettingToReturn.vpjEntryClass = this.getClass();
     if (props.containsKey(SOURCE_GRID_FABRIC)) {
       pushJobSettingToReturn.sourceGridFabric = props.getString(SOURCE_GRID_FABRIC);
@@ -1750,6 +1757,36 @@ public class VenicePushJob implements AutoCloseable {
     return null;
   }
 
+  /** Transform per colo {@link ExecutionStatus} to per colo {@link PushJobDetailsStatus} */
+  protected static PushJobDetailsStatus getPerColoPushJobDetailsStatusFromExecutionStatus(
+      ExecutionStatus executionStatus) {
+    switch (executionStatus.getRootStatus()) {
+      case NOT_CREATED:
+      case NEW:
+      case NOT_STARTED:
+        return PushJobDetailsStatus.NOT_CREATED;
+      case STARTED:
+      case PROGRESS:
+      case CATCH_UP_BASE_TOPIC_OFFSET_LAG:
+        return PushJobDetailsStatus.STARTED;
+      case END_OF_PUSH_RECEIVED:
+        return PushJobDetailsStatus.END_OF_PUSH_RECEIVED;
+      case TOPIC_SWITCH_RECEIVED:
+        return PushJobDetailsStatus.DATA_WRITER_COMPLETED;
+      case START_OF_INCREMENTAL_PUSH_RECEIVED:
+        return PushJobDetailsStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
+      case END_OF_INCREMENTAL_PUSH_RECEIVED:
+        return PushJobDetailsStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
+      case COMPLETED:
+      case DATA_RECOVERY_COMPLETED:
+        return PushJobDetailsStatus.COMPLETED;
+      case ERROR:
+        return PushJobDetailsStatus.ERROR;
+      default:
+        return PushJobDetailsStatus.UNKNOWN;
+    }
+  }
+
   private void updatePushJobDetailsWithColoStatus(Map<String, String> coloSpecificInfo, Set<String> completedColos) {
     try {
       if (pushJobDetails.coloStatus == null) {
@@ -1760,16 +1797,17 @@ public class VenicePushJob implements AutoCloseable {
           // Don't bother updating the completed colo's status
           .filter(coloEntry -> !completedColos.contains(coloEntry.getKey()))
           .forEach(coloEntry -> {
-            int status = PushJobDetailsStatus.valueOf(coloEntry.getValue()).getValue();
+            ExecutionStatus executionStatus = ExecutionStatus.valueOf(coloEntry.getValue());
+            int pushJobDetailsStatus = getPerColoPushJobDetailsStatusFromExecutionStatus(executionStatus).getValue();
             if (!pushJobDetails.coloStatus.containsKey(coloEntry.getKey())) {
               List<PushJobDetailsStatusTuple> newList = new ArrayList<>();
-              newList.add(getPushJobDetailsStatusTuple(status));
+              newList.add(getPushJobDetailsStatusTuple(pushJobDetailsStatus));
               pushJobDetails.coloStatus.put(coloEntry.getKey(), newList);
             } else {
               List<PushJobDetailsStatusTuple> statuses = pushJobDetails.coloStatus.get(coloEntry.getKey());
-              if (statuses.get(statuses.size() - 1).status != status) {
-                // Only add the status if there is a change
-                statuses.add(getPushJobDetailsStatusTuple(status));
+              if (statuses.get(statuses.size() - 1).status != pushJobDetailsStatus) {
+                // Only add the pushJobDetailsStatus if there is a change
+                statuses.add(getPushJobDetailsStatusTuple(pushJobDetailsStatus));
               }
             }
           });

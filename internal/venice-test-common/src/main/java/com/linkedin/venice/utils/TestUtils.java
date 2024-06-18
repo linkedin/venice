@@ -799,10 +799,6 @@ public class TestUtils {
     Assert.assertTrue(executor.awaitTermination(timeout, unit));
   }
 
-  public static void addIngestionIsolationToProperties(Properties properties) {
-    properties.putAll(getIngestionIsolationPropertyMap());
-  }
-
   public static Map<String, Object> getIngestionIsolationPropertyMap() {
     Map<String, Object> propertyMap = new HashMap<>();
     propertyMap.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);

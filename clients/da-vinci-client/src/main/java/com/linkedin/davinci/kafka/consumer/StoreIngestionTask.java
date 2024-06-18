@@ -451,6 +451,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
     if (recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
+      versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
+      versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
     }
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -1375,6 +1377,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Thread.currentThread().setName("venice-SIT-" + kafkaVersionTopic);
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
+
+      if (recordTransformer != null) {
+        long startTime = System.currentTimeMillis();
+        recordTransformer.onStartIngestionTask();
+        long endTime = System.currentTimeMillis();
+        versionedIngestionStats.recordTransformerLifecycleStartLatency(
+            storeName,
+            versionNumber,
+            LatencyUtils.getElapsedTimeFromMsToMs(startTime),
+            endTime);
+      }
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
@@ -3006,10 +3019,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // TODO: remove this condition check after fixing the bug that drainer in leaders is validating RT DIV info
       if (consumerRecord.getValue().producerMetadata.messageSequenceNumber != 1) {
+        String regionName = RegionNameUtil.getRegionName(consumerRecord, serverConfig.getKafkaClusterIdToAliasMap());
         LOGGER.warn(
-            "Data integrity validation problem with incoming record from topic-partition: {} and offset: {}, "
+            "Data integrity validation problem with incoming record from topic-partition: {}{} and offset: {}, "
                 + "but consumption will continue since EOP is already received for replica: {}. Msg: {}",
             consumerRecord.getTopicPartition(),
+            regionName == null || regionName.isEmpty() ? "" : "/" + regionName,
             consumerRecord.getOffset(),
             partitionConsumptionState.getReplicaId(),
             warningException.getMessage());
@@ -3592,6 +3607,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // The operation is executed on a single thread in run method.
     // This method signals the run method to end, which closes the
     // resources before exiting.
+
+    if (recordTransformer != null) {
+      long startTime = System.currentTimeMillis();
+      recordTransformer.onEndIngestionTask();
+      long endTime = System.currentTimeMillis();
+      versionedIngestionStats.recordTransformerLifecycleEndLatency(
+          storeName,
+          versionNumber,
+          LatencyUtils.getElapsedTimeFromMsToMs(startTime),
+          endTime);
+    }
   }
 
   /**

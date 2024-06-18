@@ -1,7 +1,7 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -66,7 +66,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   private final HeartbeatMonitoringService heartbeatMonitoringService;
 
   public LeaderFollowerPartitionStateModel(
-      VeniceIngestionBackend ingestionBackend,
+      IngestionBackend ingestionBackend,
       VeniceStoreVersionConfig storeAndServerConfigs,
       int partition,
       LeaderFollowerIngestionProgressNotifier notifier,
@@ -146,7 +146,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(
         message,
         context,
-        () -> getIngestionBackend().promoteToLeader(getStoreAndServerConfigs(), getPartition(), checker));
+        () -> getIngestionBackend().getStoreIngestionService()
+            .promoteToLeader(getStoreAndServerConfigs(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
@@ -160,7 +161,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(
         message,
         context,
-        () -> getIngestionBackend().demoteToStandby(getStoreAndServerConfigs(), getPartition(), checker));
+        () -> getIngestionBackend().getStoreIngestionService()
+            .demoteToStandby(getStoreAndServerConfigs(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)

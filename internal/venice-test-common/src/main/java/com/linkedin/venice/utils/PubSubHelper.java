@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.nio.ByteBuffer;
@@ -91,7 +92,7 @@ public class PubSubHelper {
   }
 
   // mutable publish-sub message
-  public static class MutablePubSubMessage {
+  public static class MutablePubSubMessage implements PubSubMessage {
     private KafkaKey key;
     private KafkaMessageEnvelope value;
     private PubSubTopicPartition topicPartition;
@@ -113,6 +114,21 @@ public class PubSubHelper {
 
     public Long getOffset() {
       return offset;
+    }
+
+    @Override
+    public long getPubSubMessageTime() {
+      return 0;
+    }
+
+    @Override
+    public int getPayloadSize() {
+      return 0;
+    }
+
+    @Override
+    public boolean isEndOfBootstrap() {
+      return false;
     }
 
     public MutablePubSubMessage setKey(KafkaKey key) {
