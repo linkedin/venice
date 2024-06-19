@@ -34,7 +34,6 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -42,8 +41,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -53,13 +50,11 @@ import org.testng.annotations.Test;
 @Test(singleThreaded = true)
 public class TestRetryQuotaRejection {
   private static final int MAX_KEY_LIMIT = 20;
-  private static final Logger LOGGER = LogManager.getLogger(TestRead.class);
   private VeniceClusterWrapper veniceCluster;
   private D2Client d2Client;
   private String storeVersionName;
   private int valueSchemaId;
   private String storeName;
-  private String routerAddr;
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object, Object> veniceWriter;
@@ -90,8 +85,6 @@ public class TestRetryQuotaRejection {
     extraProperties.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
 
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 2, 2, 100, true, false, extraProperties);
-    routerAddr = veniceCluster.getRandomRouterSslURL();
-
     Properties serverProperties = new Properties();
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
@@ -174,7 +167,7 @@ public class TestRetryQuotaRejection {
           keySet.add(KEY_PREFIX + i);
         }
         try {
-          Map<String, GenericRecord> result = storeClient.batchGet(keySet).get();
+          storeClient.batchGet(keySet).get();
         } catch (Exception e) {
           Assert.assertTrue(e.getCause().getMessage().contains("http status: 429"));
         }
