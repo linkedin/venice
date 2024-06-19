@@ -22,7 +22,6 @@ public interface BlobTransferManager<T> extends AutoCloseable {
 
   /**
    * Get the blobs for the given storeName and partition
-   *
    * @param storeName
    * @param version
    * @param partition
@@ -35,7 +34,6 @@ public interface BlobTransferManager<T> extends AutoCloseable {
 
   /**
    * Put the blob for the given storeName and partition
-   *
    * @param storeName
    * @param version
    * @param partition

@@ -1,4 +1,4 @@
-package com.linkedin.venice.blob;
+package com.linkedin.venice.blobtransfer;
 
 public interface BlobFinder {
 

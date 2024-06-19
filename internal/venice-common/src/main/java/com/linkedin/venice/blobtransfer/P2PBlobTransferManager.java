@@ -1,6 +1,8 @@
 package com.linkedin.venice.blobtransfer;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import java.io.InputStream;
 import java.util.concurrent.CompletionStage;
 
 
@@ -21,4 +23,8 @@ public interface P2PBlobTransferManager<T> extends BlobTransferManager<T> {
   default CompletionStage<T> put(String storeName, int version, int partition) {
     throw new VeniceException("PUT method is not supported for P2P Blob Transfer");
   }
+
+  CompletionStage<? extends InputStream> get(String storeName, int version, int partition)
+      throws VeniceNoStoreException;
+
 }
