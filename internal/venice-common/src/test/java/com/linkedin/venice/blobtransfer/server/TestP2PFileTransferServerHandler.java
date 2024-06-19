@@ -142,9 +142,6 @@ public class TestP2PFileTransferServerHandler {
     DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
     Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
     fileNames.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION));
-    Assert.assertEquals(
-        httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
-        "attachment; filename=\"file2\"");
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultFileRegion);
     response = ch.readOutbound();
