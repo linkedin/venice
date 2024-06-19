@@ -19,7 +19,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -129,12 +132,16 @@ public class TestP2PFileTransferServerHandler {
     Path file2 = snapshotDir.resolve("file2");
     Files.write(file2.toAbsolutePath(), "world".getBytes());
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
-
+    Set<String> fileNames = new HashSet<>();
+    // the order of file transfer is not guaranteed so put them into a set and remove them one by one
+    Collections.addAll(fileNames, "attachment; filename=\"file1\"", "attachment; filename=\"file2\"");
     ch.writeInbound(request);
     // start of file1
     Object response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     DefaultHttpResponse httpResponse = (DefaultHttpResponse) response;
+    Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
+    fileNames.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION));
     Assert.assertEquals(
         httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
         "attachment; filename=\"file2\"");
@@ -147,9 +154,7 @@ public class TestP2PFileTransferServerHandler {
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultHttpResponse);
     httpResponse = (DefaultHttpResponse) response;
-    Assert.assertEquals(
-        httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION),
-        "attachment; filename=\"file1\"");
+    Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
     response = ch.readOutbound();
     Assert.assertTrue(response instanceof DefaultFileRegion);
     response = ch.readOutbound();
