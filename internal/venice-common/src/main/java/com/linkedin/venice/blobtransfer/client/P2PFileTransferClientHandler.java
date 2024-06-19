@@ -78,7 +78,6 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       // Prepare the file
       Path file = Files.createFile(partitionDir.resolve(fileName));
       outputFileChannel = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
-      LOGGER.info("[DEBUG] Start receiving file {} for {}", fileName, payload.getFullResourceName());
     } else if (msg instanceof HttpContent) {
       HttpContent content = (HttpContent) msg;
       ByteBuf byteBuf = content.content();
@@ -117,7 +116,6 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
           position += transferred;
           count += transferred;
         }
-        LOGGER.info("[DEBUG] Received a lot. The current size for channel is {}", outputFileChannel.size());
       }
     } else {
       throw new VeniceException("Unexpected message received: " + msg.getClass().getName());
