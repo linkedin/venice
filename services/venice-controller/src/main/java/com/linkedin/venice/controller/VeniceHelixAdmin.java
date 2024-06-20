@@ -24,7 +24,7 @@ import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
 import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;
-import static com.linkedin.venice.views.ViewUtils.SUB_PARTITION_COUNT;
+import static com.linkedin.venice.views.ViewUtils.PARTITION_COUNT;
 import static com.linkedin.venice.views.ViewUtils.USE_FAST_KAFKA_OPERATION_TIMEOUT;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
@@ -302,6 +302,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ExecutionStatus.NEW,
       ExecutionStatus.NOT_CREATED,
       ExecutionStatus.END_OF_PUSH_RECEIVED,
+      ExecutionStatus.DVC_INGESTION_ERROR_OTHER,
+      ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL,
+      ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
+      ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
       ExecutionStatus.ERROR,
       ExecutionStatus.WARNING,
       ExecutionStatus.COMPLETED,
@@ -328,7 +332,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
 
-  private static final long UNUSED_SCHEMA_DELETION_TIME_GAP = TimeUnit.DAYS.toMillis(15);
   private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
   private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
@@ -2250,7 +2253,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceProperties kafkaTopicConfigs = topicNameAndConfigs.getValue();
       topicManager.createTopic(
           kafkaTopic,
-          kafkaTopicConfigs.getInt(SUB_PARTITION_COUNT),
+          kafkaTopicConfigs.getInt(PARTITION_COUNT),
           kafkaTopicConfigs.getInt(KAFKA_REPLICATION_FACTOR),
           kafkaTopicConfigs.getBoolean(ETERNAL_TOPIC_RETENTION_ENABLED),
           kafkaTopicConfigs.getBoolean(LOG_COMPACTION_ENABLED),
@@ -2287,7 +2290,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Version version,
       PushType pushType,
       TopicManager topicManager,
-      int subPartitionCount,
+      int partitionCount,
       VeniceControllerClusterConfig clusterConfig,
       boolean useFastKafkaOperationTimeout) {
     List<PubSubTopic> topicNamesToCreate = new ArrayList<>(2);
@@ -2300,7 +2303,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     topicNamesToCreate.forEach(
         topicNameToCreate -> topicManager.createTopic(
             topicNameToCreate,
-            subPartitionCount,
+            partitionCount,
             clusterConfig.getKafkaReplicationFactor(),
             true,
             false,
@@ -2511,8 +2514,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             store.addVersion(version, true);
             repository.updateStore(store);
           } else {
-            int amplificationFactor = store.getPartitionerConfig().getAmplificationFactor();
-            int subPartitionCount = numberOfPartitions * amplificationFactor;
             if (versionNumber == VERSION_ID_UNSET) {
               // No version supplied, generate a new version. This could happen either in the parent
               // controller or local Samza jobs.
@@ -2529,7 +2530,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 version,
                 pushType,
                 getTopicManager(),
-                subPartitionCount,
+                numberOfPartitions,
                 clusterConfig,
                 useFastKafkaOperationTimeout);
 
@@ -2621,7 +2622,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             Properties veniceViewProperties = new Properties();
-            veniceViewProperties.put(SUB_PARTITION_COUNT, subPartitionCount);
+            veniceViewProperties.put(PARTITION_COUNT, numberOfPartitions);
             veniceViewProperties.put(USE_FAST_KAFKA_OPERATION_TIMEOUT, useFastKafkaOperationTimeout);
             veniceViewProperties.putAll(clusterConfig.getProps().toProperties());
             veniceViewProperties.put(LOG_COMPACTION_ENABLED, false);
@@ -2650,7 +2651,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   version,
                   pushType,
                   getTopicManager(sourceKafkaBootstrapServers),
-                  subPartitionCount,
+                  numberOfPartitions,
                   clusterConfig,
                   useFastKafkaOperationTimeout);
             }
@@ -2673,7 +2674,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               try {
                 VeniceWriterOptions.Builder vwOptionsBuilder =
                     new VeniceWriterOptions.Builder(finalVersion.kafkaTopicName()).setUseKafkaKeySerializer(true)
-                        .setPartitionCount(subPartitionCount);
+                        .setPartitionCount(numberOfPartitions);
                 if (multiClusterConfigs.isParent() && finalVersion.isNativeReplicationEnabled()) {
                   // Produce directly into one of the child fabric
                   vwOptionsBuilder.setBrokerAddress(finalVersion.getPushStreamSourceAddress());
@@ -5969,8 +5970,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   // The method merges push status from Venice Server replicas and online Da Vinci hosts and return the unified status.
-  private ExecutionStatus getOverallPushStatus(ExecutionStatus veniceStatus, ExecutionStatus daVinciStatus) {
-    List<ExecutionStatus> statuses = Arrays.asList(veniceStatus.getRootStatus(), daVinciStatus.getRootStatus());
+  protected static ExecutionStatus getOverallPushStatus(ExecutionStatus veniceStatus, ExecutionStatus daVinciStatus) {
+    List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
     statuses.sort(Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
     return statuses.get(0);
   }
@@ -7988,14 +7989,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void checkSourceAmplificationFactorIsAvailable(Optional<Integer> sourceAmplificationFactor) {
-    if (!sourceAmplificationFactor.isPresent()) {
-      throw new VeniceException(
-          "Source fabric store amplification factor is required by the child controller "
-              + "to validate if data recovery is allowed");
-    }
-  }
-
   /**
    * @see Admin#initiateDataRecovery(String, String, int, String, String, boolean, Optional)
    */
@@ -8013,11 +8006,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (!sourceFabricVersion.isPresent()) {
       throw new VeniceException("Source fabric version object is required for data recovery");
     }
-    dataRecoveryManager.verifyStoreVersionIsReadyForDataRecovery(
-        clusterName,
-        storeName,
-        version,
-        sourceFabricVersion.get().getPartitionerConfig().getAmplificationFactor());
+    dataRecoveryManager.verifyStoreVersionIsReadyForDataRecovery(clusterName, storeName, version);
     dataRecoveryManager.initiateDataRecovery(
         clusterName,
         storeName,
@@ -8039,14 +8028,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String destinationFabric,
       Optional<Integer> sourceAmplificationFactor) {
     checkControllerLeadershipFor(clusterName);
-    checkSourceAmplificationFactorIsAvailable(sourceAmplificationFactor);
     checkCurrentFabricMatchesExpectedFabric(destinationFabric);
-    dataRecoveryManager.prepareStoreVersionForDataRecovery(
-        clusterName,
-        storeName,
-        destinationFabric,
-        version,
-        sourceAmplificationFactor.get());
+    dataRecoveryManager.prepareStoreVersionForDataRecovery(clusterName, storeName, destinationFabric, version);
   }
 
   /**
@@ -8064,10 +8047,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     boolean isReady = true;
     String reason = "";
     try {
-      checkSourceAmplificationFactorIsAvailable(sourceAmplificationFactor);
       checkCurrentFabricMatchesExpectedFabric(destinationFabric);
-      dataRecoveryManager
-          .verifyStoreVersionIsReadyForDataRecovery(clusterName, storeName, version, sourceAmplificationFactor.get());
+      dataRecoveryManager.verifyStoreVersionIsReadyForDataRecovery(clusterName, storeName, version);
     } catch (Exception e) {
       isReady = false;
       reason = e.getMessage();

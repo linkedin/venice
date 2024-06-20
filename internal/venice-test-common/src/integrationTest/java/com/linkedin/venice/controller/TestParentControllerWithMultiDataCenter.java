@@ -122,7 +122,6 @@ public class TestParentControllerWithMultiDataCenter {
           .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
           .setChunkingEnabled(true)
           .setRmdChunkingEnabled(true)
-          .setAmplificationFactor(2)
           .setStorageNodeReadQuotaEnabled(true);
 
       TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
@@ -150,7 +149,6 @@ public class TestParentControllerWithMultiDataCenter {
           assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
           assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
-          assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           Assert.assertTrue(storeInfo.isChunkingEnabled());
           Assert.assertTrue(storeInfo.isRmdChunkingEnabled());
           assertEquals(storeInfo.getPartitionCount(), 2); // hybrid partition count from the config
@@ -181,7 +179,6 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
-          assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           assertEquals(storeInfo.getPartitionerConfig().getPartitionerParams(), Collections.singletonMap("key", "val"));
         }
       });

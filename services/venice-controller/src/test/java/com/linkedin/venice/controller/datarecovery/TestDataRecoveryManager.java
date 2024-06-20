@@ -37,7 +37,6 @@ public class TestDataRecoveryManager {
   private static final String destFabric = "dc-1";
   private static final String topic = "testStore_v1";
   private static final int version = 1;
-  private static final int amplificationFactor = 1;
 
   @Test
   public void testPrepareDataRecovery() {
@@ -47,14 +46,12 @@ public class TestDataRecoveryManager {
     doReturn(1).when(partitionerConfig).getAmplificationFactor();
     doReturn(partitionerConfig).when(store).getPartitionerConfig();
     doReturn(store).when(veniceAdmin).getStore(clusterName, storeName);
-    dataRecoveryManager
-        .prepareStoreVersionForDataRecovery(clusterName, storeName, destFabric, version, amplificationFactor);
+    dataRecoveryManager.prepareStoreVersionForDataRecovery(clusterName, storeName, destFabric, version);
     verify(veniceAdmin, times(1)).deleteOneStoreVersion(clusterName, storeName, version);
     verify(veniceAdmin, times(1)).deleteParticipantStoreKillMessage(clusterName, topic);
     doReturn(1).when(store).getCurrentVersion();
     doReturn(true).when(veniceAdmin).isClusterWipeAllowed(clusterName);
-    dataRecoveryManager
-        .prepareStoreVersionForDataRecovery(clusterName, storeName, destFabric, version, amplificationFactor);
+    dataRecoveryManager.prepareStoreVersionForDataRecovery(clusterName, storeName, destFabric, version);
     verify(veniceAdmin, times(1)).wipeCluster(clusterName, destFabric, Optional.of(storeName), Optional.of(version));
   }
 

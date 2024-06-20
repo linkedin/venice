@@ -32,7 +32,6 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -201,17 +200,17 @@ public class IsolatedIngestionBackendTest {
     when(backend.isTopicPartitionHosted(topic, 0)).thenReturn(false);
     when(backend.isTopicPartitionHosted(topic, 1)).thenReturn(true);
     when(backend.isTopicPartitionHosted(topic, 2)).thenReturn(true);
-    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 0, 123L, "", Optional.empty());
+    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 0, 123L, "");
     verify(backend, times(0)).getCompletionHandlingExecutor();
 
-    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 1, 123L, "", Optional.empty());
+    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 1, 123L, "");
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
       verify(backend, times(1)).getCompletionHandlingExecutor();
       verify(mainIngestionMonitorService, times(1)).setVersionPartitionToLocalIngestion(topic, 1);
     });
     // Throw exception with calling startConsumptionLocally for next partition
-    doThrow(new VeniceException("Store not in repo")).when(backend).startConsumptionLocally(any(), anyInt(), any());
-    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 2, 123L, "", Optional.empty());
+    doThrow(new VeniceException("Store not in repo")).when(backend).startConsumptionLocally(any(), anyInt());
+    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 2, 123L, "");
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
       verify(backend, times(2)).getCompletionHandlingExecutor();
       // It should also set the state to locally no matter what.

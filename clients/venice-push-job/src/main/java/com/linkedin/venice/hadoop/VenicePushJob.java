@@ -1757,6 +1757,36 @@ public class VenicePushJob implements AutoCloseable {
     return null;
   }
 
+  /** Transform per colo {@link ExecutionStatus} to per colo {@link PushJobDetailsStatus} */
+  protected static PushJobDetailsStatus getPerColoPushJobDetailsStatusFromExecutionStatus(
+      ExecutionStatus executionStatus) {
+    switch (executionStatus.getRootStatus()) {
+      case NOT_CREATED:
+      case NEW:
+      case NOT_STARTED:
+        return PushJobDetailsStatus.NOT_CREATED;
+      case STARTED:
+      case PROGRESS:
+      case CATCH_UP_BASE_TOPIC_OFFSET_LAG:
+        return PushJobDetailsStatus.STARTED;
+      case END_OF_PUSH_RECEIVED:
+        return PushJobDetailsStatus.END_OF_PUSH_RECEIVED;
+      case TOPIC_SWITCH_RECEIVED:
+        return PushJobDetailsStatus.DATA_WRITER_COMPLETED;
+      case START_OF_INCREMENTAL_PUSH_RECEIVED:
+        return PushJobDetailsStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
+      case END_OF_INCREMENTAL_PUSH_RECEIVED:
+        return PushJobDetailsStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
+      case COMPLETED:
+      case DATA_RECOVERY_COMPLETED:
+        return PushJobDetailsStatus.COMPLETED;
+      case ERROR:
+        return PushJobDetailsStatus.ERROR;
+      default:
+        return PushJobDetailsStatus.UNKNOWN;
+    }
+  }
+
   private void updatePushJobDetailsWithColoStatus(Map<String, String> coloSpecificInfo, Set<String> completedColos) {
     try {
       if (pushJobDetails.coloStatus == null) {
@@ -1767,16 +1797,17 @@ public class VenicePushJob implements AutoCloseable {
           // Don't bother updating the completed colo's status
           .filter(coloEntry -> !completedColos.contains(coloEntry.getKey()))
           .forEach(coloEntry -> {
-            int status = PushJobDetailsStatus.valueOf(coloEntry.getValue()).getValue();
+            ExecutionStatus executionStatus = ExecutionStatus.valueOf(coloEntry.getValue());
+            int pushJobDetailsStatus = getPerColoPushJobDetailsStatusFromExecutionStatus(executionStatus).getValue();
             if (!pushJobDetails.coloStatus.containsKey(coloEntry.getKey())) {
               List<PushJobDetailsStatusTuple> newList = new ArrayList<>();
-              newList.add(getPushJobDetailsStatusTuple(status));
+              newList.add(getPushJobDetailsStatusTuple(pushJobDetailsStatus));
               pushJobDetails.coloStatus.put(coloEntry.getKey(), newList);
             } else {
               List<PushJobDetailsStatusTuple> statuses = pushJobDetails.coloStatus.get(coloEntry.getKey());
-              if (statuses.get(statuses.size() - 1).status != status) {
-                // Only add the status if there is a change
-                statuses.add(getPushJobDetailsStatusTuple(status));
+              if (statuses.get(statuses.size() - 1).status != pushJobDetailsStatus) {
+                // Only add the pushJobDetailsStatus if there is a change
+                statuses.add(getPushJobDetailsStatusTuple(pushJobDetailsStatus));
               }
             }
           });
@@ -2227,7 +2258,6 @@ public class VenicePushJob implements AutoCloseable {
     setting.topicCompressionStrategy = versionCreationResponse.getCompressionStrategy();
     setting.partitionerClass = versionCreationResponse.getPartitionerClass();
     setting.partitionerParams = versionCreationResponse.getPartitionerParams();
-    setting.amplificationFactor = versionCreationResponse.getAmplificationFactor();
 
     setting.chunkingEnabled = setting.isChunkingEnabled && !Version.isRealTimeTopic(setting.topic);
     setting.rmdChunkingEnabled = setting.chunkingEnabled && setting.isRmdChunkingEnabled;
@@ -2280,18 +2310,13 @@ public class VenicePushJob implements AutoCloseable {
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(pushJobSetting));
       Properties partitionerProperties = new Properties();
       partitionerProperties.putAll(pushJobSetting.partitionerParams);
-      VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(
-          pushJobSetting.partitionerClass,
-          pushJobSetting.amplificationFactor,
-          new VeniceProperties(partitionerProperties));
+      VenicePartitioner partitioner = PartitionUtils
+          .getVenicePartitioner(pushJobSetting.partitionerClass, new VeniceProperties(partitionerProperties));
 
       VeniceWriterOptions vwOptions =
           new VeniceWriterOptions.Builder(pushJobSetting.topic).setUseKafkaKeySerializer(true)
               .setPartitioner(partitioner)
-              .setPartitionCount(
-                  Version.isVersionTopic(pushJobSetting.topic)
-                      ? pushJobSetting.partitionCount * pushJobSetting.amplificationFactor
-                      : pushJobSetting.partitionCount)
+              .setPartitionCount(pushJobSetting.partitionCount)
               .build();
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(vwOptions);
       LOGGER.info("Created VeniceWriter: {}", newVeniceWriter);

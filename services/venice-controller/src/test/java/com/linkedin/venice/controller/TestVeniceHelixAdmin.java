@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
@@ -9,6 +10,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -86,5 +88,34 @@ public class TestVeniceHelixAdmin {
     // Enforce that getRealTimeTopic happens before storeMetadataUpdate. See the above comments for the reasons.
     inorder.verify(veniceHelixAdmin).getRealTimeTopic(anyString(), anyString());
     inorder.verify(veniceHelixAdmin).storeMetadataUpdate(anyString(), anyString(), any());
+  }
+
+  @Test
+  public void testGetOverallPushStatus() {
+    ExecutionStatus veniceStatus = ExecutionStatus.COMPLETED;
+    ExecutionStatus daVinciStatus = ExecutionStatus.COMPLETED;
+    ExecutionStatus overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
+
+    assertEquals(overallStatus, ExecutionStatus.COMPLETED);
+
+    veniceStatus = ExecutionStatus.ERROR;
+    daVinciStatus = ExecutionStatus.COMPLETED;
+    overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
+    assertEquals(overallStatus, ExecutionStatus.ERROR);
+
+    veniceStatus = ExecutionStatus.ERROR;
+    daVinciStatus = ExecutionStatus.ERROR;
+    overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
+    assertEquals(overallStatus, ExecutionStatus.ERROR);
+
+    veniceStatus = ExecutionStatus.COMPLETED;
+    daVinciStatus = ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
+    overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
+    assertEquals(overallStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
+
+    veniceStatus = ExecutionStatus.ERROR;
+    daVinciStatus = ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
+    overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
+    assertEquals(overallStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
   }
 }

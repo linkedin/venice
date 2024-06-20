@@ -95,7 +95,6 @@ public class VeniceClientBasedMetadataTest {
 
     StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
     storePartitionerConfig.setPartitionerClass(DefaultVenicePartitioner.class.getName());
-    storePartitionerConfig.setAmplificationFactor(1);
     storePartitionerConfig.setPartitionerParams(Collections.emptyMap());
 
     StoreVersion storeVersion1 = new StoreVersion();

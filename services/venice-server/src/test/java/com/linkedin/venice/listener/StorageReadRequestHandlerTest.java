@@ -158,7 +158,6 @@ public class StorageReadRequestHandlerTest {
   private final ReadMetadataRetriever readMetadataRetriever = mock(ReadMetadataRetriever.class);
   private final VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
   private final VenicePartitioner partitioner = new SimplePartitioner();
-  private static final int amplificationFactor = 3;
 
   @BeforeMethod
   public void setUp() {
@@ -168,7 +167,7 @@ public class StorageReadRequestHandlerTest {
 
     doReturn("test-store_v1").when(version).kafkaTopicName();
     PartitionerConfig partitionerConfig =
-        new PartitionerConfigImpl(partitioner.getClass().getName(), Collections.emptyMap(), amplificationFactor);
+        new PartitionerConfigImpl(partitioner.getClass().getName(), Collections.emptyMap(), 1);
     doReturn(partitionerConfig).when(version).getPartitionerConfig();
 
     doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(any());
@@ -217,10 +216,6 @@ public class StorageReadRequestHandlerTest {
         Optional.empty());
   }
 
-  private int getSubPartitionId(int partition, byte[] keyBytes) {
-    return partition * amplificationFactor + partitioner.getPartitionId(keyBytes, amplificationFactor);
-  }
-
   @Test
   public void storageExecutionHandlerPassesRequestsAndGeneratesResponses() throws Exception {
     String keyString = "test-key";
@@ -228,8 +223,7 @@ public class StorageReadRequestHandlerTest {
     int schemaId = 1;
     int partition = 2;
     byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
-    int subPartition = getSubPartitionId(partition, keyString.getBytes());
-    doReturn(valueBytes).when(storageEngine).get(subPartition, ByteBuffer.wrap(keyString.getBytes()));
+    doReturn(valueBytes).when(storageEngine).get(partition, ByteBuffer.wrap(keyString.getBytes()));
 
     // [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
     String uri = "/" + TYPE_STORAGE + "/test-topic_v1/" + partition + "/" + keyString;
@@ -282,13 +276,12 @@ public class StorageReadRequestHandlerTest {
     for (int i = 0; i < recordCount; ++i) {
       MultiGetRouterRequestKeyV1 requestKey = new MultiGetRouterRequestKeyV1();
       byte[] keyBytes = keySerializer.serialize(null, keyPrefix + i);
-      int subPartition = partitioner.getPartitionId(keyBytes, amplificationFactor);
       requestKey.keyBytes = ByteBuffer.wrap(keyBytes);
       requestKey.keyIndex = i;
       requestKey.partitionId = 0;
       String valueString = valuePrefix + i;
       byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
-      doReturn(valueBytes).when(storageEngine).get(subPartition, ByteBuffer.wrap(keyBytes));
+      doReturn(valueBytes).when(storageEngine).get(0, ByteBuffer.wrap(keyBytes));
       allValueStrings.put(i, valueString);
       keys.add(requestKey);
     }
@@ -337,8 +330,7 @@ public class StorageReadRequestHandlerTest {
     GetRouterRequest request = GetRouterRequest.parseGetHttpRequest(httpRequest);
 
     byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
-    int subPartition = getSubPartitionId(partition, keyString.getBytes());
-    doReturn(valueBytes).when(storageEngine).get(subPartition, ByteBuffer.wrap(keyString.getBytes()));
+    doReturn(valueBytes).when(storageEngine).get(partition, ByteBuffer.wrap(keyString.getBytes()));
 
     String exceptionMessage = "Exception thrown in Mock";
     // Forcing an exception to be thrown.
@@ -385,7 +377,6 @@ public class StorageReadRequestHandlerTest {
     PartitionConsumptionState state = new PartitionConsumptionState(
         Utils.getReplicaId(topic, expectedPartitionId),
         expectedPartitionId,
-        1,
         new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),
         false,
         false);
@@ -511,10 +502,9 @@ public class StorageReadRequestHandlerTest {
     doReturn(schemaEntry).when(schemaRepository).getValueSchema(any(), anyInt());
 
     int partition = 1;
-    int subPartition = getSubPartitionId(partition, keyString.getBytes());
     AvroSerializer valueSerializer = new AvroSerializer<>(valueRecord.getSchema());
     byte[] valueBytes = ValueRecord.create(schemaEntry.getId(), valueSerializer.serialize(valueRecord)).serialize();
-    doReturn(ByteBuffer.wrap(valueBytes)).when(storageEngine).get(eq(subPartition), eq(keyString.getBytes()), any());
+    doReturn(ByteBuffer.wrap(valueBytes)).when(storageEngine).get(eq(partition), eq(keyString.getBytes()), any());
 
     Set<Object> keySet = new HashSet<>(Arrays.asList(keyString, missingKeyString));
     AvroGenericReadComputeStoreClient storeClient = mock(AvroGenericReadComputeStoreClient.class);

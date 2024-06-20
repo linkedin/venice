@@ -33,7 +33,7 @@ public class StorageUtilizationManagerTest {
 
   private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private AbstractStorageEngine storageEngine;
-  private StatusReportAdapter statusReportAdapter;
+  private IngestionNotificationDispatcher ingestionNotificationDispatcher;
   private Store store;
   private Version version;
   private StorageUtilizationManager quotaEnforcer;
@@ -47,12 +47,12 @@ public class StorageUtilizationManagerTest {
 
   @BeforeMethod
   public void buildNewQuotaEnforcer() {
-    statusReportAdapter = mock(StatusReportAdapter.class);
+    ingestionNotificationDispatcher = mock(IngestionNotificationDispatcher.class);
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
       PartitionConsumptionState pcs =
-          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, 1, mock(OffsetRecord.class), true, false);
+          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, mock(OffsetRecord.class), true, false);
       partitionConsumptionStateMap.put(i, pcs);
     }
 
@@ -71,7 +71,7 @@ public class StorageUtilizationManagerTest {
         partitionConsumptionStateMap,
         true,
         true,
-        statusReportAdapter,
+        ingestionNotificationDispatcher,
         (t, p) -> {},
         (t, p) -> {});
   }
@@ -90,17 +90,17 @@ public class StorageUtilizationManagerTest {
     // Quota is reported as not violated at the current stage.
     for (int i = 1; i <= storePartitionCount; i++) {
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
-      verify(statusReportAdapter, times(1)).reportQuotaNotViolated(partitionConsumptionState);
+      verify(ingestionNotificationDispatcher, times(1)).reportQuotaNotViolated(partitionConsumptionState);
     }
 
     // Trigger quota violation to pause these partitions.
-    verify(statusReportAdapter, times(0)).reportQuotaViolated(any());
+    verify(ingestionNotificationDispatcher, times(0)).reportQuotaViolated(any());
     addUsageToAllPartitions(20);
-    verify(statusReportAdapter, times(storePartitionCount)).reportQuotaViolated(any());
+    verify(ingestionNotificationDispatcher, times(storePartitionCount)).reportQuotaViolated(any());
     for (int i = 1; i <= storePartitionCount; i++) {
       Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
-      verify(statusReportAdapter).reportQuotaViolated(partitionConsumptionState);
+      verify(ingestionNotificationDispatcher).reportQuotaViolated(partitionConsumptionState);
     }
 
     // handleStoreChanged should get these paused partitions back, when feature is disabled.
@@ -110,7 +110,7 @@ public class StorageUtilizationManagerTest {
       Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
       // Expect a new round of QuotaNotViolate are reported.
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
-      verify(statusReportAdapter, times(2)).reportQuotaNotViolated(partitionConsumptionState);
+      verify(ingestionNotificationDispatcher, times(2)).reportQuotaNotViolated(partitionConsumptionState);
     }
   }
 
@@ -141,11 +141,11 @@ public class StorageUtilizationManagerTest {
 
     // these partitions should be paused for exceeding write quota
     addUsageToAllPartitions(10);
-    verify(statusReportAdapter, times(storePartitionCount)).reportQuotaViolated(any());
+    verify(ingestionNotificationDispatcher, times(storePartitionCount)).reportQuotaViolated(any());
     for (int i = 1; i <= storePartitionCount; i++) {
       Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
-      verify(statusReportAdapter).reportQuotaViolated(partitionConsumptionState);
+      verify(ingestionNotificationDispatcher).reportQuotaViolated(partitionConsumptionState);
     }
 
     // The later same partitions consumptions should be paused too even with size zero
@@ -173,10 +173,10 @@ public class StorageUtilizationManagerTest {
       when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.STANDBY);
       partitionConsumptionStateMap.put(i, pcs);
     }
-    verify(statusReportAdapter, times(storePartitionCount)).reportCompleted(any());
+    verify(ingestionNotificationDispatcher, times(storePartitionCount)).reportCompleted(any());
     for (int i = 1; i <= storePartitionCount; i++) {
       Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
-      verify(statusReportAdapter).reportCompleted(argThat(new PartitionNumberMatcher(i)));
+      verify(ingestionNotificationDispatcher).reportCompleted(argThat(new PartitionNumberMatcher(i)));
     }
   }
 
