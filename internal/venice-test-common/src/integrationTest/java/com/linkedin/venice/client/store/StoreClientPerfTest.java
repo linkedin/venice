@@ -11,6 +11,7 @@ import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -200,8 +201,8 @@ public class StoreClientPerfTest {
   }
 
   private static class TestComputeRequestBuilder extends AvroComputeRequestBuilderV3<String> {
-    public TestComputeRequestBuilder(InternalAvroStoreClient storeClient, Schema latestValueSchema) {
-      super(storeClient, latestValueSchema);
+    public TestComputeRequestBuilder(InternalAvroStoreClient storeClient, SchemaReader schemaReader) {
+      super(storeClient, schemaReader);
     }
 
     public SchemaAndToString getResultSchema() {
@@ -229,8 +230,10 @@ public class StoreClientPerfTest {
           SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
       List<MultiGetResponseRecordV1> records = new ArrayList<>();
 
+      InternalAvroStoreClient internalAvroStoreClient = (InternalAvroStoreClient) client;
+
       TestComputeRequestBuilder testComputeRequestBuilder =
-          new TestComputeRequestBuilder((InternalAvroStoreClient) client, client.getLatestValueSchema());
+          new TestComputeRequestBuilder(internalAvroStoreClient, internalAvroStoreClient.getSchemaReader());
       Collection<String> fieldNames =
           valueSchema.getFields().stream().map(field -> field.name()).collect(Collectors.toList());
       testComputeRequestBuilder.project(fieldNames);

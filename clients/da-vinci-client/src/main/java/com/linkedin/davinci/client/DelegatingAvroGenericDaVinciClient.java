@@ -7,6 +7,7 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.schema.SchemaReader;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -91,9 +92,15 @@ public class DelegatingAvroGenericDaVinciClient<K, V>
     return delegate.getKeySchema();
   }
 
+  @Deprecated
   @Override
   public Schema getLatestValueSchema() {
     return delegate.getLatestValueSchema();
+  }
+
+  @Override
+  public SchemaReader getSchemaReader() {
+    return delegate.getSchemaReader();
   }
 
   @Override

@@ -9,9 +9,9 @@ import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WR
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -61,6 +61,8 @@ import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -69,6 +71,8 @@ import org.testng.annotations.Test;
 
 
 public class VeniceWriterUnitTest {
+  private static final long TIMEOUT = 10 * Time.MS_PER_SECOND;
+
   @Test(dataProvider = "Chunking-And-Partition-Counts", dataProviderClass = DataProviderUtils.class)
   public void testTargetPartitionIsSameForAllOperationsWithTheSameKey(boolean isChunkingEnabled, int partitionCount) {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
@@ -114,7 +118,6 @@ public class VeniceWriterUnitTest {
   public void testDeleteDeprecatedChunk() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -126,6 +129,7 @@ public class VeniceWriterUnitTest {
         .setTime(SystemTime.INSTANCE)
         .setChunkingEnabled(true)
         .setRmdChunkingEnabled(true)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
@@ -162,11 +166,10 @@ public class VeniceWriterUnitTest {
         WriterChunkingHelper.EMPTY_BYTE_BUFFER);
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = TIMEOUT)
   public void testReplicationMetadataChunking() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -178,6 +181,7 @@ public class VeniceWriterUnitTest {
         .setTime(SystemTime.INSTANCE)
         .setChunkingEnabled(true)
         .setRmdChunkingEnabled(true)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
@@ -341,7 +345,6 @@ public class VeniceWriterUnitTest {
   public void testReplicationMetadataWrittenCorrectly() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     String stringSchema = "\"string\"";
@@ -352,6 +355,7 @@ public class VeniceWriterUnitTest {
         .setWriteComputeSerializer(serializer)
         .setPartitioner(new DefaultVenicePartitioner())
         .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
@@ -437,7 +441,6 @@ public class VeniceWriterUnitTest {
   public void testCloseSegmentBasedOnElapsedTime() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 0);
@@ -449,6 +452,7 @@ public class VeniceWriterUnitTest {
         .setWriteComputeSerializer(serializer)
         .setPartitioner(new DefaultVenicePartitioner())
         .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
@@ -478,8 +482,6 @@ public class VeniceWriterUnitTest {
   public void testSendHeartbeat(boolean addLeaderCompleteHeader, LeaderCompleteState leaderCompleteState) {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
-    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     String stringSchema = "\"string\"";
@@ -490,6 +492,7 @@ public class VeniceWriterUnitTest {
         .setWriteComputeSerializer(serializer)
         .setPartitioner(new DefaultVenicePartitioner())
         .setTime(SystemTime.INSTANCE)
+        .setPartitionCount(1)
         .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
@@ -543,25 +546,36 @@ public class VeniceWriterUnitTest {
   }
 
   // Write a unit test for the retry mechanism in VeniceWriter.close(true) method.
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10 * Time.MS_PER_SECOND)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
   public void testVeniceWriterCloseRetry(boolean gracefulClose) throws ExecutionException, InterruptedException {
-    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
-    doThrow(new TimeoutException()).when(mockedProducer).close(anyString(), anyInt(), eq(true));
+    Supplier<PubSubProducerAdapter> producerSupplier = () -> {
+      PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+      // Only graceful closes (those with a non-zero timeout) will throw a TimeoutException
+      doThrow(new TimeoutException()).when(mockedProducer).close(longThat(argument -> argument > 0));
+      return mockedProducer;
+    };
+    Function<PubSubProducerAdapter, VeniceWriter> veniceWriterSupplier = mockedProducer -> {
+      String testTopic = "test";
+      VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setPartitionCount(1).build();
+      return new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+    };
 
-    String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setPartitionCount(1).build();
-    VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+    // If attempting a graceful close, then the producer should receive an invocation of close with non-zero timeout,
+    // followed by another one with zero timeout. If, on the other hand, we attempt an ungraceful close, then there
+    // should only be a single close invocation, and it should be with zero timeout.
 
-    // Verify that if the producer throws a TimeoutException, the VeniceWriter will retry the close() method
-    // with doFlash = false for both close() and closeAsync() methods.
+    PubSubProducerAdapter mockedProducer = producerSupplier.get();
+    VeniceWriter<Object, Object, Object> writer = veniceWriterSupplier.apply(mockedProducer);
     writer.close(gracefulClose);
+    verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(longThat(argument -> argument > 0));
+    verify(mockedProducer, times(1)).close(longThat(argument -> argument == 0));
 
-    writer = new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+    // Same test for asyncClose, after reinitializing everything
+    mockedProducer = producerSupplier.get();
+    writer = veniceWriterSupplier.apply(mockedProducer);
     writer.closeAsync(gracefulClose).get();
-
-    // Verify that the close(false) method will be called twice.
-    verify(mockedProducer, times(2)).close(anyString(), anyInt(), eq(false));
+    verify(mockedProducer, times(gracefulClose ? 1 : 0)).close(longThat(argument -> argument > 0));
+    verify(mockedProducer, times(1)).close(longThat(argument -> argument == 0));
   }
 
   /**
@@ -572,7 +586,7 @@ public class VeniceWriterUnitTest {
    * 1. The VeniceWriter's cached segment is neither started nor ended.
    * 2. The elapsed time for the segment is greater than MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS.
    */
-  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  @Test(timeOut = TIMEOUT)
   public void testVeniceWriterShouldNotCauseStackOverflowError() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
@@ -580,6 +594,7 @@ public class VeniceWriterUnitTest {
 
     Properties writerProperties = new Properties();
     writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 1);
+    writerProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, TIMEOUT / 2);
     VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder("test").setPartitionCount(1).build();
 
     try (VeniceWriter<Object, Object, Object> writer =

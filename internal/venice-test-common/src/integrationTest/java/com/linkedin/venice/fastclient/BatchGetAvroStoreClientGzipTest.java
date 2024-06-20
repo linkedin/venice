@@ -1,6 +1,9 @@
 package com.linkedin.venice.fastclient;
 
+import static org.testng.Assert.assertFalse;
+
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import java.util.AbstractMap;
@@ -32,6 +35,15 @@ public class BatchGetAvroStoreClientGzipTest extends BatchGetAvroStoreClientTest
           storeVersionName = topic;
           return null;
         });
+    veniceCluster
+        .useControllerClient(
+            client -> assertFalse(
+                client
+                    .updateStore(
+                        storeName,
+                        new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)
+                            .setReadComputationEnabled(true))
+                    .isError()));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
 

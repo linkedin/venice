@@ -13,6 +13,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_GRID_FABRIC;
@@ -249,6 +250,8 @@ public class CreateVersion extends AbstractRoute {
 
         String targetedRegions = request.queryParams(TARGETED_REGIONS);
 
+        int repushSourceVersion = Integer.parseInt(request.queryParamOrDefault(REPUSH_SOURCE_VERSION, "-1"));
+
         switch (pushType) {
           case BATCH:
           case INCREMENTAL:
@@ -285,7 +288,8 @@ public class CreateVersion extends AbstractRoute {
                 rewindTimeInSecondsOverride,
                 emergencySourceRegion,
                 deferVersionSwap,
-                targetedRegions);
+                targetedRegions,
+                repushSourceVersion);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.
@@ -489,7 +493,7 @@ public class CreateVersion extends AbstractRoute {
 
   /**
    * This function is only being used by store migration parent controllers, which write add version admin message.
-   * @see Admin#addVersionAndStartIngestion(String, String, String, int, int, PushType, String, long, int, boolean)
+   * @see Admin#addVersionAndStartIngestion(String, String, String, int, int, PushType, String, long, int, boolean, int)
    */
   public Route addVersionAndStartIngestion(Admin admin) {
     return (request, response) -> {
@@ -551,7 +555,8 @@ public class CreateVersion extends AbstractRoute {
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
             replicationMetadataVersionId,
-            false);
+            false,
+            -1);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);

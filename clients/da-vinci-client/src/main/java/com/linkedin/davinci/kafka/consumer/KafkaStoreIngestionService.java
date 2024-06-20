@@ -335,7 +335,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.getStoreWriterBufferMemoryCapacity(),
           serverConfig.getStoreWriterBufferNotifyDelta(),
           serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
-          metricsRepository);
+          metricsRepository,
+          true);
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
 
@@ -412,11 +413,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           if (null == store) {
             return false;
           }
-          Optional<Version> version = store.getVersion(versionNumber);
-          if (!version.isPresent()) {
+          Version version = store.getVersion(versionNumber);
+          if (version == null) {
             return false;
           }
-          return version.get().isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
+          return version.isActiveActiveReplicationEnabled() || store.isWriteComputationEnabled();
         },
         metadataRepo);
     /**
@@ -679,7 +680,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     final String topic = veniceStoreVersionConfig.getStoreVersionName();
-
+    LOGGER.info("Promoting partition: {} of topic: {} to leader.", partitionId, topic);
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
       if (consumerTask != null && consumerTask.isRunning()) {
@@ -697,7 +698,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     final String topic = veniceStoreVersionConfig.getStoreVersionName();
-
+    LOGGER.info("Demoting partition: {} of topic: {} to standby.", partitionId, topic);
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
       if (consumerTask != null && consumerTask.isRunning()) {
@@ -728,7 +729,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               "Partition: {} of topic: {} has stopped consumption in {} ms.",
               partition,
               topicName,
-              LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+              LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
           return;
         }
         sleep(retryIntervalInMs);
@@ -877,7 +878,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                 "Partition: {} of topic: {} has stopped consumption in {} ms.",
                 partitionId,
                 topicName,
-                LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+                LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
             return;
           }
           sleep((long) sleepSeconds * Time.MS_PER_SECOND);
@@ -1024,8 +1025,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       try {
         Store store = metadataRepo.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(topic));
         int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
-        if (store == null || !store.getVersion(versionNumber).isPresent()
-            || store.getVersion(versionNumber).get().getStatus() != VersionStatus.ONLINE) {
+        Version version = store.getVersion(versionNumber);
+        if (version == null || version.getStatus() != VersionStatus.ONLINE) {
           result.add(topic);
         }
       } catch (VeniceNoStoreException e) {

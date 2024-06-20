@@ -28,6 +28,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.update.UpdateBuilderImplTest;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -41,6 +42,8 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
@@ -51,6 +54,16 @@ public class HelixReadOnlySchemaRepositoryTest {
       AvroCompatibilityHelper.parse(loadFileAsString("TestWriteComputeBuilder.avsc"));
   private static final Schema UPDATE_SCHEMA =
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
+
+  @BeforeClass
+  public void beforeClass() {
+    HelixReadOnlySchemaRepository.setForceRefreshSupersetSchemaMaxDelay(Duration.ofSeconds(2));
+  }
+
+  @AfterClass
+  public void afterClass() {
+    HelixReadOnlySchemaRepository.resetForceRefreshSupersetSchemaMaxDelay();
+  }
 
   @Test
   public void testMaybeSubscribeAndPopulateSchema() {
@@ -81,6 +94,9 @@ public class HelixReadOnlySchemaRepositoryTest {
     Assert.assertEquals(schemaData.getReplicationMetadataSchema(1, 1).getSchema(), UPDATE_SCHEMA);
   }
 
+  /**
+   * N.B.: This test takes 4 minutes in the absence of {@link HelixReadOnlySchemaRepository#setForceRefreshSupersetSchemaMaxDelay(Duration)}
+   */
   @Test
   public void testForceRefreshSchemaData() {
     HelixReadOnlySchemaRepository schemaRepository = mock(HelixReadOnlySchemaRepository.class);

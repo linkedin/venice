@@ -14,6 +14,11 @@ public interface SchemaReader extends Closeable {
 
   Schema getValueSchema(int id);
 
+  /**
+   * Return the schema ID of any schema that has the same parsing canonical form as the schema provided.
+   * @param schema The schema for which the schema ID is needed
+   * @return The ID of the schema that has the same parsing canonical form as the schema provided
+   */
   int getValueSchemaId(Schema schema);
 
   Schema getLatestValueSchema();

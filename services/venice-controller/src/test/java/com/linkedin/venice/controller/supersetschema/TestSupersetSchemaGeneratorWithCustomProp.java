@@ -10,8 +10,10 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestWriteUtils;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
 
@@ -105,5 +107,31 @@ public class TestSupersetSchemaGeneratorWithCustomProp {
     assertNotNull(supersetSchema2.getField("f0"));
     assertNotNull(supersetSchema2.getField("f1"));
     assertNotNull(supersetSchema2.getField("f2"));
+  }
+
+  @Test
+  public void testGenerateSupersetSchemaWithExistingCustomProp() {
+    /**
+     * Give a list of schemas and the 2nd schema will remove some optional field.
+     */
+    Schema schema1 = Schema.parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"TestRecord\",\n" + "  \"fields\": [\n"
+            + "    {\"name\": \"int_field\", \"type\": \"int\", \"default\": 0},\n"
+            + "    {\"name\": \"string_field\", \"type\": \"string\", \"default\": \"\"}\n" + "  ],\n"
+            + "  \"custom_prop\": \"custom_prop1\"\n" + "}");
+    Schema schema2 = Schema.parse(
+        "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"TestRecord\",\n" + "  \"fields\": [\n"
+            + "    {\"name\": \"int_field\", \"type\": \"int\", \"default\": 0}\n" + "  ],\n"
+            + "  \"custom_prop\": \"custom_prop2\"\n" + "}\n");
+
+    SchemaEntry schemaEntry1 = new SchemaEntry(1, schema1);
+    SchemaEntry schemaEntry2 = new SchemaEntry(2, schema2);
+    List<SchemaEntry> schemaEntryList = new ArrayList<>();
+    schemaEntryList.add(schemaEntry1);
+    schemaEntryList.add(schemaEntry2);
+
+    // Make sure there is no exception thrown
+    generator.generateSupersetSchemaFromSchemas(schemaEntryList);
+    generator.generateSupersetSchema(schema1, schema2);
   }
 }

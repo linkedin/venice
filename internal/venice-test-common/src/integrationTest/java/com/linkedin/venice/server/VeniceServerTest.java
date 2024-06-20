@@ -15,6 +15,7 @@ import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -220,6 +221,10 @@ public class VeniceServerTest {
       }
 
       String storeName = cluster.createStore(1);
+      cluster.useControllerClient(
+          controllerClient -> Assert.assertFalse(
+              controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true))
+                  .isError()));
       ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
       client.start();
@@ -305,8 +310,11 @@ public class VeniceServerTest {
       URI requestUri =
           URI.create("d2://" + d2ServiceName + "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
       RestRequest request = new RestRequestBuilder(requestUri).setMethod("GET").build();
+      Assert.assertThrows(ExecutionException.class, () -> d2Client.restRequest(request).get());
+      cluster.useControllerClient(
+          controllerClient -> controllerClient
+              .updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
       RestResponse response = d2Client.restRequest(request).get();
-
       Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK);
     }
   }

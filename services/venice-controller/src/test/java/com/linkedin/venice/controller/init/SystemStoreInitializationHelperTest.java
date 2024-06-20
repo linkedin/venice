@@ -29,7 +29,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.testng.annotations.BeforeClass;
@@ -74,7 +73,7 @@ public class SystemStoreInitializationHelperTest {
     Store storeForTestAfterCreatingVersion = mock(Store.class);
     doReturn(true).when(storeForTestAfterCreatingVersion).isHybrid();
     doReturn(versionNumber).when(storeForTestAfterCreatingVersion).getCurrentVersion();
-    doReturn(Optional.of(firstVersion)).when(storeForTestAfterCreatingVersion).getVersion(versionNumber);
+    doReturn(firstVersion).when(storeForTestAfterCreatingVersion).getVersion(versionNumber);
     doReturn(Collections.singletonList(firstVersion)).when(storeForTestAfterCreatingVersion).getVersions();
 
     doReturn(replicationFactor).when(admin).getReplicationFactor(clusterName, systemStoreName);
@@ -171,7 +170,7 @@ public class SystemStoreInitializationHelperTest {
     Store storeToTest = mock(Store.class);
     doReturn(true).when(storeToTest).isHybrid();
     doReturn(versionNumber).when(storeToTest).getCurrentVersion();
-    doReturn(Optional.of(firstVersion)).when(storeToTest).getVersion(versionNumber);
+    doReturn(firstVersion).when(storeToTest).getVersion(versionNumber);
     doReturn(Collections.singletonList(firstVersion)).when(storeToTest).getVersions();
 
     doReturn(storeToTest).when(admin).getStore(clusterName, systemStoreName);

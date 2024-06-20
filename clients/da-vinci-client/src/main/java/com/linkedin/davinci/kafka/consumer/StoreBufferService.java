@@ -62,18 +62,22 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private final RecordHandler leaderRecordHandler;
   private final StoreBufferServiceStats storeBufferServiceStats;
 
+  private final boolean isSorted;
+
   public StoreBufferService(
       int drainerNum,
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      boolean sorted) {
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
     for (int cur = 0; cur < drainerNum; ++cur) {
       this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
     }
+    this.isSorted = sorted;
     this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
     this.storeBufferServiceStats = new StoreBufferServiceStats(
         metricsRepository,
@@ -100,6 +104,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
     this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
     this.storeBufferServiceStats = stats;
+    this.isSorted = true;
   }
 
   protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
@@ -255,7 +260,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   @Override
   public boolean startInner() {
-    this.executorService = Executors.newFixedThreadPool(drainerNum, new DaemonThreadFactory("Store-writer"));
+    this.executorService = Executors.newFixedThreadPool(
+        drainerNum,
+        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid"));
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {

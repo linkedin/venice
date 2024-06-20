@@ -13,9 +13,11 @@ import static com.linkedin.davinci.stats.IngestionStats.HYBRID_LEADER_OFFSET_LAG
 import static com.linkedin.davinci.stats.IngestionStats.IDLE_TIME;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_ERROR_GAUGE;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_PUSH_TIMEOUT_GAUGE;
+import static com.linkedin.davinci.stats.IngestionStats.INTERNAL_PREPROCESSING_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_PRODUCED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_OFFSET_LAG;
+import static com.linkedin.davinci.stats.IngestionStats.LEADER_PREPROCESSING_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_PRODUCED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME;
@@ -40,6 +42,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.util.function.DoubleSupplier;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -96,24 +99,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
             () -> getStats().getVersionTopicEndOffsetRewindCount(),
             0,
             VERSION_TOPIC_END_OFFSET_REWIND_COUNT));
-
-    // System store mostly operates on hybrid partial updates so batch metrics are not useful.
-    if (!VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
-      registerSensor(
-          new IngestionStatsGauge(this, () -> (double) getStats().getBatchReplicationLag(), 0, BATCH_REPLICATION_LAG));
-      registerSensor(
-          new IngestionStatsGauge(
-              this,
-              () -> (double) getStats().getBatchLeaderOffsetLag(),
-              0,
-              BATCH_LEADER_OFFSET_LAG));
-      registerSensor(
-          new IngestionStatsGauge(
-              this,
-              () -> (double) getStats().getBatchFollowerOffsetLag(),
-              0,
-              BATCH_FOLLOWER_OFFSET_LAG));
-    }
 
     registerSensor(
         new IngestionStatsGauge(this, () -> getStats().getRecordsConsumed(), 0, RECORDS_CONSUMED_METRIC_NAME));
@@ -188,6 +173,59 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getProducerCallBackLatencyMax(),
               0,
               PRODUCER_CALLBACK_LATENCY + "_max"));
+
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getLeaderPreprocessingLatencyMax(),
+              0,
+              LEADER_PREPROCESSING_LATENCY + "_max"));
+
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getInternalPreprocessingLatencyMax(),
+              0,
+              INTERNAL_PREPROCESSING_LATENCY + "_max"));
+
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getLeaderPreprocessingLatencyAvg(),
+              0,
+              LEADER_PREPROCESSING_LATENCY + "_avg"));
+
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getInternalPreprocessingLatencyAvg(),
+              0,
+              INTERNAL_PREPROCESSING_LATENCY + "_avg"));
+
+      registerSensor(
+          new IngestionStatsGauge(this, () -> (double) getStats().getBatchReplicationLag(), 0, BATCH_REPLICATION_LAG));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> (double) getStats().getBatchLeaderOffsetLag(),
+              0,
+              BATCH_LEADER_OFFSET_LAG));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> (double) getStats().getBatchFollowerOffsetLag(),
+              0,
+              BATCH_FOLLOWER_OFFSET_LAG));
+
+      registerLatencySensor("producer_to_source_broker", IngestionStats::getProducerSourceBrokerLatencySensor);
+      registerLatencySensor(
+          "source_broker_to_leader_consumer",
+          IngestionStats::getSourceBrokerLeaderConsumerLatencySensor);
+      registerLatencySensor("producer_to_local_broker", IngestionStats::getProducerLocalBrokerLatencySensor);
+      registerLatencySensor(
+          "local_broker_to_follower_consumer",
+          IngestionStats::getLocalBrokerFollowerConsumerLatencySensor);
+      registerLatencySensor("leader_producer_completion", IngestionStats::getLeaderProducerCompletionLatencySensor);
     }
   }
 
@@ -293,6 +331,21 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
                 regionNamePrefix + "_rt_consumed_offset"));
       }
     }
+  }
+
+  protected void registerLatencySensor(
+      String sensorBaseName,
+      Function<IngestionStats, WritePathLatencySensor> sensorFunction) {
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> sensorFunction.apply(getStats()).getAvg(),
+            sensorBaseName + "_latency_avg_ms"));
+    registerSensor(
+        new IngestionStatsGauge(
+            this,
+            () -> sensorFunction.apply(getStats()).getMax(),
+            sensorBaseName + "_latency_max_ms"));
   }
 
   protected static class IngestionStatsGauge extends AsyncGauge {

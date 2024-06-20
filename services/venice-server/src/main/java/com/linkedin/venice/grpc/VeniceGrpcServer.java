@@ -8,6 +8,7 @@ import io.grpc.Server;
 import io.grpc.ServerCredentials;
 import io.grpc.ServerInterceptors;
 import io.grpc.TlsServerCredentials;
+import io.grpc.protobuf.services.ProtoReflectionService;
 import java.io.IOException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
@@ -40,6 +41,7 @@ public class VeniceGrpcServer {
     server = Grpc.newServerBuilderForPort(config.getPort(), credentials)
         .executor(executor) // TODO: experiment with different executors for best performance
         .addService(ServerInterceptors.intercept(config.getService(), config.getInterceptors()))
+        .addService(ProtoReflectionService.newInstance())
         .build();
   }
 
@@ -58,8 +60,8 @@ public class VeniceGrpcServer {
 
     try {
       credentials = TlsServerCredentials.newBuilder()
-          .keyManager(GrpcSslUtils.getKeyManagers(sslFactory))
-          .trustManager(GrpcSslUtils.getTrustManagers(sslFactory))
+          .keyManager(GrpcUtils.getKeyManagers(sslFactory))
+          .trustManager(GrpcUtils.getTrustManagers(sslFactory))
           .clientAuth(TlsServerCredentials.ClientAuth.REQUIRE)
           .build();
     } catch (UnrecoverableKeyException | KeyStoreException | CertificateException | IOException

@@ -269,7 +269,7 @@ public class RocksDBSstFileWriter {
             throw new VeniceChecksumException(
                 "verifyChecksum: failure. last sstFile checksum didn't match for store: " + storeName + ", partition: "
                     + partitionId + ", sstFile: " + fullPathForLastFinishedSSTFile + ", records: "
-                    + recordNumInLastSSTFile + ", latency(ms): " + LatencyUtils.getElapsedTimeInMs(startMs));
+                    + recordNumInLastSSTFile + ", latency(ms): " + LatencyUtils.getElapsedTimeFromMsToMs(startMs));
           }
         }
       } else if (!isRMD) {

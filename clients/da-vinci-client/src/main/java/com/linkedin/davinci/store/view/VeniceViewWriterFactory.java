@@ -19,7 +19,7 @@ public class VeniceViewWriterFactory {
   public Map<String, VeniceViewWriter> buildStoreViewWriters(Store store, int version, Schema keySchema) {
     Map<String, VeniceViewWriter> storeViewWriters = new HashMap<>();
     // Should only be invoked at time of ingestion task creation, so shouldn't be necessary to check for existence.
-    Version storeVersion = store.getVersion(version).get();
+    Version storeVersion = store.getVersionOrThrow(version);
     for (Map.Entry<String, ViewConfig> viewConfig: storeVersion.getViewConfigs().entrySet()) {
       String className = viewConfig.getValue().getViewClassName();
       Map<String, String> extraParams = viewConfig.getValue().getViewParameters();

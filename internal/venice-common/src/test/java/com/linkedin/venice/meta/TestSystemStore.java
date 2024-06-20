@@ -2,13 +2,13 @@ package com.linkedin.venice.meta;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 
@@ -154,8 +154,8 @@ public class TestSystemStore {
     // Test version related operations
     systemStore.addVersion(new VersionImpl(systemStore.getName(), 1, "test_push_id_1"));
     assertTrue(systemStore.containsVersion(1));
-    Optional<Version> version = systemStore.getVersion(1);
-    assertTrue(version.isPresent(), "Version 1 must be present");
+    Version version = systemStore.getVersion(1);
+    assertNotNull(version, "Version 1 must be present");
     systemStore.deleteVersion(1);
     assertFalse(systemStore.containsVersion(1));
   }

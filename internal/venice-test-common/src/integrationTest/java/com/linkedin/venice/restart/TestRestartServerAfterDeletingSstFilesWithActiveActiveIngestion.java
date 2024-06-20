@@ -42,7 +42,6 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -78,7 +77,6 @@ import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -110,81 +108,82 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private final int numServers = 5;
   List<Integer> allIncPushKeys = new ArrayList<>(); // all keys ingested via incremental push
   List<Integer> allNonIncPushKeysUntilLastVersion = new ArrayList<>(); // all keys ingested only via batch push
-  PubSubConsumerAdapter pubSubConsumer = null;
 
   @BeforeClass
   public void setUp() throws Exception {
-    String stringSchemaStr = "\"string\"";
-    serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
-    Properties serverProperties = new Properties();
-    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
-    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
-    serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
-    serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
-    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-    serverProperties.put(
-        CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
-        "localhost:" + TestUtils.getFreePort());
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_COLOS,
-        1,
-        1,
-        2,
-        numServers,
-        1,
-        NUMBER_OF_REPLICAS,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.of(serverProperties),
-        false);
+    try {
+      String stringSchemaStr = "\"string\"";
+      serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
+      Properties serverProperties = new Properties();
+      serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
+      serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+      serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
+      serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
+      serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+      serverProperties.put(
+          CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
+          "localhost:" + TestUtils.getFreePort());
+      multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+          NUMBER_OF_COLOS,
+          1,
+          1,
+          2,
+          numServers,
+          1,
+          NUMBER_OF_REPLICAS,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(serverProperties),
+          false);
 
-    List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-    String clusterName = "venice-cluster0";
-    for (int colo = 0; colo < NUMBER_OF_COLOS; colo++) {
-      clusterWrappers.add(colo, childDatacenters.get(colo).getClusters().get(clusterName));
+      List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+      List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+      String clusterName = "venice-cluster0";
+      for (int colo = 0; colo < NUMBER_OF_COLOS; colo++) {
+        clusterWrappers.add(colo, childDatacenters.get(colo).getClusters().get(clusterName));
+      }
+
+      String parentControllerURLs =
+          parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+      parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+      TestUtils.assertCommand(
+          parentControllerClient.configureActiveActiveReplicationForCluster(
+              true,
+              VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
+              Optional.empty()));
+      // create an active-active enabled store
+      File inputDir = getTempDataDirectory();
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+      String inputDirPath = "file:" + inputDir.getAbsolutePath();
+      Properties props =
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, STORE_NAME);
+      String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+      String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+      UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+          .setHybridRewindSeconds(500)
+          .setHybridOffsetLagThreshold(2)
+          .setNativeReplicationEnabled(true)
+          .setBackupVersionRetentionMs(1)
+          .setIncrementalPushEnabled(true)
+          .setPartitionCount(NUMBER_OF_PARTITIONS)
+          .setReplicationFactor(NUMBER_OF_REPLICAS);
+      createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    } catch (Exception e) {
+      Utils.closeQuietlyWithErrorLogged(parentControllerClient);
+      Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+      parentControllerClient = null;
+      multiRegionMultiClusterWrapper = null;
     }
-
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
-            Optional.empty()));
-    // create an active-active enabled store
-    File inputDir = getTempDataDirectory();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, STORE_NAME);
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(2)
-        .setNativeReplicationEnabled(true)
-        .setBackupVersionRetentionMs(1)
-        .setIncrementalPushEnabled(true)
-        .setPartitionCount(NUMBER_OF_PARTITIONS)
-        .setReplicationFactor(NUMBER_OF_REPLICAS);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
   }
 
   @AfterClass
   public void cleanUp() {
-    parentControllerClient.disableAndDeleteStore(STORE_NAME);
-    multiRegionMultiClusterWrapper.close();
-    TestView.resetCounters();
-  }
-
-  @AfterTest
-  public void perTestCleanUp() {
-    if (pubSubConsumer != null) {
-      pubSubConsumer.close();
-      pubSubConsumer = null;
+    if (parentControllerClient != null) {
+      parentControllerClient.disableAndDeleteStore(STORE_NAME);
     }
+    Utils.closeQuietlyWithErrorLogged(parentControllerClient);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+    TestView.resetCounters();
   }
 
   private Map<byte[], Pair<byte[], byte[]>> generateInputWithMetadata(

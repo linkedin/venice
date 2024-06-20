@@ -82,6 +82,7 @@ ext.libraries = [
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
     grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
+    grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     helix: 'org.apache.helix:helix-core:1.1.0',
@@ -117,7 +118,7 @@ ext.libraries = [
     pulsarIoCommon: "${pulsarGroup}:pulsar-io-common:${pulsarVersion}",
     r2: "com.linkedin.pegasus:r2:${pegasusVersion}",
     restliCommon: "com.linkedin.pegasus:restli-common:${pegasusVersion}",
-    rocksdbjni: 'org.rocksdb:rocksdbjni:8.8.1',
+    rocksdbjni: 'org.rocksdb:rocksdbjni:8.11.4',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     slf4j: 'org.slf4j:slf4j:1.7.36',
     slf4jApi: 'org.slf4j:slf4j-api:1.7.36',
@@ -266,6 +267,7 @@ subprojects {
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
     implementation libraries.grpcNettyShaded
     implementation libraries.grpcProtobuf
+    implementation libraries.grpcServices
     implementation libraries.grpcStub
     compileOnly libraries.tomcatAnnotations
   }
@@ -413,7 +415,7 @@ subprojects {
 
     useTestNG {
       excludeGroups 'flaky'
-      listeners = ['com.linkedin.venice.testng.VeniceSuiteListener']
+      listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
     }
 
     retry {
@@ -514,19 +516,20 @@ subprojects {
         }
 
         violationRules {
-          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.40
+          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.45
           failOnViolation = true
         }
       }
 
-      task logDiffCoverage {
+      task logCoverage {
         doLast {
+          parseJacocoXml("$buildDir/reports/jacoco/test/jacocoTestReport.xml")
           parseJacocoXml("$buildDir/reports/jacoco/diffCoverage/report.xml")
         }
       }
 
       diffCoverage.dependsOn jacocoTestReport
-      diffCoverage.finalizedBy logDiffCoverage
+      diffCoverage.finalizedBy logCoverage
     }
   }
 
@@ -779,6 +782,7 @@ ext.createDiffFile = { ->
 
 // for a given xml jacoco report, parse it and print out the branch coverage
 ext.parseJacocoXml = { filePath ->
+  println "Parsing Jacoco XML file at: ${filePath}"
   try {
     def jacocoReport = parser.parse(filePath).children()
     def branchCoverage = jacocoReport.find { it.name() == 'counter' && it.@type == 'BRANCH' }

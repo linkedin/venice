@@ -10,12 +10,15 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.WriteBatch;
@@ -51,10 +54,10 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
         rocksDBServerConfig,
         Arrays.asList(RocksDB.DEFAULT_COLUMN_FAMILY, REPLICATION_METADATA_COLUMN_FAMILY),
         storeConfig);
-    this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempRMDSSTFileDir(dbDir, storeName, partitionId);
+    this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempRMDSSTFileDir(dbDir, storeNameAndVersion, partitionId);
     if (deferredWrite) {
       this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
-          storeName,
+          storeNameAndVersion,
           partitionId,
           dbDir,
           super.getEnvOptions(),
@@ -71,8 +74,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException(
-          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_"
-              + partitionId);
+          "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
 
     try {
@@ -87,9 +89,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
         }
       }
     } catch (RocksDBException e) {
-      throw new VeniceException(
-          "Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId,
-          e);
+      throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
     }
   }
 
@@ -98,8 +98,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException(
-          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_"
-              + partitionId);
+          "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
     try {
       if (deferredWrite) {
@@ -108,9 +107,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
         rocksDB.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), writeOptions, key, metadata);
       }
     } catch (RocksDBException e) {
-      throw new VeniceException(
-          "Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId,
-          e);
+      throw new VeniceException("Failed to put key/value pair to RocksDB: " + replicaId, e);
     }
   }
 
@@ -144,7 +141,25 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       return rocksDB
           .get(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), READ_OPTIONS_DEFAULT, key);
     } catch (RocksDBException e) {
-      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+      throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
+    } finally {
+      readCloseRWLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public List<byte[]> multiGetReplicationMetadata(List<byte[]> keys) {
+    readCloseRWLock.readLock().lock();
+    try {
+      makeSureRocksDBIsStillOpen();
+      ColumnFamilyHandle rmdHandle = columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX);
+      List cfHandleList = new ArrayList<>(keys.size());
+      for (int i = 0; i < keys.size(); ++i) {
+        cfHandleList.add(rmdHandle);
+      }
+      return rocksDB.multiGetAsList(getReadOptionsForMultiGet(), cfHandleList, keys);
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to get value from RocksDB: " + replicaId, e);
     } finally {
       readCloseRWLock.readLock().unlock();
     }
@@ -158,8 +173,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException(
-          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_"
-              + partitionId);
+          "Cannot make writes while database is opened in read-only mode for replica: " + replicaId);
     }
     try {
       if (deferredWrite) {
@@ -175,8 +189,8 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       }
     } catch (RocksDBException e) {
       String msg = deferredWrite
-          ? "Failed to put metadata while deleing key for store: " + storeName + ", partition id: " + partitionId
-          : "Failed to delete entry to store: " + storeName + ", partition id: " + partitionId;
+          ? "Failed to put metadata while deleting key from RocksDB: " + replicaId
+          : "Failed to delete entry from the RocksDB: " + replicaId;
       throw new VeniceException(msg, e);
     }
   }

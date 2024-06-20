@@ -232,26 +232,6 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           isolatedIngestionServer.getStorageService().openStore(storeConfig, () -> null);
           LOGGER.info("Metadata partition of topic: {} restored.", ingestionTaskCommand.topicName);
           break;
-        case PROMOTE_TO_LEADER:
-          validateAndExecuteCommand(
-              ingestionCommandType,
-              report,
-              () -> isolatedIngestionServer.getIngestionBackend()
-                  .promoteToLeader(
-                      storeConfig,
-                      partitionId,
-                      isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId)));
-          break;
-        case DEMOTE_TO_STANDBY:
-          validateAndExecuteCommand(
-              ingestionCommandType,
-              report,
-              () -> isolatedIngestionServer.getIngestionBackend()
-                  .demoteToStandby(
-                      storeConfig,
-                      partitionId,
-                      isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId)));
-          break;
         case RESET_PARTITION:
           isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
           break;

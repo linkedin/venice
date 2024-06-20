@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
@@ -26,12 +27,15 @@ import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
@@ -68,6 +72,7 @@ import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_PROCESSING_CYCLE_DELAY;
+import static com.linkedin.venice.ConfigKeys.FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
@@ -109,6 +114,7 @@ import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
@@ -168,6 +174,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final double storageEngineOverheadRatio;
   private final long topicCreationThrottlingTimeWindowMs;
   private final long deprecatedJobTopicRetentionMs;
+
+  private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
   private final long topicCleanupSleepIntervalBetweenTopicListFetchMs;
 
@@ -202,6 +210,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int errorPartitionAutoResetLimit;
   private final long errorPartitionProcessingCycleDelay;
   private final long backupVersionDefaultRetentionMs;
+  private final long backupVersionCleanupSleepMs;
+
   private final boolean backupVersionRetentionBasedCleanupEnabled;
   private final boolean backupVersionMetadataFetchBasedCleanupEnabled;
 
@@ -322,6 +332,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final PubSubClientsFactory pubSubClientsFactory;
 
+  private final PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory;
+
+  private final long danglingTopicCleanupIntervalSeconds;
+  private final int danglingTopicOccurrenceThresholdForCleanup;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -417,6 +432,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
               + " should be larger than config: " + DEPRECATED_TOPIC_RETENTION_MS + " with value: "
               + this.deprecatedJobTopicRetentionMs);
     }
+
+    this.fatalDataValidationFailureRetentionMs =
+        props.getLong(FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS, TimeUnit.DAYS.toMillis(2));
+
     this.topicCleanupSleepIntervalBetweenTopicListFetchMs =
         props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30
                                                                                                                 // seconds
@@ -473,6 +492,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
     this.errorPartitionProcessingCycleDelay =
         props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
+    this.backupVersionCleanupSleepMs =
+        props.getLong(CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS, TimeUnit.MINUTES.toMillis(5));
     this.backupVersionDefaultRetentionMs =
         props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
     this.backupVersionRetentionBasedCleanupEnabled =
@@ -490,8 +511,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
      */
     this.zkSharedMetaSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
-    this.pushStatusStoreHeartbeatExpirationTimeInSeconds =
-        props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
+    this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(
+        PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS,
+        DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS);
     this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.daVinciPushStatusScanEnabled =
         props.getBoolean(DAVINCI_PUSH_STATUS_SCAN_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
@@ -560,6 +582,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.useDaVinciSpecificExecutionStatusForError =
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
+    this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
+    this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
+    this.danglingTopicOccurrenceThresholdForCleanup =
+        props.getInt(CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP, 3);
   }
 
   private void validateActiveActiveConfigs() {
@@ -625,6 +651,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getDeprecatedJobTopicRetentionMs() {
     return deprecatedJobTopicRetentionMs;
+  }
+
+  public long getFatalDataValidationFailureRetentionMs() {
+    return fatalDataValidationFailureRetentionMs;
   }
 
   public long getDeprecatedJobTopicMaxRetentionMs() {
@@ -849,6 +879,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return backupVersionDefaultRetentionMs;
   }
 
+  public long getBackupVersionCleanupSleepMs() {
+    return backupVersionCleanupSleepMs;
+  }
+
   public boolean isBackupVersionRetentionBasedCleanupEnabled() {
     return backupVersionRetentionBasedCleanupEnabled;
   }
@@ -1040,6 +1074,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return pubSubClientsFactory;
   }
 
+  public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
+    return sourceOfTruthAdminAdapterFactory;
+  }
+
   /**
    * The config should follow the format below:
    * CHILD_CLUSTER_URL_PREFIX.fabricName1=controllerUrls_in_fabric1
@@ -1131,6 +1169,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
 
     return outputMap;
+  }
+
+  public long getDanglingTopicCleanupIntervalSeconds() {
+    return danglingTopicCleanupIntervalSeconds;
+  }
+
+  public int getDanglingTopicOccurrenceThresholdForCleanup() {
+    return danglingTopicOccurrenceThresholdForCleanup;
   }
 
   /**

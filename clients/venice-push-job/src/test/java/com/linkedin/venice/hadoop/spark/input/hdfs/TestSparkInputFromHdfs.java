@@ -4,18 +4,23 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIEL
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SCHEMA_STRING_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VSON_PUSH;
 import static com.linkedin.venice.hadoop.spark.SparkConstants.DEFAULT_SCHEMA;
 import static com.linkedin.venice.hadoop.spark.input.hdfs.VeniceHdfsInputTable.INPUT_TABLE_NAME;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_TO_STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
 
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -69,6 +74,8 @@ public class TestSparkInputFromHdfs {
     String file2Path = "string2string2.avro";
     writeAvroFile(inputDir, file2Path, 101, 200);
 
+    config.put(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
+    config.put(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
     config.put(SCHEMA_STRING_PROP, AVRO_FILE_SCHEMA.toString());
     config.put(VSON_PUSH, String.valueOf(false));
 
@@ -113,6 +120,62 @@ public class TestSparkInputFromHdfs {
         } else {
           Assert.fail("Unexpected partition: " + partition);
         }
+      }
+    }
+  }
+
+  @Test
+  public void testAvroInputSourceForPartialUpdate() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Map<String, String> config = getDefaultConfigs(inputDir);
+
+    writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+
+    // Use a newer schema as the one used to generate the update-schema signalling that the input data is only partial
+    Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(NAME_RECORD_V2_SCHEMA);
+
+    config.put(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
+    config.put(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
+    config.put(SCHEMA_STRING_PROP, AVRO_FILE_SCHEMA.toString());
+    config.put(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, String.valueOf(true));
+    config.put(UPDATE_SCHEMA_STRING_PROP, updateSchema.toString());
+    config.put(VSON_PUSH, String.valueOf(false));
+
+    CaseInsensitiveStringMap caseInsensitiveConfig = new CaseInsensitiveStringMap(config);
+
+    VeniceHdfsSource source = new VeniceHdfsSource();
+    StructType schema = source.inferSchema(caseInsensitiveConfig);
+
+    Table table = source.getTable(schema, source.inferPartitioning(caseInsensitiveConfig), config);
+    Assert.assertTrue(table instanceof VeniceHdfsInputTable);
+    Assert.assertTrue(table.capabilities().contains(TableCapability.BATCH_READ));
+    Assert.assertEquals(table.schema(), DEFAULT_SCHEMA);
+    // Spark docs mention that table's and source's partitioning should be the same
+    Assert.assertEquals(table.partitioning(), source.inferPartitioning(caseInsensitiveConfig));
+    Assert.assertEquals(table.name(), INPUT_TABLE_NAME);
+
+    VeniceHdfsInputTable hdfsTable = (VeniceHdfsInputTable) table;
+    ScanBuilder scanBuilder = hdfsTable.newScanBuilder(caseInsensitiveConfig);
+    Assert.assertTrue(scanBuilder instanceof VeniceHdfsInputScanBuilder);
+
+    Scan scan = scanBuilder.build();
+    Assert.assertTrue(scan instanceof VeniceHdfsInputScan);
+    Assert.assertEquals(scan.readSchema(), DEFAULT_SCHEMA);
+    Assert.assertSame(scan.toBatch(), scan);
+
+    VeniceHdfsInputScan hdfsScan = (VeniceHdfsInputScan) scan;
+    InputPartition[] partitions = hdfsScan.planInputPartitions();
+    Assert.assertEquals(partitions.length, 1);
+
+    for (InputPartition partition: partitions) {
+      Assert.assertTrue(partition instanceof VeniceHdfsInputPartition);
+
+      PartitionReaderFactory readerFactory = hdfsScan.createReaderFactory();
+      Assert.assertTrue(readerFactory instanceof VeniceHdfsInputPartitionReaderFactory);
+
+      try (PartitionReader<InternalRow> reader = readerFactory.createReader(partition)) {
+        Assert.assertTrue(reader instanceof VeniceHdfsInputPartitionReader);
+        verifyPartialUpdateAvroData(reader, updateSchema);
       }
     }
   }
@@ -260,5 +323,28 @@ public class TestSparkInputFromHdfs {
       currentIdx++;
     }
     Assert.assertEquals(currentIdx, end + 1);
+  }
+
+  private void verifyPartialUpdateAvroData(PartitionReader<InternalRow> reader, Schema updateSchema)
+      throws IOException {
+    Schema avroStringSchema = Schema.create(Schema.Type.STRING);
+    RecordDeserializer<CharSequence> keyDeserializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(avroStringSchema, avroStringSchema);
+    RecordDeserializer<GenericRecord> valueDeserializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(updateSchema, updateSchema);
+
+    int currentIdx = 1;
+    while (reader.next()) {
+      InternalRow row = reader.get();
+      Assert.assertEquals(keyDeserializer.deserialize(row.getBinary(0)).toString(), Integer.toString(currentIdx));
+      GenericRecord value = valueDeserializer.deserialize(row.getBinary(1));
+      Assert.assertEquals(value.get("firstName").toString(), "first_name_" + currentIdx);
+      Assert.assertEquals(value.get("lastName").toString(), "last_name_" + currentIdx);
+
+      // Fields not provided should have NoOp filled in
+      Assert.assertEquals(((GenericRecord) value.get("age")).getSchema().getName(), "NoOp");
+      currentIdx++;
+    }
+    Assert.assertEquals(currentIdx, 101);
   }
 }

@@ -344,7 +344,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     int slowestTaskId = -1;
     long elapsedTimeSinceLastPoll;
     for (ConsumptionTask task: consumerToConsumptionTask.values()) {
-      elapsedTimeSinceLastPoll = LatencyUtils.getElapsedTimeInMs(task.getLastSuccessfulPollTimestamp());
+      elapsedTimeSinceLastPoll = LatencyUtils.getElapsedTimeFromMsToMs(task.getLastSuccessfulPollTimestamp());
       if (elapsedTimeSinceLastPoll > maxElapsedTimeSinceLastPollInConsumerPool) {
         maxElapsedTimeSinceLastPollInConsumerPool = elapsedTimeSinceLastPoll;
         slowestTaskId = task.getTaskId();
@@ -491,7 +491,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
         if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
           elapsedTimeSinceLastPollInMs =
-              LatencyUtils.getElapsedTimeInMs(consumptionTask.getLastSuccessfulPollTimestamp());
+              LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
         }
         TopicPartitionIngestionInfo topicPartitionIngestionInfo = new TopicPartitionIngestionInfo(
             latestOffset,

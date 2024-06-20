@@ -91,7 +91,7 @@ public class VeniceResponseDecompressor {
     ByteBuf decompressedData =
         Unpooled.wrappedBuffer(decompressRecord(compressionStrategy, copy.nioBuffer(), RequestType.SINGLE_GET));
     final long decompressionTimeInNs = System.nanoTime() - startTimeInNs;
-    stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(startTimeInNs));
+    stats.recordDecompressionTime(storeName, LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
 
     /**
      * When using compression, the data in response is already copied to `decompressedData`, so we can explicitly
@@ -163,7 +163,7 @@ public class VeniceResponseDecompressor {
     long startTimeInNs = System.nanoTime();
     ByteBuf copy = content.isReadOnly() ? content.copy() : content;
     ByteBuf decompressedContent = decompressMultiGetRecords(responseCompression, copy, MULTI_GET_STREAMING);
-    stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(startTimeInNs));
+    stats.recordDecompressionTime(storeName, LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
     content.release();
     return new Pair<>(decompressedContent, CompressionStrategy.NO_OP);
   }

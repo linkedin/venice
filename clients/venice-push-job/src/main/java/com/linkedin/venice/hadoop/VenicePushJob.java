@@ -30,6 +30,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_SSL;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.HADOOP_TMP_DIR;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_LAST_MODIFIED_TIME;
@@ -46,16 +47,16 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPI
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.MAPPER_OUTPUT_DIRECTORY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.NON_CRITICAL_EXCEPTION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.NOT_SET;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PATH_FILTER;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.PERMISSION_700;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.REPUSH_TTL_SECONDS;
@@ -77,7 +78,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.UNCREATED_VERSIO
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
@@ -85,7 +85,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAM
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
-import static com.linkedin.venice.utils.Utils.getUniqueString;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -179,9 +178,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.mapred.Counters;
-import org.apache.hadoop.mapred.FileOutputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.logging.log4j.LogManager;
@@ -199,6 +196,33 @@ public class VenicePushJob implements AutoCloseable {
   // Immutable state
   private final VeniceProperties props;
   private final String jobId;
+
+  /**
+   * The temp directory structure for VPJ will be: <br/>
+   * |____{@code $sharedTmpDir} (777 permissions) - shared temp space for all VPJ executions <br/>
+   * | |____{@code $jobTmpDir} (700 permissions) - temp space for the current execution ({@code $job.execution.id}_{@literal unique-suffix}) <br/>
+   * | | |____veniceMapperOutput (700 permissions) <br/>
+   * | | |____rmd_schemas (700 permissions) <br/>
+   * | | |____value_schemas (700 permissions) <br/>
+   * | | |____...features_added_in_the_future (700 permissions) <br/>
+   *  <br/>
+   * Common directory under which all the different push jobs create their job specific directories.
+   * The value of {@code sharedTmpDir} is obtained by the following steps:
+   * <ol>
+   *   <li>If {@code tmp.dir.prefix} is configured, that is used.</li>
+   *   <li>Otherwise, if {@code hadoop.tmp.dir} is specified in HDFS configs, then {@code ${hadoop.tmp.dir}/venice-push-job} is used.</li>
+   *   <li>Otherwise, {@code /venice-push-job} is used.</li>
+   * </ol>
+   *   {@code ${hadoop.tmp.dir}/venice-push-job} if {@code ${hadoop.tmp.dir}}
+   * is set. Otherwise, the path is set to {@code /tmp/venice-push-job}.
+   */
+  private final Path sharedTmpDir;
+
+  /**
+   * Job specific directory: Unique directory for this VPJ to store intermediate data. The value of {@code jobTmpDir} is
+   * {@code ${sharedTmpDir}/${job.execution.id}_{unique-suffix}}.
+   */
+  private final Path jobTmpDir;
 
   // Lazy state
   private final Lazy<Properties> sslProperties;
@@ -226,7 +250,7 @@ public class VenicePushJob implements AutoCloseable {
   private JobClientWrapper jobClientWrapper;
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
   private ValidateSchemaAndBuildDictMapperOutput validateSchemaAndBuildDictMapperOutput;
-  private String validateSchemaAndBuildDictMapperOutputDirectory;
+  private Path validateSchemaAndBuildDictMapperOutputDirectory;
   private final PushJobSetting pushJobSetting;
 
   private final PushJobDetails pushJobDetails;
@@ -292,6 +316,8 @@ public class VenicePushJob implements AutoCloseable {
     }
     emptyPushZstdDictionary =
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
+    sharedTmpDir = new Path(pushJobSetting.sharedTmpDir);
+    jobTmpDir = new Path(pushJobSetting.jobTmpDir);
   }
 
   // This is a part of the public API. There is value in exposing this to users of VenicePushJob for reporting purposes
@@ -339,6 +365,12 @@ public class VenicePushJob implements AutoCloseable {
     if (pushJobSettingToReturn.enableSSL) {
       VPJSSLUtils.validateSslProperties(props);
     }
+    String hadoopTempDir = new Configuration().get(HADOOP_TMP_DIR, "/tmp");
+    pushJobSettingToReturn.sharedTmpDir = props.getString(TEMP_DIR_PREFIX, hadoopTempDir + "/venice-push-job");
+    LOGGER.info("Using {} as shared temp directory", pushJobSettingToReturn.sharedTmpDir);
+    pushJobSettingToReturn.jobTmpDir = pushJobSettingToReturn.sharedTmpDir + "/"
+        + Utils.escapeFilePathComponent(Utils.getUniqueString(pushJobSettingToReturn.jobExecutionId));
+    LOGGER.info("Using {} as this job's temp directory", pushJobSettingToReturn.sharedTmpDir);
     pushJobSettingToReturn.vpjEntryClass = this.getClass();
     if (props.containsKey(SOURCE_GRID_FABRIC)) {
       pushJobSettingToReturn.sourceGridFabric = props.getString(SOURCE_GRID_FABRIC);
@@ -388,7 +420,6 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
-    pushJobSettingToReturn.postValidationConsumption = props.getBoolean(POST_VALIDATION_CONSUMPTION_ENABLED, true);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
     if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
@@ -472,13 +503,16 @@ public class VenicePushJob implements AutoCloseable {
 
     pushJobSettingToReturn.extendedSchemaValidityCheckEnabled =
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
-    pushJobSettingToReturn.compressionMetricCollectionEnabled =
-        props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
-    pushJobSettingToReturn.useMapperToBuildDict =
-        props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
-    if (pushJobSettingToReturn.useMapperToBuildDict) {
-      pushJobSettingToReturn.useMapperToBuildDictOutputPath = props
-          .getString(MAPPER_OUTPUT_DIRECTORY, VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT);
+
+    if (pushJobSettingToReturn.isSourceKafka) {
+      // KIF uses a different code-path to build a dictionary, and we also don't need schema validations for KIF
+      pushJobSettingToReturn.useMapperToBuildDict = false;
+      pushJobSettingToReturn.compressionMetricCollectionEnabled = false;
+    } else {
+      pushJobSettingToReturn.useMapperToBuildDict =
+          props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
+      pushJobSettingToReturn.compressionMetricCollectionEnabled =
+          props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
     }
 
     // Compute-engine abstraction related configs
@@ -533,6 +567,7 @@ public class VenicePushJob implements AutoCloseable {
               + pushJobSetting.repushInfoResponse.getError());
     }
     int version = pushJobSetting.repushInfoResponse.getRepushInfo().getVersion().getNumber();
+    pushJobSetting.repushSourceVersion = version;
     return Version.composeKafkaTopic(userProvidedStoreName, version);
   }
 
@@ -660,6 +695,8 @@ public class VenicePushJob implements AutoCloseable {
       initPushJobDetails();
       logGreeting();
       sendPushJobDetailsToController();
+      HadoopUtils.createDirectoryWithPermission(sharedTmpDir, PERMISSION_777);
+      HadoopUtils.createDirectoryWithPermission(jobTmpDir, PERMISSION_700);
       validateKafkaMessageEnvelopeSchema(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
@@ -704,6 +741,9 @@ public class VenicePushJob implements AutoCloseable {
         validateValueSchema(controllerClient, pushJobSetting, pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
 
         if (pushJobSetting.useMapperToBuildDict) {
+          validateSchemaAndBuildDictMapperOutputDirectory = new Path(jobTmpDir, "veniceMapperOutput");
+          HadoopUtils.createDirectoryWithPermission(validateSchemaAndBuildDictMapperOutputDirectory, PERMISSION_700);
+
           /**
            * 1. validate whether the remaining file's schema are consistent with the first file
            * 2. calculate {@link inputFileDataSize} during step 1
@@ -730,19 +770,13 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
         }
         if (pushJobSetting.repushTTLEnabled) {
-          // make the base directory TEMP_DIR_PREFIX with 777 permissions
-          Path baseSchemaDir = new Path(TEMP_DIR_PREFIX);
-          FileSystem fs = baseSchemaDir.getFileSystem(new Configuration());
-          if (!fs.exists(baseSchemaDir)) {
-            fs.mkdirs(baseSchemaDir);
-            fs.setPermission(baseSchemaDir, new FsPermission("777"));
-          }
-
-          // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
-          // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
-          String rmdSchemaDir = TEMP_DIR_PREFIX + pushJobSetting.storeName + "/rmd_" + pushJobSetting.jobStartTimeMs;
-          String valueSchemaDir =
-              TEMP_DIR_PREFIX + pushJobSetting.storeName + "/value_" + pushJobSetting.jobStartTimeMs;
+          // Build the full path for HDFSRmdSchemaSource:
+          // RMD schemas: <job_temp_dir>/rmd_schemas
+          // Value schemas: <job_temp_dir>/value_schemas
+          Path rmdSchemaDir = new Path(jobTmpDir, "rmd_schemas");
+          HadoopUtils.createDirectoryWithPermission(rmdSchemaDir, PERMISSION_700);
+          Path valueSchemaDir = new Path(jobTmpDir, "value_schemas");
+          HadoopUtils.createDirectoryWithPermission(valueSchemaDir, PERMISSION_700);
           try (HDFSSchemaSource schemaSource =
               new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
             schemaSource.saveSchemasOnDisk(controllerClient);
@@ -835,16 +869,20 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
-      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
-      pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
+      // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
+      if (!pushJobSetting.isTargetedRegionPushEnabled) {
+        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
+      }
+      pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
       updatePushJobDetailsWithConfigs();
       updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
       sendPushJobDetailsToController();
 
       // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
-      if (!(pushJobSetting.isTargetedRegionPushEnabled && pushJobSetting.postValidationConsumption)) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled) {
         return;
       }
+
       /**
        * Post validation + consumption
        */
@@ -864,7 +902,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
-        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
+        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
         updatePushJobDetailsWithConfigs();
         updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
@@ -941,6 +979,7 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       // perform data recovery for BATCH stores
       for (String region: candidateRegions) {
+        LOGGER.info("Pushing from {} to {}", pushJobSetting.kafkaSourceRegion, region);
         ControllerResponse response = controllerClient.dataRecovery(
             pushJobSetting.kafkaSourceRegion,
             region,
@@ -961,6 +1000,7 @@ public class VenicePushJob implements AutoCloseable {
           RegionUtils.composeRegionList(candidateRegions),
           false);
     }
+    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
     sendPushJobDetailsToController();
   }
 
@@ -1056,38 +1096,6 @@ public class VenicePushJob implements AutoCloseable {
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED);
   }
 
-  /**
-   * Creating the output file for {@link ValidateSchemaAndBuildDictMapper} to persist data
-   * to be read from VPJ driver.
-   *
-   * Output Directory: {$hadoopTmpDir}/{$storeName}-{$JOB_EXEC_ID}-{$randomUniqueString}
-   * File name: mapper-output-{$MRJobID}.avro
-   *
-   * Why JOB_EXEC_ID and randomUniqueString: This gives uniqueness to the name of the directory whose
-   * permission will be restricted to the current user who started the VPJ only. This helps with 2 issues.
-   * 1. There could be instances where multiple headless accounts are writing to a single Venice store.
-   *    It shouldn't happen in regular cases - but is very likely in case of migrations (technical or organizational)
-   *    => unless we have unique directory for each job, the multiple accounts will have access issues of the directory.
-   *
-   * 2. Multiple push jobs can be started in parallel, but only 1 will continue beyond
-   *    {@link ControllerClient#requestTopicForWrites} as this method will throw CONCURRENT_BATCH_PUSH error
-   *    if there is another push job in progress. As {@link ValidateSchemaAndBuildDictMapper} runs before this method,
-   *    it is prone to concurrent push jobs and thus race conditions. Having unique directories per execution will help here.
-   *
-   * Why can't use MRJobID to achieve randomness: MR's jobID gets populated only after {@link FileOutputFormat#checkOutputSpecs},
-   * which needs {@link FileOutputFormat#setOutputPath} to be set already. so currently unable to use the ID.
-   *
-   * TODO: should try exploring using conf.get("hadoop.tmp.dir") or similar configs to get default
-   *     tmp directory in different HDFS environments rather than hardcoding it to
-   *     VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT.
-   */
-  protected static String getValidateSchemaAndBuildDictionaryOutputDir(
-      String parentOutputDir,
-      String storeName,
-      String jobExecId) {
-    return parentOutputDir + "/" + storeName + "-" + jobExecId + "-" + getUniqueString();
-  }
-
   protected static String getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(String mrJobId) {
     return VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX + mrJobId;
   }
@@ -1098,7 +1106,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void getValidateSchemaAndBuildDictMapperOutput(String mrJobId) throws Exception {
-    String outputDir = validateSchemaAndBuildDictMapperOutputDirectory;
+    Path outputDir = validateSchemaAndBuildDictMapperOutputDirectory;
     String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFileName(mrJobId);
     try (ValidateSchemaAndBuildDictMapperOutputReader outputReader =
         getValidateSchemaAndBuildDictMapperOutputReader(outputDir, outputAvroFile)) {
@@ -1132,14 +1140,6 @@ public class VenicePushJob implements AutoCloseable {
   protected static boolean shouldBuildZstdCompressionDictionary(
       PushJobSetting pushJobSetting,
       boolean inputFileHasRecords) {
-    if (pushJobSetting.isSourceKafka) {
-      /**
-       * Currently, KIF repush will use a different code path for dict buid.
-       * If later, we add the support to build the dict in a MR job, we need to revist this logic.
-       */
-      return false;
-    }
-
     if (pushJobSetting.isIncrementalPush) {
       LOGGER.info("No compression dictionary will be generated as the push type is incremental push");
       return false;
@@ -1191,11 +1191,6 @@ public class VenicePushJob implements AutoCloseable {
 
     if (!inputFileHasRecords) {
       LOGGER.info("No compression related metrics will be generated as there are no records");
-      return false;
-    }
-
-    if (pushJobSetting.isSourceKafka) {
-      LOGGER.info("No compression related metrics will be generated as the push type is repush");
       return false;
     }
 
@@ -1341,7 +1336,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   protected ValidateSchemaAndBuildDictMapperOutputReader getValidateSchemaAndBuildDictMapperOutputReader(
-      String outputDir,
+      Path outputDir,
       String fileName) throws Exception {
     if (validateSchemaAndBuildDictMapperOutputReader == null) {
       validateSchemaAndBuildDictMapperOutputReader =
@@ -2064,6 +2059,14 @@ public class VenicePushJob implements AutoCloseable {
     StoreResponse storeResponse = getStoreResponse(jobSetting.storeName);
     jobSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
 
+    // Do not enable for deferred swap or hybrid store
+    if (pushJobSetting.deferVersionSwap || storeResponse.getStore().getHybridStoreConfig() != null) {
+      LOGGER.warn(
+          "target region is not available for {} as it hybrid or deferred version swap enabled.",
+          jobSetting.storeName);
+      jobSetting.isTargetedRegionPushEnabled = false;
+    }
+
     if (jobSetting.isTargetedRegionPushEnabled && jobSetting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
       // use source grid fabric as target region to reduce data hop, else use default NR source
@@ -2199,7 +2202,8 @@ public class VenicePushJob implements AutoCloseable {
             setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
             setting.deferVersionSwap,
-            setting.targetedRegions));
+            setting.targetedRegions,
+            pushJobSetting.repushSourceVersion));
     if (versionCreationResponse.isError()) {
       if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
         LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
@@ -2462,7 +2466,7 @@ public class VenicePushJob implements AutoCloseable {
       }
       long bootstrapToOnlineTimeoutInHours =
           VenicePushJob.this.pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
-      long durationMs = LatencyUtils.getElapsedTimeInMs(pollStartTimeMs);
+      long durationMs = LatencyUtils.getElapsedTimeFromMsToMs(pollStartTimeMs);
       if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
         throw new VeniceException(
             "Failing push-job for store " + VenicePushJob.this.pushJobSetting.storeResponse.getName()
@@ -2473,9 +2477,9 @@ public class VenicePushJob implements AutoCloseable {
       } else if (unknownStateStartTimeMs == 0) {
         unknownStateStartTimeMs = System.currentTimeMillis();
       } else if (LatencyUtils
-          .getElapsedTimeInMs(unknownStateStartTimeMs) < pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
+          .getElapsedTimeFromMsToMs(unknownStateStartTimeMs) < pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
         double elapsedMinutes =
-            ((double) LatencyUtils.getElapsedTimeInMs(unknownStateStartTimeMs)) / Time.MS_PER_MINUTE;
+            ((double) LatencyUtils.getElapsedTimeFromMsToMs(unknownStateStartTimeMs)) / Time.MS_PER_MINUTE;
         LOGGER.warn("Some data centers are still in unknown state after waiting for {} minutes", elapsedMinutes);
       } else {
         long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
@@ -2597,13 +2601,10 @@ public class VenicePushJob implements AutoCloseable {
         props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
     // USE_MAPPER_TO_BUILD_DICTIONARY is still needed to be passed here for validateInputAndGetInfo
     conf.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, pushJobSetting.useMapperToBuildDict);
-    conf.set(MAPPER_OUTPUT_DIRECTORY, pushJobSetting.useMapperToBuildDictOutputPath);
     conf.set(COMPRESSION_STRATEGY, VenicePushJob.this.pushJobSetting.storeCompressionStrategy.toString());
-    validateSchemaAndBuildDictMapperOutputDirectory = getValidateSchemaAndBuildDictionaryOutputDir(
-        pushJobSetting.useMapperToBuildDictOutputPath,
-        pushJobSetting.storeName,
-        pushJobSetting.jobExecutionId);
-    conf.set(VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY, validateSchemaAndBuildDictMapperOutputDirectory);
+    conf.set(
+        VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY,
+        validateSchemaAndBuildDictMapperOutputDirectory.toUri().getPath());
 
     /** adding below for {@link AbstractDataWriterTask.configure(EngineTaskConfigProvider)} to not crash: Doesn't affect this flow */
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, false);
@@ -2744,7 +2745,7 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
     }
-    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeInMs(pushJobSetting.jobStartTimeMs);
+    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
     updatePushJobDetailsWithConfigs();
     sendPushJobDetailsToController();
   }
@@ -2882,6 +2883,11 @@ public class VenicePushJob implements AutoCloseable {
     Utils.closeQuietlyWithErrorLogged(controllerClient);
     Utils.closeQuietlyWithErrorLogged(kmeSchemaSystemStoreControllerClient);
     Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreControllerClient);
+    try {
+      jobTmpDir.getFileSystem(new Configuration()).delete(jobTmpDir, true);
+    } catch (IOException e) {
+      LOGGER.warn("Failed to delete temp directory: {}", jobTmpDir);
+    }
   }
 
   public static void main(String[] args) {

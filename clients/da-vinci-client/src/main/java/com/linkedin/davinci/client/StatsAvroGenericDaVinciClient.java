@@ -51,7 +51,7 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
           statFuture.completeExceptionally(throwable);
         } else {
           stats.recordHealthyRequest();
-          stats.recordHealthyLatency(LatencyUtils.getLatencyInMS(startTimeInNS));
+          stats.recordHealthyLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
           statFuture.complete(v);
         }
       });

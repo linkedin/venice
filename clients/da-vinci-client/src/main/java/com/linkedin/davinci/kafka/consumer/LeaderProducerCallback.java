@@ -90,6 +90,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
             e);
       }
     } else {
+      long currentTimeForMetricsMs = System.currentTimeMillis();
+
       // recordMetadata.partition() represents the partition being written by VeniceWriter
       // partitionConsumptionState.getPartition() is leaderSubPartition
       // when leaderSubPartition != recordMetadata.partition(), local StorageEngine will be written by
@@ -121,7 +123,6 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         }
       }
 
-      long currentTimeForMetricsMs = System.currentTimeMillis();
       // record the timestamp when the writer has finished writing to the version topic
       leaderProducedRecordContext.setProducedTimestampMs(currentTimeForMetricsMs);
 
@@ -129,11 +130,11 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       // queuing to drainer.
       // this indicates how much time kafka took to deliver the message to broker.
       if (!ingestionTask.isUserSystemStore()) {
-        ingestionTask.getVersionedDIVStats()
+        ingestionTask.getVersionIngestionStats()
             .recordLeaderProducerCompletionTime(
                 ingestionTask.getStoreName(),
                 ingestionTask.versionNumber,
-                LatencyUtils.getLatencyInMS(produceTimeNs),
+                LatencyUtils.getElapsedTimeFromNSToMS(produceTimeNs),
                 currentTimeForMetricsMs);
         if (ingestionTask.isHybridMode() && sourceConsumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
             && partitionConsumptionState.hasLagCaughtUp()) {
@@ -216,7 +217,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
               .recordProducerCallBackLatency(
                   ingestionTask.getStoreName(),
                   ingestionTask.versionNumber,
-                  LatencyUtils.getLatencyInMS(produceTimeNs),
+                  LatencyUtils.getElapsedTimeFromMsToMs(currentTimeForMetricsMs),
                   currentTimeForMetricsMs);
         }
       } catch (Exception oe) {

@@ -26,7 +26,7 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
   boolean hasValueSchema(String storeName, int id);
 
   /**
-   * Look up the schema id by store name and value schema.
+   * Return the schema ID of any schema for the store that has the same parsing canonical form as the schema provided.
    */
   int getValueSchemaId(String storeName, String valueSchemaStr);
 

@@ -608,7 +608,7 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGeneration(parentControllerClient);
         testWriteComputeSchemaEnable(parentControllerClient);
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
-        testUpdateCompactionLag(parentControllerClient, childControllerClient);
+        testUpdateCompactionLag(parentControllerClient);
       }
     }
   }
@@ -907,17 +907,13 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(schemaResponse.getSchemas().length, 2);
   }
 
-  private void testUpdateCompactionLag(
-      ControllerClient parentControllerClient,
-      ControllerClient childControllerClient) {
+  private void testUpdateCompactionLag(ControllerClient parentControllerClient) {
     // Adding store
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     String schemaStr =
         "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\", \"default\": 0.0}]}";
-    String schemaStrDoc =
-        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\", \"default\": \"default name\"},{\"name\":\"id1\",\"type\":\"double\",\"default\": 0.0}]}";
     Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
     parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
 

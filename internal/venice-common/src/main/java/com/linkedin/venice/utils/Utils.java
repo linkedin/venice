@@ -20,6 +20,8 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -75,6 +77,8 @@ public class Utils {
   public static final String WILDCARD_MATCH_ANY = "*";
   public static final String NEW_LINE_CHAR = System.lineSeparator();
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
+
+  public static final String FATAL_DATA_VALIDATION_ERROR = "fatal data validation problem";
 
   /**
    * Print an error and exit with error code 1
@@ -899,5 +903,29 @@ public class Utils {
    */
   public static String getSanitizedStringForLogger(String orig) {
     return orig.replace('.', '_');
+  }
+
+  /**
+   * Standard logging format for TopicPartition
+   */
+  public static String getReplicaId(PubSubTopicPartition topicPartition) {
+    return getReplicaId(topicPartition.getPubSubTopic(), topicPartition.getPartitionNumber());
+  }
+
+  public static String getReplicaId(String topic, int partition) {
+    return topic + "-" + partition;
+  }
+
+  public static String getReplicaId(PubSubTopic topic, int partition) {
+    return topic + "-" + partition;
+  }
+
+  /**
+   * Method to escape file path component to make it a valid file path string/substring.
+   * @param component file path component string
+   * @return Escaped file path component string
+   */
+  public static String escapeFilePathComponent(final String component) {
+    return component.replaceAll("[^a-zA-Z0-9-_/\\.]", "_");
   }
 }

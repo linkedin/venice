@@ -729,7 +729,7 @@ public class TestUtils {
 
     doReturn(-1).when(mockStore).getCurrentVersion();
 
-    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
+    doReturn(version).when(mockStore).getVersion(anyInt());
 
     return new StoreIngestionTaskFactory.Builder().setVeniceWriterFactory(mock(VeniceWriterFactory.class))
         .setStorageEngineRepository(mockStorageEngineRepository)
@@ -797,10 +797,6 @@ public class TestUtils {
     executor.shutdown();
     executor.shutdownNow();
     Assert.assertTrue(executor.awaitTermination(timeout, unit));
-  }
-
-  public static void addIngestionIsolationToProperties(Properties properties) {
-    properties.putAll(getIngestionIsolationPropertyMap());
   }
 
   public static Map<String, Object> getIngestionIsolationPropertyMap() {

@@ -34,7 +34,6 @@ import org.apache.logging.log4j.Logger;
 public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(HDFSSchemaSource.class);
   private static final String UNDERSCORE = "_";
-  private static final String SEPARATOR = "/";
   private static final String RMD_SCHEMA_PREFIX = "RMD";
   private static final String VALUE_SCHEMA_PREFIX = "VALUE";
 
@@ -43,15 +42,15 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
   private final Path rmdSchemaDir;
   private final Path valueSchemaDir;
 
-  public HDFSSchemaSource(final String valueSchemaDir, final String rmdSchemaDir, final String storeName)
+  public HDFSSchemaSource(final Path valueSchemaDir, final Path rmdSchemaDir, final String storeName)
       throws IOException {
     Configuration conf = new Configuration();
-    this.rmdSchemaDir = new Path(rmdSchemaDir);
+    this.rmdSchemaDir = rmdSchemaDir;
     this.fs = this.rmdSchemaDir.getFileSystem(conf);
     if (!fs.exists(this.rmdSchemaDir)) {
       fs.mkdirs(this.rmdSchemaDir);
     }
-    this.valueSchemaDir = new Path(valueSchemaDir);
+    this.valueSchemaDir = valueSchemaDir;
     if (!fs.exists(this.valueSchemaDir)) {
       fs.mkdirs(this.valueSchemaDir);
     }
@@ -59,8 +58,17 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
     this.storeName = storeName;
   }
 
-  public HDFSSchemaSource(final String valueSchemaDir, final String rmdSchemaDir) throws IOException {
+  public HDFSSchemaSource(final Path valueSchemaDir, final Path rmdSchemaDir) throws IOException {
     this(valueSchemaDir, rmdSchemaDir, null);
+  }
+
+  public HDFSSchemaSource(final String valueSchemaDir, final String rmdSchemaDir, final String storeName)
+      throws IOException {
+    this(new Path(valueSchemaDir), new Path(rmdSchemaDir), storeName);
+  }
+
+  public HDFSSchemaSource(final String valueSchemaDir, final String rmdSchemaDir) throws IOException {
+    this(new Path(valueSchemaDir), new Path(rmdSchemaDir), null);
   }
 
   public String getRmdSchemaPath() {
@@ -91,10 +99,9 @@ public class HDFSSchemaSource implements SchemaSource, AutoCloseable {
     for (MultiSchemaResponse.Schema schema: schemas) {
       // Path for RMD schema is /<rmdSchemaDir>/<valueSchemaId>_<rmdSchemaId>
       // Path for Value schema is /<valueSchemaDir>/<valueSchemaId>
-      String schemaFileName = isRmdSchema
-          ? rmdSchemaDir + SEPARATOR + schema.getRmdValueSchemaId() + UNDERSCORE + schema.getId()
-          : valueSchemaDir + SEPARATOR + schema.getId();
-      Path schemaPath = new Path(schemaFileName);
+      Path schemaPath = isRmdSchema
+          ? new Path(rmdSchemaDir, schema.getRmdValueSchemaId() + UNDERSCORE + schema.getId())
+          : new Path(valueSchemaDir, String.valueOf(schema.getId()));
       if (!fs.exists(schemaPath)) {
         try (FSDataOutputStream outputStream = fs.create(schemaPath);
             OutputStreamWriter outputStreamWriter = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {

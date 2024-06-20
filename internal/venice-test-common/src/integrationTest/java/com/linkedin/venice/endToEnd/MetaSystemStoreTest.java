@@ -443,10 +443,8 @@ public class MetaSystemStoreTest {
         10,
         TimeUnit.SECONDS);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      assertTrue(
-          nativeMetadataRepository.getStore(regularVeniceStoreName)
-              .getVersion(versionCreationResponse.getVersion())
-              .isPresent());
+      assertNotNull(
+          nativeMetadataRepository.getStore(regularVeniceStoreName).getVersion(versionCreationResponse.getVersion()));
       assertEquals(
           nativeMetadataRepository.getStore(regularVeniceStoreName)
               .getVersionStatus(versionCreationResponse.getVersion()),

@@ -45,9 +45,7 @@ public class ServerStoreAclHandlerTest {
   @Test
   public void testCheckWhetherAccessHasAlreadyApprovedGrpc() {
     Metadata headers = new Metadata();
-    headers.put(
-        Metadata.Key.of(ServerAclHandler.GRPC_SERVER_ACL_APPROVED_ATTRIBUTE_KEY, Metadata.ASCII_STRING_MARSHALLER),
-        "true");
+    headers.put(Metadata.Key.of(ServerAclHandler.SERVER_ACL_APPROVED, Metadata.ASCII_STRING_MARSHALLER), "true");
 
     assertTrue(
         ServerStoreAclHandler.checkWhetherAccessHasAlreadyApproved(headers),
@@ -60,9 +58,7 @@ public class ServerStoreAclHandlerTest {
     ServerCallHandler next = mock(ServerCallHandler.class);
 
     Metadata falseHeaders = new Metadata();
-    falseHeaders.put(
-        Metadata.Key.of(ServerAclHandler.GRPC_SERVER_ACL_APPROVED_ATTRIBUTE_KEY, Metadata.ASCII_STRING_MARSHALLER),
-        "false");
+    falseHeaders.put(Metadata.Key.of(ServerAclHandler.SERVER_ACL_APPROVED, Metadata.ASCII_STRING_MARSHALLER), "false");
 
     ServerStoreAclHandler handler =
         new ServerStoreAclHandler(mock(DynamicAccessController.class), mock(ReadOnlyStoreRepository.class));
@@ -72,9 +68,7 @@ public class ServerStoreAclHandlerTest {
     verify(next, times(1)).startCall(call, falseHeaders);
 
     Metadata trueHeaders = new Metadata();
-    trueHeaders.put(
-        Metadata.Key.of(ServerAclHandler.GRPC_SERVER_ACL_APPROVED_ATTRIBUTE_KEY, Metadata.ASCII_STRING_MARSHALLER),
-        "true");
+    trueHeaders.put(Metadata.Key.of(ServerAclHandler.SERVER_ACL_APPROVED, Metadata.ASCII_STRING_MARSHALLER), "true");
 
     // next.intercept call should not have been invoked
     handler.interceptCall(call, trueHeaders, next);

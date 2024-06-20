@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
@@ -108,6 +109,10 @@ public class VeniceControllerMultiClusterConfig {
 
   public long getDeprecatedJobTopicRetentionMs() {
     return getCommonConfig().getDeprecatedJobTopicRetentionMs();
+  }
+
+  public long getFatalDataValidationFailureRetentionMs() {
+    return getCommonConfig().getFatalDataValidationFailureRetentionMs();
   }
 
   public long getDeprecatedJobTopicMaxRetentionMs() {
@@ -226,6 +231,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getBackupVersionDefaultRetentionMs();
   }
 
+  public long getBackupVersionCleanupSleepMs() {
+    return getCommonConfig().getBackupVersionCleanupSleepMs();
+  }
+
   public boolean isControllerEnforceSSLOnly() {
     return getCommonConfig().isControllerEnforceSSLOnly();
   }
@@ -270,8 +279,19 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getStoreGraveyardCleanupSleepIntervalBetweenListFetchMinutes();
   }
 
-  // TODO: Remove this method once we fully support cluster-level pub sub adapter configuration.
   public PubSubClientsFactory getPubSubClientsFactory() {
     return getCommonConfig().getPubSubClientsFactory();
+  }
+
+  public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
+    return getCommonConfig().getSourceOfTruthAdminAdapterFactory();
+  }
+
+  public long getDanglingTopicCleanupIntervalSeconds() {
+    return getCommonConfig().getDanglingTopicCleanupIntervalSeconds();
+  }
+
+  public int getDanglingTopicOccurrenceThresholdForCleanup() {
+    return getCommonConfig().getDanglingTopicOccurrenceThresholdForCleanup();
   }
 }

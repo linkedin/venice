@@ -190,7 +190,8 @@ public class VeniceController {
           admin,
           multiClusterConfigs,
           pubSubTopicRepository,
-          new TopicCleanupServiceStats(metricsRepository));
+          new TopicCleanupServiceStats(metricsRepository),
+          pubSubClientsFactory);
       if (!(admin instanceof VeniceParentHelixAdmin)) {
         throw new VeniceException(
             "'VeniceParentHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in parent mode");
@@ -210,7 +211,8 @@ public class VeniceController {
           admin,
           multiClusterConfigs,
           pubSubTopicRepository,
-          new TopicCleanupServiceStats(metricsRepository));
+          new TopicCleanupServiceStats(metricsRepository),
+          pubSubClientsFactory);
       if (!(admin instanceof VeniceHelixAdmin)) {
         throw new VeniceException(
             "'VeniceHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in child mode");

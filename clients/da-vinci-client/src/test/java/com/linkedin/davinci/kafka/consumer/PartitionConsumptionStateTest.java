@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
@@ -22,9 +23,12 @@ import org.testng.annotations.Test;
 
 
 public class PartitionConsumptionStateTest {
+  private static final String replicaId = Utils.getReplicaId("topic1", 0);
+
   @Test
   public void testUpdateChecksum() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false, false);
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(replicaId, 0, 1, mock(OffsetRecord.class), false, false);
     pcs.initializeExpectedChecksum();
     byte[] rmdPayload = new byte[] { 127 };
     byte[] key1 = new byte[] { 1 };
@@ -79,8 +83,8 @@ public class PartitionConsumptionStateTest {
    */
   @Test
   public void testTransientRecordMap() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false, false);
-
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(replicaId, 0, 1, mock(OffsetRecord.class), false, false);
     byte[] key1 = new byte[] { 65, 66, 67, 68 };
     byte[] key2 = new byte[] { 65, 66, 67, 68 };
     byte[] key3 = new byte[] { 65, 66, 67, 69 };
@@ -126,13 +130,10 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testIsLeaderCompleted() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false, false);
-    // default is LEADER_COMPLETE_STATE_UNKNOWN
-    assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN);
-    assertFalse(pcs.isLeaderCompleted());
-
-    // test with LEADER_NOT_COMPLETED
-    pcs.setLeaderCompleteState(LeaderCompleteState.LEADER_NOT_COMPLETED);
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(replicaId, 0, 1, mock(OffsetRecord.class), false, false);
+    // default is LEADER_NOT_COMPLETED
+    assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_NOT_COMPLETED);
     assertFalse(pcs.isLeaderCompleted());
 
     // test with LEADER_COMPLETED

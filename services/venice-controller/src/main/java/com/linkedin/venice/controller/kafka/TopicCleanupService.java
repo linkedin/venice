@@ -5,13 +5,21 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -74,13 +82,20 @@ public class TopicCleanupService extends AbstractVeniceService {
   private boolean isRTTopicDeletionBlocked = false;
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
+
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
+  private PubSubAdminAdapter sourceOfTruthPubSubAdminAdapter;
+  private long recentDanglingTopicCleanupTime = -1L;
+  private final Map<PubSubTopic, Integer> danglingTopicOccurrenceCounter;
+  private final int danglingTopicOccurrenceThresholdForCleanup;
+  private final long danglingTopicCleanupIntervalMs;
 
   public TopicCleanupService(
       Admin admin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       PubSubTopicRepository pubSubTopicRepository,
-      TopicCleanupServiceStats topicCleanupServiceStats) {
+      TopicCleanupServiceStats topicCleanupServiceStats,
+      PubSubClientsFactory pubSubClientsFactory) {
     this.admin = admin;
     this.sleepIntervalBetweenTopicListFetchMs =
         multiClusterConfigs.getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
@@ -101,6 +116,33 @@ public class TopicCleanupService extends AbstractVeniceService {
     } else {
       this.multiDataCenterStoreToVersionTopicCount = Collections.emptyMap();
     }
+
+    this.danglingTopicCleanupIntervalMs =
+        Time.MS_PER_SECOND * multiClusterConfigs.getDanglingTopicCleanupIntervalSeconds();
+
+    PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory =
+        multiClusterConfigs.getSourceOfTruthAdminAdapterFactory();
+    PubSubAdminAdapterFactory pubSubAdminAdapterFactory = pubSubClientsFactory.getAdminAdapterFactory();
+    this.danglingTopicOccurrenceCounter = new HashMap<>();
+    this.danglingTopicOccurrenceThresholdForCleanup =
+        multiClusterConfigs.getDanglingTopicOccurrenceThresholdForCleanup();
+    if (!sourceOfTruthAdminAdapterFactory.getClass().equals(pubSubAdminAdapterFactory.getClass())
+        && danglingTopicCleanupIntervalMs > 0) {
+      this.sourceOfTruthPubSubAdminAdapter = constructSourceOfTruthPubSubAdminAdapter(sourceOfTruthAdminAdapterFactory);
+    } else {
+      this.sourceOfTruthPubSubAdminAdapter = null;
+    }
+  }
+
+  private PubSubAdminAdapter constructSourceOfTruthPubSubAdminAdapter(
+      PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory) {
+    VeniceProperties veniceProperties = admin.getPubSubSSLProperties(getTopicManager().getPubSubClusterAddress());
+    return sourceOfTruthAdminAdapterFactory.create(veniceProperties, pubSubTopicRepository);
+  }
+
+  // For test purpose
+  void setSourceOfTruthPubSubAdminAdapter(PubSubAdminAdapter pubSubAdminAdapter) {
+    this.sourceOfTruthPubSubAdminAdapter = pubSubAdminAdapter;
   }
 
   @Override
@@ -248,6 +290,17 @@ public class TopicCleanupService extends AbstractVeniceService {
     if (realTimeTopicDeletionNeeded.get() && !multiDataCenterStoreToVersionTopicCount.isEmpty()) {
       refreshMultiDataCenterStoreToVersionTopicCountMap(topicsWithRetention.keySet());
     }
+
+    // Check if there are dangling topics to be deleted.
+    if (sourceOfTruthPubSubAdminAdapter != null
+        && System.currentTimeMillis() - danglingTopicCleanupIntervalMs > recentDanglingTopicCleanupTime) {
+      List<PubSubTopic> pubSubTopics = collectDanglingTopics(topicsWithRetention);
+      if (!pubSubTopics.isEmpty()) {
+        LOGGER.info("Find dangling topics: {} not present among all pubsub systems.", pubSubTopics);
+      }
+      recentDanglingTopicCleanupTime = System.currentTimeMillis();
+      topics.addAll(pubSubTopics);
+    }
   }
 
   private void refreshMultiDataCenterStoreToVersionTopicCountMap(Set<PubSubTopic> localTopics) {
@@ -373,7 +426,7 @@ public class TopicCleanupService extends AbstractVeniceService {
 
     return veniceTopics.stream()
         /** Consider only truncated topics */
-        .filter(t -> admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(t)))
+        .filter(t -> admin.isTopicTruncatedBasedOnRetention(t.getName(), topicRetentions.get(t)))
         /** Always preserve the last {@link #minNumberOfUnusedKafkaTopicsToPreserve} topics, whether they are healthy or not */
         .filter(t -> Version.parseVersionFromKafkaTopicName(t.getName()) <= maxVersionNumberToDelete)
         /**
@@ -401,4 +454,72 @@ public class TopicCleanupService extends AbstractVeniceService {
         })
         .collect(Collectors.toList());
   }
+
+  private List<PubSubTopic> collectDanglingTopics(Map<PubSubTopic, Long> pubSubTopicsRetentions) {
+    List<PubSubTopic> topicsToCleanup = new ArrayList<>();
+    Set<PubSubTopic> kafkaTopics = sourceOfTruthPubSubAdminAdapter.listAllTopics();
+    for (Map.Entry<PubSubTopic, Long> entry: pubSubTopicsRetentions.entrySet()) {
+      PubSubTopic pubSubTopic = entry.getKey();
+      if (!kafkaTopics.contains(pubSubTopic)) {
+        try {
+          String storeName = pubSubTopic.getStoreName();
+          if (PubSubTopicType.isAdminTopic(pubSubTopic.getName())) {
+            LOGGER.error("Skip dangling admin topic {}.", pubSubTopic);
+            continue;
+          }
+          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          Store store = admin.getStore(clusterDiscovered, storeName);
+          LOGGER.warn("Find topic discrepancy case: {}", pubSubTopic);
+          if (!isStillValidRealtimeTopic(pubSubTopic, store) || !isStillValidVersionTopic(pubSubTopic, store)) {
+            if (checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
+              LOGGER.warn("Will remove consistently found dangling topic {}.", pubSubTopic);
+              topicsToCleanup.add(pubSubTopic);
+              danglingTopicOccurrenceCounter.remove(pubSubTopic);
+            }
+          }
+        } catch (Exception e) {
+          if (e instanceof VeniceNoStoreException) {
+            if (checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
+              LOGGER.warn("No store is found for topic: {}", pubSubTopic);
+              topicsToCleanup.add(pubSubTopic);
+            }
+          } else {
+            LOGGER.error("Error happened during checking dangling topic: {}", pubSubTopic, e);
+          }
+        }
+      }
+    }
+    return topicsToCleanup;
+  }
+
+  private boolean isStillValidRealtimeTopic(PubSubTopic pubSubTopic, Store store) {
+    if (pubSubTopic.isRealTime() && !store.isHybrid()) {
+      for (Version version: store.getVersions()) {
+        if (version.getHybridStoreConfig() != null) {
+          break;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
+  private boolean isStillValidVersionTopic(PubSubTopic pubSubTopic, Store store) {
+    if (pubSubTopic.isVersionTopicOrStreamReprocessingTopic() || pubSubTopic.isViewTopic()) {
+      int versionNum = Version.parseVersionFromKafkaTopicName(pubSubTopic.getName());
+      if (!store.containsVersion(versionNum)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private boolean checkIfDanglingTopicConsistentlyFound(PubSubTopic pubSubTopic) {
+    danglingTopicOccurrenceCounter.compute(pubSubTopic, (key, val) -> (val == null) ? 1 : val + 1);
+    if (danglingTopicOccurrenceCounter.get(pubSubTopic) >= danglingTopicOccurrenceThresholdForCleanup) {
+      return true;
+    }
+    return false;
+  }
+
 }

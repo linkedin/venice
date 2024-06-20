@@ -56,7 +56,6 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
@@ -108,8 +107,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VENICE_WRITER_CONFIG_PREFIX + "replication.metadata.chunking.enabled";
   public static final String MAX_ATTEMPTS_WHEN_TOPIC_MISSING =
       VENICE_WRITER_CONFIG_PREFIX + "max.attemps.when.topic.missing";
-  public static final String SLEEP_TIME_MS_WHEN_TOPIC_MISSING =
-      VENICE_WRITER_CONFIG_PREFIX + "sleep.time.ms.when.topic.missing";
   /**
    * A negative value or 0 will disable the feature.
    */
@@ -150,13 +147,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * the topic is missing.
    */
   public static final int DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING = 30;
-
-  /**
-   * Sleep time in between retry attempts when a topic is missing. Under default settings, the writer will
-   * stall 30 * 10 seconds = 300 seconds = 5 minutes (assuming the failure from Kafka is instantaneous,
-   * which of course it isn't, therefore this is a minimum stall time, not a max).
-   */
-  public static final int DEFAULT_SLEEP_TIME_MS_WHEN_TOPIC_MISSING = 10 * Time.MS_PER_SECOND;
 
   /**
    * The default value of the "upstreamOffset" field in avro record {@link LeaderMetadata}.
@@ -227,7 +217,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final CheckSumType checkSumType;
   private final int maxSizeForUserPayloadPerMessageInBytes;
   private final int maxAttemptsWhenTopicMissing;
-  private final long sleepTimeMsWhenTopicMissing;
   private final long maxElapsedTimeForSegmentInMs;
   /**
    * Map of partition to {@link Segment}, which keeps track of all segment-related state.
@@ -249,7 +238,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final boolean elapsedTimeForClosingSegmentEnabled;
   private final Object[] partitionLocks;
   private String writerId;
-  private boolean isClosed = false;
+  private volatile boolean isClosed = false;
   private final Object closeLock = new Object();
 
   /**
@@ -312,8 +301,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingFlagInvoked = false;
     this.maxAttemptsWhenTopicMissing =
         props.getInt(MAX_ATTEMPTS_WHEN_TOPIC_MISSING, DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING);
-    this.sleepTimeMsWhenTopicMissing =
-        props.getInt(SLEEP_TIME_MS_WHEN_TOPIC_MISSING, DEFAULT_SLEEP_TIME_MS_WHEN_TOPIC_MISSING);
     this.maxElapsedTimeForSegmentInMs =
         props.getLong(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS);
     this.elapsedTimeForClosingSegmentEnabled = maxElapsedTimeForSegmentInMs > 0;
@@ -403,48 +390,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
-  /**
-   * Close the {@link VeniceWriter}.
-   *
-   * Deprecating this method due to the concern of sending END_OF_SEGMENT control message to a non-existing topic can be
-   * blocked indefinitely as it is calling
-   * {@link #sendMessage(KeyProvider, KafkaMessageEnvelopeProvider, int, PubSubProducerCallback, boolean)}.get()
-   * without timeout.
-   *
-   * @param gracefulClose whether to end the segments and send END_OF_SEGMENT control message.
-   * @param retryOnGracefulCloseFailure whether to retry on graceful close failure.
-   */
-  @Deprecated
-  public void close(boolean gracefulClose, boolean retryOnGracefulCloseFailure) {
-    synchronized (closeLock) {
-      if (isClosed) {
-        return;
-      }
-
-      logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
-      try (Timer ignore = Timer.run(
-          elapsedTimeInMs -> logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs))) {
-        try {
-          // If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
-          // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
-          if (gracefulClose) {
-            endAllSegments(true);
-          }
-          // DO NOT call the {@link #PubSubProducerAdapter.close(int) version from here.}
-          // For non-shared producer mode gracefulClose will flush the producer
-
-          producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
-          OPEN_VENICE_WRITER_COUNT.decrementAndGet();
-        } catch (Exception e) {
-          handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
-        } finally {
-          threadPoolExecutor.shutdown();
-          isClosed = true;
-        }
-      }
-    }
-  }
-
   public CompletableFuture<VeniceResourceCloseResult> closeAsync(boolean gracefulClose) {
     return closeAsync(gracefulClose, true);
   }
@@ -460,19 +405,22 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       if (isClosed) {
         return CompletableFuture.completedFuture(VeniceResourceCloseResult.ALREADY_CLOSED);
       }
-    }
 
-    return CompletableFuture.supplyAsync(() -> {
-      synchronized (closeLock) {
-        if (isClosed) {
-          return VeniceResourceCloseResult.ALREADY_CLOSED;
-        }
-        logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
-        try (Timer ignore = Timer.run(
-            elapsedTimeInMs -> logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs))) {
+      return CompletableFuture.supplyAsync(() -> {
+        synchronized (closeLock) {
+          if (isClosed) {
+            return VeniceResourceCloseResult.ALREADY_CLOSED;
+          }
+
+          logger.info("Closing VeniceWriter for topic: {}, gracefulness: {}", topicName, gracefulClose);
+          long timeAtStartOfClose = System.currentTimeMillis();
           try {
-            // try to end all segments before closing the producer.
             if (gracefulClose) {
+              /**
+               * If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
+               * will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
+               * N.B.: This call is run async because it could block indefinitely in case the topic does not exist.
+               */
               CompletableFuture<Void> endSegmentsFuture =
                   CompletableFuture.runAsync(() -> endAllSegments(true), threadPoolExecutor);
               try {
@@ -485,19 +433,28 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 logger.warn("Swallowed an exception while trying to end all segments for topic: {}", topicName, e);
               }
             }
-            producerAdapter.close(topicName, closeTimeOutInMs, gracefulClose);
+
+            long timeLeftToClose = 0; // N.B.: 0 indicates an ungraceful close
+            if (gracefulClose) {
+              /** N.B.: We measure the time left to try to adhere strictly to the configured {@link closeTimeOutInMs} */
+              long timeSinceStartOfClose = System.currentTimeMillis() - timeAtStartOfClose;
+              timeLeftToClose = Math.max(0, closeTimeOutInMs - timeSinceStartOfClose);
+            }
+
+            producerAdapter.close(timeLeftToClose);
             OPEN_VENICE_WRITER_COUNT.decrementAndGet();
           } catch (Exception e) {
             handleExceptionInClose(e, gracefulClose, retryOnGracefulCloseFailure);
           } finally {
-            threadPoolExecutor.shutdown();
             isClosed = true;
+            threadPoolExecutor.shutdown();
+            long elapsedTimeInMs = System.currentTimeMillis() - timeAtStartOfClose;
+            logger.info("Closed VeniceWriter for topic: {} in {} ms", topicName, elapsedTimeInMs);
           }
         }
         return VeniceResourceCloseResult.SUCCESS;
-      }
-
-    }, threadPoolExecutor);
+      }, threadPoolExecutor);
+    }
   }
 
   void handleExceptionInClose(Exception e, boolean gracefulClose, boolean retryOnGracefulCloseFailure) {
@@ -507,11 +464,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     // For graceful close, swallow the exception and give another try to close it ungracefully.
     try {
       if (gracefulClose && retryOnGracefulCloseFailure) {
-        logger.info(
-            "Ungracefully closing the VeniceWriter for topic: {}, closeTimeOut: {} ms",
-            topicName,
-            closeTimeOutInMs);
-        producerAdapter.close(topicName, closeTimeOutInMs, false);
+        logger.info("Ungracefully closing the VeniceWriter for topic: {}, closeTimeOut: 0 ms", topicName);
+        producerAdapter.close(0);
         OPEN_VENICE_WRITER_COUNT.decrementAndGet();
       }
     } catch (Exception ex) {
@@ -524,11 +478,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   @Override
   public void close() {
     close(true);
-  }
-
-  /** Used in tests only */
-  PubSubProducerAdapter getProducerAdapter() {
-    return producerAdapter;
   }
 
   /**
@@ -1285,8 +1234,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public void closePartition(int partition) {
     if (segments[partition] != null) {
-      logger.info("Closing partition: {} in VeniceWriter.", partition);
-      endSegment(partition, true);
+      logger.debug("Closing partition: {} in VeniceWriter.", partition);
+      try {
+        endSegment(partition, true).get();
+      } catch (InterruptedException | ExecutionException e) {
+        handleControlMessageProducingException(e, ControlMessageType.END_OF_SEGMENT);
+      }
     }
   }
 
@@ -1630,7 +1583,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     startOfSegment.checksumType = checkSumType.getValue();
     startOfSegment.upcomingAggregates = new ArrayList<>(); // TODO Add extra aggregates
     controlMessage.controlMessageUnion = startOfSegment;
-    sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
+    sendControlMessageWithRetriesForNonExistentTopic(
+        controlMessage,
+        partition,
+        debugInfo,
+        null,
+        DEFAULT_LEADER_METADATA_WRAPPER);
   }
 
   /**
@@ -1641,7 +1599,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param finalSegment a boolean indicating if this is the final segment that this producer will send
    *                     into this partition.
    */
-  private void sendEndOfSegment(int partition, Map<String, String> debugInfo, boolean finalSegment) {
+  private CompletableFuture<PubSubProduceResult> sendEndOfSegment(
+      int partition,
+      Map<String, String> debugInfo,
+      boolean finalSegment) {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
     EndOfSegment endOfSegment = new EndOfSegment();
@@ -1649,7 +1610,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     endOfSegment.computedAggregates = new ArrayList<>(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
-    sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
+    return sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
   }
 
   /**
@@ -1710,39 +1671,39 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * This function sends a control message into the prescribed partition.
    *
-   * If the Kafka topic does not exist, this function will back off for {@link #sleepTimeMsWhenTopicMissing}
-   * ms and try again for a total of {@link #maxAttemptsWhenTopicMissing} attempts. Note that this back off
-   * and retry behavior does not happen in {@link #sendMessage(KeyProvider, MessageType, Object, int, PubSubProducerCallback, LeaderMetadataWrapper, long)}
+   * If the Kafka topic does not exist, this function will try again for a total of {@link #maxAttemptsWhenTopicMissing}
+   * attempts. Note that this retry behavior does not happen in
+   * {@link #sendMessage(KeyProvider, MessageType, Object, int, PubSubProducerCallback, LeaderMetadataWrapper, long)}
    * because that function returns a {@link Future}, and it is {@link Future#get()} which throws the relevant
    * exception. In any case, the topic should be seeded with a {@link ControlMessageType#START_OF_SEGMENT}
-   * at first, and therefore, there should be no cases where a topic has not been created yet and we attempt
+   * at first, and therefore, there should be no cases where a topic has not been created yet, and we attempt
    * to write a data message first, prior to a control message. If a topic did disappear later on in the
    * {@link VeniceWriter}'s lifecycle, then it would be appropriate to let that {@link Future} fail.
    *
-   * This function is synchronized because if the retries need to be exercised, then it would cause a DIV failure
-   * if another message slipped in after the first attempt and before the eventually successful attempt.
+   * This function has a synchronized block because if the retries need to be exercised, then it would cause a DIV
+   * failure if another message slipped in after the first attempt and before the eventually successful attempt.
    *
    * @param controlMessage a {@link ControlMessage} instance to persist into Kafka.
    * @param partition the Kafka partition to write to.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    * @param callback callback to execute when the record has been acknowledged by the Kafka server (null means no callback)
    */
-  public void sendControlMessage(
+  public void sendControlMessageWithRetriesForNonExistentTopic(
       ControlMessage controlMessage,
       int partition,
       Map<String, String> debugInfo,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper) {
+    controlMessage.debugInfo = getDebugInfo(debugInfo);
+    int attempt = 1;
+    boolean updateCheckSum = true;
+    ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+    boolean isEndOfSegment = controlMessageType == ControlMessageType.END_OF_SEGMENT;
     synchronized (this.partitionLocks[partition]) {
       // Work around until we upgrade to a more modern Avro version which supports overriding the
       // String implementation.
-      controlMessage.debugInfo = getDebugInfo(debugInfo);
-      int attempt = 1;
-      boolean updateCheckSum = true;
       while (true) {
         try {
-          boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
-
           sendMessage(
               this::getControlMessageKey,
               MessageType.CONTROL_MESSAGE,
@@ -1760,27 +1721,65 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
              * Not a super clean way to match the exception, but unfortunately, since it is wrapped inside of an
              * {@link ExecutionException}, there may be no other way.
              */
-            String errorMessage =
-                "Caught a UNKNOWN_TOPIC_OR_PARTITION error, attempt " + attempt + "/" + maxAttemptsWhenTopicMissing;
             if (attempt < maxAttemptsWhenTopicMissing) {
               attempt++;
               updateCheckSum = false; // checksum has already been updated, and should not be updated again for retries
-              logger.warn("{}, will sleep {} ms before the next attempt.", errorMessage, sleepTimeMsWhenTopicMissing);
+              logger.warn(
+                  "Caught a UNKNOWN_TOPIC_OR_PARTITION error, attempt {}/{}",
+                  attempt,
+                  maxAttemptsWhenTopicMissing);
             } else {
-              throw new VeniceException(errorMessage + ", will bubble up.");
+              throw new VeniceException(
+                  "Caught a UNKNOWN_TOPIC_OR_PARTITION error, attempt " + attempt + "/" + maxAttemptsWhenTopicMissing
+                      + ", will bubble up.");
             }
-          } else if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
-            throw new VeniceResourceAccessException(
-                "You do not have permission to write to this store. Please check that ACLs are set correctly.",
-                e);
           } else {
-            throw new VeniceException(
-                "Got an exception while trying to send a control message ("
-                    + ControlMessageType.valueOf(controlMessage).name() + ")",
-                e);
+            handleControlMessageProducingException(e, controlMessageType);
           }
         }
       }
+    }
+  }
+
+  private void handleControlMessageProducingException(Exception e, ControlMessageType controlMessageType) {
+    if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
+      throw new VeniceResourceAccessException(
+          "You do not have permission to write to this store. Please check that ACLs are set correctly.",
+          e);
+    } else {
+      throw new VeniceException(
+          "Got an exception while trying to send a control message (" + controlMessageType.name() + ")",
+          e);
+    }
+  }
+
+  /**
+   * Main function for sending control messages. Synchronization is most minimal and there is no error checking.
+   *
+   * See also:
+   * {@link #sendControlMessageWithRetriesForNonExistentTopic(ControlMessage, int, Map, PubSubProducerCallback, LeaderMetadataWrapper)}
+   */
+  public CompletableFuture<PubSubProduceResult> sendControlMessage(
+      ControlMessage controlMessage,
+      int partition,
+      Map<String, String> debugInfo,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper) {
+    // Work around until we upgrade to a more modern Avro version which supports overriding the
+    // String implementation.
+    controlMessage.debugInfo = getDebugInfo(debugInfo);
+    boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
+    synchronized (this.partitionLocks[partition]) {
+      return sendMessage(
+          this::getControlMessageKey,
+          MessageType.CONTROL_MESSAGE,
+          controlMessage,
+          isEndOfSegment,
+          partition,
+          callback,
+          true,
+          leaderMetadataWrapper,
+          VENICE_DEFAULT_LOGICAL_TS);
     }
   }
 
@@ -1947,7 +1946,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         if (!sendEndOfSegment) {
           long currentSegmentStartTime = segmentsStartTimeArray[partition];
           if (currentSegmentStartTime != -1
-              && LatencyUtils.getElapsedTimeInMs(currentSegmentStartTime) > maxElapsedTimeForSegmentInMs) {
+              && LatencyUtils.getElapsedTimeFromMsToMs(currentSegmentStartTime) > maxElapsedTimeForSegmentInMs) {
             endSegment(partition, false);
             currentSegment = startSegment(partition);
           }
@@ -1994,18 +1993,25 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private void endAllSegments(boolean finalSegment) {
     Segment segment;
+    List<CompletableFuture> futures = new ArrayList<>();
     for (int i = 0; i < segments.length; i++) {
       segment = segments[i];
       if (segment != null) {
-        endSegment(i, finalSegment);
+        futures.add(endSegment(i, finalSegment));
       }
+    }
+    try {
+      CompletableFuture.allOf(futures.toArray(new CompletableFuture[futures.size()])).get();
+    } catch (ExecutionException | InterruptedException e) {
+      handleControlMessageProducingException(e, ControlMessageType.END_OF_SEGMENT);
     }
   }
 
   /**
    * @param partition in which to end the current segment
+   * @return A CompletableFuture which either contains a result if a EOS was sent, or null if none needed to be sent.
    */
-  public void endSegment(int partition, boolean finalSegment) {
+  private CompletableFuture<PubSubProduceResult> endSegment(int partition, boolean finalSegment) {
     synchronized (this.partitionLocks[partition]) {
       Segment currentSegment = segments[partition];
       if (currentSegment == null) {
@@ -2016,7 +2022,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         logger.debug("endSegment(partition {}) called but currentSegment.ended == true. Ignoring.", partition);
       } else {
         try {
-          sendEndOfSegment(
+          return sendEndOfSegment(
               partition,
               new HashMap<>(), // TODO: Add extra debugging info
               finalSegment
@@ -2033,6 +2039,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }
       }
     }
+    return CompletableFuture.completedFuture(null);
   }
 
   public Time getTime() {

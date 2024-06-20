@@ -73,6 +73,7 @@ import com.linkedin.venice.datarecovery.DataRecoveryClient;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixSchemaAccessor;
@@ -185,7 +186,7 @@ public class AdminTool {
       "zookeeper.ssl.trustStore.password",
       "zookeeper.ssl.trustStore.type");
 
-  public static void main(String args[]) throws Exception {
+  public static void main(String[] args) throws Exception {
     // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
     PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(new VeniceProperties(System.getProperties()));
     CommandLine cmd = getCommandLine(args);
@@ -194,7 +195,7 @@ public class AdminTool {
 
       // Variables used within the switch case need to be defined in advance
       String veniceUrl = null;
-      String clusterName;
+      String clusterName = null;
       String storeName;
       String versionString;
       String topicName;
@@ -212,11 +213,31 @@ public class AdminTool {
        */
       buildSslFactory(cmd);
 
-      if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL)
-          && Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER)) {
+      boolean hasUrlArg = Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL);
+      if (hasUrlArg) {
         veniceUrl = getRequiredArgument(cmd, Arg.URL);
-        clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-        controllerClient = ControllerClient.constructClusterControllerClient(clusterName, veniceUrl, sslFactory);
+
+        boolean hasRequiredClusterArg = Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER);
+        boolean hasOptionalClusterArg = Arrays.asList(foundCommand.getOptionalArgs()).contains(Arg.CLUSTER);
+        String optionalClusterArgValue = getOptionalArgument(cmd, Arg.CLUSTER);
+        if (hasRequiredClusterArg) {
+          clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+        } else if (hasOptionalClusterArg && optionalClusterArgValue != null) {
+          clusterName = optionalClusterArgValue;
+        } else if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.STORE) && hasOptionalClusterArg) {
+          storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
+          D2ServiceDiscoveryResponse serviceDiscoveryResponse =
+              ControllerClient.discoverCluster(veniceUrl, storeName, sslFactory, 1);
+          if (serviceDiscoveryResponse.isError()) {
+            throw new VeniceException(serviceDiscoveryResponse.getError());
+          }
+          clusterName = serviceDiscoveryResponse.getCluster();
+          System.out.printf("Store %s is discovered in cluster %s%n", storeName, clusterName);
+        }
+
+        if (clusterName != null) {
+          controllerClient = ControllerClientFactory.getControllerClient(clusterName, veniceUrl, sslFactory);
+        }
       }
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())) {
@@ -2141,7 +2162,14 @@ public class AdminTool {
     }
 
     // Skip original store deletion if it has already been deleted
-    if (srcControllerClient.getStore(storeName).getStore() != null) {
+    StoreResponse srcStoreResponse = srcControllerClient.getStore(storeName);
+    if (srcStoreResponse.isError() && srcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
+      System.err.println(
+          "ERROR: failed to check store " + storeName + " existence in original cluster " + srcClusterName
+              + " due to error: " + srcStoreResponse.getError());
+    }
+
+    if (srcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
       // Delete original store
       srcControllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
@@ -2157,7 +2185,13 @@ public class AdminTool {
     ChildAwareResponse response = srcControllerClient.listChildControllers(srcClusterName);
     Map<String, ControllerClient> srcChildControllerClientMap = getControllerClientMap(srcClusterName, response);
     for (Map.Entry<String, ControllerClient> entry: srcChildControllerClientMap.entrySet()) {
-      if (entry.getValue().getStore(storeName).getStore() != null) {
+      StoreResponse childSrcStoreResponse = entry.getValue().getStore(storeName);
+      if (childSrcStoreResponse.isError() && childSrcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
+        System.err.println(
+            "ERROR: failed to check store " + storeName + " existence in original cluster " + srcClusterName
+                + " in fabric " + entry.getKey() + " due to error: " + childSrcStoreResponse.getError());
+      }
+      if (childSrcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
         System.err.println(
             "ERROR: store " + storeName + " still exists in source cluster " + srcClusterName + " in fabric "
                 + entry.getKey() + ". Please try again later.");

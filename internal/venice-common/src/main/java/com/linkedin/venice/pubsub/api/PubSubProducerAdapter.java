@@ -52,15 +52,7 @@ public interface PubSubProducerAdapter {
 
   void flush();
 
-  void close(int closeTimeOutMs, boolean doFlush);
-
-  default void close(String topic, int closeTimeOutMs, boolean doFlush) {
-    close(closeTimeOutMs, doFlush);
-  }
-
-  default void close(String topic, int closeTimeOutMs) {
-    close(closeTimeOutMs, true);
-  }
+  void close(long closeTimeOutMs);
 
   Object2DoubleMap<String> getMeasurableProducerMetrics();
 

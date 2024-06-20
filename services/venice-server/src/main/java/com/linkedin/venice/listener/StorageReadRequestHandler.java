@@ -300,7 +300,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           if (request.shouldRequestBeTerminatedEarly()) {
             throw new VeniceRequestEarlyTerminationException(request.getStoreName());
           }
-          double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
+          double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
           int queueLen = executor.getQueue().size();
           ReadResponse response;
           switch (request.getRequestType()) {
@@ -370,8 +370,15 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       AdminResponse response = handleServerAdminRequest((AdminRequest) message);
       context.writeAndFlush(response);
     } else if (message instanceof MetadataFetchRequest) {
-      MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
-      context.writeAndFlush(response);
+      try {
+        MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
+        context.writeAndFlush(response);
+      } catch (UnsupportedOperationException e) {
+        LOGGER.warn(
+            "Metadata requested by a storage node read quota not enabled store: {}",
+            ((MetadataFetchRequest) message).getStoreName());
+        context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.FORBIDDEN));
+      }
     } else if (message instanceof CurrentVersionRequest) {
       ServerCurrentVersionResponse response = handleCurrentVersionRequest((CurrentVersionRequest) message);
       context.writeAndFlush(response);
@@ -408,8 +415,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     boolean misrouted = false;
     Store store = metadataRepository.getStore(request.getStoreName());
     if (store != null) {
-      Optional<Version> version = store.getVersion(Version.parseVersionFromVersionTopicName(request.getResourceName()));
-      if (!version.isPresent()) {
+      Version version = store.getVersion(Version.parseVersionFromVersionTopicName(request.getResourceName()));
+      if (version == null) {
         misrouted = true;
       }
     }
@@ -469,19 +476,15 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     try {
       int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersion);
       Store store = metadataRepository.getStoreOrThrow(storeName);
-      Optional<Version> version = store.getVersion(versionNumber);
-      if (version.isPresent()) {
-        partitionerConfig = version.get().getPartitionerConfig();
-        if (partitionerConfig == null) {
-          /**
-           * If we did find the version in the metadata, and its partitioner config is null (common case) then we want
-           * to distinguish this by caching the default partitioner, otherwise we will end up re-executing this
-           * closure repeatedly and needlessly.
-           */
-          partitionerConfig = new PartitionerConfigImpl();
-        }
-      } else {
-        throw new VeniceException("Can not acquire partitionerConfig (version " + versionNumber + " not found).");
+      Version version = store.getVersionOrThrow(versionNumber);
+      partitionerConfig = version.getPartitionerConfig();
+      if (partitionerConfig == null) {
+        /**
+         * If we did find the version in the metadata, and its partitioner config is null (common case) then we want
+         * to distinguish this by caching the default partitioner, otherwise we will end up re-executing this
+         * closure repeatedly and needlessly.
+         */
+        partitionerConfig = new PartitionerConfigImpl();
       }
     } catch (VeniceException e) {
       throw e;
@@ -751,7 +754,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
       record.keyIndex = key.getKeyIndex();
       record.value = ByteBuffer.wrap(resultSerializer.serialize(result));
-      response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
+      response.addReadComputeSerializationLatency(LatencyUtils.getElapsedTimeFromNSToMS(serializeStartTimeInNS));
       response.addReadComputeOutputSize(record.value.remaining());
       response.addRecord(record);
       return true;
@@ -790,7 +793,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         reusableObjects.computeContext,
         reusableValueRecord,
         reusableResultRecord);
-    response.addReadComputeLatency(LatencyUtils.getLatencyInMS(computeStartTimeInNS));
+    response.addReadComputeLatency(LatencyUtils.getElapsedTimeFromNSToMS(computeStartTimeInNS));
     return reusableResultRecord;
   }
 

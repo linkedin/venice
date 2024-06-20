@@ -72,7 +72,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -192,7 +191,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     when(store.getCurrentVersion()).thenReturn(1);
     when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     when(metadataRepository.getStore(anyString())).thenReturn(store);
-    when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
+    when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     when(metadataRepository.getValueSchema(storeName, TEST_SCHEMA_ID))
         .thenReturn(new SchemaEntry(TEST_SCHEMA_ID, valueSchema));
     bootstrappingVeniceChangelogConsumer.setStoreRepository(metadataRepository);
@@ -203,8 +202,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
     PubSubTopic changeCaptureTopic =
         pubSubTopicRepository.getTopic(versionTopic.getName() + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
-    PubSubTopicPartition topicPartition_0 = new PubSubTopicPartitionImpl(changeCaptureTopic, 0);
-    PubSubTopicPartition topicPartition_1 = new PubSubTopicPartitionImpl(changeCaptureTopic, 1);
+    PubSubTopicPartition topicPartition_0 = new PubSubTopicPartitionImpl(versionTopic, 0);
+    PubSubTopicPartition topicPartition_1 = new PubSubTopicPartitionImpl(versionTopic, 1);
     Set<PubSubTopicPartition> assignments = ImmutableSet.of(topicPartition_0, topicPartition_1);
     doReturn(assignments).when(pubSubConsumer).getAssignment();
     doReturn(0L).when(pubSubConsumer).getLatestOffset(topicPartition_0);
@@ -251,7 +250,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     ValueBytes valueBytes = new ValueBytes();
     valueBytes.schemaId = TEST_SCHEMA_ID;
     valueBytes.value = ByteBuffer.wrap(valueSerializer.serialize(TEST_NEW_VALUE_1));
-    bootstrappingVeniceChangelogConsumer.onRecordReceivedForStorage(
+    bootstrappingVeniceChangelogConsumer.onRecordReceivedFromStorage(
         testRecord.getKey().getKey(),
         ValueRecord.create(TEST_SCHEMA_ID, valueBytes.value.array()).serialize(),
         0,
@@ -282,7 +281,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     valueBytes.schemaId = TEST_SCHEMA_ID;
     valueBytes.value = ByteBuffer.wrap(valueSerializer.serialize(TEST_NEW_VALUE_2));
 
-    bootstrappingVeniceChangelogConsumer.onRecordReceivedForStorage(
+    bootstrappingVeniceChangelogConsumer.onRecordReceivedFromStorage(
         testRecord.getKey().getKey(),
         ValueRecord.create(TEST_SCHEMA_ID, valueBytes.value.array()).serialize(),
         1,

@@ -56,7 +56,7 @@ public class PushTimeoutTest {
         .setPubSubTopicRepository(pubSubTopicRepository);
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
-    Version version = mockStore.getVersion(versionNumber).get();
+    Version version = mockStore.getVersion(versionNumber);
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
     doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));
@@ -115,7 +115,7 @@ public class PushTimeoutTest {
         .setPubSubTopicRepository(pubSubTopicRepository);
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
-    Version version = mockStore.getVersion(versionNumber).get();
+    Version version = mockStore.getVersion(versionNumber);
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
     doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));

@@ -130,26 +130,29 @@ def integrationTestBuckets = [
   "C": [
       "com.linkedin.venice.endToEnd.ActiveActive*"],
   "D": [
-      "com.linkedin.venice.endToEnd.TestActiveActive*"],
+      "com.linkedin.venice.endToEnd.TestActiveActive*",
+      "com.linkedin.venice.endToEnd.TestChangelogConsumer",
+      "com.linkedin.venice.endToEnd.TestBootstrappingChangelogConsumer"],
   "E": [
       "com.linkedin.venice.helix.*",
       "com.linkedin.venice.helixrebalance.*"],
   "F": [
+      "com.linkedin.venice.fastclient.*"],
+  "G": [
+      "com.linkedin.venice.endToEnd.TestEmptyPush",
+      "com.linkedin.venice.router.*",
+      "com.linkedin.venice.ingestionHeartbeat.*"],
+  "H": [
       "com.linkedin.venice.server.*",
       "com.linkedin.venice.storagenode.*",
       "com.linkedin.venice.restart.*"],
-  "G": [
-      "com.linkedin.venice.router.*",
-      "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
-      "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest",
-      "com.linkedin.venice.ingestionHeartBeat.*"],
-  "H": [
-      "com.linkedin.venice.fastclient.BatchGet*",
-      "com.linkedin.venice.fastclient.schema.*",
-      "com.linkedin.venice.fastclient.meta.*",
-      "com.linkedin.venice.endToEnd.TestEmptyPush"],
   "I": [
-      "com.linkedin.venice.fastclient.AvroStoreClientEndToEndTest"],
+      "com.linkedin.venice.endToEnd.TestStoreMigration",
+      "com.linkedin.venice.endToEnd.TestStuckConsumerRepair",
+      "com.linkedin.venice.endToEnd.TestSuperSetSchemaRegistration",
+      "com.linkedin.venice.endToEnd.TestTopicWiseSharedConsumerPoolResilience",
+      "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup"
+  ],
   "J": [
       "com.linkedin.venice.hadoop.*",
       "com.linkedin.venice.endToEnd.TestVson*",

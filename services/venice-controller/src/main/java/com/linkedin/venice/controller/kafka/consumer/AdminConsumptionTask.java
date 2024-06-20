@@ -158,6 +158,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * operation is also attached as the first element of the {@link Pair}.
    */
   private final Map<String, Queue<AdminOperationWrapper>> storeAdminOperationsMapWithOffset;
+
+  private final ConcurrentHashMap<String, AdminExecutionTask> storeToScheduledTask;
+
   /**
    * Map of store names that have encountered some sort of exception during consumption to {@link AdminErrorInfo}
    * that has the details about the exception and the offset of the problematic admin message.
@@ -283,6 +286,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
+    this.storeToScheduledTask = new ConcurrentHashMap<>();
     // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
         maxWorkerThreadPoolSize,
@@ -400,7 +404,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
 
         if (remoteConsumptionEnabled && LatencyUtils
-            .getElapsedTimeInMs(lastUpdateTimeForConsumptionOffsetLag) > CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS) {
+            .getElapsedTimeFromMsToMs(lastUpdateTimeForConsumptionOffsetLag) > getConsumptionLagUpdateIntervalInMs()) {
           recordConsumptionLag();
           lastUpdateTimeForConsumptionOffsetLag = System.currentTimeMillis();
         }
@@ -457,6 +461,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       storeAdminOperationsMapWithOffset.clear();
       problematicStores.clear();
       undelegatedRecords.clear();
+      storeToScheduledTask.clear();
       failingOffset = UNASSIGNED_VALUE;
       offsetToSkip = UNASSIGNED_VALUE;
       offsetToSkipDIV = UNASSIGNED_VALUE;
@@ -497,20 +502,24 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           entry.getValue().remove();
           skipOffsetCommandHasBeenProcessed = true;
         }
-        tasks.add(
-            new AdminExecutionTask(
-                LOGGER,
-                clusterName,
-                entry.getKey(),
-                lastSucceededExecutionIdMap,
-                lastPersistedExecutionId,
-                entry.getValue(),
-                admin,
-                executionIdAccessor,
-                isParentController,
-                stats,
-                regionName));
-        stores.add(entry.getKey());
+        AdminExecutionTask newTask = new AdminExecutionTask(
+            LOGGER,
+            clusterName,
+            entry.getKey(),
+            lastSucceededExecutionIdMap,
+            lastPersistedExecutionId,
+            entry.getValue(),
+            admin,
+            executionIdAccessor,
+            isParentController,
+            stats,
+            regionName,
+            storeToScheduledTask);
+        // Check if there is previously created scheduled task still occupying one thread from the pool.
+        if (storeToScheduledTask.putIfAbsent(entry.getKey(), newTask) == null) {
+          tasks.add(newTask);
+          stores.add(entry.getKey());
+        }
       }
     }
     if (skipOffsetCommandHasBeenProcessed) {
@@ -951,7 +960,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   /**
    * Record metrics for consumption lag.
    */
-  private void recordConsumptionLag() {
+  void recordConsumptionLag() {
     try {
       /**
        *  In the default read_uncommitted isolation level, the end offset is the high watermark (that is, the offset of
@@ -987,5 +996,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   // Visible for testing
   TopicManager getSourceKafkaClusterTopicManager() {
     return sourceKafkaClusterTopicManager;
+  }
+
+  // Visible for testing
+  long getConsumptionLagUpdateIntervalInMs() {
+    return CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS;
   }
 }

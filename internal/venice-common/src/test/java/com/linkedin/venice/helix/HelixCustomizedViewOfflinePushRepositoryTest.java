@@ -9,7 +9,6 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Optional;
 import org.apache.helix.model.CustomizedView;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.spectator.RoutingTableSnapshot;
@@ -25,7 +24,7 @@ public class HelixCustomizedViewOfflinePushRepositoryTest {
     Store store = mock(Store.class);
     VersionImpl version = new VersionImpl("abc", 1, "jobID");
     version.setPartitionCount(1);
-    when(store.getVersion(anyInt())).thenReturn(Optional.of(version));
+    when(store.getVersion(anyInt())).thenReturn(version);
     when(store.getName()).thenReturn("abc");
     when(store.getCurrentVersion()).thenReturn(1);
     when(storeRepository.getStore(anyString())).thenReturn(store);

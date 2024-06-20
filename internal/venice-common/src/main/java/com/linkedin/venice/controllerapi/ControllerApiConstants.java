@@ -8,6 +8,8 @@ public class ControllerApiConstants {
   public static final String BATCH_JOB_HEARTBEAT_ENABLED = "batch_job_heartbeat_enabled";
 
   public static final String NAME = "store_name";
+  public static final String STORE_PARTITION = "store_partition";
+  public static final String STORE_VERSION = "store_version";
   public static final String OWNER = "owner";
   public static final String FABRIC = "fabric";
   public static final String FABRIC_A = "fabric_a";
@@ -138,6 +140,8 @@ public class ControllerApiConstants {
   public static final String REWIND_TIME_IN_SECONDS_OVERRIDE = "rewind_time_in_seconds_override";
 
   public static final String DEFER_VERSION_SWAP = "defer_version_swap";
+
+  public static final String REPUSH_SOURCE_VERSION = "repush_source_version";
 
   public static final String REPLICATION_METADATA_VERSION_ID = "replication_metadata_version_id";
 

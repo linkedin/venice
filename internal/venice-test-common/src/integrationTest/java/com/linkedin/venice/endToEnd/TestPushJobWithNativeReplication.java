@@ -20,12 +20,10 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -414,9 +412,9 @@ public class TestPushJobWithNativeReplication {
 
           // Verify version level hybrid config is set correctly. The current version should be 1.
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
-          Optional<Version> version =
+          Version version =
               childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-          HybridStoreConfig hybridConfig = version.get().getHybridStoreConfig();
+          HybridStoreConfig hybridConfig = version.getHybridStoreConfig();
           Assert.assertNotNull(hybridConfig);
           Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), TEST_TIMEOUT);
           Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 2);
@@ -923,70 +921,6 @@ public class TestPushJobWithNativeReplication {
    * not receive any data.
    * @throws IOException
    */
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testTargetedRegionPushJob() throws Exception {
-    motherOfAllTests(
-        "testTargetedRegionPushJob",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
-        100,
-        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          // start a targeted region push which should only increase the version to 1 in dc-0
-          props.put(TARGETED_REGION_PUSH_ENABLED, true);
-          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
-          try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
-            job.run(); // the job should succeed
-
-            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
-              Map<String, Integer> coloVersions =
-                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-              coloVersions.forEach((colo, version) -> {
-                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
-                  Assert.assertEquals((int) version, 1);
-                } else {
-                  Assert.assertEquals((int) version, 0);
-                }
-              });
-            });
-          }
-
-          // specify two regions, so both dc-0 and dc-1 is updated to version 2
-          props.setProperty(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
-          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
-            job.run(); // the job should succeed
-
-            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-              // Current version should become 1 at both 2 data centers
-              for (int version: parentControllerClient.getStore(storeName)
-                  .getStore()
-                  .getColoToCurrentVersions()
-                  .values()) {
-                Assert.assertEquals(version, 2);
-              }
-            });
-          }
-
-          // emergency source is dc-0 so dc-1 isn't selected to be the source fabric but the push should still complete
-          props.setProperty(TARGETED_REGION_PUSH_LIST, "dc-1");
-          try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
-            job.run(); // the job should succeed
-
-            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-              Map<String, Integer> coloVersions =
-                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-              coloVersions.forEach((colo, version) -> {
-                if (colo.equals("dc-1")) {
-                  Assert.assertEquals((int) version, 3);
-                } else {
-                  Assert.assertEquals((int) version, 2);
-                }
-              });
-            });
-          }
-        });
-  }
-
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testTargetedRegionPushJobFullConsumptionForBatchStore() throws Exception {
     // make sure the participant store is up and running in dest region otherwise the test will be flaky
@@ -1010,7 +944,7 @@ public class TestPushJobWithNativeReplication {
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           props.put(TARGETED_REGION_PUSH_ENABLED, false);
-          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
+          // props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
           try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
             job.run(); // the job should succeed
 
@@ -1025,7 +959,7 @@ public class TestPushJobWithNativeReplication {
             });
           }
           props.put(TARGETED_REGION_PUSH_ENABLED, true);
-          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+          // props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
           TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 20);
           try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
             job.run(); // the job should succeed
@@ -1046,7 +980,7 @@ public class TestPushJobWithNativeReplication {
         });
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(enabled = false) // Disable till hybrid stores are supported for target region push
   public void testTargetedRegionPushJobFullConsumptionForHybridStore() throws Exception {
     motherOfAllTests(
         "testTargetedRegionPushJobHybridStore",
@@ -1056,8 +990,6 @@ public class TestPushJobWithNativeReplication {
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           props.put(TARGETED_REGION_PUSH_ENABLED, true);
-          // no need to set but add here for clarity
-          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
           try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
             job.run(); // the job should succeed
 

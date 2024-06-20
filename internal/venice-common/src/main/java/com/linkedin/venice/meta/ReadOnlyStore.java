@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
@@ -13,8 +14,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 
 /**
@@ -26,7 +28,7 @@ public class ReadOnlyStore implements Store {
    * A read-only wrapper of {@link PartitionerConfig}.
    */
   private static class ReadOnlyPartitionerConfig implements PartitionerConfig {
-    private PartitionerConfig delegate;
+    private final PartitionerConfig delegate;
 
     private ReadOnlyPartitionerConfig(PartitionerConfig delegate) {
       this.delegate = delegate;
@@ -565,6 +567,16 @@ public class ReadOnlyStore implements Store {
     @Override
     public void setDataRecoveryVersionConfig(DataRecoveryVersionConfig dataRecoveryVersionConfig) {
       throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setRepushSourceVersion(int version) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getRepushSourceVersion() {
+      return this.delegate.getRepushSourceVersion();
     }
 
     @Override
@@ -1222,16 +1234,6 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public Optional<CompressionStrategy> getVersionCompressionStrategy(int versionNumber) {
-    return this.delegate.getVersionCompressionStrategy(versionNumber);
-  }
-
-  @Override
-  public void setBufferReplayForHybridForVersion(int versionNum, boolean enabled) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public void addVersion(Version version) {
     throw new UnsupportedOperationException();
   }
@@ -1272,12 +1274,19 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public Optional<Version> getVersion(int versionNumber) {
-    Optional<Version> version = this.delegate.getVersion(versionNumber);
-    if (version.isPresent()) {
-      version = Optional.of(new ReadOnlyVersion(version.get()));
+  @Nullable
+  public Version getVersion(int versionNumber) {
+    Version version = this.delegate.getVersion(versionNumber);
+    if (version != null) {
+      version = new ReadOnlyVersion(version);
     }
     return version;
+  }
+
+  @Override
+  @Nonnull
+  public Version getVersionOrThrow(int versionNumber) throws StoreVersionNotFoundException {
+    return new ReadOnlyVersion(this.delegate.getVersionOrThrow(versionNumber));
   }
 
   @Override

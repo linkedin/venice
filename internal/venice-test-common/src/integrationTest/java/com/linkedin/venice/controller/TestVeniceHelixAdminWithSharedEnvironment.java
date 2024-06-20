@@ -258,7 +258,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(numberOfPartition, minPartitionNumber, "Should use the number of partition from store config");
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testHandleVersionCreationFailure() {
     String storeName = Utils.getUniqueString("test");
     veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
@@ -294,7 +294,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         .forEach((nodeId, stateModelFactory) -> stateModelFactory.makeTransitionCompleted(version.kafkaTopicName(), 0));
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testHandleVersionCreationFailureWithCurrentVersion() {
     String storeName = Utils.getUniqueString("test");
     veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
@@ -318,7 +318,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(offlinePushStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDeleteOldVersions() {
     String storeName = Utils.getUniqueString("test");
     veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
@@ -364,7 +364,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     });
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDeleteResourceThenRestartParticipant() throws Exception {
     delayParticipantJobCompletion(true);
     String storeName = "testDeleteResource";
@@ -420,7 +420,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     delayParticipantJobCompletion(false);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testUpdateStoreMetadata() throws Exception {
     String storeName = Utils.getUniqueString("test");
     String owner = Utils.getUniqueString("owner");
@@ -462,7 +462,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // test setting partition count
     int newPartitionCount = 2;
     Assert.assertEquals(
-        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).get().getPartitionCount(),
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
         partitionCount);
 
     veniceAdmin.setStorePartitionCount(clusterName, storeName, newPartitionCount);
@@ -474,7 +474,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(
         veniceAdmin.getStore(clusterName, storeName)
             .getVersion(version.getNumber())
-            .get()
             .getPartitionerConfig()
             .getAmplificationFactor(),
         1);
@@ -487,7 +486,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(
         veniceAdmin.getStore(clusterName, storeName)
             .getVersion(newVersion.getNumber())
-            .get()
             .getPartitionerConfig()
             .getAmplificationFactor(),
         amplificationFactor);
@@ -553,7 +551,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         .forEach((nodeId, stateModelFactory) -> stateModelFactory.makeTransitionCompleted(version.kafkaTopicName(), 0));
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testAddVersionAndStartIngestionTopicCreationTimeout() {
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
 
@@ -582,9 +580,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
               null,
               -1,
               multiClusterConfig.getCommonConfig().getReplicationMetadataVersion(),
-              false));
+              false,
+              -1));
     }
-    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
+    Assert.assertNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
     veniceAdmin
         .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     reset(mockedTopicManager);
@@ -598,8 +597,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         null,
         -1,
         multiClusterConfig.getCommonConfig().getReplicationMetadataVersion(),
-        false);
-    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
+        false,
+        -1);
+    Assert.assertNotNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
     Assert.assertEquals(
         veniceAdmin.getStore(clusterName, storeName).getVersions().size(),
         1,
@@ -609,7 +609,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testAddVersionWhenClusterInMaintenanceMode() {
     String storeName = Utils.getUniqueString("test");
 
@@ -647,7 +647,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testGetRealTimeTopic() {
     String storeName = Utils.getUniqueString("store");
 
@@ -677,7 +677,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(rtTopic, Version.composeRealTimeTopic(storeName));
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testGetAndCompareStorageNodeStatusForStorageNode() throws Exception {
     String storeName = "testGetStorageNodeStatusForStorageNode";
     int partitionCount = 2;
@@ -751,7 +751,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     delayParticipantJobCompletion(false);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDisableStoreWrite() {
     String storeName = Utils.getUniqueString("testDisableStoreWriter");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
@@ -798,7 +798,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
             .equals(ExecutionStatus.COMPLETED));
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDisableStoreRead() {
     String storeName = Utils.getUniqueString("testDisableStoreRead");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
@@ -819,7 +819,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         "After enabling, version:" + version.getNumber() + " is ready to serve.");
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testAccessControl() {
     String storeName = "testAccessControl";
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
@@ -841,7 +841,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(store.isAccessControlled());
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testAllowlist() {
     int testPort = 5555;
     Assert.assertEquals(veniceAdmin.getAllowlist(clusterName).size(), 0, "Allow list should be empty.");
@@ -863,7 +863,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         "After removing the instance, allowlist should be empty.");
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testKillOfflinePush() throws Exception {
     PubSubTopic participantStoreRTTopic = pubSubTopicRepository
         .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
@@ -921,7 +921,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     delayParticipantJobCompletion(false);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDeleteAllVersionsInStore() {
     delayParticipantJobCompletion(true);
     String storeName = Utils.getUniqueString("testDeleteAllVersions");
@@ -1007,7 +1007,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDeleteAllVersionsInStoreWithoutJobAndResource() {
     String storeName = "testDeleteVersionInWithoutJobAndResource";
     Store store = TestUtils.createTestStore(storeName, storeOwner, System.currentTimeMillis());
@@ -1023,7 +1023,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 0);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDeleteOldVersionInStore() {
     String storeName = Utils.getUniqueString("testDeleteOldVersion");
     for (SafeHelixManager manager: this.helixManagerByNodeID.values()) {
@@ -1057,7 +1057,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testRetireOldStoreVersionsKillOfflineFails() {
     String storeName = Utils.getUniqueString("testDeleteOldVersion");
     HelixStatusMessageChannel channel = new HelixStatusMessageChannel(helixManager, helixMessageChannelStats);
@@ -1088,7 +1088,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         " Versions should be deleted.");
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDeleteStore() {
     String storeName = Utils.getUniqueString("testDeleteStore");
     TestUtils.createTestStore(storeName, storeOwner, System.currentTimeMillis());
@@ -1135,7 +1135,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertNull(metricsRepository.getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge"));
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testRemoveStoreFromGraveyard() {
     String storeName = Utils.getUniqueString("testRemoveStoreFromGraveyard");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
@@ -1161,7 +1161,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         });
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDeleteStoreWithLargestUsedVersionNumberOverwritten() {
     String storeName = Utils.getUniqueString("testDeleteStore");
     int largestUsedVersionNumber = 1000;
@@ -1202,7 +1202,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testReCreateStore() {
     String storeName = Utils.getUniqueString("testReCreateStore");
     int largestUsedVersionNumber = 100;
@@ -1225,7 +1225,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         largestUsedVersionNumber + 1);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testReCreateStoreWithLegacyStore() {
     String storeName = Utils.getUniqueString("testReCreateStore");
     int largestUsedVersionNumber = 100;
@@ -1252,7 +1252,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         largestUsedVersionNumber + 1);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testChunkingEnabled() {
     String storeName = Utils.getUniqueString("test_store");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
@@ -1318,7 +1318,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
             .makeTransitionCompleted(Version.composeKafkaTopic(storeName, 2), 0));
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testGetFutureVersions() throws Exception {
     delayParticipantJobCompletion(true);
     String storeName = Utils.getUniqueString("test_store");
@@ -1369,7 +1369,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     delayParticipantJobCompletion(false);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testBatchGetLimit() {
     String storeName = Utils.getUniqueString("test_store");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
@@ -1382,7 +1382,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.getBatchGetLimit(), 100);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testNumVersionsToPreserve() {
     String storeName = Utils.getUniqueString("test_store");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
@@ -1399,7 +1399,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.getNumVersionsToPreserve(), numVersionsToPreserve);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void leakyTopicTruncation() {
     TopicManager topicManager = veniceAdmin.getTopicManager();
     // 5 stores, 10 topics and 2 active versions each.
@@ -1478,7 +1478,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testSetLargestUsedVersion() {
     String storeName = "testSetLargestUsedVersion";
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
@@ -1496,7 +1496,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.getLargestUsedVersionNumber(), 0);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testWriteComputationEnabled() {
     String storeName = Utils.getUniqueString("test_store");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
@@ -1509,7 +1509,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(store.isWriteComputationEnabled());
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testComputationEnabled() {
     String storeName = Utils.getUniqueString("test_store");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
@@ -1522,7 +1522,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(store.isReadComputationEnabled());
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testAddAndRemoveDerivedSchema() {
     String storeName = Utils.getUniqueString("write_compute_store");
     String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
@@ -1536,7 +1536,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(veniceAdmin.getDerivedSchemas(clusterName, storeName).size(), 0);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testStoreLevelConfigUpdateShouldNotModifyExistingVersionLevelConfig() {
     String storeName = Utils.getUniqueString("test_store");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
@@ -1555,9 +1555,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertFalse(store.isChunkingEnabled());
     Assert.assertEquals(store.getCompressionStrategy(), CompressionStrategy.NO_OP);
     // Check all setting in the existing version
-    Assert.assertFalse(store.getVersion(existingVersion.getNumber()).get().isChunkingEnabled());
+    Assert.assertFalse(store.getVersion(existingVersion.getNumber()).isChunkingEnabled());
     Assert.assertEquals(
-        store.getVersion(existingVersion.getNumber()).get().getCompressionStrategy(),
+        store.getVersion(existingVersion.getNumber()).getCompressionStrategy(),
         CompressionStrategy.NO_OP);
 
     /**
@@ -1569,7 +1569,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Store level config should be updated
     Assert.assertTrue(store.isChunkingEnabled());
     // Existing version config should not be updated!
-    Assert.assertFalse(store.getVersion(existingVersion.getNumber()).get().isChunkingEnabled());
+    Assert.assertFalse(store.getVersion(existingVersion.getNumber()).isChunkingEnabled());
 
     /**
      * Enable compression.
@@ -1583,11 +1583,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.getCompressionStrategy(), CompressionStrategy.GZIP);
     // Existing version config should not be updated!
     Assert.assertEquals(
-        store.getVersion(existingVersion.getNumber()).get().getCompressionStrategy(),
+        store.getVersion(existingVersion.getNumber()).getCompressionStrategy(),
         CompressionStrategy.NO_OP);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testAddVersionWithRemoteKafkaBootstrapServers() {
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
 
@@ -1653,14 +1653,14 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
     Assert.assertEquals(
-        veniceAdmin.getStore(clusterName, storeName).getVersion(2).get().getPushStreamSourceAddress(),
+        veniceAdmin.getStore(clusterName, storeName).getVersion(2).getPushStreamSourceAddress(),
         remoteKafkaBootstrapServers);
 
     // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testNativeReplicationSourceFabric() {
     String storeName = Utils.getUniqueString("test_store_nr");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
@@ -1674,7 +1674,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.getNativeReplicationSourceFabric(), "dc1");
   }
 
-  @Test(description = "VT truncation should not affect inc push; however, RT truncation should fail inc-push")
+  @Test(description = "VT truncation should not affect inc push; however, RT truncation should fail inc-push", timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testGetIncrementalPushVersion() {
     String incrementalAndHybridEnabledStoreName = Utils.getUniqueString("testHybridStore");
     veniceAdmin.createStore(clusterName, incrementalAndHybridEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
@@ -1709,7 +1709,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         () -> veniceAdmin.getIncrementalPushVersion(clusterName, incrementalAndHybridEnabledStoreName));
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testEarlyDeleteBackup() {
     String testDeleteStore = Utils.getUniqueString("testDeleteStore");
     veniceAdmin.createStore(clusterName, testDeleteStore, storeOwner, "\"string\"", "\"string\"");
@@ -1741,7 +1741,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.getVersions().size(), 2);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testVersionLevelActiveActiveReplicationConfig() {
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
 
@@ -1783,14 +1783,13 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // A/A version level config should be true
-    Assert.assertTrue(
-        veniceAdmin.getStore(clusterName, storeName).getVersion(1).get().isActiveActiveReplicationEnabled());
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isActiveActiveReplicationEnabled());
 
     // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testAddMetadataSchema() {
     String storeName = Utils.getUniqueString("aa_store");
     String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
@@ -1809,7 +1808,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testRepairStoreReplicationFactor() {
     String storeName = Utils.getUniqueString("test");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
@@ -1825,7 +1824,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         "The replication factor should be positive after the one-time repair.");
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testUpdateClusterConfig() {
     String region0 = "region0";
     String region1 = "region1";
@@ -1850,7 +1849,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     });
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testHybridStoreToBatchOnly() {
     String storeName = Utils.getUniqueString("test_hybrid_to_batch");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
@@ -1886,7 +1885,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(veniceAdmin.isTopicTruncated(rtTopic));
   }
 
-  @Test
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testUpdateStoreWithVersionInheritedConfigs() {
     // This test is meant to test those configurations applied to a store that get applied to specific versions as they
     // are created.
@@ -1915,14 +1914,14 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
     Store store = veniceAdmin.getStore(clusterName, storeName);
     // Verify that version 1 has the config
-    Assert.assertTrue(store.getVersion(1).get().getViewConfigs().containsKey("changeCapture"));
+    Assert.assertTrue(store.getVersion(1).getViewConfigs().containsKey("changeCapture"));
     // Verify that version 2 does NOT have the config
-    Assert.assertFalse(store.getVersion(2).get().getViewConfigs().containsKey("changeCapture"));
+    Assert.assertFalse(store.getVersion(2).getViewConfigs().containsKey("changeCapture"));
 
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig));
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertTrue(store.getVersion(3).get().getViewConfigs().containsKey("changeCapture"));
+    Assert.assertTrue(store.getVersion(3).getViewConfigs().containsKey("changeCapture"));
 
   }
 
@@ -1943,7 +1942,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
    * 12. Add another version to the testing store and waits until it becomes the current version.
    * 13. Verify that the previous KILLED version is cleaned up.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testRaceConditionFixForKillOfflinePushAndVersionSwap(boolean isKillOfflinePush) throws Exception {
     String storeName =
         String.format("testRaceConditionFixForKillOfflinePushAndVersionSwap_%s", String.valueOf(isKillOfflinePush));
@@ -2023,8 +2022,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       OfflinePushStatusInfo info =
           veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, version.getNumber()));
-      VersionStatus status =
-          veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).get().getStatus();
+      VersionStatus status = veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getStatus();
       if (isKillOfflinePush) {
         Assert.assertEquals(info.getExecutionStatus(), ExecutionStatus.STARTED);
         Assert.assertEquals(status, VersionStatus.KILLED);
@@ -2058,9 +2056,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), nextVersion.getNumber());
       if (isKillOfflinePush) {
-        Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).isPresent());
+        Assert.assertNull(veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()));
       } else {
-        Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).isPresent());
+        Assert.assertNotNull(veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()));
       }
     });
 

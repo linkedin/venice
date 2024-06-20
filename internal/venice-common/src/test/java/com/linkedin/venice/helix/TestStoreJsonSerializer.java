@@ -143,7 +143,7 @@ public class TestStoreJsonSerializer {
     StoreJSONSerializer serializer = new StoreJSONSerializer();
     byte[] serializedBytes = serializer.serialize(store, "test");
     Store deserializedStore = serializer.deserialize(serializedBytes, "test");
-    Assert.assertTrue(deserializedStore.getVersion(1).isPresent(), "Version 1 should exist");
+    Assert.assertTrue(deserializedStore.getVersion(1) != null, "Version 1 should exist");
     Map<String, SystemStoreAttributes> deserializedStoreSystemStores = deserializedStore.getSystemStores();
     Assert.assertTrue(
         deserializedStoreSystemStores.containsKey(systemStoreType.getPrefix()),

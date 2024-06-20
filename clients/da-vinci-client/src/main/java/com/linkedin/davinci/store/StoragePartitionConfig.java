@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store;
 
+import com.linkedin.venice.utils.Utils;
 import java.util.Objects;
 
 
@@ -16,6 +17,8 @@ public class StoragePartitionConfig {
   private boolean deferredWrite;
   private boolean readOnly;
   private boolean writeOnlyConfig;
+  private boolean readWriteLeaderForDefaultCF;
+  private boolean readWriteLeaderForRMDCF;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
     this.storeName = storeName;
@@ -23,6 +26,8 @@ public class StoragePartitionConfig {
     this.deferredWrite = false;
     this.readOnly = false;
     this.writeOnlyConfig = true;
+    this.readWriteLeaderForDefaultCF = false;
+    this.readWriteLeaderForRMDCF = false;
   }
 
   public String getStoreName() {
@@ -63,6 +68,22 @@ public class StoragePartitionConfig {
     }
   }
 
+  public boolean isReadWriteLeaderForDefaultCF() {
+    return readWriteLeaderForDefaultCF;
+  }
+
+  public void setReadWriteLeaderForDefaultCF(boolean readWriteLeaderForDefaultCF) {
+    this.readWriteLeaderForDefaultCF = readWriteLeaderForDefaultCF;
+  }
+
+  public boolean isReadWriteLeaderForRMDCF() {
+    return readWriteLeaderForRMDCF;
+  }
+
+  public void setReadWriteLeaderForRMDCF(boolean readWriteLeaderForRMDCF) {
+    this.readWriteLeaderForRMDCF = readWriteLeaderForRMDCF;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -73,17 +94,27 @@ public class StoragePartitionConfig {
     }
     StoragePartitionConfig that = (StoragePartitionConfig) o;
     return partitionId == that.partitionId && deferredWrite == that.deferredWrite && readOnly == that.readOnly
-        && writeOnlyConfig == that.writeOnlyConfig && storeName.equals(that.storeName);
+        && writeOnlyConfig == that.writeOnlyConfig && storeName.equals(that.storeName)
+        && readWriteLeaderForDefaultCF == that.readWriteLeaderForDefaultCF
+        && readWriteLeaderForRMDCF == that.readWriteLeaderForRMDCF;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(storeName, partitionId, deferredWrite, readOnly, writeOnlyConfig);
+    return Objects.hash(
+        storeName,
+        partitionId,
+        deferredWrite,
+        readOnly,
+        writeOnlyConfig,
+        readWriteLeaderForDefaultCF,
+        readWriteLeaderForRMDCF);
   }
 
   @Override
   public String toString() {
-    return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite
-        + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig;
+    return "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: " + deferredWrite
+        + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", read-write leader for default CF: "
+        + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: " + readWriteLeaderForRMDCF;
   }
 }

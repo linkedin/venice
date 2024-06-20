@@ -230,15 +230,24 @@ public abstract class AbstractClientEndToEndSetup {
     waitForRouterD2();
   }
 
+  /**
+   * <b>Note:</b> Classes that overrides this method need to ensure the store creation enables the storage
+   * node read quota.
+   */
   protected void prepareData() throws Exception {
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
-    veniceCluster.useControllerClient(
-        client -> client.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true).setReadComputationEnabled(true)));
+    veniceCluster
+        .useControllerClient(
+            client -> assertFalse(
+                client
+                    .updateStore(
+                        storeName,
+                        new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)
+                            .setReadComputationEnabled(true))
+                    .isError()));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.
@@ -396,7 +405,7 @@ public abstract class AbstractClientEndToEndSetup {
   protected void setUpGrpcFastClient(ClientConfig.ClientConfigBuilder clientConfigBuilder) {
     GrpcClientConfig grpcClientConfig = new GrpcClientConfig.Builder().setR2Client(r2Client)
         .setSSLFactory(SslUtils.getVeniceLocalSslFactory())
-        .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
+        .setNettyServerToGrpcAddress(veniceCluster.getNettyServerToGrpcAddress())
         .build();
 
     clientConfigBuilder.setGrpcClientConfig(grpcClientConfig).setUseGrpc(true);

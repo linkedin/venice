@@ -3,13 +3,11 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
-import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
@@ -355,7 +353,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     ValueRecord result = SingleGetChunkingAdapter
         .getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null, rmdManifestContainer);
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
-        LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
+        LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);
     if (result == null) {
       return null;
@@ -372,7 +370,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
-      long currentTimeForMetricsMs) {
+      long beforeProcessingBatchRecordsTimestampMs) {
     /**
      * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
      * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
@@ -388,7 +386,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           kafkaUrl,
           kafkaClusterId,
           beforeProcessingRecordTimestampNs,
-          currentTimeForMetricsMs);
+          beforeProcessingBatchRecordsTimestampMs);
       return;
     }
     KafkaKey kafkaKey = consumerRecord.getKey();
@@ -423,10 +421,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             keyBytes,
             consumerRecord.getTopicPartition(),
             valueManifestContainer,
-            currentTimeForMetricsMs));
+            beforeProcessingBatchRecordsTimestampMs));
 
-    final RmdWithValueSchemaId rmdWithValueSchemaID =
-        getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition, currentTimeForMetricsMs);
+    final RmdWithValueSchemaId rmdWithValueSchemaID = getReplicationMetadataAndSchemaId(
+        partitionConsumptionState,
+        keyBytes,
+        subPartition,
+        beforeProcessingBatchRecordsTimestampMs);
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
     final long offsetSumPreOperation =
@@ -458,7 +459,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                            // config to represent the mapping from Kafka server URLs to colo ID.
         );
         getHostLevelIngestionStats()
-            .recordIngestionActiveActivePutLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
+            .recordIngestionActiveActivePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
 
       case DELETE:
@@ -470,7 +471,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             kafkaClusterId,
             kafkaClusterId);
         getHostLevelIngestionStats()
-            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
+            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
 
       case UPDATE:
@@ -485,7 +486,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             kafkaClusterId,
             kafkaClusterId);
         getHostLevelIngestionStats()
-            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getLatencyInMS(beforeDCRTimestampInNs));
+            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
       default:
         throw new VeniceMessageException(
@@ -534,7 +535,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               mergeConflictResult.getRmdRecord());
         }
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getLatencyInMS(preprocessingTime));
+          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
           if (exception == null) {
             producePutOrDeleteToKafka(
                 mergeConflictResult,
@@ -662,7 +663,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           compressor.get(),
           valueManifestContainer);
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
-          LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
+          LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
           currentTimeForMetricsMs);
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
@@ -1288,68 +1289,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return true;
   }
 
-  /**
-   * Checks whether the lag is acceptable for hybrid stores
-   * <p>
-   * If the instance is a standby or DaVinciClient: Also check if <br>
-   * 1. the feature is enabled <br>
-   * 2. first HB SOS is received and <br>
-   * 3. leaderCompleteStatus header has been received and <br>
-   * 4. leader was completed and <br>
-   * 5. the last update time was within the configured time interval
-   */
   @Override
-  protected boolean checkAndLogIfLagIsAcceptableForHybridStore(
-      PartitionConsumptionState pcs,
-      long offsetLag,
-      long offsetThreshold,
-      boolean shouldLogLag,
-      LagType lagType,
-      long latestConsumedProducerTimestamp) {
-    boolean isLagAcceptable = super.checkAndLogIfLagIsAcceptableForHybridStore(
-        pcs,
-        offsetLag,
-        offsetThreshold,
-        false, // We'll take care of logging at the end of this function
-        lagType,
-        latestConsumedProducerTimestamp);
-
-    if (isLagAcceptable && isHybridFollower(pcs)) {
-      if (!getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled()) {
-        isLagAcceptable = true;
-      } else if (!pcs.isFirstHeartBeatSOSReceived()) {
-        // wait for the first HB to know if the leader supports sending LeaderCompleteState or not
-        isLagAcceptable = false;
-      } else if (pcs.getLeaderCompleteState().equals(LEADER_COMPLETE_STATE_UNKNOWN)) {
-        // if the leader don't support LeaderCompleteState
-        isLagAcceptable = true;
-      } else {
-        // check if the leader is completed and the last update time was within the configured time
-        isLagAcceptable = pcs.isLeaderCompleted()
-            && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
-                .getLeaderCompleteStateCheckInFollowerValidIntervalMs());
-      }
-    }
-
-    if (shouldLogLag) {
-      String lagLogFooter;
-      if (isHybridFollower(pcs)) {
-        lagLogFooter = "Leader Complete State: {" + pcs.getLeaderCompleteState().toString() + "}, Last update In Ms: {"
-            + pcs.getLastLeaderCompleteStateUpdateInMs() + "}.";
-      } else {
-        lagLogFooter = "";
-      }
-      logLag(
-          lagType,
-          pcs.getPartition(),
-          isLagAcceptable,
-          latestConsumedProducerTimestamp,
-          offsetLag,
-          offsetThreshold,
-          lagLogFooter);
-    }
-
-    return isLagAcceptable;
+  protected boolean shouldCheckLeaderCompleteStateInFollower() {
+    return getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled();
   }
 
   @Override

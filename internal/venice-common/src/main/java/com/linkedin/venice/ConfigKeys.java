@@ -242,6 +242,9 @@ public class ConfigKeys {
    */
   public static final String DEPRECATED_TOPIC_RETENTION_MS = "deprecated.topic.retention.ms";
 
+  public static final String FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS =
+      "fatal.data.validation.failure.topic.retention.ms";
+
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
    * And this is used to decide whether the topic is deprecated or not during topic cleanup.
@@ -272,6 +275,9 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS =
       "controller.backup.version.default.retention.ms";
+
+  public static final String CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS =
+      "controller.backup.version.deletion.sleep.ms";
 
   /**
    * The following config is to control whether to enable backup version cleanup based on retention policy or not at cluster level.
@@ -1771,6 +1777,28 @@ public class ConfigKeys {
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
+   * Config to control if DNS resolution should be done before SSL handshake between clients and a router.
+   * If this is enabled, the above SSL handshake thread pool will be used to perform DNS resolution, because
+   * DNS resolution before SSL and separate SSL handshake thread pool are mutually exclusive features.
+   */
+  public static final String ROUTER_RESOLVE_BEFORE_SSL = "router.resolve.before.ssl";
+
+  /**
+   * Config to control the maximum number of concurrent DNS resolutions that can be done by the router.
+   */
+  public static final String ROUTER_MAX_CONCURRENT_RESOLUTIONS = "router.max.concurrent.resolutions";
+
+  /**
+   * Config to control the maximum number of attempts to resolve a client host name before giving up.
+   */
+  public static final String ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS = "router.client.resolution.retry.attempts";
+
+  /**
+   * Config to control the backoff time between each resolution retry.
+   */
+  public static final String ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS = "router.client.resolution.retry.backoff.ms";
+
+  /**
    * Config to control the queue capacity for the thread pool executor used for ssl handshake between clients and a router.
    */
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY = "router.client.ssl.handshake.queue.capacity";
@@ -2039,6 +2067,12 @@ public class ConfigKeys {
   public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
 
   /**
+   * Source of truth admin adapter type, mainly for avoiding topic discrepancy between multiple pub sub systems.
+   */
+  public static final String PUB_SUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS =
+      "pub.sub.of.source.of.truth.admin.adapter.factory.class";
+
+  /**
    * Venice router's principal name used for ssl. Default should contain "venice-router".
    */
   public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
@@ -2064,7 +2098,10 @@ public class ConfigKeys {
    * Follower replicas and DavinciClient will only consider heartbeats received within
    * this time window to mark themselves as completed. This is to avoid the cases that
    * the follower replica is marked completed based on the old heartbeat messages from
-   * a previous leader replica.
+   * a previous leader replica. Note that the leader replica keeps sending the leader
+   * completed headers in every heartbeat messages which allows the follower replica
+   * the liberty to decide based on the freshness of the heartbeat messages to avoid
+   * stale data from some edge cases scenarios.
    */
   public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS =
       "server.leader.complete.state.check.in.follower.valid.interval.ms";
@@ -2113,4 +2150,17 @@ public class ConfigKeys {
    */
   public static final String SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED =
       "server.record.level.metrics.when.bootstrapping.current.version.enabled";
+
+  /**
+   * Time interval for checking dangling topics between 2 different types of pub sub backends.
+   */
+  public static final String CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND =
+      "controller.dangling.topic.clean.up.interval.second";
+
+  /**
+   * To avoid potential risk of race condition, if a topic is identified as dangling topic in number of times beyond
+   * this defined threshold, then this topic could be deleted.
+   */
+  public static final String CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP =
+      "controller.dangling.topic.occurrence.threshold.for.cleanup";
 }

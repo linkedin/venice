@@ -69,6 +69,7 @@ public class ServerReadMetadataRepositoryTest {
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
     mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id2"));
     mockStore.setCurrentVersion(2);
+    mockStore.setStorageNodeReadQuotaEnabled(false);
     String topicName = Version.composeKafkaTopic(storeName, 2);
     PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
     Partition partition = mock(Partition.class);
@@ -85,6 +86,8 @@ public class ServerReadMetadataRepositoryTest {
     Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
     Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
 
+    Assert.assertThrows(UnsupportedOperationException.class, () -> serverReadMetadataRepository.getMetadata(storeName));
+    mockStore.setStorageNodeReadQuotaEnabled(true);
     MetadataResponse metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
     Assert.assertNotNull(metadataResponse);
     Assert.assertEquals(metadataResponse.getResponseRecord().getKeySchema().get("0"), "\"string\"");

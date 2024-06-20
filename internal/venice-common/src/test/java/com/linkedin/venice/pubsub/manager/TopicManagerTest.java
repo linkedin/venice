@@ -30,6 +30,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConstantsOverrider;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -41,6 +42,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -88,6 +90,7 @@ public class TopicManagerTest {
 
   @BeforeClass
   public void setUp() {
+    PubSubConstantsOverrider.setPubsubOffsetApiTimeoutDurationDefaultValue(Duration.ofSeconds(1));
     createTopicManager();
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
@@ -125,6 +128,7 @@ public class TopicManagerTest {
 
   @AfterClass
   public void cleanUp() throws IOException {
+    PubSubConstantsOverrider.resetPubsubOffsetApiTimeoutDurationDefaultValue();
     topicManager.close();
   }
 
@@ -182,6 +186,9 @@ public class TopicManagerTest {
     return topicName;
   }
 
+  /**
+   * N.B.: This test takes 1 minute in the absence of {@link PubSubConstantsOverrider}.
+   */
   @Test
   public void testGetProducerTimestampOfLastDataRecord() throws ExecutionException, InterruptedException {
     final PubSubTopic topic = getTopic();
@@ -194,6 +201,9 @@ public class TopicManagerTest {
     Assert.assertEquals(retrievedTimestamp, timestamp);
   }
 
+  /**
+   * N.B.: This test takes 2 minutes in the absence of {@link PubSubConstantsOverrider}.
+   */
   @Test
   public void testGetProducerTimestampOfLastDataRecordWithControlMessage()
       throws ExecutionException, InterruptedException {
@@ -227,6 +237,9 @@ public class TopicManagerTest {
     Assert.assertEquals(retrievedTimestamp, PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION);
   }
 
+  /**
+   * N.B.: This test takes 3 minutes in the absence of {@link PubSubConstantsOverrider}.
+   */
   @Test
   public void testGetProducerTimestampOfLastDataRecordWithOnlyControlMessages()
       throws ExecutionException, InterruptedException {
@@ -362,6 +375,40 @@ public class TopicManagerTest {
   public void testGetTopicConfigWithUnknownTopic() {
     PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.getTopicConfig(topic);
+  }
+
+  @Test
+  public void testGetSomeTopicConfigs() {
+    PubSubTopic topic1 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    PubSubTopic topic2 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    topicManager.createTopic(topic1, 1, 1, true);
+    topicManager.createTopic(topic2, 1, 1, true);
+    Set<PubSubTopic> topics = topicManager.listTopics();
+    Assert.assertTrue(topics.contains(topic1));
+    Assert.assertTrue(topics.contains(topic2));
+
+    Map<PubSubTopic, PubSubTopicConfiguration> topicProperties = topicManager.getSomeTopicConfigs(topics);
+    topicProperties.forEach((k, v) -> {
+      Assert.assertTrue(v.retentionInMs().isPresent());
+      Assert.assertTrue(v.retentionInMs().get() > 0, "retention.ms should be positive");
+    });
+  }
+
+  @Test
+  public void testGetSomeTopicConfigsForEmptyTopics() {
+    Set<PubSubTopic> topics = new HashSet<>();
+    Map<PubSubTopic, PubSubTopicConfiguration> topicProperties = topicManager.getSomeTopicConfigs(topics);
+    Assert.assertTrue(topicProperties.isEmpty());
+  }
+
+  @Test
+  public void testGetSomeTopicConfigsForUnknownTopics() {
+    PubSubTopic topic1 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    PubSubTopic topic2 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    Set<PubSubTopic> topics = new HashSet<>();
+    topics.add(topic1);
+    topics.add(topic2);
+    Assert.expectThrows(PubSubClientRetriableException.class, () -> topicManager.getSomeTopicConfigs(topics));
   }
 
   @Test

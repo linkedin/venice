@@ -165,8 +165,12 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
     this.delegate.delete(logicalPartitionId, key);
   }
 
-  public void preparePartitionForReading(int partition) {
-    delegate.preparePartitionForReading(partition);
+  @Override
+  public synchronized void adjustStoragePartition(
+      int partitionId,
+      StoragePartitionAdjustmentTrigger mode,
+      StoragePartitionConfig partitionConfig) {
+    delegate.adjustStoragePartition(partitionId, mode, partitionConfig);
   }
 
   @Override

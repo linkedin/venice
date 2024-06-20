@@ -151,7 +151,8 @@ public class RetriableAvroGenericStoreClientTest {
       ClientConfig clientConfig) {
     StoreMetadata mockMetadata = mock(StoreMetadata.class);
     doReturn(STORE_NAME).when(mockMetadata).getStoreName();
-    doReturn(STORE_VALUE_SCHEMA).when(mockMetadata).getLatestValueSchema();
+    doReturn(1).when(mockMetadata).getLatestValueSchemaId();
+    doReturn(STORE_VALUE_SCHEMA).when(mockMetadata).getValueSchema(1);
     return new DispatchingAvroGenericStoreClient(mockMetadata, clientConfig) {
       private int requestCnt = 0;
 

@@ -1,6 +1,7 @@
 package com.linkedin.venice.router;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.utils.concurrent.BlockingQueueType.LINKED_BLOCKING_QUEUE;
 
@@ -13,11 +14,13 @@ import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.alpini.router.api.LongTailRetrySupplier;
 import com.linkedin.alpini.router.api.ScatterGatherHelper;
 import com.linkedin.alpini.router.impl.Router;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -36,6 +39,7 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.DictionaryRetrievalService;
 import com.linkedin.venice.router.api.MetaStoreShadowReader;
@@ -145,6 +149,8 @@ public class RouterServer extends AbstractVeniceService {
   private ReadOnlyStoreRepository metadataRepository;
   private RouterStats<AggRouterHttpRequestStats> routerStats;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
+
+  private PushStatusStoreReader pushStatusStoreReader;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
   private HelixInstanceConfigRepository instanceConfigRepository;
   private HelixGroupSelector helixGroupSelector;
@@ -168,6 +174,7 @@ public class RouterServer extends AbstractVeniceService {
 
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
+  private MultithreadEventLoopGroup sslResolverEventLoopGroup;
 
   private ExecutorService workerExecutor;
   private EventThrottler routerEarlyThrottler;
@@ -317,6 +324,13 @@ public class RouterServer extends AbstractVeniceService {
         config.getRefreshAttemptsForZkReconnect(),
         config.getRefreshIntervalForZkReconnectInMs());
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
+
+    D2Client d2Client = D2ClientFactory.getD2Client(config.getZkConnection(), Optional.empty());
+    String d2ServiceName = config.getClusterToD2Map().get(config.getClusterName());
+    this.pushStatusStoreReader = new PushStatusStoreReader(
+        d2Client,
+        d2ServiceName,
+        DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS);
   }
 
   /**
@@ -426,11 +440,13 @@ public class RouterServer extends AbstractVeniceService {
     }
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
     Class<? extends AbstractChannel> serverSocketChannelClass;
+    boolean useEpoll = true;
     try {
       serverEventLoopGroup = new EpollEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
       workerEventLoopGroup = new EpollEventLoopGroup(config.getRouterIOWorkerCount(), workerExecutor);
       serverSocketChannelClass = EpollServerSocketChannel.class;
     } catch (LinkageError error) {
+      useEpoll = false;
       LOGGER.info("Epoll is only supported on Linux; switching to NIO");
       serverEventLoopGroup = new NioEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
       workerEventLoopGroup = new NioEventLoopGroup(config.getRouterIOWorkerCount(), workerExecutor);
@@ -522,7 +538,8 @@ public class RouterServer extends AbstractVeniceService {
         config.getZkConnection(),
         config.getKafkaBootstrapServers(),
         config.isSslToKafka(),
-        versionFinder);
+        versionFinder,
+        pushStatusStoreReader);
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
@@ -639,15 +656,37 @@ public class RouterServer extends AbstractVeniceService {
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (config.getClientSslHandshakeThreads() > 0) {
-        ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
-            config.getClientSslHandshakeThreads(),
-            "SSLHandShakeThread",
-            config.getClientSslHandshakeQueueCapacity(),
-            LINKED_BLOCKING_QUEUE);
-        new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
-        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+        if (config.isResolveBeforeSSL()) {
+          ExecutorService sslHandshakeExecutor = registry.factory(ShutdownableExecutors.class)
+              .newFixedThreadPool(
+                  config.getClientSslHandshakeThreads(),
+                  new DefaultThreadFactory("RouterDNSBeforeSSLThread", true, Thread.NORM_PRIORITY));
+          int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
+          int maxConcurrentResolution = config.getMaxConcurrentResolutions();
+          int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
+          long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
+          if (useEpoll) {
+            sslResolverEventLoopGroup = new EpollEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
+          } else {
+            sslResolverEventLoopGroup = new NioEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
+          }
+          sslInitializer.enableResolveBeforeSSL(
+              sslResolverEventLoopGroup,
+              clientResolutionRetryAttempts,
+              clientResolutionRetryBackoffMs,
+              maxConcurrentResolution);
+        } else {
+          ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
+              config.getClientSslHandshakeThreads(),
+              "SSLHandShakeThread",
+              config.getClientSslHandshakeQueueCapacity(),
+              LINKED_BLOCKING_QUEUE);
+          new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
+          sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+        }
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
+      securityStats.registerSslHandshakeSensors(sslInitializer);
     } else {
       sslInitializer = null;
     }
@@ -783,6 +822,9 @@ public class RouterServer extends AbstractVeniceService {
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
+    if (sslResolverEventLoopGroup != null) {
+      sslResolverEventLoopGroup.shutdownGracefully();
+    }
 
     dispatcher.stop();
 

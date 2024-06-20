@@ -193,7 +193,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
-      boolean versionSwapDeferred);
+      boolean versionSwapDeferred,
+      int repushSourceVersion);
 
   default boolean hasWritePermissionToBatchJobHeartbeatStore(
       X509Certificate requesterCert,
@@ -229,7 +230,8 @@ public interface Admin extends AutoCloseable, Closeable {
         -1,
         Optional.empty(),
         false,
-        null);
+        null,
+        -1);
   }
 
   default Version incrementVersionIdempotent(
@@ -246,7 +248,8 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      int repushSourceVersion) {
     return incrementVersionIdempotent(
         clusterName,
         storeName,
@@ -262,7 +265,8 @@ public interface Admin extends AutoCloseable, Closeable {
         rewindTimeInSecondsOverride,
         emergencySourceRegion,
         versionSwapDeferred,
-        null);
+        null,
+        repushSourceVersion);
   }
 
   Version incrementVersionIdempotent(
@@ -280,7 +284,8 @@ public interface Admin extends AutoCloseable, Closeable {
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      String targetedRegions);
+      String targetedRegions,
+      int repushSourceVersion);
 
   String getRealTimeTopic(String clusterName, String storeName);
 
@@ -682,6 +687,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   boolean isTopicTruncatedBasedOnRetention(long retention);
 
+  boolean isTopicTruncatedBasedOnRetention(String topicName, long retention);
+
   int getMinNumberOfUnusedKafkaTopicsToPreserve();
 
   /**
@@ -689,6 +696,15 @@ public interface Admin extends AutoCloseable, Closeable {
    *         true if it's the first time truncating this topic.
    */
   boolean truncateKafkaTopic(String topicName);
+
+  /**
+   * Truncate a Kafka topic by setting its retention time to the input value.
+   * @param topicName the name of the topic to truncate.
+   * @param retentionTimeInMs the retention time in milliseconds to set for the topic.
+   * @return true if truncating this topic successfully.
+   *        false otherwise.
+   */
+  boolean truncateKafkaTopic(String topicName, long retentionTimeInMs);
 
   /**
    * Check whether the specified resource is fully removed or not.

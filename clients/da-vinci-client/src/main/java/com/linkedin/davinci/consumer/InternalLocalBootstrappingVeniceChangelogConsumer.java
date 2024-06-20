@@ -9,7 +9,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE;
+import static com.linkedin.venice.pubsub.PubSubConstants.getPubsubOffsetApiTimeoutDurationDefaultValue;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
@@ -40,10 +40,10 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -56,6 +56,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
@@ -63,7 +64,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChangelogConsumerImpl<K, V>
+class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfterImageConsumerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(InternalLocalBootstrappingVeniceChangelogConsumer.class);
   private static final String CHANGE_CAPTURE_COORDINATE = "ChangeCaptureCoordinatePosition";
@@ -157,7 +158,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
         PubSubTopicPartition topicPartition = getTopicPartition(partition);
         Long earliestOffset =
-            pubSubConsumer.beginningOffset(topicPartition, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+            pubSubConsumer.beginningOffset(topicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
         VeniceChangeCoordinate earliestCheckpoint = earliestOffset == null
             ? null
             : new VeniceChangeCoordinate(
@@ -229,7 +230,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
             .getByKeyPrefix(state.getKey(), null, new BytesStreamingCallback() {
               @Override
               public void onRecordReceived(byte[] key, byte[] value) {
-                onRecordReceivedForStorage(key, value, state.getKey(), resultSet);
+                onRecordReceivedFromStorage(key, value, state.getKey(), resultSet);
               }
 
               @Override
@@ -283,7 +284,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
   }
 
   @VisibleForTesting
-  void onRecordReceivedForStorage(
+  void onRecordReceivedFromStorage(
       byte[] key,
       byte[] value,
       int partition,
@@ -293,7 +294,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     // a user
     // schema for deserialization
     ValueRecord valueRecord = ValueRecord.parseAndCreate(value);
-
     // Create a change event to wrap the record we pulled from disk and deserialize the record
     ChangeEvent<V> changeEvent = new ChangeEvent<>(
         null,
@@ -340,32 +340,30 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
   }
 
   /**
-   * Polls change capture client and persist the results to local disk. Also updates the bootstrapStateMap with latest offsets
-   * and if the client has caught up or not.
+   * Polls change capture client and persist the results to local disk. Also updates the bootstrapStateMap with latest
+   * offsets and if the client has caught up or not.
    *
    * @param timeoutInMs timeout on Poll
    * @param topicSuffix internal topic suffix
-   * @return
    */
-  private Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pollAndCatchup(
-      long timeoutInMs,
-      String topicSuffix) {
+  private void pollAndCatchup(long timeoutInMs, String topicSuffix) {
     Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> polledResults =
-        super.internalPoll(timeoutInMs, topicSuffix);
+        super.internalPoll(timeoutInMs, topicSuffix, true);
     for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> record: polledResults) {
       BootstrapState currentPartitionState = bootstrapStateMap.get(record.getPartition());
       currentPartitionState.currentPubSubPosition = record.getOffset();
       if (currentPartitionState.bootstrapState.equals(PollState.CATCHING_UP)) {
         if (currentPartitionState.isCaughtUp()) {
           LOGGER.info(
-              "pollAndCatchup completed for partition: {} with offset: {}",
+              "pollAndCatchup completed for partition: {} with offset: {}, put message: {}, delete message: {}",
               record.getPartition(),
-              getOffset(record.getOffset()));
+              getOffset(record.getOffset()),
+              partitionToPutMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get(),
+              partitionToDeleteMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get());
           currentPartitionState.bootstrapState = PollState.BOOTSTRAPPING;
         }
       }
     }
-    return polledResults;
   }
 
   @Override
@@ -376,7 +374,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       ByteBuffer value,
       PubSubTopicPartition partition,
       int readerSchemaId,
-      long recordOffset) throws IOException {
+      long recordOffset) {
     if (deserializedValue instanceof RecordChangeEvent) {
       RecordChangeEvent recordChangeEvent = (RecordChangeEvent) deserializedValue;
       if (recordChangeEvent.currentValue == null) {
@@ -391,11 +389,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
                     .serialize());
       }
     } else {
+      byte[] valueBytes = ByteUtils.extractByteArray(decompressedBytes);
       storageService.getStorageEngine(localStateTopicName)
-          .put(
-              partition.getPartitionNumber(),
-              key,
-              ValueRecord.create(readerSchemaId, decompressedBytes.array()).serialize());
+          .put(partition.getPartitionNumber(), key, ValueRecord.create(readerSchemaId, valueBytes).serialize());
     }
 
     // Update currentPubSubPosition for a partition
@@ -436,7 +432,10 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         VeniceChangeCoordinate localCheckpoint;
         try {
           if (StringUtils.isEmpty(offsetString)) {
-            LOGGER.info("No local checkpoint found for partition: {}", partition);
+            LOGGER.info(
+                "No local checkpoint found for partition: {}， will initialize checkpoint to offset: {}",
+                partition,
+                offsetRecord.getLocalVersionTopicOffset());
             localCheckpoint = new VeniceChangeCoordinate(
                 getTopicPartition(partition).getPubSubTopic().getName(),
                 new ApacheKafkaOffsetPosition(offsetRecord.getLocalVersionTopicOffset()),
@@ -470,15 +469,25 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         }
       }
 
-      // Seek to the current position so we can catch up from there to target
-      seekToCheckpoint(
-          bootstrapStateMap.values().stream().map(state -> state.currentPubSubPosition).collect(Collectors.toSet()));
+      // Seek to the current position, so we can catch up from there to target
+      try {
+        seekToCheckpoint(
+            bootstrapStateMap.values().stream().map(state -> state.currentPubSubPosition).collect(Collectors.toSet()))
+                .get();
+      } catch (Exception e) {
+        throw new VeniceException("Caught exception when seeking to bootstrap", e);
+      }
 
       // Poll until we've caught up completely for all subscribed partitions.
       while (bootstrapStateMap.entrySet()
           .stream()
           .anyMatch(s -> s.getValue().bootstrapState.equals(PollState.CATCHING_UP))) {
-        pollAndCatchup(5000L, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+        /**
+         * TODO: For now we change to support after-image only use case for bootstrapping changelog consumer.
+         * We will subscribe to version topic for now. If there is support for different use case in the future, we need
+         * to further tweak it based on config.
+         */
+        pollAndCatchup(5000L, "");
       }
 
       LOGGER.info("Bootstrap completed!");

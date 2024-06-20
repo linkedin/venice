@@ -10,6 +10,7 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeTyp
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.FOLLOWER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.SortedInput.SORTED;
+import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
@@ -36,7 +37,6 @@ import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicComplet
 import static com.linkedin.venice.utils.Time.MS_PER_DAY;
 import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
-import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static com.linkedin.venice.writer.VeniceWriter.generateHeartbeatMessage;
@@ -189,6 +189,7 @@ import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ChunkingTestUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
@@ -292,8 +293,9 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @DataProvider
-  public static Object[][] nodeTypeAndAAConfigProvider() {
-    return DataProviderUtils.allPermutationGenerator(NodeType.values(), AAConfig.values());
+  public static Object[][] nodeTypeAndAAConfigAndDRPProvider() {
+    return DataProviderUtils
+        .allPermutationGenerator(NodeType.values(), AAConfig.values(), DataReplicationPolicy.values());
   }
 
   @DataProvider
@@ -452,7 +454,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     taskPollingService = Executors.newFixedThreadPool(1);
     storeBufferService =
-        new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled(), mockMetricRepo);
+        new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled(), mockMetricRepo, true);
     storeBufferService.start();
   }
 
@@ -912,7 +914,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(aaConfig == AA_ON).when(mockStore).isActiveActiveReplicationEnabled();
     version.setRmdVersionId(REPLICATION_METADATA_VERSION_ID);
 
-    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
+    doReturn(version).when(mockStore).getVersion(anyInt());
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
 
@@ -1367,10 +1369,12 @@ public abstract class StoreIngestionTaskTest {
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
       // Verify host-level metrics
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
-        verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
+        verify(mockStoreIngestionStats, times(3)).recordTotalBytesConsumed(anyLong());
       } else {
-        verify(mockStoreIngestionStats, times(2)).recordTotalRecordsConsumed();
+        verify(mockStoreIngestionStats, times(2)).recordTotalBytesConsumed(anyLong());
       }
+      verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
+
     }, Optional.of(hybridStoreConfig), false, Optional.empty(), AA_OFF, 1, extraProps);
   }
 
@@ -1575,18 +1579,26 @@ public abstract class StoreIngestionTaskTest {
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       Store mockStore = mock(Store.class);
       doReturn(true).when(mockStore).isHybrid();
-      doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
+      doReturn(new VersionImpl("storeName", 1)).when(mockStore).getVersion(1);
       doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     }, () -> {
-      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
-      // mockAbstractStorageEngine.preparePartitionForReading will hold the lock, do not use
-      // "verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS)).preparePartitionForReading(PARTITION_FOO)";
-      // otherwise, the lock will be hold for time "TEST_TIMEOUT_MS"
+      ArgumentCaptor<StoragePartitionConfig> storagePartitionConfigArgumentCaptor =
+          ArgumentCaptor.forClass(StoragePartitionConfig.class);
       TestUtils.waitForNonDeterministicAssertion(
           10,
           TimeUnit.SECONDS,
-          () -> verify(mockAbstractStorageEngine, atLeastOnce()).preparePartitionForReading(PARTITION_FOO));
+          () -> verify(mockAbstractStorageEngine).adjustStoragePartition(
+              eq(PARTITION_FOO),
+              eq(PREPARE_FOR_READ),
+              storagePartitionConfigArgumentCaptor.capture()));
+      StoragePartitionConfig storagePartitionConfigParam = storagePartitionConfigArgumentCaptor.getValue();
+      assertEquals(storagePartitionConfigParam.getPartitionId(), PARTITION_FOO);
+      assertFalse(storagePartitionConfigParam.isWriteOnlyConfig());
+      assertFalse(storagePartitionConfigParam.isReadOnly());
+      assertFalse(storagePartitionConfigParam.isDeferredWrite());
+      assertFalse(storagePartitionConfigParam.isReadWriteLeaderForDefaultCF());
+      assertFalse(storagePartitionConfigParam.isReadWriteLeaderForRMDCF());
     }, aaConfig);
   }
 
@@ -1605,7 +1617,7 @@ public abstract class StoreIngestionTaskTest {
     new StoragePartitionConfig(topic, PARTITION_FOO);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
+      verify(mockAbstractStorageEngine, never()).adjustStoragePartition(eq(PARTITION_FOO), eq(PREPARE_FOR_READ), any());
     }, aaConfig);
   }
 
@@ -1625,8 +1637,9 @@ public abstract class StoreIngestionTaskTest {
     new StoragePartitionConfig(topic, PARTITION_BAR);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
-      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
+      verify(mockAbstractStorageEngine, never()).adjustStoragePartition(eq(PARTITION_FOO), eq(PREPARE_FOR_READ), any());
+      verify(mockAbstractStorageEngine, never()).adjustStoragePartition(eq(PARTITION_BAR), eq(PREPARE_FOR_READ), any());
+
     }, aaConfig);
   }
 
@@ -1910,7 +1923,7 @@ public abstract class StoreIngestionTaskTest {
 
     // After the end of push, the venice writer continue puts a corrupt data and end the segment.
     getOffset(veniceWriterCorrupted.put(putKeyFoo, putValueToCorrupt, SCHEMA_ID));
-    veniceWriterCorrupted.endSegment(PARTITION_FOO, true);
+    veniceWriterCorrupted.closePartition(PARTITION_FOO);
 
     // a missing msg
     long fooOffsetToSkip = getOffset(veniceWriterCorrupted.put(putKeyFoo, putValue, SCHEMA_ID));
@@ -2000,8 +2013,7 @@ public abstract class StoreIngestionTaskTest {
     runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {
       Store mockStore = mock(Store.class);
       doReturn(1).when(mockStore).getCurrentVersion();
-      doReturn(Optional.of(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1)))).when(mockStore)
-          .getVersion(1);
+      doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
     }, () -> {
@@ -2024,8 +2036,7 @@ public abstract class StoreIngestionTaskTest {
       Store mockStore = mock(Store.class);
       storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
       doReturn(1).when(mockStore).getCurrentVersion();
-      doReturn(Optional.of(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1)))).when(mockStore)
-          .getVersion(1);
+      doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
     },
@@ -2579,7 +2590,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(schemaEntry).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
-      doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
+      doReturn(new VersionImpl("storeName", 1)).when(mockStore).getVersion(1);
     }, () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       // since notifier reporting happens before offset update, it actually reports previous offsets
@@ -2862,8 +2873,8 @@ public abstract class StoreIngestionTaskTest {
         "Remote consumer should not poll for new records but return previously cached records");
   }
 
-  @Test(dataProvider = "nodeTypeAndAAConfigProvider")
-  public void testIsReadyToServe(NodeType nodeType, AAConfig aaConfig) {
+  @Test(dataProvider = "nodeTypeAndAAConfigAndDRPProvider")
+  public void testIsReadyToServe(NodeType nodeType, AAConfig aaConfig, DataReplicationPolicy dataReplicationPolicy) {
     int partitionCount = 2;
     int amplificationFactor = 1;
 
@@ -2872,12 +2883,8 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100,
-        100,
-        100,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig =
+        new HybridStoreConfigImpl(100, 100, 100, dataReplicationPolicy, BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -3003,16 +3010,15 @@ public abstract class StoreIngestionTaskTest {
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
     } else {
-      // case 5b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      // case 5b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
       assertEquals(
           storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp),
-          aaConfig == AA_OFF);
+          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
       // case 5c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsBufferReplayStartedLagCaughtUp).isLeaderCompleted();
-      doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isFirstHeartBeatSOSReceived();
       doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedLagCaughtUp)
           .getLastLeaderCompleteStateUpdateInMs();
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
@@ -3037,16 +3043,15 @@ public abstract class StoreIngestionTaskTest {
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
       assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
     } else {
-      // case 6b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      // case 6b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
       assertEquals(
           storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
-          aaConfig == AA_OFF);
+          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
       // case 6c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsBufferReplayStartedRemoteLagging).isLeaderCompleted();
-      doReturn(true).when(mockPcsBufferReplayStartedRemoteLagging).isFirstHeartBeatSOSReceived();
       doReturn(System.currentTimeMillis()).when(mockPcsBufferReplayStartedRemoteLagging)
           .getLastLeaderCompleteStateUpdateInMs();
       assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
@@ -3073,16 +3078,15 @@ public abstract class StoreIngestionTaskTest {
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
       assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
     } else {
-      // case 7b: standby replica and !LEADER_COMPLETED => partition is not ready to serve
+      // case 7b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
       assertEquals(
           storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging),
-          aaConfig == AA_OFF);
+          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
       // case 7c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsOffsetLagCaughtUpTimestampLagging).isLeaderCompleted();
-      doReturn(true).when(mockPcsOffsetLagCaughtUpTimestampLagging).isFirstHeartBeatSOSReceived();
       doReturn(System.currentTimeMillis()).when(mockPcsOffsetLagCaughtUpTimestampLagging)
           .getLastLeaderCompleteStateUpdateInMs();
       Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
@@ -3188,7 +3192,6 @@ public abstract class StoreIngestionTaskTest {
       doReturn(STANDBY).when(mockPcsMultipleSourceKafkaServers).getLeaderFollowerState();
       doReturn(LEADER_COMPLETED).when(mockPcsMultipleSourceKafkaServers).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsMultipleSourceKafkaServers).isLeaderCompleted();
-      doReturn(true).when(mockPcsMultipleSourceKafkaServers).isFirstHeartBeatSOSReceived();
       doReturn(System.currentTimeMillis()).when(mockPcsMultipleSourceKafkaServers)
           .getLastLeaderCompleteStateUpdateInMs();
     }
@@ -3206,7 +3209,8 @@ public abstract class StoreIngestionTaskTest {
         LagType.values(),
         new NodeType[] { DA_VINCI, FOLLOWER },
         AAConfig.values(),
-        LeaderCompleteCheck.values());
+        LeaderCompleteCheck.values(),
+        DataReplicationPolicy.values());
   }
 
   /**
@@ -3220,7 +3224,8 @@ public abstract class StoreIngestionTaskTest {
       LagType lagType,
       NodeType nodeType,
       AAConfig aaConfig,
-      LeaderCompleteCheck leaderCompleteCheck) {
+      LeaderCompleteCheck leaderCompleteCheck,
+      DataReplicationPolicy dataReplicationPolicy) {
     int partitionCount = 2;
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(1);
@@ -3228,12 +3233,8 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     partitionerConfig.setAmplificationFactor(amplificationFactor);
 
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100,
-        100,
-        100,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig =
+        new HybridStoreConfigImpl(100, 100, 100, dataReplicationPolicy, BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -3326,9 +3327,7 @@ public abstract class StoreIngestionTaskTest {
     }
 
     // Case 4: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has not been received
     doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
-    doReturn(false).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
     assertEquals(
         storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
             mockPartitionConsumptionState,
@@ -3337,24 +3336,11 @@ public abstract class StoreIngestionTaskTest {
             false,
             lagType,
             0),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
+            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
     // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has been received and leaderCompleteState is unknown
-    doReturn(true).when(mockPartitionConsumptionState).isFirstHeartBeatSOSReceived();
-    doReturn(LEADER_COMPLETE_STATE_UNKNOWN).when(mockPartitionConsumptionState).getLeaderCompleteState();
-    assertTrue(
-        storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
-            mockPartitionConsumptionState,
-            offsetLag,
-            offsetThreshold,
-            false,
-            lagType,
-            0));
-
-    // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
-    // and last update time is within threshold
+    // and leaderCompleteState is LEADER_COMPLETED and last update time is within threshold
     doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
     doReturn(LEADER_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
     doReturn(System.currentTimeMillis() - 1000).when(mockPartitionConsumptionState)
@@ -3368,9 +3354,8 @@ public abstract class StoreIngestionTaskTest {
             lagType,
             0));
 
-    // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has been received and leaderCompleteState is LEADER_COMPLETED
-    // and last update time is more than threshold
+    // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient.
+    // and leaderCompleteState is LEADER_COMPLETED and last update time is more than threshold
     doReturn(System.currentTimeMillis() - 6000).when(mockPartitionConsumptionState)
         .getLastLeaderCompleteStateUpdateInMs();
     assertEquals(
@@ -3381,11 +3366,11 @@ public abstract class StoreIngestionTaskTest {
             false,
             lagType,
             0),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
+            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
-    // Case 8: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
-    // and first heart beat SOS has been received and leaderCompleteState is LEADER_NOT_COMPLETED
-    // and leader is not completed
+    // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
+    // and leaderCompleteState is LEADER_NOT_COMPLETED and leader is not completed
     doReturn(LEADER_NOT_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
     assertEquals(
         storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
@@ -3395,23 +3380,17 @@ public abstract class StoreIngestionTaskTest {
             false,
             lagType,
             0),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && aaConfig == AA_ON));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
+            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
   }
 
   @DataProvider
   public static Object[][] testGetAndUpdateLeaderCompletedStateProvider() {
-    return DataProviderUtils.allPermutationGenerator(
-        HybridConfig.values(),
-        new NodeType[] { DA_VINCI, FOLLOWER },
-        DataProviderUtils.BOOLEAN);
+    return DataProviderUtils.allPermutationGenerator(HybridConfig.values(), new NodeType[] { DA_VINCI, FOLLOWER });
   }
 
   @Test(dataProvider = "testGetAndUpdateLeaderCompletedStateProvider")
-  public void testGetAndUpdateLeaderCompletedState(
-      HybridConfig hybridConfig,
-      NodeType nodeType,
-      boolean leaderCompletedHeaderFound) {
-
+  public void testGetAndUpdateLeaderCompletedState(HybridConfig hybridConfig, NodeType nodeType) {
     int partitionCount = 2;
     int amplificationFactor = 1;
     VenicePartitioner partitioner = getVenicePartitioner(1);
@@ -3459,8 +3438,13 @@ public abstract class StoreIngestionTaskTest {
             null);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
-    PartitionConsumptionState partitionConsumptionState =
-        new PartitionConsumptionState(PARTITION_FOO, amplificationFactor, mockOffsetRecord, true, false);
+    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(
+        Utils.getReplicaId(topic, PARTITION_FOO),
+        PARTITION_FOO,
+        amplificationFactor,
+        mockOffsetRecord,
+        true,
+        false);
 
     long producerTimestamp = System.currentTimeMillis();
     LeaderMetadataWrapper mockLeaderMetadataWrapper = mock(LeaderMetadataWrapper.class);
@@ -3468,9 +3452,7 @@ public abstract class StoreIngestionTaskTest {
         getHeartbeatKME(producerTimestamp, mockLeaderMetadataWrapper, generateHeartbeatMessage(CheckSumType.NONE), "0");
 
     PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
-    if (leaderCompletedHeaderFound) {
-      pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
-    }
+    pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
@@ -3480,8 +3462,8 @@ public abstract class StoreIngestionTaskTest {
         0,
         pubSubMessageHeaders);
 
-    assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
-    assertFalse(partitionConsumptionState.isFirstHeartBeatSOSReceived());
+    assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_NOT_COMPLETED);
+    assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
 
     KafkaKey kafkaKey = pubSubMessage.getKey();
     KafkaMessageEnvelope kafkaValue = pubSubMessage.getValue();
@@ -3495,8 +3477,7 @@ public abstract class StoreIngestionTaskTest {
           controlMessage,
           pubSubMessage.getPubSubMessageHeaders(),
           partitionConsumptionState);
-      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
-      assertFalse(partitionConsumptionState.isFirstHeartBeatSOSReceived());
+      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_NOT_COMPLETED);
       assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
     }
 
@@ -3507,19 +3488,13 @@ public abstract class StoreIngestionTaskTest {
         controlMessage,
         pubSubMessage.getPubSubMessageHeaders(),
         partitionConsumptionState);
-    if (leaderCompletedHeaderFound) {
-      if (hybridConfig == HYBRID) {
-        assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
-        assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), producerTimestamp);
-      } else {
-        assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
-        assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
-      }
+    if (hybridConfig == HYBRID) {
+      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETED);
+      assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), producerTimestamp);
     } else {
-      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_COMPLETE_STATE_UNKNOWN);
+      assertEquals(partitionConsumptionState.getLeaderCompleteState(), LEADER_NOT_COMPLETED);
       assertEquals(partitionConsumptionState.getLastLeaderCompleteStateUpdateInMs(), 0L);
     }
-    assertEquals(partitionConsumptionState.isFirstHeartBeatSOSReceived(), hybridConfig == HYBRID);
   }
 
   @DataProvider
@@ -3603,7 +3578,7 @@ public abstract class StoreIngestionTaskTest {
     Store mockStore = mock(Store.class);
     doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
-    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
+    doReturn(mockVersion).when(mockStore).getVersion(1);
     doReturn(aaConfig == AA_ON).when(mockVersion).isActiveActiveReplicationEnabled();
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
@@ -3733,7 +3708,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn("localhost").when(version).getPushStreamSourceAddress();
 
     Store store = mock(Store.class);
-    doReturn(Optional.of(version)).when(store).getVersion(eq(1));
+    doReturn(version).when(store).getVersion(eq(1));
 
     String versionTopicName = "testStore_v1";
     VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
@@ -3754,7 +3729,7 @@ public abstract class StoreIngestionTaskTest {
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
     PartitionConsumptionState partitionConsumptionState =
-        new PartitionConsumptionState(0, 1, offsetRecord, false, false);
+        new PartitionConsumptionState(Utils.getReplicaId(versionTopicName, 0), 0, 1, offsetRecord, false, false);
 
     long localVersionTopicOffset = 100L;
     long remoteVersionTopicOffset = 200L;
@@ -4071,7 +4046,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(dataRecoveryVersionConfig).when(version).getDataRecoveryVersionConfig();
 
     Store store = mock(Store.class);
-    doReturn(Optional.of(version)).when(store).getVersion(eq(1));
+    doReturn(version).when(store).getVersion(eq(1));
 
     VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(topic).when(storeConfig).getStoreVersionName();
@@ -4097,7 +4072,7 @@ public abstract class StoreIngestionTaskTest {
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
     PartitionConsumptionState partitionConsumptionState =
-        new PartitionConsumptionState(0, 1, offsetRecord, false, false);
+        new PartitionConsumptionState(Utils.getReplicaId(pubSubTopic, 0), 0, 1, offsetRecord, false, false);
 
     storeIngestionTaskUnderTest.updateLeaderTopicOnFollower(partitionConsumptionState);
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
@@ -4163,7 +4138,7 @@ public abstract class StoreIngestionTaskTest {
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
-    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
+    doReturn(mockVersion).when(mockStore).getVersion(1);
     doReturn(aaConfig == AA_ON).when(mockVersion).isActiveActiveReplicationEnabled();
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
@@ -4244,7 +4219,7 @@ public abstract class StoreIngestionTaskTest {
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockReadOnlyStoreRepository).getStoreOrThrow(eq(storeName));
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
-    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
+    doReturn(mockVersion).when(mockStore).getVersion(1);
     doReturn(true).when(mockVersion).isActiveActiveReplicationEnabled();
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
@@ -4445,15 +4420,83 @@ public abstract class StoreIngestionTaskTest {
             System.currentTimeMillis());
       } catch (Exception e) {
         e.printStackTrace();
-        // Verify transformer error was recorded
-        verify(mockVersionedStorageIngestionStats)
-            .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
       }
-    }, aaConfig, (storeVersion) -> new TestStringRecordTransformer(storeVersion));
 
-    // Verify transformer error was recorded
-    verify(mockVersionedStorageIngestionStats)
-        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+      // Verify transformer error was recorded
+      verify(mockVersionedStorageIngestionStats, timeout(1000))
+          .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+    }, aaConfig, TestStringRecordTransformer::new);
+  }
+
+  @DataProvider
+  public static Object[][] testAssembledValueSizeProvider() {
+    Set<Integer> schemaIdSet = new HashSet<>();
+    for (AvroProtocolDefinition avroProtocolDefinition: AvroProtocolDefinition.values()) {
+      avroProtocolDefinition.currentProtocolVersion.ifPresent(schemaIdSet::add);
+    }
+    return DataProviderUtils.allPermutationGenerator(AAConfig.values(), schemaIdSet.toArray());
+  }
+
+  /**
+   * Create messages for a chunked record (in multiple chunks) and its manifest, and verify that the drainer
+   * records the size of the chunked record as described in the size field of the manifest.
+   * Also, verify that metrics are only emitted when the correct schemaId=-20 is on the manifest message,
+   * and not emitted on any other invalid schemaId values.
+   * @throws Exception
+   */
+  @Test(dataProvider = "testAssembledValueSizeProvider")
+  public void testAssembledValueSizeSensor(AAConfig aaConfig, int testSchemaId) throws Exception {
+    int numChunks = 10;
+    long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH;
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
+    for (int i = 0; i < numChunks; i++) {
+      messages.add(ChunkingTestUtils.createChunkedRecord(putKeyFoo, 1, 1, i, 0, tp));
+    }
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
+        ChunkingTestUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
+    messages.add(manifestMessage);
+
+    // The only expected real-life case should be when schemaId values are chunk=-10 and manifest=-20
+    boolean useRealSchemaId = testSchemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
+        try {
+          Put put = (Put) message.getValue().getPayloadUnion();
+          if (!useRealSchemaId) {
+            put.schemaId = testSchemaId;
+          }
+          LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+          when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+          when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+          when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
+
+          storeIngestionTaskUnderTest.produceToStoreBufferService(
+              message,
+              leaderProducedRecordContext,
+              PARTITION_FOO,
+              localKafkaConsumerService.kafkaUrl,
+              System.nanoTime(),
+              System.currentTimeMillis());
+        } catch (InterruptedException e) {
+          throw new VeniceException(e);
+        }
+      }
+
+      // Verify that the size of the assembled record was recorded in the metrics only if schemaId=-20
+      HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
+      if (useRealSchemaId) {
+        verify(hostLevelIngestionStats, timeout(1000)).recordAssembledValueSize(eq(expectedRecordSize), anyLong());
+        verify(hostLevelIngestionStats, timeout(1000).times(1)).recordAssembledValueSize(anyLong(), anyLong());
+      } else {
+        verify(hostLevelIngestionStats, times(0)).recordAssembledValueSize(anyLong(), anyLong());
+      }
+    }, aaConfig);
   }
 
   @Test
@@ -4525,6 +4568,7 @@ public abstract class StoreIngestionTaskTest {
     verify(mockStats1).recordBenignLeaderOffsetRewind(storeName, version);
 
     // Benign rewind
+    final long messageOffset = 10;
     KafkaKey key = new KafkaKey(MessageType.PUT, "test_key".getBytes());
     KafkaMessageEnvelope messsageEnvelope = new KafkaMessageEnvelope();
     LeaderMetadata leaderMetadata = new LeaderMetadata();
@@ -4544,7 +4588,7 @@ public abstract class StoreIngestionTaskTest {
         new PubSubTopicPartitionImpl(
             new TestPubSubTopic("test_store_v1", "test_store", PubSubTopicType.VERSION_TOPIC),
             1),
-        10,
+        messageOffset,
         -1,
         1000);
     AbstractStorageEngine mockStorageEngine2 = mock(AbstractStorageEngine.class);
@@ -4585,7 +4629,9 @@ public abstract class StoreIngestionTaskTest {
         () -> LeaderFollowerStoreIngestionTask
             .checkAndHandleUpstreamOffsetRewind(mockState2, consumedRecord, 10, 11, mockTask2));
     assertTrue(
-        exception.getMessage().contains("Failing the job because lossy rewind happens before reporting completed"));
+        exception.getMessage().contains("Failing the job because lossy rewind happens before receiving EndOfPush."));
+    // Verify that the VT offset is also in the error message
+    assertTrue(exception.getMessage().contains("received message at offset: " + messageOffset));
     verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
   }
 

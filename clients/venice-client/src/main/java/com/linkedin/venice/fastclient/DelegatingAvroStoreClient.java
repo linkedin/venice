@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
+import com.linkedin.venice.schema.SchemaReader;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -81,6 +82,11 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   @Override
+  public SchemaReader getSchemaReader() {
+    return delegate.getSchemaReader();
+  }
+
+  @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     return delegate.get(requestContext, key);
   }
@@ -124,6 +130,7 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
     return delegate.getKeySchema();
   }
 
+  @Deprecated
   @Override
   public Schema getLatestValueSchema() {
     return delegate.getLatestValueSchema();

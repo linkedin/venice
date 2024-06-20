@@ -83,7 +83,7 @@ public class VeniceGrpcEndToEndTest {
             .extraProperties(props)
             .build());
 
-    nettyToGrpcPortMap = cluster.getNettyToGrpcServerMap();
+    nettyToGrpcPortMap = cluster.getNettyServerToGrpcAddress();
     storeName = writeData(Utils.getUniqueString("testStore"));
   }
 
@@ -95,7 +95,8 @@ public class VeniceGrpcEndToEndTest {
   public String writeData(String storeName) throws IOException {
     // 1. Create a new store in Venice
     cluster.getNewStore(storeName);
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA);
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setStorageNodeReadQuotaEnabled(true);
 
     ControllerResponse updateStoreResponse = cluster.updateStore(storeName, params);
     Assert.assertNull(updateStoreResponse.getError());
@@ -190,7 +191,7 @@ public class VeniceGrpcEndToEndTest {
     GrpcClientConfig grpcClientConfig =
         new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
             .setR2Client(grpcR2ClientPassthrough)
-            .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
+            .setNettyServerToGrpcAddress(nettyToGrpcPortMap)
             .build();
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
@@ -252,7 +253,7 @@ public class VeniceGrpcEndToEndTest {
     GrpcClientConfig grpcClientConfig =
         new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
             .setR2Client(r2Client)
-            .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
+            .setNettyServerToGrpcAddress(nettyToGrpcPortMap)
             .build();
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
@@ -298,7 +299,7 @@ public class VeniceGrpcEndToEndTest {
     GrpcClientConfig grpcClientConfig =
         new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
             .setR2Client(grpcR2Client)
-            .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
+            .setNettyServerToGrpcAddress(nettyToGrpcPortMap)
             .build();
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =

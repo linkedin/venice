@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
@@ -914,9 +915,8 @@ public abstract class AbstractPushMonitor
     }
 
     if (store.isHybrid()) {
-      Optional<Version> version =
-          store.getVersion(Version.parseVersionFromKafkaTopicName(offlinePushStatus.getKafkaTopic()));
-      boolean isDataRecovery = version.isPresent() && version.get().getDataRecoveryVersionConfig() != null;
+      Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(offlinePushStatus.getKafkaTopic()));
+      boolean isDataRecovery = version != null && version.getDataRecoveryVersionConfig() != null;
       if (offlinePushStatus.isReadyToStartBufferReplay(isDataRecovery)) {
         LOGGER.info("{} is ready to start buffer replay.", offlinePushStatus.getKafkaTopic());
         RealTimeTopicSwitcher realTimeTopicSwitcher = getRealTimeTopicSwitcher();
@@ -1008,7 +1008,13 @@ public abstract class AbstractPushMonitor
           e);
     }
     try {
-      storeCleaner.retireOldStoreVersions(clusterName, storeName, false, -1);
+      Store store = metadataRepository.getStore(storeName);
+      /** Do not delete previous versions as for repush previous current version should be deleted instead
+       * such deletions are handled in @see StoreBackupVersionCleanupService
+       */
+      if (store.getVersionOrThrow(versionNumber).getRepushSourceVersion() <= NON_EXISTING_VERSION) {
+        storeCleaner.retireOldStoreVersions(clusterName, storeName, false, -1);
+      }
     } catch (Exception e) {
       LOGGER.warn("Could not retire the old versions for store: {} in cluster: {}", storeName, clusterName, e);
     }
@@ -1066,8 +1072,8 @@ public abstract class AbstractPushMonitor
        * The offline push job for this version has been killed by {@link com.linkedin.venice.controller.Admin#killOfflinePush}.
        * Don't set the status to ONLINE or swap current version.
        */
-      Optional<Version> version = store.getVersion(versionNumber);
-      if (version.isPresent() && VersionStatus.isVersionKilled(version.get().getStatus())) {
+      Version version = store.getVersion(versionNumber);
+      if (version != null && VersionStatus.isVersionKilled(version.getStatus())) {
         if (newStatus == VersionStatus.ONLINE) {
           /**
            * When a version is first killed and then completed, don't continue to update overall push status to complete
@@ -1096,7 +1102,8 @@ public abstract class AbstractPushMonitor
         if (versionNumber > store.getCurrentVersion()) {
           // Here we'll check if version swap is deferred. If so, we don't perform the setCurrentVersion. We'll continue
           // on and wait for an admin command to mark the version to 'current' OR just let the next push cycle it out.
-          if (!store.getVersion(versionNumber).isPresent()) {
+          version = store.getVersion(versionNumber);
+          if (version == null) {
             // This shouldn't be possible, but putting a check here just in case things go pear shaped
             throw new VeniceException(
                 String.format(
@@ -1104,7 +1111,7 @@ public abstract class AbstractPushMonitor
                     storeName,
                     versionNumber));
           }
-          if (store.getVersion(versionNumber).get().isVersionSwapDeferred()) {
+          if (version.isVersionSwapDeferred()) {
             LOGGER.info(
                 "Version swap is deferred for store {} on version {}. Skipping version swap.",
                 store.getName(),

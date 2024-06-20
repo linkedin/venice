@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -181,6 +182,17 @@ public class ExecutionStatusTest {
     // root status of all other statuses should be the status itself by default
     for (ExecutionStatus status: ExecutionStatus.values()) {
       assertEquals(status.getRootStatus(), rootStatusMap.getOrDefault(status, status));
+    }
+  }
+
+  @Test
+  public void testErrorExecutionStatus() {
+    for (ExecutionStatus status: ExecutionStatus.values()) {
+      if (status == ERROR) {
+        Assert.assertTrue(ExecutionStatus.isError(status));
+      } else {
+        Assert.assertFalse(ExecutionStatus.isError(status));
+      }
     }
   }
 }

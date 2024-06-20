@@ -12,8 +12,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
 import org.mockito.ArgumentMatcher;
 import org.testng.Assert;
@@ -51,14 +51,15 @@ public class StorageUtilizationManagerTest {
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs = new PartitionConsumptionState(i, 1, mock(OffsetRecord.class), true, false);
+      PartitionConsumptionState pcs =
+          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, 1, mock(OffsetRecord.class), true, false);
       partitionConsumptionStateMap.put(i, pcs);
     }
 
     when(store.getName()).thenReturn(storeName);
     when(store.getStorageQuotaInByte()).thenReturn(storeQuotaInBytes);
     when(store.getPartitionCount()).thenReturn(storePartitionCount);
-    when(store.getVersion(storeVersion)).thenReturn(Optional.of(version));
+    when(store.getVersion(storeVersion)).thenReturn(version);
     when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(true);
     when(version.getStatus()).thenReturn(VersionStatus.STARTED);
 

@@ -27,6 +27,8 @@ public class VersionImpl implements Version {
 
   /**
    * Use the constructor that specifies a pushJobId instead
+   *
+   * Currently used in tests only.
    */
   @Deprecated
   public VersionImpl(String storeName, int number) {
@@ -359,6 +361,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public void setRepushSourceVersion(int version) {
+    this.storeVersion.repushSourceVersion = version;
+  }
+
+  @Override
+  public int getRepushSourceVersion() {
+    return this.storeVersion.repushSourceVersion;
+  }
+
+  @Override
   public int getRmdVersionId() {
     return this.storeVersion.timestampMetadataVersionId;
   }
@@ -444,6 +456,7 @@ public class VersionImpl implements Version {
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     clonedVersion.setRmdVersionId(getRmdVersionId());
     clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
+    clonedVersion.setRepushSourceVersion(getRepushSourceVersion());
     clonedVersion.setViewConfigs(getViewConfigs());
     clonedVersion.setBlobTransferEnabled(isBlobTransferEnabled());
     return clonedVersion;

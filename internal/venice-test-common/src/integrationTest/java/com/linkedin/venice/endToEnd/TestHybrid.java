@@ -87,10 +87,6 @@ import com.linkedin.venice.producer.online.OnlineProducerFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.pushmonitor.OfflinePushStatus;
-import com.linkedin.venice.pushmonitor.PartitionStatus;
-import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -154,7 +150,6 @@ import org.testng.annotations.Test;
 public class TestHybrid {
   private static final Logger LOGGER = LogManager.getLogger(TestHybrid.class);
   public static final int STREAMING_RECORD_SIZE = 1024;
-  private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
   /**
    * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #cleanUp()} function
@@ -162,7 +157,6 @@ public class TestHybrid {
    *                 the middle of the test, please restart them at the end of your test.
    */
   private VeniceClusterWrapper sharedVenice;
-  private VeniceClusterWrapper ingestionIsolationEnabledSharedVenice;
 
   /**
    * This cluster is re-used by some of the tests, in order to speed up the suite. Some other tests require
@@ -171,14 +165,12 @@ public class TestHybrid {
    */
   @BeforeClass(alwaysRun = true)
   public void setUp() {
-    sharedVenice = setUpCluster(false, false);
-    ingestionIsolationEnabledSharedVenice = setUpCluster(true, false);
+    sharedVenice = setUpCluster(false);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(sharedVenice);
-    Utils.closeQuietlyWithErrorLogged(ingestionIsolationEnabledSharedVenice);
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
@@ -1129,11 +1121,9 @@ public class TestHybrid {
     }
   }
 
-  @Test(timeOut = 180
-      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testLeaderCanReleaseLatch(boolean isIngestionIsolationEnabled) {
-    VeniceClusterWrapper veniceClusterWrapper =
-        isIngestionIsolationEnabled ? ingestionIsolationEnabledSharedVenice : sharedVenice;
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testLeaderCanReleaseLatch() {
+    VeniceClusterWrapper veniceClusterWrapper = sharedVenice;
     Admin admin = veniceClusterWrapper.getLeaderVeniceController().getVeniceAdmin();
     String clusterName = veniceClusterWrapper.getClusterName();
     String storeName = Utils.getUniqueString("test-store");
@@ -1416,17 +1406,15 @@ public class TestHybrid {
     }
   }
 
-  @Test(dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class, timeOut = 60
+  @Test(dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class, timeOut = 60
       * Time.MS_PER_SECOND)
-  public void testDuplicatedMessagesWontBePersisted(
-      boolean isIngestionIsolationEnabled,
-      CompressionStrategy compressionStrategy) throws Exception {
+  public void testDuplicatedMessagesWontBePersisted(CompressionStrategy compressionStrategy) throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
 
     SystemProducer veniceProducer = null;
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
-    VeniceClusterWrapper venice = isIngestionIsolationEnabled ? ingestionIsolationEnabledSharedVenice : sharedVenice;
+    VeniceClusterWrapper venice = sharedVenice;
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
     try {
@@ -1613,113 +1601,6 @@ public class TestHybrid {
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void testOffsetRecordSyncedForIngestionIsolationHandover() throws Exception {
-    SystemProducer veniceProducer = null;
-
-    VeniceClusterWrapper venice = ingestionIsolationEnabledSharedVenice;
-    try {
-      long streamingRewindSeconds = 0L;
-      long streamingMessageLag = 1000L;
-
-      String storeName = Utils.getUniqueString("hybrid-store");
-      File inputDir = getTempDataDirectory();
-      String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
-      Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
-
-      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
-          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-
-        ControllerResponse response = controllerClient.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
-                .setHybridOffsetLagThreshold(streamingMessageLag));
-        Assert.assertFalse(response.isError());
-
-        // Do a VPJ push with an empty RT
-        runVPJ(vpjProperties, 1, controllerClient);
-
-        // Verify some records (note, records 1-100 have been pushed)
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-          try {
-            for (int i = 1; i < 100; i++) {
-              String key = Integer.toString(i);
-              Object value = client.get(key).get();
-              assertNotNull(value, "Key " + i + " should not be missing!");
-              assertEquals(value.toString(), "test_name_" + key);
-            }
-          } catch (Exception e) {
-            throw new VeniceException(e);
-          }
-        });
-
-        // write streaming records
-        veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
-        for (int i = 1; i <= 10; i++) {
-          // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
-          // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
-          // max chunk size is not altered, and thus this will be under threshold.
-          sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
-        }
-
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-          try {
-            checkLargeRecord(client, 2);
-          } catch (Exception e) {
-            throw new VeniceException(e);
-          }
-        });
-
-        VersionCreationResponse vcr =
-            controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
-        int versionNumber = vcr.getVersion();
-        assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
-
-        TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
-          // Now the store should have version 1
-          JobStatusQueryResponse jobStatus =
-              controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, versionNumber));
-          Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
-          assertEquals(jobStatus.getStatus(), "COMPLETED");
-        });
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-          try {
-            for (int i = 1; i <= 10; i++) {
-              String key = Integer.toString(i);
-              Assert.assertNull(client.get(key).get(), null);
-            }
-          } catch (Exception e) {
-            throw new VeniceException(e);
-          }
-        });
-      }
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        try {
-          OfflinePushStatus offlinePushStatus = venice.getVeniceServers()
-              .get(0)
-              .getVeniceServer()
-              .getHelixParticipationService()
-              .getVeniceOfflinePushMonitorAccessor()
-              .getOfflinePushStatusAndItsPartitionStatuses(storeName + "_v2");
-          for (PartitionStatus partitionStatus: offlinePushStatus.getPartitionStatuses()) {
-            for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
-              Assert.assertEquals(replicaStatus.getCurrentStatus(), ExecutionStatus.COMPLETED);
-            }
-          }
-        } catch (Exception e) {
-          throw new VeniceException(e);
-        }
-      });
-    } finally {
-      if (veniceProducer != null) {
-        veniceProducer.stop();
-      }
-    }
-
-  }
-
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testVersionSwapDeferredWithHybrid() throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
@@ -1863,14 +1744,13 @@ public class TestHybrid {
     }
   }
 
-  @Test(timeOut = 120
-      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testHybridWithAmplificationFactor(boolean enableIngestionIsolation) throws Exception {
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  public void testHybridWithAmplificationFactor() throws Exception {
     final int partitionCount = 1;
     final int keyCount = 20;
     final int replicationFactor = 2;
     final int amplificationFactor = 5;
-    VeniceClusterWrapper cluster = enableIngestionIsolation ? ingestionIsolationEnabledSharedVenice : sharedVenice;
+    VeniceClusterWrapper cluster = sharedVenice;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(partitionCount)
         .setReplicationFactor(replicationFactor)
         .setAmplificationFactor(amplificationFactor);
@@ -1970,7 +1850,7 @@ public class TestHybrid {
     // share one consumer.
     final int partitionCount = 4;
     final int keyCount = 10;
-    try (VeniceClusterWrapper cluster = setUpCluster(false, true)) {
+    try (VeniceClusterWrapper cluster = setUpCluster(true)) {
       UpdateStoreQueryParams params = new UpdateStoreQueryParams()
           // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
           .setHybridRewindSeconds(2000000)
@@ -2174,9 +2054,7 @@ public class TestHybrid {
     return Pair.create(kafkaKey, kafkaValue);
   }
 
-  private static VeniceClusterWrapper setUpCluster(
-      boolean enabledIngestionIsolation,
-      boolean enablePartitionWiseSharedConsumer) {
+  private static VeniceClusterWrapper setUpCluster(boolean enablePartitionWiseSharedConsumer) {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
     VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 2, 1000000, false, false, extraProperties);
@@ -2197,9 +2075,6 @@ public class TestHybrid {
     serverProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
     serverProperties.setProperty(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, "true");
 
-    if (enabledIngestionIsolation) {
-      TestUtils.addIngestionIsolationToProperties(serverProperties);
-    }
     if (enablePartitionWiseSharedConsumer) {
       serverProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "4");
       serverProperties.setProperty(

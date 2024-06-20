@@ -47,4 +47,35 @@ public class TopicManagerStatsTest {
             .value() > 0);
     assertTrue(metrics.get(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--create_topic.Avg").value() > 0);
   }
+
+  @Test
+  public void testPubSubFailedAdminOpCount() {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    String pubSubClusterAddress = "venice.kafka.dc-1.linkedin.com:12345";
+    TopicManagerStats stats = new TopicManagerStats(metricsRepository, pubSubClusterAddress);
+    assertEquals(stats.getPubSubAdminOpFailureCount(), 0);
+    System.out.println(metricsRepository.metrics());
+    assertEquals(
+        metricsRepository
+            .getMetric(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--pub_sub_admin_op_failure_count.Gauge")
+            .value(),
+        0.0);
+
+    stats.recordPubSubAdminOpFailure();
+    stats.recordPubSubAdminOpFailure();
+    assertEquals(stats.getPubSubAdminOpFailureCount(), 2);
+    assertEquals(
+        metricsRepository
+            .getMetric(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--pub_sub_admin_op_failure_count.Gauge")
+            .value(),
+        2.0);
+
+    // should reset the count after reading
+    assertEquals(stats.getPubSubAdminOpFailureCount(), 0);
+    assertEquals(
+        metricsRepository
+            .getMetric(".TopicManagerStats_venice_kafka_dc-1_linkedin_com_12345--pub_sub_admin_op_failure_count.Gauge")
+            .value(),
+        0.0);
+  }
 }

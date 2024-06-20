@@ -45,7 +45,7 @@ public class StorageServiceTest {
     Version mockVersion = mock(Version.class);
     when(mockVersion.isActiveActiveReplicationEnabled()).thenReturn(false);
     Store mockStore = mock(Store.class);
-    when(mockStore.getVersion(versionNumber)).thenReturn(Optional.empty()).thenReturn(Optional.of(mockVersion));
+    when(mockStore.getVersion(versionNumber)).thenReturn(null).thenReturn(mockVersion);
 
     // no store or no version exists, delete the store
     when(storeRepository.getStoreOrThrow(storeName)).thenThrow(VeniceNoStoreException.class).thenReturn(mockStore);
@@ -83,7 +83,7 @@ public class StorageServiceTest {
     PartitionerConfig mockPartitionerConfig = mock(PartitionerConfig.class);
     when(mockPartitionerConfig.getAmplificationFactor()).thenReturn(1);
     when(mockVersion.getPartitionerConfig()).thenReturn(mockPartitionerConfig);
-    when(mockStore.getVersion(1)).thenReturn(Optional.of(mockVersion));
+    when(mockStore.getVersion(1)).thenReturn(mockVersion);
 
     when(storeRepository.getStore(storeName)).thenReturn(mockStore);
 

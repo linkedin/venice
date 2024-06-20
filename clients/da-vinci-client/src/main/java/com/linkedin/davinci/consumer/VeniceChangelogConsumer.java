@@ -198,6 +198,13 @@ public interface VeniceChangelogConsumer<K, V> {
   Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs);
 
   /**
+   * Checks whether all subscribed partitions are caught up during bootstrap. If a partition's (currentTimestamp - latestMessageTimestamp)
+   * is smaller or equal to 1 min, we consider this partition is caught up.
+   * @return True if all subscribed partitions have caught up.
+   */
+  boolean isCaughtUp();
+
+  /**
    * Release the internal resources.
    */
   void close();

@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.manager;
 
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE;
+import static com.linkedin.venice.pubsub.PubSubConstants.getPubsubOffsetApiTimeoutDurationDefaultValue;
+import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CONSUMER_ACQUISITION_WAIT_TIME;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CONTAINS_TOPIC;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_OFFSET_FOR_TIME;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.GET_PARTITION_LATEST_OFFSETS;
@@ -21,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.stats.StatsErrorCode;
@@ -49,6 +51,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -86,6 +89,7 @@ class TopicMetadataFetcher implements Closeable {
   private final Map<PubSubTopicPartition, ValueAndExpiryTime<Long>> lastProducerTimestampCache =
       new VeniceConcurrentHashMap<>();
   private final long cachedEntryTtlInNs;
+  private final AtomicInteger consumerWaitListSize = new AtomicInteger(0);
 
   TopicMetadataFetcher(
       String pubSubClusterAddress,
@@ -125,6 +129,8 @@ class TopicMetadataFetcher implements Closeable {
         new DaemonThreadFactory("TopicMetadataFetcherThreadPool"));
     threadPoolExecutor.allowCoreThreadTimeOut(true);
 
+    stats.registerTopicMetadataFetcherSensors(this);
+
     LOGGER.info(
         "Initialized TopicMetadataFetcher for pubSubClusterAddress: {} with consumer pool size: {} and thread pool size: {}",
         pubSubClusterAddress,
@@ -150,22 +156,25 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   // acquire the consumer from the pool
-  private PubSubConsumerAdapter acquireConsumer() {
+  PubSubConsumerAdapter acquireConsumer() {
     try {
-      return pubSubConsumerPool.take();
+      consumerWaitListSize.incrementAndGet();
+      long startTime = System.nanoTime();
+      PubSubConsumerAdapter consumerAdapter = pubSubConsumerPool.take();
+      stats.recordLatency(CONSUMER_ACQUISITION_WAIT_TIME, startTime);
+      return consumerAdapter;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new VeniceException("Interrupted while acquiring pubSubConsumerAdapter", e);
+    } finally {
+      consumerWaitListSize.decrementAndGet();
     }
   }
 
   // release the consumer back to the pool
-  private void releaseConsumer(PubSubConsumerAdapter pubSubConsumerAdapter) {
-    try {
-      pubSubConsumerPool.put(pubSubConsumerAdapter);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new VeniceException("Interrupted while releasing pubSubConsumerAdapter", e);
+  void releaseConsumer(PubSubConsumerAdapter pubSubConsumerAdapter) {
+    if (!pubSubConsumerPool.offer(pubSubConsumerAdapter)) {
+      LOGGER.error("Failed to release pubSubConsumerAdapter back to the pool.");
     }
   }
 
@@ -175,9 +184,15 @@ class TopicMetadataFetcher implements Closeable {
     if (pubSubTopicPartition.getPartitionNumber() < 0) {
       throw new IllegalArgumentException("Invalid partition number: " + pubSubTopicPartition.getPartitionNumber());
     }
-    if (containsTopicCached(pubSubTopicPartition.getPubSubTopic())) {
-      return;
+    try {
+      if (containsTopicCached(pubSubTopicPartition.getPubSubTopic())) {
+        return;
+      }
+    } catch (PubSubClientRetriableException e) {
+      // in case there is any retriable exception, we will retry the operation
+      LOGGER.debug("Failed to check if topic exists: {}", pubSubTopicPartition.getPubSubTopic(), e);
     }
+
     boolean topicExists = RetryUtils.executeWithMaxAttempt(
         () -> containsTopic(pubSubTopicPartition.getPubSubTopic()),
         3,
@@ -204,11 +219,6 @@ class TopicMetadataFetcher implements Closeable {
     }
     long waitUntil = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
     while (System.currentTimeMillis() <= waitUntil && !closeables.isEmpty()) {
-      LOGGER.info(
-          "Waiting for {} consumers to be closed for pubSubClusterAddress: {} remainingTime: {} ms",
-          closeables.size(),
-          pubSubClusterAddress,
-          waitUntil - System.currentTimeMillis());
       PubSubConsumerAdapter pubSubConsumerAdapter = null;
       try {
         pubSubConsumerAdapter = pubSubConsumerPool.poll(5, MILLISECONDS);
@@ -240,10 +250,16 @@ class TopicMetadataFetcher implements Closeable {
    * @return true if the topic exists, false otherwise
    */
   boolean containsTopic(PubSubTopic topic) {
-    long startTime = System.nanoTime();
-    boolean containsTopic = pubSubAdminAdapter.containsTopic(topic);
-    stats.recordLatency(CONTAINS_TOPIC, startTime);
-    return containsTopic;
+    try {
+      long startTime = System.nanoTime();
+      boolean containsTopic = pubSubAdminAdapter.containsTopic(topic);
+      stats.recordLatency(CONTAINS_TOPIC, startTime);
+      return containsTopic;
+    } catch (Exception e) {
+      LOGGER.debug("Failed to check if topic exists: {}", topic, e);
+      stats.recordPubSubAdminOpFailure();
+      throw e;
+    }
   }
 
   CompletableFuture<Boolean> containsTopicAsync(PubSubTopic topic) {
@@ -255,6 +271,16 @@ class TopicMetadataFetcher implements Closeable {
         topicExistenceCache.computeIfAbsent(topic, k -> new ValueAndExpiryTime<>(containsTopic(topic)));
     updateCacheAsync(topic, cachedValue, topicExistenceCache, () -> containsTopicAsync(topic));
     return cachedValue.getValue();
+  }
+
+  public boolean containsTopicWithRetries(PubSubTopic pubSubTopic, int retries) {
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> containsTopic(pubSubTopic),
+        retries,
+        INITIAL_RETRY_DELAY,
+        Duration.ofSeconds(5),
+        Duration.ofMinutes(5),
+        PUBSUB_RETRIABLE_FAILURES);
   }
 
   /**
@@ -281,7 +307,7 @@ class TopicMetadataFetcher implements Closeable {
 
       startTime = System.nanoTime();
       Map<PubSubTopicPartition, Long> offsetsMap =
-          pubSubConsumerAdapter.endOffsets(topicPartitions, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+          pubSubConsumerAdapter.endOffsets(topicPartitions, getPubsubOffsetApiTimeoutDurationDefaultValue());
       stats.recordLatency(GET_TOPIC_LATEST_OFFSETS, startTime);
       Int2LongMap result = new Int2LongOpenHashMap(offsetsMap.size());
       for (Map.Entry<PubSubTopicPartition, Long> entry: offsetsMap.entrySet()) {
@@ -327,7 +353,7 @@ class TopicMetadataFetcher implements Closeable {
     try {
       long startTime = System.nanoTime();
       Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumerAdapter
-          .endOffsets(Collections.singleton(pubSubTopicPartition), PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+          .endOffsets(Collections.singleton(pubSubTopicPartition), getPubsubOffsetApiTimeoutDurationDefaultValue());
       stats.recordLatency(GET_PARTITION_LATEST_OFFSETS, startTime);
       Long offset = offsetMap.get(pubSubTopicPartition);
       if (offset == null) {
@@ -400,7 +426,7 @@ class TopicMetadataFetcher implements Closeable {
     try {
       long startTime = System.nanoTime();
       Long result = pubSubConsumerAdapter
-          .offsetForTime(pubSubTopicPartition, timestamp, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+          .offsetForTime(pubSubTopicPartition, timestamp, getPubsubOffsetApiTimeoutDurationDefaultValue());
       stats.recordLatency(GET_OFFSET_FOR_TIME, startTime);
       if (result != null) {
         return result;
@@ -544,9 +570,8 @@ class TopicMetadataFetcher implements Closeable {
     boolean subscribed = false;
     try {
       // find the end offset
-      Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumerAdapter.endOffsets(
-          Collections.singletonList(pubSubTopicPartition),
-          PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+      Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumerAdapter
+          .endOffsets(Collections.singletonList(pubSubTopicPartition), getPubsubOffsetApiTimeoutDurationDefaultValue());
       if (offsetMap == null || offsetMap.isEmpty()) {
         throw new VeniceException("Failed to get the end offset for topic-partition: " + pubSubTopicPartition);
       }
@@ -557,7 +582,7 @@ class TopicMetadataFetcher implements Closeable {
 
       // find the beginning offset
       long earliestOffset =
-          pubSubConsumerAdapter.beginningOffset(pubSubTopicPartition, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE);
+          pubSubConsumerAdapter.beginningOffset(pubSubTopicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
       if (earliestOffset == latestOffset) {
         return Collections.emptyList(); // no records in this topic partition
       }
@@ -582,7 +607,7 @@ class TopicMetadataFetcher implements Closeable {
         while (pollAttempt <= PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT
             && (consumedBatch == null || consumedBatch.isEmpty())) {
           consumedBatch =
-              pubSubConsumerAdapter.poll(Math.max(10, PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE.toMillis()))
+              pubSubConsumerAdapter.poll(Math.max(10, getPubsubOffsetApiTimeoutDurationDefaultValue().toMillis()))
                   .get(pubSubTopicPartition);
           pollAttempt++;
         }
@@ -752,6 +777,22 @@ class TopicMetadataFetcher implements Closeable {
     void setUpdateInProgressStatus(boolean status) {
       this.isUpdateInProgress.set(status);
     }
+  }
+
+  int getCurrentConsumerPoolSize() {
+    return pubSubConsumerPool.size();
+  }
+
+  int getAsyncTaskActiveThreadCount() {
+    return threadPoolExecutor.getActiveCount();
+  }
+
+  int getAsyncTaskQueueLength() {
+    return threadPoolExecutor.getQueue().size();
+  }
+
+  int getConsumerWaitListSize() {
+    return consumerWaitListSize.get();
   }
 
   @Override

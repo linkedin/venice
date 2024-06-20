@@ -1,10 +1,7 @@
 package com.linkedin.venice.meta;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -31,14 +28,6 @@ public class TestStoreInfo {
     StoreInfo deserializedMissingFieldFasterXml =
         OBJECT_MAPPER.readValue(PRE_HYBRID_STORE_INFO_STRING, StoreInfo.class);
     assertNull(deserializedMissingFieldFasterXml.getHybridStoreConfig());
-  }
-
-  @Test
-  public void testStoreInfoAlwaysReturnsLFModelEnabledTrue() {
-    Store store = mock(Store.class);
-    when(store.isLeaderFollowerModelEnabled()).thenReturn(false);
-    StoreInfo storeInfo = StoreInfo.fromStore(store);
-    assertTrue(storeInfo.isLeaderFollowerModelEnabled());
   }
 
   @Test

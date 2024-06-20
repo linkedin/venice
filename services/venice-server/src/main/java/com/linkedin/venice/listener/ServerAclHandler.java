@@ -1,14 +1,14 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.grpc.GrpcUtils.*;
+import static com.linkedin.venice.listener.ServerHandlerUtils.*;
 import static io.grpc.Metadata.ASCII_STRING_MARSHALLER;
 import static io.grpc.Metadata.Key;
 
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.utils.NettyUtils;
-import com.linkedin.venice.utils.SslUtils;
 import io.grpc.ForwardingServerCallListener;
 import io.grpc.Grpc;
 import io.grpc.Metadata;
@@ -21,13 +21,11 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
 import java.util.Objects;
 import javax.net.ssl.SSLPeerUnverifiedException;
-import javax.net.ssl.SSLSession;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,9 +40,9 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> implements ServerInterceptor {
+  public static final String SERVER_ACL_APPROVED = "SERVER_ACL_APPROVED_ATTRIBUTE_KEY";
   public static final AttributeKey<Boolean> SERVER_ACL_APPROVED_ATTRIBUTE_KEY =
-      AttributeKey.valueOf("SERVER_ACL_APPROVED_ATTRIBUTE_KEY");
-  public static final String GRPC_SERVER_ACL_APPROVED_ATTRIBUTE_KEY = "GRPC_SERVER_ACL_APPROVED_ATTRIBUTE_KEY";
+      AttributeKey.valueOf(SERVER_ACL_APPROVED);
   private static final Logger LOGGER = LogManager.getLogger(ServerAclHandler.class);
   private final StaticAccessController accessController;
   private final boolean failOnAccessRejection;
@@ -67,12 +65,7 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
-    SslHandler sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
-    if (sslHandler == null) {
-      throw new VeniceException("Failed to extract ssl handler from the incoming request");
-    }
-
-    X509Certificate clientCert = SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
+    X509Certificate clientCert = extractClientCert(ctx);
     String method = req.method().name();
 
     boolean accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
@@ -98,23 +91,14 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
     return new ForwardingServerCallListener.SimpleForwardingServerCallListener<ReqT>(next.startCall(call, headers)) {
       @Override
       public void onMessage(ReqT message) {
-        SSLSession sslSession;
         String method = ((VeniceClientRequest) message).getMethod();
-
         String clientAddr =
             Objects.requireNonNull(call.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR)).toString();
-        Key<String> accessApprovedKey = Key.of(GRPC_SERVER_ACL_APPROVED_ATTRIBUTE_KEY, ASCII_STRING_MARSHALLER);
+        Key<String> accessApprovedKey = Key.of(SERVER_ACL_APPROVED, ASCII_STRING_MARSHALLER);
 
         boolean accessApproved = false;
-
         try {
-          sslSession = call.getAttributes().get(Grpc.TRANSPORT_ATTR_SSL_SESSION);
-          if (sslSession == null) {
-            throw new VeniceException("Failed to extract ssl session from the incoming request");
-          }
-
-          X509Certificate clientCert = SslUtils.getX509Certificate(sslSession.getPeerCertificates()[0]);
-
+          X509Certificate clientCert = extractGrpcClientCert(call);
           accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
           headers.put(accessApprovedKey, Boolean.toString(accessApproved));
         } catch (SSLPeerUnverifiedException e) {
@@ -125,10 +109,7 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
         if (accessApproved || !failOnAccessRejection) {
           super.onMessage(message);
         } else {
-          if (LOGGER.isDebugEnabled()) {
-            String errLine = String.format("%s requested %s", clientAddr, method);
-            LOGGER.debug("Unauthorized access rejected: {}", errLine);
-          }
+          LOGGER.debug("Unauthorized access rejected: {} requested {}", clientAddr, method);
           call.close(Status.PERMISSION_DENIED, headers);
         }
       }

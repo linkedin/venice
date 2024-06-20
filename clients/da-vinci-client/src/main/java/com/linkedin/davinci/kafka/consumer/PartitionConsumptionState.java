@@ -31,6 +31,7 @@ import org.apache.avro.generic.GenericRecord;
  * This class is used to maintain internal state for consumption of each partition.
  */
 public class PartitionConsumptionState {
+  private final String replicaId;
   private final int partition;
   private final int amplificationFactor;
   private final int userPartition;
@@ -216,21 +217,17 @@ public class PartitionConsumptionState {
 
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
-  /**
-   * In case of hybrid store, wait until the first HB is received, which might have the leader completed header and base the
-   * decision on that. Check {@link com.linkedin.venice.ConfigKeys#SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED} for
-   * more details.
-   */
-  private boolean firstHeartBeatSOSReceived;
 
   private boolean threadSafeMode;
 
   public PartitionConsumptionState(
+      String replicaId,
       int partition,
       int amplificationFactor,
       OffsetRecord offsetRecord,
       boolean hybrid,
       boolean threadSafeMode) {
+    this.replicaId = replicaId;
     this.partition = partition;
     this.amplificationFactor = amplificationFactor;
     this.userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
@@ -278,9 +275,8 @@ public class PartitionConsumptionState {
     // On start we haven't sent anything
     this.latestRTOffsetTriedToProduceToVTMap = new HashMap<>();
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
-    this.leaderCompleteState = LeaderCompleteState.LEADER_COMPLETE_STATE_UNKNOWN;
+    this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
-    this.firstHeartBeatSOSReceived = false;
   }
 
   public int getPartition() {
@@ -397,9 +393,9 @@ public class PartitionConsumptionState {
 
   @Override
   public String toString() {
-    return new StringBuilder().append("PartitionConsumptionState{")
-        .append("partition=")
-        .append(partition)
+    return new StringBuilder().append("PCS{")
+        .append("replicaId=")
+        .append(replicaId)
         .append(", hybrid=")
         .append(hybrid)
         .append(", latestProcessedLocalVersionTopicOffset=")
@@ -893,11 +889,7 @@ public class PartitionConsumptionState {
     this.lastLeaderCompleteStateUpdateInMs = lastLeaderCompleteStateUpdateInMs;
   }
 
-  public boolean isFirstHeartBeatSOSReceived() {
-    return firstHeartBeatSOSReceived;
-  }
-
-  public void setFirstHeartBeatSOSReceived(boolean firstHeartBeatSOSReceived) {
-    this.firstHeartBeatSOSReceived = firstHeartBeatSOSReceived;
+  public String getReplicaId() {
+    return replicaId;
   }
 }
