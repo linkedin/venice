@@ -9,7 +9,8 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
-import java.util.HashMap;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Map;
 import org.rocksdb.Checkpoint;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -35,7 +36,7 @@ public class BlobSnapshotManagerTest {
         .createCheckpoint(
             BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
 
-    blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
 
     verify(mockCheckpoint, times(1)).createCheckpoint(DB_DIR + "/.snapshot_files");
   }
@@ -47,13 +48,13 @@ public class BlobSnapshotManagerTest {
     BlobSnapshotManager blobSnapshotManager = spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME));
     doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
     doNothing().when(mockCheckpoint).createCheckpoint(DB_DIR);
-    blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-    HashMap<String, HashMap<Integer, Long>> snapShotTimestamps = new HashMap<>();
-    snapShotTimestamps.put(STORE_NAME, new HashMap<>());
+    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    Map<String, Map<Integer, Long>> snapShotTimestamps = new VeniceConcurrentHashMap<>();
+    snapShotTimestamps.put(STORE_NAME, new VeniceConcurrentHashMap<>());
     snapShotTimestamps.get(STORE_NAME).put(PARTITION_ID, System.currentTimeMillis() - SNAPSHOT_RETENTION_TIME - 1);
     blobSnapshotManager.snapShotTimestamps = snapShotTimestamps;
 
-    blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
 
     verify(mockCheckpoint, times(1)).createCheckpoint(DB_DIR + "/.snapshot_files");
   }
@@ -67,9 +68,9 @@ public class BlobSnapshotManagerTest {
     doNothing().when(mockCheckpoint)
         .createCheckpoint(
             BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
-    blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-    blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-    blobSnapshotManager.getHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
 
     Assert.assertEquals(blobSnapshotManager.getConcurrentUsers(mockRocksDB, STORE_NAME, PARTITION_ID), 3);
   }

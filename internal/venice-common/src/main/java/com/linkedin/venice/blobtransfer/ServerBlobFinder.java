@@ -31,10 +31,10 @@ public class ServerBlobFinder implements BlobFinder {
       }
     } catch (VeniceException e) {
       response.setError(true);
-      String errorMsg =
-          "Error finding blob for store: " + storeName + ", version: " + version + ", partitionId: " + partitionId;
-      response.setMessage(errorMsg + ".\n Error: " + e.getMessage());
-      LOGGER.warn(errorMsg, e);
+      String errorMsg = String
+          .format("Error finding blob for store: %s, version: %d, partitionId: %d", storeName, version, partitionId);
+      response.setErrorMessage(errorMsg + ".\n Error: " + e.getMessage());
+      LOGGER.error(errorMsg, e);
 
     }
 
