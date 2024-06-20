@@ -3025,12 +3025,8 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     HybridStoreConfig hybridStoreConfig = null;
     if (hybridConfig == HYBRID) {
-      hybridStoreConfig = new HybridStoreConfigImpl(
-          100,
-          100,
-          -1,
-          DataReplicationPolicy.ACTIVE_ACTIVE,
-          BufferReplayPolicy.REWIND_FROM_EOP);
+      hybridStoreConfig =
+          new HybridStoreConfigImpl(100, 100, -1, DataReplicationPolicy.NONE, BufferReplayPolicy.REWIND_FROM_EOP);
     }
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
