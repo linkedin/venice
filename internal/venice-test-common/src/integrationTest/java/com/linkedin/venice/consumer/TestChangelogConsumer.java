@@ -1,4 +1,4 @@
-package com.linkedin.davinci.consumer;
+package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
@@ -24,6 +24,13 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
+import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
+import com.linkedin.davinci.consumer.ChangeEvent;
+import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
+import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
