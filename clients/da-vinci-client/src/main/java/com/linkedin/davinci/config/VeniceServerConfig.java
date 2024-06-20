@@ -74,6 +74,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICAT
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_THREAD_SAFE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
@@ -449,6 +450,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int ingestionTaskMaxIdleCount;
 
+  private final boolean threadSafeMode;
+
   private final long metaStoreWriterCloseTimeoutInMS;
   private final int metaStoreWriterCloseConcurrency;
 
@@ -734,6 +737,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     pubSubClientsFactory = new PubSubClientsFactory(serverProperties);
     routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "CN=venice-router");
     ingestionTaskMaxIdleCount = serverProperties.getInt(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 10000);
+    threadSafeMode = serverProperties.getBoolean(SERVER_INGESTION_TASK_THREAD_SAFE_MODE, false);
     metaStoreWriterCloseTimeoutInMS = serverProperties.getLong(META_STORE_WRITER_CLOSE_TIMEOUT_MS, 300000L);
     metaStoreWriterCloseConcurrency = serverProperties.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     ingestionHeartbeatIntervalMs =
@@ -1290,6 +1294,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getIngestionTaskMaxIdleCount() {
     return ingestionTaskMaxIdleCount;
+  }
+
+  public boolean isThreadSafeMode() {
+    return threadSafeMode;
   }
 
   public boolean isKMERegistrationFromMessageHeaderEnabled() {

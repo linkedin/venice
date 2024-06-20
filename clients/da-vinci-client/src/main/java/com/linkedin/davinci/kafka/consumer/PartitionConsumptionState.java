@@ -203,7 +203,14 @@ public class PartitionConsumptionState {
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
 
-  public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
+  private boolean threadSafeMode;
+
+  public PartitionConsumptionState(
+      String replicaId,
+      int partition,
+      OffsetRecord offsetRecord,
+      boolean hybrid,
+      boolean threadSafeMode) {
     this.replicaId = replicaId;
     this.partition = partition;
     this.hybrid = hybrid;
@@ -216,6 +223,7 @@ public class PartitionConsumptionState {
     this.processedRecordSizeSinceLastSync = 0;
     this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
     this.expectedSSTFileChecksum = null;
+    this.threadSafeMode = threadSafeMode;
     /**
      * Initialize the latest consumed time with current time; otherwise, it's 0 by default
      * and leader will be promoted immediately.
@@ -530,6 +538,10 @@ public class PartitionConsumptionState {
       int valueLen,
       int valueSchemaId,
       GenericRecord replicationMetadataRecord) {
+    if (this.threadSafeMode) {
+      // NoOp
+      return;
+    }
     TransientRecord transientRecord =
         new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaClusterId, kafkaConsumedOffset);
     if (replicationMetadataRecord != null) {

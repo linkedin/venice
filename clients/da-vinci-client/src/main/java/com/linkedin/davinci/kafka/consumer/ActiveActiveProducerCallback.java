@@ -21,7 +21,8 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestamp,
+      boolean syncOffsetsOnlyAfterProducing) {
     super(
         ingestionTask,
         sourceConsumerRecord,
@@ -29,7 +30,8 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
         leaderProducedRecordContext,
         partition,
         kafkaUrl,
-        beforeProcessingRecordTimestamp);
+        beforeProcessingRecordTimestamp,
+        syncOffsetsOnlyAfterProducing);
   }
 
   @Override
