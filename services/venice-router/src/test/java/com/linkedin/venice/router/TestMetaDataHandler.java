@@ -1274,7 +1274,7 @@ public class TestMetaDataHandler {
   }
 
   @Test
-  public void testRequestTopicForStoreWithActiveActiveReplicationPolicy() throws IOException {
+  public void testRequestTopicForStoreWithActiveActiveStore() throws IOException {
     String clusterName = "test-cluster";
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
@@ -1287,7 +1287,7 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.ACTIVE_ACTIVE,
+        DataReplicationPolicy.NONE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
@@ -1299,6 +1299,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(nonAggStoreConfig).when(currentVersion).getHybridStoreConfig();
     Mockito.doReturn(1).when(currentVersion).getNumber();
     Mockito.doReturn(10).when(currentVersion).getPartitionCount();
+    Mockito.doReturn(true).when(currentVersion).isActiveActiveReplicationEnabled();
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
     Mockito.doReturn(currentVersion).when(store).getVersion(1);
@@ -1339,7 +1340,7 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.ACTIVE_ACTIVE,
+        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
@@ -1393,7 +1394,7 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.ACTIVE_ACTIVE,
+        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
