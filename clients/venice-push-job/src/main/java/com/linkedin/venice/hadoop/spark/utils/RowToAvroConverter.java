@@ -423,7 +423,7 @@ public final class RowToAvroConverter {
       structFieldIndex++;
     }
 
-    throw new IllegalArgumentException("Expected union of null and another type, got: " + types);
+    throw new IllegalArgumentException("At least one field of complex union must be non-null: " + types);
   }
 
   private static Object convertInternal(Object o, DataType dataType, Schema schema) {

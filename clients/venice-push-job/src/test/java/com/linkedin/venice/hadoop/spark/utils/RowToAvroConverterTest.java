@@ -707,7 +707,7 @@ public class RowToAvroConverterTest {
     // Type must be LongType, TimestampType, TimestampNTZType or DayTimeIntervalType
     assertThrows(
         IllegalArgumentException.class,
-        () -> RowToAvroConverter.convertToInt(0.5f, StringType, AVRO_SCHEMA.getField("long").schema()));
+        () -> RowToAvroConverter.convertToLong(0.5f, StringType, AVRO_SCHEMA.getField("long").schema()));
 
     // When using LongType, data must be a Long
     assertThrows(
@@ -874,6 +874,20 @@ public class RowToAvroConverterTest {
     assertNotNull(decimalObj2.bytes());
     assertEquals(decimalObj2.bytes().length, 3);
     assertEquals(decimalObj2.bytes(), new byte[] { 0, 0, 50 });
+
+    // The byte array must have the correct length
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> RowToAvroConverter
+            .convertToFixed(new byte[] { 0x00, 0x01 }, BinaryType, AVRO_SCHEMA.getField("byteArrFixed").schema()));
+
+    // The byte buffer must have the correct length
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> RowToAvroConverter.convertToFixed(
+            ByteBuffer.wrap(new byte[] { 0x00, 0x01 }),
+            BinaryType,
+            AVRO_SCHEMA.getField("byteBufferFixed").schema()));
 
     // Type must be BinaryType or DecimalType
     assertThrows(
@@ -1167,6 +1181,14 @@ public class RowToAvroConverterTest {
     Object complexNullableUnion3_3 = RowToAvroConverter
         .convertToUnion(null, UNION_STRUCT_STRING_INT, AVRO_SCHEMA.getField("complexNullableUnion3").schema());
     assertNull(complexNullableUnion3_3);
+
+    // At least one branch must be non-null
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> RowToAvroConverter.convertToUnion(
+            new GenericRowWithSchema(new Object[] { null, null }, UNION_STRUCT_STRING_INT),
+            UNION_STRUCT_STRING_INT,
+            AVRO_SCHEMA.getField("complexNullableUnion3").schema()));
   }
 
   @Test
