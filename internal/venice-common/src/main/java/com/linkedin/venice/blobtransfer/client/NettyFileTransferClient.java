@@ -11,8 +11,6 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
-import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.InputStream;
@@ -61,11 +59,9 @@ public class NettyFileTransferClient {
   }
 
   private FullHttpRequest prepareRequest(String storeName, int version, int partition) {
-    FullHttpRequest request = new DefaultFullHttpRequest(
+    return new DefaultFullHttpRequest(
         HttpVersion.HTTP_1_1,
         HttpMethod.GET,
         String.format("/%s/%d/%d", storeName, version, partition));
-    request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
-    return request;
   }
 }

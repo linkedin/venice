@@ -5,7 +5,6 @@ import static com.linkedin.venice.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_S
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_OCTET_STREAM;
 
-import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.venice.blobtransfer.BlobTransferPayload;
 import com.linkedin.venice.request.RequestHelper;
 import io.netty.channel.ChannelFuture;
@@ -23,6 +22,7 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.stream.ChunkedFile;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
@@ -49,7 +49,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   @Override
   public void channelActive(ChannelHandlerContext ctx) {
     LOGGER.trace("Channel {} active", ctx.channel());
-    if (ctx.pipeline().get(SslInitializer.class) == null) {
+    if (ctx.pipeline().get(SslHandler.class) == null) {
       useZeroCopy = true;
       LOGGER.debug("SSL not enabled. Use Zero-Copy for file transfer");
     }
@@ -159,11 +159,10 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ctx.write(response);
 
     if (useZeroCopy) {
-      sendFileFuture =
-          ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel(), 0, length), ctx.newProgressivePromise());
+      sendFileFuture = ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel(), 0, length));
       ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
     } else {
-      sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf)), ctx.newProgressivePromise());
+      sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf)));
     }
 
     sendFileFuture.addListener(future -> {
