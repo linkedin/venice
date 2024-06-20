@@ -1,20 +1,35 @@
 package com.linkedin.venice.hadoop.spark.datawriter.jobs;
 
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_KEY_SCHEMA;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.FILE_VALUE_SCHEMA;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.GLOB_FILTER_PATTERN;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SCHEMA_STRING_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJobConstants.VSON_PUSH;
 import static com.linkedin.venice.hadoop.spark.SparkConstants.DEFAULT_SCHEMA;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.hadoop.spark.input.hdfs.VeniceHdfsSource;
 import com.linkedin.venice.hadoop.spark.utils.RowToAvroConverter;
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.mapred.AvroWrapper;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.MapFunction;
+import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -31,11 +46,44 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     SparkSession sparkSession = getSparkSession();
     PushJobSetting pushJobSetting = getPushJobSetting();
 
-    if (pushJobSetting.isAvro) {
+    VeniceProperties jobProps = getJobProperties();
+    boolean useNativeInputFormat = jobProps.getBoolean(SPARK_NATIVE_INPUT_FORMAT_ENABLED, false);
+
+    if (!useNativeInputFormat) {
+      return getDataFrameFromCustomInputFormat(sparkSession, pushJobSetting);
+    } else if (pushJobSetting.isAvro) {
       return getAvroDataFrame(sparkSession, pushJobSetting);
     } else {
       return getVsonDataFrame(sparkSession, pushJobSetting);
     }
+  }
+
+  private Dataset<Row> getDataFrameFromCustomInputFormat(SparkSession sparkSession, PushJobSetting pushJobSetting) {
+    DataFrameReader dataFrameReader = sparkSession.read();
+    dataFrameReader.format(VeniceHdfsSource.class.getCanonicalName());
+    setInputConf(sparkSession, dataFrameReader, INPUT_PATH_PROP, new Path(pushJobSetting.inputURI).toString());
+    setInputConf(sparkSession, dataFrameReader, KEY_FIELD_PROP, pushJobSetting.keyField);
+    setInputConf(sparkSession, dataFrameReader, VALUE_FIELD_PROP, pushJobSetting.valueField);
+    if (pushJobSetting.etlValueSchemaTransformation != null) {
+      setInputConf(
+          sparkSession,
+          dataFrameReader,
+          ETL_VALUE_SCHEMA_TRANSFORMATION,
+          pushJobSetting.etlValueSchemaTransformation.name());
+    }
+    if (pushJobSetting.isAvro) {
+      setInputConf(sparkSession, dataFrameReader, SCHEMA_STRING_PROP, pushJobSetting.inputDataSchemaString);
+      if (pushJobSetting.generatePartialUpdateRecordFromInput) {
+        setInputConf(sparkSession, dataFrameReader, GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, String.valueOf(true));
+        setInputConf(sparkSession, dataFrameReader, UPDATE_SCHEMA_STRING_PROP, pushJobSetting.valueSchemaString);
+      }
+      setInputConf(sparkSession, dataFrameReader, VSON_PUSH, String.valueOf(false));
+    } else {
+      setInputConf(sparkSession, dataFrameReader, VSON_PUSH, String.valueOf(true));
+      setInputConf(sparkSession, dataFrameReader, FILE_KEY_SCHEMA, pushJobSetting.vsonInputKeySchemaString);
+      setInputConf(sparkSession, dataFrameReader, FILE_VALUE_SCHEMA, pushJobSetting.vsonInputValueSchemaString);
+    }
+    return dataFrameReader.load();
   }
 
   private Dataset<Row> getAvroDataFrame(SparkSession sparkSession, PushJobSetting pushJobSetting) {
@@ -43,7 +91,7 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
         sparkSession.read().format("avro").option("pathGlobFilter", GLOB_FILTER_PATTERN).load(pushJobSetting.inputURI);
 
     // Transforming the input data format
-    df = df.map((MapFunction<Row, Row>) (Row record) -> {
+    df = df.map((MapFunction<Row, Row>) (record) -> {
       Schema updateSchema = null;
       if (pushJobSetting.generatePartialUpdateRecordFromInput) {
         updateSchema = AvroCompatibilityHelper.parse(pushJobSetting.valueSchemaString);

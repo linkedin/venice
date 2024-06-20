@@ -22,6 +22,7 @@ import org.apache.avro.LogicalType;
 import org.apache.avro.LogicalTypes;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericEnumSymbol;
 import org.apache.avro.generic.GenericFixed;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
@@ -46,6 +47,7 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.types.TimestampNTZType;
 import org.apache.spark.sql.types.TimestampType;
 import org.apache.spark.sql.types.YearMonthIntervalType;
+import scala.collection.JavaConverters;
 
 
 /**
@@ -79,7 +81,7 @@ public final class RowToAvroConverter {
     return convertToRecord(row, row.schema(), schema);
   }
 
-  private static GenericRecord convertToRecord(Object o, DataType dataType, Schema schema) {
+  static GenericRecord convertToRecord(Object o, DataType dataType, Schema schema) {
     Validate.isInstanceOf(StructType.class, dataType, "Expected StructType, got: " + dataType.getClass().getName());
     Validate.isInstanceOf(Row.class, o, "Expected Row, got: " + o.getClass().getName());
     GenericRecord aResult = new GenericData.Record(schema);
@@ -105,19 +107,19 @@ public final class RowToAvroConverter {
           "Field names must match. Row: " + structField.name() + ", Avro: " + avroField.name());
 
       Object elem = row.get(i);
-      aResult.put(i, convert(elem, structField.dataType(), avroField.schema()));
+      aResult.put(i, convertInternal(elem, structField.dataType(), avroField.schema()));
     }
 
     return aResult;
   }
 
-  private static Boolean convertToBoolean(Object o, DataType dataType) {
+  static Boolean convertToBoolean(Object o, DataType dataType) {
     Validate.isInstanceOf(BooleanType.class, dataType, "Expected BooleanType, got: " + dataType.getClass().getName());
     Validate.isInstanceOf(Boolean.class, o, "Expected Boolean, got: " + o.getClass().getName());
     return ((Boolean) o);
   }
 
-  private static Integer convertToInt(Object o, DataType dataType, Schema schema) {
+  static Integer convertToInt(Object o, DataType dataType, Schema schema) {
     // IntegerType
     if (dataType instanceof IntegerType) {
       Validate.isInstanceOf(Integer.class, o, "Expected Integer, got: " + o.getClass().getName());
@@ -163,7 +165,7 @@ public final class RowToAvroConverter {
     throw new IllegalArgumentException("Unsupported data type: " + dataType);
   }
 
-  private static Long convertToLong(Object o, DataType dataType, Schema schema) {
+  static Long convertToLong(Object o, DataType dataType, Schema schema) {
     // LongType
     if (dataType instanceof LongType) {
       Validate.isInstanceOf(Long.class, o, "Expected Long, got: " + o.getClass().getName());
@@ -173,7 +175,7 @@ public final class RowToAvroConverter {
     // Avro logical types "timestamp-millis" and "timestamp-micros" are read as LongType in Spark
     if (dataType instanceof TimestampType) {
       LogicalType logicalType =
-          validateLogicalType(schema, false, LogicalTypes.timeMicros(), LogicalTypes.timeMillis());
+          validateLogicalType(schema, false, LogicalTypes.timestampMicros(), LogicalTypes.timestampMillis());
 
       Instant instant;
       if (o instanceof java.time.Instant) {
@@ -186,7 +188,7 @@ public final class RowToAvroConverter {
                 + ". Expected java.time.Instant or java.sql.Timestamp");
       }
 
-      if (logicalType == null || logicalType == LogicalTypes.timeMicros()) {
+      if (logicalType == null || logicalType == LogicalTypes.timestampMillis()) {
         return ChronoUnit.MILLIS.between(Instant.EPOCH, instant);
       }
 
@@ -222,25 +224,25 @@ public final class RowToAvroConverter {
     throw new IllegalArgumentException("Unsupported data type: " + dataType);
   }
 
-  private static Float convertToFloat(Object o, DataType dataType) {
+  static Float convertToFloat(Object o, DataType dataType) {
     Validate.isInstanceOf(FloatType.class, dataType, "Expected FloatType, got: " + dataType);
     Validate.isInstanceOf(Float.class, o, "Expected Float, got: " + o.getClass().getName());
     return ((Float) o);
   }
 
-  private static Double convertToDouble(Object o, DataType dataType) {
+  static Double convertToDouble(Object o, DataType dataType) {
     Validate.isInstanceOf(DoubleType.class, dataType, "Expected DoubleType, got: " + dataType);
     Validate.isInstanceOf(Double.class, o, "Expected Double, got: " + o.getClass().getName());
     return ((Double) o);
   }
 
-  private static CharSequence convertToString(Object o, DataType dataType) {
+  static CharSequence convertToString(Object o, DataType dataType) {
     Validate.isInstanceOf(StringType.class, dataType, "Expected StringType, got: " + dataType);
     Validate.isInstanceOf(CharSequence.class, o, "Expected CharSequence, got: " + o.getClass().getName());
     return ((CharSequence) o);
   }
 
-  private static ByteBuffer convertToBytes(Object o, DataType dataType, Schema schema) {
+  static ByteBuffer convertToBytes(Object o, DataType dataType, Schema schema) {
     if (dataType instanceof BinaryType) {
       if (o instanceof byte[]) {
         return ByteBuffer.wrap((byte[]) o);
@@ -265,7 +267,7 @@ public final class RowToAvroConverter {
     throw new IllegalArgumentException("Unsupported data type: " + dataType);
   }
 
-  private static GenericFixed convertToFixed(Object o, DataType dataType, Schema schema) {
+  static GenericFixed convertToFixed(Object o, DataType dataType, Schema schema) {
     if (dataType instanceof BinaryType) {
       if (o instanceof byte[]) {
         byte[] bytes = (byte[]) o;
@@ -299,39 +301,52 @@ public final class RowToAvroConverter {
     throw new IllegalArgumentException("Unsupported data type: " + dataType);
   }
 
-  private static GenericData.EnumSymbol convertToEnum(Object o, DataType dataType, Schema schema) {
+  static GenericEnumSymbol convertToEnum(Object o, DataType dataType, Schema schema) {
     Validate.isInstanceOf(StringType.class, dataType, "Expected StringType, got: " + dataType);
     Validate.isInstanceOf(CharSequence.class, o, "Expected CharSequence, got: " + o.getClass().getName());
     Validate.isTrue(schema.getEnumSymbols().contains(o.toString()), "Enum symbol not found: " + o);
     return AvroCompatibilityHelper.newEnumSymbol(schema, ((CharSequence) o).toString());
   }
 
-  private static List<Object> convertToArray(Object o, DataType dataType, Schema schema) {
+  static List<Object> convertToArray(Object o, DataType dataType, Schema schema) {
     Validate.isInstanceOf(ArrayType.class, dataType, "Expected ArrayType, got: " + dataType);
-    Validate
-        .isInstanceOf(scala.collection.Seq.class, o, "Expected scala.collection.Seq, got: " + o.getClass().getName());
 
     // Type of elements in the array
     Schema elementType = schema.getElementType();
 
-    List inputList = scala.collection.JavaConversions.seqAsJavaList((scala.collection.Seq) o);
+    List inputList;
+    if (o instanceof List) {
+      inputList = (List) o;
+    } else if (o instanceof scala.collection.Seq) {
+      // If the input is a scala.collection.Seq, convert it to a List
+      inputList = JavaConverters.seqAsJavaList((scala.collection.Seq) o);
+    } else {
+      throw new IllegalArgumentException("Unsupported array type: " + o.getClass().getName());
+    }
+
     List<Object> outputList = new ArrayList<>(inputList.size());
 
     for (Object element: inputList) {
-      outputList.add(convert(element, ((ArrayType) dataType).elementType(), elementType));
+      outputList.add(convertInternal(element, ((ArrayType) dataType).elementType(), elementType));
     }
 
     return outputList;
   }
 
-  private static Map<CharSequence, Object> convertToMap(Object o, DataType dataType, Schema schema) {
+  static Map<CharSequence, Object> convertToMap(Object o, DataType dataType, Schema schema) {
     Validate.isInstanceOf(MapType.class, dataType, "Expected MapType, got: " + dataType.getClass().getName());
-    Validate
-        .isInstanceOf(scala.collection.Map.class, o, "Expected scala.collection.Map, got: " + o.getClass().getName());
 
     MapType sType = ((MapType) dataType);
 
-    Map inputMap = scala.collection.JavaConversions.mapAsJavaMap((scala.collection.Map) o);
+    Map inputMap;
+    if (o instanceof Map) {
+      inputMap = (Map) o;
+    } else if (o instanceof scala.collection.Map) {
+      inputMap = JavaConverters.mapAsJavaMap((scala.collection.Map) o);
+    } else {
+      throw new IllegalArgumentException("Unsupported map type: " + o.getClass().getName());
+    }
+
     Map<CharSequence, Object> outputMap = new HashMap<>(inputMap.size());
 
     for (Object entryObj: inputMap.entrySet()) {
@@ -340,13 +355,13 @@ public final class RowToAvroConverter {
       outputMap.put(
           // Key is always a String in Avro
           convertToString(entry.getKey(), sType.keyType()),
-          convert(entry.getValue(), sType.valueType(), schema.getValueType()));
+          convertInternal(entry.getValue(), sType.valueType(), schema.getValueType()));
     }
 
     return outputMap;
   }
 
-  private static Object convertToUnion(Object o, DataType dataType, Schema schema) {
+  static Object convertToUnion(Object o, DataType dataType, Schema schema) {
     if (o == null) {
       Validate.isTrue(schema.isNullable(), "Field is not nullable: " + schema.getName());
       return null;
@@ -356,18 +371,18 @@ public final class RowToAvroConverter {
     Schema first = types.get(0);
     // If there's only one branch, Spark will use that as the data type
     if (types.size() == 1) {
-      return convert(o, dataType, first);
+      return convertInternal(o, dataType, first);
     }
 
     Schema second = types.get(1);
     if (types.size() == 2) {
       // If there are only two branches, and one of them is null, Spark will use the non-null type
       if (first.getType() == Schema.Type.NULL) {
-        return convert(o, dataType, second);
+        return convertInternal(o, dataType, second);
       }
 
       if (second.getType() == Schema.Type.NULL) {
-        return convert(o, dataType, first);
+        return convertInternal(o, dataType, first);
       }
 
       // A union of int and long is read as LongType.
@@ -403,7 +418,7 @@ public final class RowToAvroConverter {
       }
       Object unionField = row.get(structFieldIndex);
       if (unionField != null) {
-        return convert(unionField, structFields[structFieldIndex].dataType(), type);
+        return convertInternal(unionField, structFields[structFieldIndex].dataType(), type);
       }
       structFieldIndex++;
     }
@@ -411,7 +426,7 @@ public final class RowToAvroConverter {
     throw new IllegalArgumentException("Expected union of null and another type, got: " + types);
   }
 
-  private static Object convert(Object o, DataType dataType, Schema schema) {
+  private static Object convertInternal(Object o, DataType dataType, Schema schema) {
     if (o == null) {
       Validate.isTrue(schema.isNullable(), "Field is not nullable: " + schema.getName());
       return null;
@@ -449,11 +464,11 @@ public final class RowToAvroConverter {
     }
   }
 
-  private static LogicalType validateLogicalType(Schema schema, LogicalType... expectedTypes) {
+  static LogicalType validateLogicalType(Schema schema, LogicalType... expectedTypes) {
     return validateLogicalType(schema, true, expectedTypes);
   }
 
-  private static LogicalType validateLogicalType(Schema schema, boolean needLogicalType, LogicalType... expectedTypes) {
+  static LogicalType validateLogicalType(Schema schema, boolean needLogicalType, LogicalType... expectedTypes) {
     LogicalType logicalType = schema.getLogicalType();
     if (logicalType == null) {
       if (needLogicalType) {
