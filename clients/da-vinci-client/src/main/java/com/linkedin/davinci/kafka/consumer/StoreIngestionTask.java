@@ -299,7 +299,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final DaVinciRecordTransformer recordTransformer;
-  private InternalDaVinciRecordTransformer internalRecordTransformer;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -434,10 +433,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
-    this.recordTransformer =
-        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
+    this.recordTransformer = getRecordTransformer != null
+        ? new InternalDaVinciRecordTransformer<>(getRecordTransformer.apply(store.getCurrentVersion()))
+        : null;
     if (this.recordTransformer != null) {
-      this.internalRecordTransformer = new InternalDaVinciRecordTransformer<>(recordTransformer);
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
@@ -1321,9 +1320,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
-      if (internalRecordTransformer != null) {
+      if (recordTransformer != null) {
         long startTime = System.currentTimeMillis();
-        internalRecordTransformer.onStartIngestionTask();
+        recordTransformer.onStartIngestionTask();
         long endTime = System.currentTimeMillis();
         versionedIngestionStats.recordTransformerLifecycleStartLatency(
             storeName,
@@ -3182,7 +3181,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
 
         // Do transformation recompute key, value and partition
-        if (internalRecordTransformer != null) {
+        if (recordTransformer != null) {
           long recordTransformStartTime = System.currentTimeMillis();
           ByteBuffer valueBytes = put.getPutValue();
           Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
@@ -3209,15 +3208,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           Object transformedRecord = null;
           try {
-            transformedRecord = internalRecordTransformer.put(lazyKey, lazyValue);
+            transformedRecord = recordTransformer.put(lazyKey, lazyValue);
           } catch (Exception e) {
             versionedIngestionStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
             String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
 
             throw new VeniceMessageException(errorMessage, e);
           }
-          ByteBuffer transformedBytes = internalRecordTransformer
-              .getValueBytes(internalRecordTransformer.getValueOutputSchema(), transformedRecord);
+          ByteBuffer transformedBytes =
+              recordTransformer.getValueBytes(recordTransformer.getValueOutputSchema(), transformedRecord);
 
           put.putValue = transformedBytes;
           versionedIngestionStats.recordTransformerLatency(
@@ -3528,9 +3527,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // This method signals the run method to end, which closes the
     // resources before exiting.
 
-    if (internalRecordTransformer != null) {
+    if (recordTransformer != null) {
       long startTime = System.currentTimeMillis();
-      internalRecordTransformer.onEndIngestionTask();
+      recordTransformer.onEndIngestionTask();
       long endTime = System.currentTimeMillis();
       versionedIngestionStats.recordTransformerLifecycleEndLatency(
           storeName,
