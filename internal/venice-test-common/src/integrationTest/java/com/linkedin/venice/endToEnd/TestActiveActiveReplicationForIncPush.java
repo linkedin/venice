@@ -13,7 +13,10 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FI
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
+import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
@@ -40,9 +43,12 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -61,14 +67,16 @@ public class TestActiveActiveReplicationForIncPush {
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
+  private static final String PARENT = "parent";
   private String[] clusterNames;
   private String parentRegionName;
   private String[] dcNames;
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-
-  PubSubBrokerWrapper veniceParentDefaultKafka;
+  private PubSubBrokerWrapper veniceParentDefaultKafka;
+  private Map<String, ControllerClient> controllerClients;
+  private String clusterName;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -107,10 +115,27 @@ public class TestActiveActiveReplicationForIncPush {
     dcNames = multiRegionMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
 
     veniceParentDefaultKafka = multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper();
+
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
+    Function<Integer, String> connectionString = i -> childDatacenters.get(i).getControllerConnectString();
+    clusterName = this.clusterNames[0];
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
+    ControllerClient dc0ControllerClient = new ControllerClient(clusterName, connectionString.apply(0));
+    ControllerClient dc1ControllerClient = new ControllerClient(clusterName, connectionString.apply(1));
+    ControllerClient dc2ControllerClient = new ControllerClient(clusterName, connectionString.apply(2));
+    controllerClients = new LinkedHashMap<>(4);
+    controllerClients.put(PARENT, parentControllerClient);
+    controllerClients.put(dcNames[0], dc0ControllerClient);
+    controllerClients.put(dcNames[1], dc1ControllerClient);
+    controllerClients.put(dcNames[2], dc2ControllerClient);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
+    for (ControllerClient controllerClient: controllerClients.values()) {
+      controllerClient.close();
+    }
+
     multiRegionMultiClusterWrapper.close();
   }
 
@@ -120,138 +145,110 @@ public class TestActiveActiveReplicationForIncPush {
    */
   @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testAAReplicationForIncrementalPushToRT(boolean overrideDataReplicationPolicy) throws Exception {
-    String clusterName = this.clusterNames[0];
     File inputDirBatch = getTempDataDirectory();
     File inputDirInc1 = getTempDataDirectory();
     File inputDirInc2 = getTempDataDirectory();
 
-    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
     String inputDirPathInc1 = "file:" + inputDirInc1.getAbsolutePath();
     String inputDirPathInc2 = "file:" + inputDirInc2.getAbsolutePath();
-    Function<Integer, String> connectionString = i -> childDatacenters.get(i).getControllerConnectString();
 
-    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
-        ControllerClient dc0ControllerClient = new ControllerClient(clusterName, connectionString.apply(0));
-        ControllerClient dc1ControllerClient = new ControllerClient(clusterName, connectionString.apply(1));
-        ControllerClient dc2ControllerClient = new ControllerClient(clusterName, connectionString.apply(2))) {
-      String storeName = Utils.getUniqueString("store");
-      Properties propsBatch =
-          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathBatch, storeName);
-      propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc1 =
-          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathInc1, storeName);
-      propsInc1.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc2 =
-          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathInc2, storeName);
-      propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    String storeName = Utils.getUniqueString("store");
+    Properties propsBatch =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathBatch, storeName);
+    propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    Properties propsInc1 =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathInc1, storeName);
+    propsInc1.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    Properties propsInc2 =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathInc2, storeName);
+    propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
-      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDirBatch);
-      String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-      String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDirBatch);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
-      propsInc1.setProperty(INCREMENTAL_PUSH, "true");
-      propsInc1.put(SOURCE_GRID_FABRIC, dcNames[2]);
-      TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDirInc1);
+    propsInc1.setProperty(INCREMENTAL_PUSH, "true");
+    propsInc1.put(SOURCE_GRID_FABRIC, dcNames[2]);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDirInc1);
 
-      propsInc2.setProperty(INCREMENTAL_PUSH, "true");
-      propsInc2.put(SOURCE_GRID_FABRIC, dcNames[1]);
-      TestWriteUtils.writeSimpleAvroFileWithString2StringSchema3(inputDirInc2);
+    propsInc2.setProperty(INCREMENTAL_PUSH, "true");
+    propsInc2.put(SOURCE_GRID_FABRIC, dcNames[1]);
+    TestWriteUtils.writeSimpleAvroFileWithString2StringSchema3(inputDirInc2);
 
-      TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
+    TestUtils
+        .assertCommand(controllerClients.get(PARENT).createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
 
-      verifyHybridAndIncPushConfig(
-          storeName,
-          false,
-          false,
-          parentControllerClient,
-          dc0ControllerClient,
-          dc1ControllerClient,
-          dc2ControllerClient);
+    verifyHybridAndIncPushConfig(storeName, false, false, controllerClients);
 
-      // Store Setup
-      UpdateStoreQueryParams updateStoreParams =
-          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setPartitionCount(1)
-              .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
-              .setHybridRewindSeconds(2L)
-              .setNativeReplicationSourceFabric("dc-2");
+    // Store Setup
+    UpdateStoreQueryParams updateStoreParams =
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setPartitionCount(1)
+            .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
+            .setHybridRewindSeconds(2L)
+            .setNativeReplicationSourceFabric("dc-2");
 
-      // Override the data replication policy to be non-aggregate.
-      if (overrideDataReplicationPolicy) {
-        updateStoreParams.setHybridDataReplicationPolicy(DataReplicationPolicy.NON_AGGREGATE);
-      }
-
-      TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
-
-      // Print all the kafka cluster URLs
-      LOGGER.info("KafkaURL {}:{}", dcNames[0], childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL {}:{}", dcNames[1], childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL {}:{}", dcNames[2], childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL {}:{}", parentRegionName, veniceParentDefaultKafka.getAddress());
-
-      // verify store configs
-      TestUtils.verifyDCConfigNativeAndActiveRepl(
-          storeName,
-          true,
-          true,
-          parentControllerClient,
-          dc0ControllerClient,
-          dc1ControllerClient,
-          dc2ControllerClient);
-      TestUtils.verifyHybridStoreDataReplicationPolicy(
-          storeName,
-          overrideDataReplicationPolicy ? DataReplicationPolicy.NON_AGGREGATE : DataReplicationPolicy.ACTIVE_ACTIVE,
-          parentControllerClient,
-          dc0ControllerClient,
-          dc1ControllerClient,
-          dc2ControllerClient);
-
-      verifyHybridAndIncPushConfig(
-          storeName,
-          true,
-          true,
-          parentControllerClient,
-          dc0ControllerClient,
-          dc1ControllerClient,
-          dc2ControllerClient);
-
-      // Run a batch push first
-      try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A all fabrics", propsBatch)) {
-        job.run();
-        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-      }
-      // Run inc push with source fabric preference taking effect.
-      try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
-        job.run();
-        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-      }
-
-      // Verify
-      for (int i = 0; i < childDatacenters.size(); i++) {
-        VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(i);
-        // Verify the current version should be 1.
-        Version version =
-            childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-        Assert.assertNotNull(version, "Version 1 is not present for DC: " + dcNames[i]);
-      }
-      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
-
-      // Run another inc push with a different source fabric preference taking effect.
-      try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-1", propsInc2)) {
-        job.run();
-        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
-      }
-      NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
+    // Override the data replication policy to be non-aggregate.
+    if (overrideDataReplicationPolicy) {
+      updateStoreParams.setHybridDataReplicationPolicy(NON_AGGREGATE);
     }
+
+    TestUtils.assertCommand(controllerClients.get(PARENT).updateStore(storeName, updateStoreParams));
+
+    // Print all the kafka cluster URLs
+    LOGGER.info("KafkaURL {}:{}", dcNames[0], childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+    LOGGER.info("KafkaURL {}:{}", dcNames[1], childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+    LOGGER.info("KafkaURL {}:{}", dcNames[2], childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+    LOGGER.info("KafkaURL {}:{}", parentRegionName, veniceParentDefaultKafka.getAddress());
+
+    ControllerClient[] controllerClientsArr = controllerClients.values().toArray(new ControllerClient[0]);
+
+    // verify store configs
+    TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, true, controllerClientsArr);
+    TestUtils.verifyHybridStoreDataReplicationPolicy(
+        storeName,
+        overrideDataReplicationPolicy ? NON_AGGREGATE : ACTIVE_ACTIVE,
+        controllerClientsArr);
+
+    verifyHybridAndIncPushConfig(storeName, true, true, controllerClients);
+
+    // Run a batch push first
+    try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A all fabrics", propsBatch)) {
+      job.run();
+      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+    }
+    // Run inc push with source fabric preference taking effect.
+    try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
+      job.run();
+      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+    }
+
+    // Verify
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(i);
+      // Verify the current version should be 1.
+      Version version =
+          childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
+      Assert.assertNotNull(version, "Version 1 is not present for DC: " + dcNames[i]);
+    }
+    NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
+
+    // Run another inc push with a different source fabric preference taking effect.
+    try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-1", propsInc2)) {
+      job.run();
+      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+    }
+    NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
+
   }
 
   public static void verifyHybridAndIncPushConfig(
       String storeName,
       boolean expectedIncPushStatus,
       boolean isNonNullHybridStoreConfig,
-      ControllerClient... controllerClients) {
-    for (ControllerClient controllerClient: controllerClients) {
+      Map<String, ControllerClient> controllerClients) {
+    for (ControllerClient controllerClient: controllerClients.values()) {
       waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
         StoreInfo storeInfo = storeResponse.getStore();
@@ -267,6 +264,110 @@ public class TestActiveActiveReplicationForIncPush {
         assertNotNull(hybridStoreConfig, "The hybrid store config is null.");
         DataReplicationPolicy policy = hybridStoreConfig.getDataReplicationPolicy();
         assertNotNull(policy, "The data replication policy is null.");
+      });
+    }
+  }
+
+  /**
+   * Case 1:
+   *  arrange: create a batch only store
+   *  act: convert store to hybrid
+   *  assert: store is AA enabled and store has ACTIVE_ACTIVE DRP
+   *
+   *  Case 2:
+   *  arrange: create a hybrid store (non AA and non ACTIVE_ACTIVE DRP)
+   *  act: enable AA
+   *  assert: store is AA enabled and store has ACTIVE_ACTIVE DRP
+   */
+  @Test
+  public void testSetActiveActiveDRPWhenConvertingStoreToAA() {
+    String storeName1 = Utils.getUniqueString("aa-drp-test");
+    try {
+      createAndVerifyStoreInAllRegions(storeName1, controllerClients.get(PARENT), controllerClients.values());
+
+      // verify that the store is batch only; not AA enabled; Incremental push is disabled; and DRP is NON_AGGREGATE
+      verifyStoreDataReplicationSettings(storeName1, false, false, false, null, controllerClients);
+
+      // convert store to hybrid; this should enable AA and set the DRP to ACTIVE_ACTIVE
+      assertCommand(
+          controllerClients.get(PARENT)
+              .updateStore(
+                  storeName1,
+                  new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(2)));
+
+      // verify that the store is hybrid; AA enabled; Incremental push is enabled; and DRP is ACTIVE_ACTIVE
+      verifyStoreDataReplicationSettings(storeName1, true, true, true, ACTIVE_ACTIVE, controllerClients);
+
+      // disable AA
+      assertCommand(
+          controllerClients.get(PARENT)
+              .updateStore(storeName1, new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)));
+
+      // verify that the store is hybrid; not AA enabled; Incremental push is disabled; and DRP is NON_AGGREGATE
+      verifyStoreDataReplicationSettings(storeName1, true, false, false, NON_AGGREGATE, controllerClients);
+
+      // enable AA
+      assertCommand(
+          controllerClients.get(PARENT)
+              .updateStore(storeName1, new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)));
+
+      // verify that the store is hybrid; AA enabled; Incremental push is enabled; and DRP is ACTIVE_ACTIVE
+      verifyStoreDataReplicationSettings(storeName1, true, true, true, ACTIVE_ACTIVE, controllerClients);
+
+    } finally {
+      deleteStores(storeName1);
+    }
+  }
+
+  private void deleteStores(String... storeNames) {
+    CompletableFuture.runAsync(() -> {
+      try {
+        for (String storeName: storeNames) {
+          controllerClients.get(PARENT).disableAndDeleteStore(storeName);
+        }
+      } catch (Exception e) {
+        // ignore... this is just best-effort.
+      }
+    });
+  }
+
+  private static void verifyStoreDataReplicationSettings(
+      String storeName,
+      boolean isHybrid,
+      boolean isAAEnabled,
+      boolean isIncrementalPushEnabled,
+      DataReplicationPolicy dataReplicationPolicy,
+      Map<String, ControllerClient> controllerClients) {
+
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String dcName = entry.getKey();
+      ControllerClient client = entry.getValue();
+      waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = assertCommand(client.getStore(storeName));
+        StoreInfo storeInfo = storeResponse.getStore();
+        if (!isHybrid) {
+          assertNull(storeInfo.getHybridStoreConfig());
+          assertEquals(storeInfo.isActiveActiveReplicationEnabled(), isAAEnabled);
+          assertEquals(storeInfo.isIncrementalPushEnabled(), isIncrementalPushEnabled);
+          return;
+        }
+        HybridStoreConfig hybridStoreConfig = storeInfo.getHybridStoreConfig();
+        assertNotNull(hybridStoreConfig, "For hybrid store, hybridStoreConfig should not be null for DC: " + dcName);
+        assertEquals(
+            storeInfo.isActiveActiveReplicationEnabled(),
+            isAAEnabled,
+            "Active active replication should be: " + isAAEnabled + " found: "
+                + storeInfo.isActiveActiveReplicationEnabled() + " for DC: " + dcName);
+        assertEquals(
+            storeInfo.isIncrementalPushEnabled(),
+            isIncrementalPushEnabled,
+            "Incremental push should be: " + isIncrementalPushEnabled + " found: "
+                + storeInfo.isIncrementalPushEnabled() + " for DC: " + dcName);
+        assertEquals(
+            hybridStoreConfig.getDataReplicationPolicy(),
+            dataReplicationPolicy,
+            "Data replication policy should be: " + dataReplicationPolicy + " found: "
+                + hybridStoreConfig.getDataReplicationPolicy() + " for DC: " + dcName);
       });
     }
   }
