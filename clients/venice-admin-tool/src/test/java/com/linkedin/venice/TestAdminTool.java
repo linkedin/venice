@@ -235,7 +235,6 @@ public class TestAdminTool {
     record.setHelixGroupInfo(Collections.emptyMap());
     VersionProperties versionProperties = new VersionProperties();
     versionProperties.setCurrentVersion(1);
-    versionProperties.setAmplificationFactor(1);
     versionProperties.setCompressionStrategy(1);
     versionProperties.setPartitionCount(1);
     versionProperties.setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner");

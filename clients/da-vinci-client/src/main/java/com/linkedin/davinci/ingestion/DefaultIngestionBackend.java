@@ -2,7 +2,6 @@ package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -11,7 +10,6 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -40,10 +38,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   @Override
-  public void startConsumption(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      Optional<LeaderFollowerStateType> leaderState) {
+  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
     String storeVersion = storeConfig.getStoreVersionName();
     LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
     Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
@@ -59,7 +54,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
         "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
         storeVersion,
         partition);
-    getStoreIngestionService().startConsumption(storeConfig, partition, leaderState);
+    getStoreIngestionService().startConsumption(storeConfig, partition);
     LOGGER
         .info("Completed starting consumption in ingestion service for store {} partition {}", storeVersion, partition);
   }

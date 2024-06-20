@@ -1764,7 +1764,7 @@ public class ConfigKeys {
 
   /**
    * when enabled, Da Vinci Clients returns specific status codes to indicate the type of ingestion failure
-   * rather than a generic {@link com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR}
+   * rather than a generic {@link com.linkedin.venice.pushmonitor.ExecutionStatus#ERROR}
    */
   public static final String USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR =
       "use.da.vinci.specific.execution.status.for.error";

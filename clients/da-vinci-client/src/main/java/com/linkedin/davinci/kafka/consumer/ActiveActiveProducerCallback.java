@@ -19,7 +19,7 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
+      int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) {
     super(
@@ -27,7 +27,7 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
         sourceConsumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
-        subPartition,
+        partition,
         kafkaUrl,
         beforeProcessingRecordTimestamp);
   }

@@ -127,14 +127,6 @@ public class OffsetRecord {
     this.partitionState.endOfPush = true;
   }
 
-  public void recordSubPartitionStatus(String status) {
-    partitionState.previousStatuses.put(status, status);
-  }
-
-  public Map<CharSequence, CharSequence> getSubPartitionStatus() {
-    return partitionState.previousStatuses;
-  }
-
   public boolean isEndOfPushReceived() {
     return this.partitionState.endOfPush;
   }

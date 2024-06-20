@@ -16,7 +16,6 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.PartitionUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -109,21 +108,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      int subPartition) {
-    int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, subPartition);
+      int partition) {
+    int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, partition);
     return blockingQueueArr.get(drainerIndex);
   }
 
   protected int getDrainerIndexForConsumerRecord(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      int subPartition) {
+      int partition) {
     /**
      * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
      * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
-     * positive for most of time to guarantee even partition assignment.
+     * positive for most time to guarantee even partition assignment.
      */
     int topicHash = Math.abs(consumerRecord.getTopicPartition().getPubSubTopic().hashCode() / 2);
-    return Math.abs((topicHash + subPartition) % this.drainerNum);
+    return Math.abs((topicHash + partition) % this.drainerNum);
   }
 
   @Override
@@ -131,7 +130,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
+      int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) throws InterruptedException {
     if (leaderProducedRecordContext == null) {
@@ -141,7 +140,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
        * end-to-end completeness when producing to local Kafka is needed.
        */
       CompletableFuture<Void> recordFuture = new CompletableFuture<>();
-      getDrainerForConsumerRecord(consumerRecord, subPartition).put(
+      getDrainerForConsumerRecord(consumerRecord, partition).put(
           new FollowerQueueNode(
               consumerRecord,
               ingestionTask,
@@ -160,7 +159,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
           consumerRecord,
           ingestionTask,
           leaderProducedRecordContext,
-          subPartition,
+          partition,
           kafkaUrl,
           beforeProcessingRecordTimestampNs);
     }
@@ -171,7 +170,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
         StoreIngestionTask ingestionTask,
         LeaderProducedRecordContext leaderProducedRecordContext,
-        int subPartition,
+        int partition,
         String kafkaUrl,
         long beforeProcessingRecordTimestamp) throws InterruptedException;
   }
@@ -180,10 +179,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
+      int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) throws InterruptedException {
-    getDrainerForConsumerRecord(consumerRecord, subPartition).put(
+    getDrainerForConsumerRecord(consumerRecord, partition).put(
         new LeaderQueueNode(
             consumerRecord,
             ingestionTask,
@@ -196,13 +195,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
+      int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) {
     ingestionTask.processConsumerRecord(
         consumerRecord,
         leaderProducedRecordContext,
-        subPartition,
+        partition,
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
 
@@ -557,15 +556,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
           recordPersistedFuture = node.getQueuedRecordPersistedFuture();
 
           long startTime = System.currentTimeMillis();
-
-          int subPartition = PartitionUtils
-              .getSubPartition(consumerRecord.getTopicPartition(), ingestionTask.getAmplificationFactor());
-
           processRecord(
               consumerRecord,
               ingestionTask,
               leaderProducedRecordContext,
-              subPartition,
+              consumerRecord.getTopicPartition().getPartitionNumber(),
               node.getKafkaUrl(),
               node.getBeforeProcessingRecordTimestampNs());
 

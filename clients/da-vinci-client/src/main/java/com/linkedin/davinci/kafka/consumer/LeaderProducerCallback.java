@@ -1,7 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
-
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -16,6 +14,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -35,7 +34,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   protected final LeaderFollowerStoreIngestionTask ingestionTask;
   private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord;
   private final PartitionConsumptionState partitionConsumptionState;
-  private final int subPartition;
+  private final int partition;
   private final String kafkaUrl;
   protected final LeaderProducedRecordContext leaderProducedRecordContext;
   private final long produceTimeNs;
@@ -60,13 +59,13 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      int subPartition,
+      int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) {
     this.ingestionTask = ingestionTask;
     this.sourceConsumerRecord = sourceConsumerRecord;
     this.partitionConsumptionState = partitionConsumptionState;
-    this.subPartition = subPartition;
+    this.partition = partition;
     this.kafkaUrl = kafkaUrl;
     this.leaderProducedRecordContext = leaderProducedRecordContext;
     this.produceTimeNs = ingestionTask.isUserSystemStore() ? 0 : System.nanoTime();
@@ -87,16 +86,6 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       }
     } else {
       long currentTimeForMetricsMs = System.currentTimeMillis();
-
-      // recordMetadata.partition() represents the partition being written by VeniceWriter
-      // partitionConsumptionState.getPartition() is leaderSubPartition
-      // when leaderSubPartition != recordMetadata.partition(), local StorageEngine will be written by
-      // followers consuming from VTs. So it is safe to skip adding the record to leader's StorageBufferService
-      if (partitionConsumptionState.getLeaderFollowerState() == LEADER
-          && produceResult.getPartition() != partitionConsumptionState.getPartition()) {
-        leaderProducedRecordContext.completePersistedToDBFuture(null);
-        return;
-      }
       /**
        * performs some sanity checks for chunks.
        * key may be null in case of producing control messages with direct api's like
@@ -160,7 +149,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
           ingestionTask.produceToStoreBufferService(
               sourceConsumerRecord,
               leaderProducedRecordContext,
-              subPartition,
+              partition,
               kafkaUrl,
               beforeProcessingRecordTimestampNs,
               currentTimeForMetricsMs);
@@ -198,7 +187,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
           ingestionTask.produceToStoreBufferService(
               sourceConsumerRecord,
               producedRecordForManifest,
-              subPartition,
+              partition,
               kafkaUrl,
               beforeProcessingRecordTimestampNs,
               currentTimeForMetricsMs);
@@ -269,8 +258,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         record.setValueManifest(chunkedValueManifest);
         record.setRmdManifest(chunkedRmdManifest);
       } else if (partitionConsumptionState.isEndOfPushReceived()) {
-        String msg = "Transient record is missing when trying to update value/RMD manifest for topic "
-            + ingestionTask.getKafkaVersionTopic() + " partition: " + subPartition;
+        String msg = "Transient record is missing when trying to update value/RMD manifest for resource: "
+            + Utils.getReplicaId(ingestionTask.getKafkaVersionTopic(), partition);
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
           LOGGER.error(msg);
         }
@@ -325,7 +314,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       ingestionTask.produceToStoreBufferService(
           sourceConsumerRecord,
           producedRecordForChunk,
-          subPartition,
+          partition,
           kafkaUrl,
           beforeProcessingRecordTimestampNs,
           currentTimeForMetricsMs);
@@ -351,7 +340,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       ingestionTask.produceToStoreBufferService(
           sourceConsumerRecord,
           producedRecordForChunk,
-          subPartition,
+          partition,
           kafkaUrl,
           beforeProcessingRecordTimestampNs,
           currentTimeForMetricsMs);

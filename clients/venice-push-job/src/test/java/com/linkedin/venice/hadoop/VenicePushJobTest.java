@@ -51,6 +51,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -72,6 +73,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -303,7 +305,7 @@ public class VenicePushJobTest {
       pushJobSetting.storeResponse.setStore(storeInfo);
       pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false);
     } catch (Exception e) {
-      Assert.fail("The test should be completed successfully without any timeout exception");
+      fail("The test should be completed successfully without any timeout exception");
     }
   }
 
@@ -476,7 +478,7 @@ public class VenicePushJobTest {
       propsCopy.remove(prop);
       try {
         new VenicePushJob(PUSH_JOB_ID, propsCopy);
-        Assert.fail("Should throw UndefinedPropertyException for missing property: " + prop);
+        fail("Should throw UndefinedPropertyException for missing property: " + prop);
       } catch (UndefinedPropertyException expected) {
       }
     }
@@ -606,7 +608,7 @@ public class VenicePushJobTest {
     props.put(TARGETED_REGION_PUSH_ENABLED, false);
     props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
     try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
-      Assert.fail("Test should fail, but doesn't.");
+      fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
       assertEquals(e.getMessage(), "Targeted region push list is only supported when targeted region push is enabled");
     }
@@ -614,7 +616,7 @@ public class VenicePushJobTest {
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
     props.put(INCREMENTAL_PUSH, true);
     try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
-      Assert.fail("Test should fail, but doesn't.");
+      fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
       assertEquals(e.getMessage(), "Incremental push is not supported while using targeted region push mode");
     }
@@ -637,7 +639,7 @@ public class VenicePushJobTest {
       skipVPJValidation(pushJob);
       try {
         pushJob.run();
-        Assert.fail("Test should fail, but doesn't.");
+        fail("Test should fail, but doesn't.");
       } catch (VeniceException e) {
         Assert.assertTrue(
             e.getMessage()
@@ -674,7 +676,7 @@ public class VenicePushJobTest {
       doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
       try {
         pushJob.run();
-        Assert.fail("Test should fail, but doesn't.");
+        fail("Test should fail, but doesn't.");
       } catch (VeniceException e) {
         assertTrue(e.getMessage().contains("Push job error"));
       }
@@ -705,7 +707,7 @@ public class VenicePushJobTest {
       // verify the kafka source region must be present when kick off post-validation consumption
       try {
         pushJob.run();
-        Assert.fail("Test should fail, but doesn't.");
+        fail("Test should fail, but doesn't.");
       } catch (VeniceException e) {
         assertTrue(
             e.getMessage().contains("Post-validation consumption halted due to no available source region found"));
@@ -817,6 +819,62 @@ public class VenicePushJobTest {
         exception.getMessage()
             .contains(
                 "Invalid ExecutionStatus returned from backend. status: INVALID_STATUS, extra details: {extraDetails=invalid status}"));
+  }
+
+  @Test
+  public void testGetPerColoPushJobDetailsStatusFromExecutionStatus() {
+    for (ExecutionStatus status: ExecutionStatus.values()) {
+      PushJobDetailsStatus pushJobDetailsStatus =
+          VenicePushJob.getPerColoPushJobDetailsStatusFromExecutionStatus(status);
+      switch (status) {
+        case NOT_CREATED:
+        case NEW:
+        case NOT_STARTED:
+          assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.NOT_CREATED);
+          break;
+        case STARTED:
+        case PROGRESS:
+        case CATCH_UP_BASE_TOPIC_OFFSET_LAG:
+          assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.STARTED);
+          break;
+        case END_OF_PUSH_RECEIVED:
+          assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.END_OF_PUSH_RECEIVED);
+          break;
+        case TOPIC_SWITCH_RECEIVED:
+          assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.DATA_WRITER_COMPLETED);
+          break;
+        case START_OF_INCREMENTAL_PUSH_RECEIVED:
+          assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+          break;
+        case END_OF_INCREMENTAL_PUSH_RECEIVED:
+          assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+          break;
+        case COMPLETED:
+        case DATA_RECOVERY_COMPLETED:
+          assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.COMPLETED);
+          break;
+        case ERROR:
+        case DVC_INGESTION_ERROR_DISK_FULL:
+        case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
+        case DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES:
+        case DVC_INGESTION_ERROR_OTHER:
+          assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.ERROR);
+          break;
+        case START_OF_BUFFER_REPLAY_RECEIVED:
+        case DROPPED:
+        case WARNING:
+        case ARCHIVED:
+        case UNKNOWN:
+          assertEquals(pushJobDetailsStatus, PushJobDetailsStatus.UNKNOWN);
+          break;
+        default:
+          /** Newly added ExecutionStatus should be mapped properly in
+           * {@link VenicePushJob.getPerColoPushJobDetailsStatusFromExecutionStatus}
+           * and this test should be updated accordingly
+           */
+          fail(status + " is not mapped properly in getPerColoPushJobDetailsStatusFromExecutionStatus");
+      }
+    }
   }
 
   private JobStatusQueryResponse mockJobStatusQuery() {

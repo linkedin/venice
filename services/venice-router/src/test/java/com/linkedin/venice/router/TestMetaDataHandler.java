@@ -1240,7 +1240,6 @@ public class TestMetaDataHandler {
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
 
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    partitionerConfig.setAmplificationFactor(10); // Setting a higher number to verify that response still returns 1
     Mockito.doReturn(partitionerConfig).when(store).getPartitionerConfig();
 
     Version currentVersion = Mockito.mock(Version.class);
@@ -1294,7 +1293,6 @@ public class TestMetaDataHandler {
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
 
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    partitionerConfig.setAmplificationFactor(10); // Setting a higher number to verify that response still returns 1
     Mockito.doReturn(partitionerConfig).when(store).getPartitionerConfig();
 
     Version currentVersion = Mockito.mock(Version.class);
@@ -1347,7 +1345,6 @@ public class TestMetaDataHandler {
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
 
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    partitionerConfig.setAmplificationFactor(10); // Setting a higher number to verify that response still returns 1
 
     String partitionerClass = "com.linkedin.venice.TestVenicePartitioner";
     partitionerConfig.setPartitionerClass(partitionerClass);
@@ -1402,7 +1399,6 @@ public class TestMetaDataHandler {
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
 
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    partitionerConfig.setAmplificationFactor(10); // Setting a higher number to verify that response still returns 1
     Mockito.doReturn(partitionerConfig).when(store).getPartitionerConfig();
 
     Version currentVersion = Mockito.mock(Version.class);
@@ -1434,7 +1430,7 @@ public class TestMetaDataHandler {
   }
 
   @Test(dataProvider = "blobDiscoveryMissingParamsProvider")
-  public void testHandleBlobDiscovery_missingParams(String storeName, String storeVersion, String storePartition)
+  public void testHandleBlobDiscoveryMissingParams(String storeName, String storeVersion, String storePartition)
       throws IOException {
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
@@ -1466,7 +1462,7 @@ public class TestMetaDataHandler {
   }
 
   @Test
-  public void testHandleBlobDiscovery_invalidStore() throws IOException {
+  public void testHandleBlobDiscoveryInvalidStore() throws IOException {
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
@@ -1502,7 +1498,7 @@ public class TestMetaDataHandler {
   }
 
   @Test(dataProvider = "blobDiscoverySettingsProvider")
-  public void testHandleBlobDiscovery_settings(Boolean isBlobTransferEnabled, Boolean isHybrid) throws IOException {
+  public void testHandleBlobDiscoverySettings(Boolean isBlobTransferEnabled, Boolean isHybrid) throws IOException {
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
@@ -1546,7 +1542,7 @@ public class TestMetaDataHandler {
   }
 
   @Test
-  public void testHandleBlobDiscovery_pushStatusStoreError() throws IOException {
+  public void testHandleBlobDiscoveryPushStatusStoreError() throws IOException {
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
@@ -1589,7 +1585,7 @@ public class TestMetaDataHandler {
   }
 
   @Test
-  public void testHandleBlobDiscovery_liveNodes() throws IOException {
+  public void testHandleBlobDiscoveryLiveNodes() throws IOException {
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
@@ -1659,7 +1655,7 @@ public class TestMetaDataHandler {
   }
 
   @Test
-  public void testHandleBlobDiscovery_deadNodes() throws IOException {
+  public void testHandleBlobDiscoveryDeadNodes() throws IOException {
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);

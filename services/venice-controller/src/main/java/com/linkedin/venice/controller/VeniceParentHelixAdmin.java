@@ -2351,7 +2351,6 @@ public class VeniceParentHelixAdmin implements Admin {
         try {
           PartitionUtils.getVenicePartitioner(
               partitionerConfigRecord.partitionerClass.toString(),
-              partitionerConfigRecord.amplificationFactor,
               new VeniceProperties(partitionerConfigRecord.partitionerParams),
               getKeySchema(clusterName, storeName).getSchema());
         } catch (PartitionerSchemaMismatchException e) {
@@ -3491,7 +3490,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, String> extraInfo = new HashMap<>();
     Map<String, String> extraDetails = new HashMap<>();
     Map<String, Long> extraInfoUpdateTimestamp = new HashMap<>();
-    int failCount = 0;
+    int numChildRegionsFailedToFetchStatus = 0;
     Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
@@ -3513,7 +3512,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion);
       if (response.isError()) {
-        failCount += 1;
+        numChildRegionsFailedToFetchStatus += 1;
         LOGGER.warn("Couldn't query {} for job {} status: {}", region, kafkaTopic, response.getError());
         statuses.put(region, ExecutionStatus.UNKNOWN);
         extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
@@ -3532,18 +3531,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
     StringBuilder currentReturnStatusDetails = new StringBuilder();
 
-    // Sort the per-datacenter status in this order, and return the first one in the list
-    // Edge case example: if one cluster is stuck in NOT_CREATED, then
-    // as another cluster goes from PROGRESS to COMPLETED
-    // the aggregate status will go from PROGRESS back down to NOT_CREATED.
-    List<ExecutionStatus> sortedStatuses = statuses.values()
-        .stream()
-        .map(ExecutionStatus::getRootStatus)
-        .sorted(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf))
-        .collect(Collectors.toList());
-
     ExecutionStatus currentReturnStatus =
-        getFinalReturnStatus(sortedStatuses, childRegions, failCount, currentReturnStatusDetails);
+        getFinalReturnStatus(statuses, childRegions, numChildRegionsFailedToFetchStatus, currentReturnStatusDetails);
 
     // Do not delete parent Kafka if its part of targeted colo push to prevent concurrent pushes
     if (currentReturnStatus.isTerminal()) {
@@ -3602,24 +3591,33 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Based on the global information, start determining the final status to return
-   * @param sortedStatuses
+   * @param statuses
    * @param childRegions
-   * @param failCount
+   * @param numChildRegionsFailedToFetchStatus
    * @param currentReturnStatusDetails
    * @return
    */
-  private ExecutionStatus getFinalReturnStatus(
-      List<ExecutionStatus> sortedStatuses,
+  protected static ExecutionStatus getFinalReturnStatus(
+      Map<String, ExecutionStatus> statuses,
       Set<String> childRegions,
-      int failCount,
+      int numChildRegionsFailedToFetchStatus,
       StringBuilder currentReturnStatusDetails) {
     ExecutionStatus currentReturnStatus = ExecutionStatus.NEW;
+
+    // Sort the per-datacenter status in this order, and return the first one in the list
+    // Edge case example: if one cluster is stuck in NOT_CREATED, then
+    // as another cluster goes from PROGRESS to COMPLETED
+    // the aggregate status will go from PROGRESS back down to NOT_CREATED.
+    List<ExecutionStatus> sortedStatuses = statuses.values()
+        .stream()
+        .sorted(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf))
+        .collect(Collectors.toList());
 
     if (!sortedStatuses.isEmpty()) {
       currentReturnStatus = sortedStatuses.get(0);
     }
 
-    int successCount = childRegions.size() - failCount;
+    int successCount = childRegions.size() - numChildRegionsFailedToFetchStatus;
     if (successCount < (childRegions.size() / 2) + 1) {
       // Strict majority must be reachable, otherwise keep polling
       currentReturnStatus = ExecutionStatus.PROGRESS;
@@ -3628,10 +3626,10 @@ public class VeniceParentHelixAdmin implements Admin {
     if (currentReturnStatus.isTerminal()) {
       // If there is a temporary datacenter connection failure, we want VPJ to report failure while allowing the push
       // to succeed in remaining datacenters. If we want to allow the push to succeed in async in the remaining
-      // datacenter, then put the topic delete into an else block under `if (failCount > 0)`
-      if (failCount > 0) {
+      // datacenter, then put the topic delete into an else block under `if (numChildRegionsFailedToFetchStatus > 0)`
+      if (numChildRegionsFailedToFetchStatus > 0) {
         currentReturnStatus = ExecutionStatus.ERROR;
-        currentReturnStatusDetails.append(failCount)
+        currentReturnStatusDetails.append(numChildRegionsFailedToFetchStatus)
             .append("/")
             .append(childRegions.size())
             .append(" DCs unreachable. ");

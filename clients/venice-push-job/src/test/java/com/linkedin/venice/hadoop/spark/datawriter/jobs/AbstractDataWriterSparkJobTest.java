@@ -119,7 +119,6 @@ public class AbstractDataWriterSparkJobTest {
     setting.kafkaUrl = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getCanonicalName();
     setting.partitionerParams = null;
-    setting.amplificationFactor = 1;
     setting.sslToKafka = false;
     setting.isDuplicateKeyAllowed = false;
     setting.chunkingEnabled = false;
