@@ -18,6 +18,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.utils.Time;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -456,10 +457,16 @@ public class RowToAvroConverterTest {
     assertEquals(record.get("float"), 0.5f);
     assertEquals(record.get("double"), 0.7);
     assertEquals(record.get("string"), STRING_VALUE);
-    assertEquals(record.get("byteArrFixed"), new GenericData.Fixed(FIXED_TYPE_3, new byte[] { 0x01, 0x02, 0x03 }));
-    assertEquals(record.get("byteBufferFixed"), new GenericData.Fixed(FIXED_TYPE_3, new byte[] { 0x04, 0x05, 0x06 }));
-    assertEquals(record.get("decimalFixed"), new GenericData.Fixed(FIXED_TYPE_3, new byte[] { 0, 0, 46 }));
-    assertEquals(record.get("enumType"), new GenericData.EnumSymbol(AVRO_SCHEMA.getField("enumType").schema(), "A"));
+    assertEquals(
+        record.get("byteArrFixed"),
+        AvroCompatibilityHelper.newFixed(FIXED_TYPE_3, new byte[] { 0x01, 0x02, 0x03 }));
+    assertEquals(
+        record.get("byteBufferFixed"),
+        AvroCompatibilityHelper.newFixed(FIXED_TYPE_3, new byte[] { 0x04, 0x05, 0x06 }));
+    assertEquals(record.get("decimalFixed"), AvroCompatibilityHelper.newFixed(FIXED_TYPE_3, new byte[] { 0, 0, 46 }));
+    assertEquals(
+        record.get("enumType"),
+        AvroCompatibilityHelper.newEnumSymbol(AVRO_SCHEMA.getField("enumType").schema(), "A"));
     assertEquals(record.get("int"), 100);
     assertEquals(record.get("date"), (int) LocalDate.of(2024, 6, 18).toEpochDay());
     assertEquals(record.get("dateLocal"), (int) LocalDate.of(2024, 6, 18).toEpochDay());
@@ -902,7 +909,7 @@ public class RowToAvroConverterTest {
     GenericEnumSymbol enumObj = RowToAvroConverter
         .convertToEnum(SPARK_ROW.getAs("enumType"), StringType, AVRO_SCHEMA.getField("enumType").schema());
     assertNotNull(enumObj);
-    assertEquals(enumObj, new GenericData.EnumSymbol(AVRO_SCHEMA.getField("enumType").schema(), "A"));
+    assertEquals(enumObj, AvroCompatibilityHelper.newEnumSymbol(AVRO_SCHEMA.getField("enumType").schema(), "A"));
 
     // String value must be a valid symbol
     assertThrows(
