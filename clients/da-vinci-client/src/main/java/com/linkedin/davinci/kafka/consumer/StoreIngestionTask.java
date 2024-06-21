@@ -298,7 +298,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
-  private final DaVinciRecordTransformer recordTransformer;
+  private DaVinciRecordTransformer recordTransformer;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -433,15 +433,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
-    this.recordTransformer = getRecordTransformer != null
-        ? new InternalDaVinciRecordTransformer<>(getRecordTransformer.apply(store.getCurrentVersion()))
-        : null;
-    if (this.recordTransformer != null) {
+
+    // Ensure getRecordTransformer does not return null
+    DaVinciRecordTransformer tempRecordTransformer =
+        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
+    if (tempRecordTransformer != null) {
+      this.recordTransformer =
+          new InternalDaVinciRecordTransformer(getRecordTransformer.apply(store.getCurrentVersion()));
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
     }
+
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
