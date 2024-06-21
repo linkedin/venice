@@ -49,6 +49,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.DeleteMetadata;
@@ -1356,13 +1357,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         maxLag = Math.max(lag, maxLag);
       } catch (Exception e) {
         LOGGER.error(
-            "Failed to measure RT offset lag for topic {} partition id {} in {}",
-            partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
-            partitionConsumptionState.getPartition(),
+            "Failed to measure RT offset lag for replica: {} in {}/{}",
+            partitionConsumptionState.getReplicaId(),
+            Utils.getReplicaId(
+                partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
+                partitionConsumptionState.getPartition()),
             sourceRealTimeTopicKafkaURL,
             e);
         if (++numberOfUnreachableRegions > 1) {
-          LOGGER.error("More than one regions are unreachable. Return {} as it is not ready-to-serve", Long.MAX_VALUE);
+          LOGGER.error(
+              "More than one regions are unreachable. Returning lag: {} as replica: {} may not be ready-to-serve.",
+              Long.MAX_VALUE,
+              partitionConsumptionState.getReplicaId());
           return Long.MAX_VALUE;
         }
       }
