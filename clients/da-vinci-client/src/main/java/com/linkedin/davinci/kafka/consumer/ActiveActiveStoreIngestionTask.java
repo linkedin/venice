@@ -35,7 +35,6 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -1348,51 +1347,27 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       Set<String> sourceRealTimeTopicKafkaURLs,
       PartitionConsumptionState partitionConsumptionState,
       boolean shouldLogLag) {
-    if (this.hybridStoreConfig.get().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
-      long minLag = Long.MAX_VALUE;
-      for (String sourceRealTimeTopicKafkaURL: sourceRealTimeTopicKafkaURLs) {
+    long maxLag = Long.MIN_VALUE;
+    int numberOfUnreachableRegions = 0;
+    for (String sourceRealTimeTopicKafkaURL: sourceRealTimeTopicKafkaURLs) {
+      try {
         long lag =
             measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
-        if (minLag > lag) {
-          minLag = lag;
+        maxLag = Math.max(lag, maxLag);
+      } catch (Exception e) {
+        LOGGER.error(
+            "Failed to measure RT offset lag for topic {} partition id {} in {}",
+            partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
+            partitionConsumptionState.getPartition(),
+            sourceRealTimeTopicKafkaURL,
+            e);
+        if (++numberOfUnreachableRegions > 1) {
+          LOGGER.error("More than one regions are unreachable. Return {} as it is not ready-to-serve", Long.MAX_VALUE);
+          return Long.MAX_VALUE;
         }
-      }
-      return minLag;
-    } else if (this.hybridStoreConfig.get().getDataReplicationPolicy().equals(DataReplicationPolicy.ACTIVE_ACTIVE)) {
-      long maxLag = Long.MIN_VALUE;
-      int numberOfUnreachableRegions = 0;
-      for (String sourceRealTimeTopicKafkaURL: sourceRealTimeTopicKafkaURLs) {
-        try {
-          long lag =
-              measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
-          maxLag = Math.max(lag, maxLag);
-        } catch (Exception e) {
-          LOGGER.error(
-              "Failed to measure RT offset lag for topic {} partition id {} in {}",
-              partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
-              partitionConsumptionState.getPartition(),
-              sourceRealTimeTopicKafkaURL,
-              e);
-          if (++numberOfUnreachableRegions > 1) {
-            LOGGER
-                .error("More than one regions are unreachable. Return {} as it is not ready-to-serve", Long.MAX_VALUE);
-            return Long.MAX_VALUE;
-          }
-        }
-      }
-      return maxLag;
-    } else {
-      if (sourceRealTimeTopicKafkaURLs.contains(localKafkaServer)) {
-        return measureRTOffsetLagForSingleRegion(localKafkaServer, partitionConsumptionState, shouldLogLag);
-      } else {
-        throw new VeniceException(
-            String.format(
-                "Expect source RT Kafka URLs contains local Kafka URL. Got local "
-                    + "Kafka URL %s and RT source Kafka URLs %s",
-                localKafkaServer,
-                sourceRealTimeTopicKafkaURLs));
       }
     }
+    return maxLag;
   }
 
   /** used for metric purposes **/
