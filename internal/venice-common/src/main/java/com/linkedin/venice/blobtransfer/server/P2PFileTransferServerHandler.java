@@ -12,6 +12,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.DefaultFileRegion;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpChunkedInput;
@@ -34,7 +35,8 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * The Netty handler to process requests for P2P file transfer.
+ * The server-side Netty handler to process requests for P2P file transfer. It's shareable among multiple requests since it doesn't
+ * maintain states.
  */
 @ChannelHandler.Sharable
 public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
@@ -111,7 +113,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       sendFile(file, ctx);
     }
 
-    HttpResponse endOfTransfer = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    // end of transfer
+    HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
     ctx.writeAndFlush(endOfTransfer).addListener(future -> {
       if (future.isSuccess()) {
@@ -150,6 +153,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private void sendFile(File file, ChannelHandlerContext ctx) throws IOException {
     RandomAccessFile raf = new RandomAccessFile(file, "r");
     ChannelFuture sendFileFuture;
+    ChannelFuture lastContentFuture;
     long length = raf.length();
     HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, length);
@@ -160,9 +164,10 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     if (useZeroCopy) {
       sendFileFuture = ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel(), 0, length));
-      ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
+      lastContentFuture = ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
     } else {
       sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf)));
+      lastContentFuture = sendFileFuture;
     }
 
     sendFileFuture.addListener(future -> {
@@ -170,6 +175,14 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         LOGGER.debug("File {} sent successfully", file.getName());
       } else {
         LOGGER.error("Failed to send file {}", file.getName());
+      }
+    });
+
+    lastContentFuture.addListener(future -> {
+      if (future.isSuccess()) {
+        LOGGER.debug("Last content sent successfully for {}", file.getName());
+      } else {
+        LOGGER.error("Failed to send last content for {}", file.getName());
       }
     });
   }

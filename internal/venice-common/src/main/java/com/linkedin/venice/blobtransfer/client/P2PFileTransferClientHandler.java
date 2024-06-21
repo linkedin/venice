@@ -9,12 +9,12 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.LastHttpContent;
 import java.io.InputStream;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -30,12 +30,19 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * The client-side Netty handler to process responses for P2P file transfer. It's not shareable among multiple requests since it
+ * maintains the states for a single partition.
+ * It's important to note that this handler is operated in a single thread, and it processes file transfers sequentially.
+ */
 public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<HttpObject> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferClientHandler.class);
   private static final Pattern FILENAME_PATTERN = Pattern.compile("filename=\"(.+?)\"");
   private final CompletionStage<InputStream> inputStreamFuture;
-  private FileChannel outputFileChannel;
   private final BlobTransferPayload payload;
+
+  // mutable states for a single file transfer. It will be updated for each file transfer.
+  private FileChannel outputFileChannel;
   private String fileName;
   private long fileContentLength;
 
@@ -56,8 +63,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       if (!response.status().equals(HttpResponseStatus.OK)) {
         throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
       }
-
-      // already end of transfer. Close the connection and completes the future
+      // Already end of transfer. Close the connection and completes the future
       if (response.headers().get(BLOB_TRANSFER_STATUS) != null
           && response.headers().get(BLOB_TRANSFER_STATUS).equals(BLOB_TRANSFER_COMPLETED)) {
         handleEndOfTransfer(ctx);
@@ -81,25 +87,16 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     } else if (msg instanceof HttpContent) {
       HttpContent content = (HttpContent) msg;
       ByteBuf byteBuf = content.content();
-      if (content instanceof LastHttpContent) {
-        if (byteBuf.readableBytes() == 0) {
-          LOGGER.info("A file {} received successfully for {}", fileName, payload.getFullResourceName());
-          outputFileChannel.force(true);
-
-          // Size validation
-          if (outputFileChannel.size() != fileContentLength) {
-            throw new VeniceException(
-                "File size mismatch for " + fileName + ". Expected: " + fileContentLength + ", Actual: "
-                    + outputFileChannel.size());
-          }
-          resetState();
-          return;
-        }
+      if (byteBuf.readableBytes() == 0) {
+        // hit EMPTY_LAST_CONTENT, it indicates the end of all file transfer.
+        // Skip it since it's not going to be used
+        return;
       }
       // defensive check
       if (outputFileChannel == null) {
         throw new VeniceException("No file opened to write for " + payload.getFullResourceName());
       }
+
       // Append content to the given file
       // TODO: need to do perf test to see if this NIO implementation is really faster than regular I/O libs
       long count = 0L;
@@ -116,6 +113,20 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
           position += transferred;
           count += transferred;
         }
+      }
+
+      if (content instanceof DefaultLastHttpContent) {
+        // End of a single file transfer
+        LOGGER.debug("A file {} received successfully for {}", fileName, payload.getFullResourceName());
+        outputFileChannel.force(true);
+
+        // Size validation
+        if (outputFileChannel.size() != fileContentLength) {
+          throw new VeniceException(
+              "File size mismatch for " + fileName + ". Expected: " + fileContentLength + ", Actual: "
+                  + outputFileChannel.size());
+        }
+        resetState();
       }
     } else {
       throw new VeniceException("Unexpected message received: " + msg.getClass().getName());

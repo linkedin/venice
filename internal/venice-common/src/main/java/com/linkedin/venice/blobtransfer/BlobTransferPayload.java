@@ -11,13 +11,13 @@ import com.linkedin.venice.utils.Utils;
  */
 public class BlobTransferPayload {
   private final int partition;
-  private final String storeNameAndVersion;
+  private final String topicName;
   private final String partitionDir;
 
   public BlobTransferPayload(String baseDir, String storeName, int version, int partition) {
     this.partition = partition;
-    this.storeNameAndVersion = storeName + "_v" + version;
-    this.partitionDir = composePartitionDbDir(baseDir, storeNameAndVersion, partition);
+    this.topicName = storeName + "_v" + version;
+    this.partitionDir = composePartitionDbDir(baseDir, topicName, partition);
   }
 
   public String getPartitionDir() {
@@ -29,6 +29,6 @@ public class BlobTransferPayload {
   }
 
   public String getFullResourceName() {
-    return Utils.getReplicaId(storeNameAndVersion, partition);
+    return Utils.getReplicaId(topicName, partition);
   }
 }

@@ -45,26 +45,25 @@ public class RocksDBUtils {
   }
 
   // ex. /db/directory/myStore_v3/myStore_v3_3/
-  public static String composePartitionDbDir(String dbDir, String storeNameAndVersion, int partitionId) {
-    return dbDir + File.separator + storeNameAndVersion + File.separator
-        + getPartitionDbName(storeNameAndVersion, partitionId);
+  public static String composePartitionDbDir(String dbDir, String topicName, int partitionId) {
+    return dbDir + File.separator + topicName + File.separator + getPartitionDbName(topicName, partitionId);
   }
 
   // ex. /db/directory/storeName_v3/storeName_v3_3/.snapshot_files
-  public static String composeSnapshotDir(String dbDir, String storeNameAndVersion, int partitionId) {
-    return composePartitionDbDir(dbDir, storeNameAndVersion, partitionId) + File.separator + TEMP_SNAPSHOT_DIR;
+  public static String composeSnapshotDir(String dbDir, String topicName, int partitionId) {
+    return composePartitionDbDir(dbDir, topicName, partitionId) + File.separator + TEMP_SNAPSHOT_DIR;
   }
 
   public static String composeSnapshotDir(String composePartitionDbDir) {
     return composePartitionDbDir + File.separator + TEMP_SNAPSHOT_DIR;
   }
 
-  public static String composeTempSSTFileDir(String dbDir, String storeNameAndVersion, int partitionId) {
-    return composePartitionDbDir(dbDir, storeNameAndVersion, partitionId) + File.separator + TEMP_SST_FILE_DIR;
+  public static String composeTempSSTFileDir(String dbDir, String topicName, int partitionId) {
+    return composePartitionDbDir(dbDir, topicName, partitionId) + File.separator + TEMP_SST_FILE_DIR;
   }
 
-  public static String composeTempRMDSSTFileDir(String dbDir, String storeNameAndVersion, int partitionId) {
-    return composePartitionDbDir(dbDir, storeNameAndVersion, partitionId) + File.separator + TEMP_RMD_SST_FILE_DIR;
+  public static String composeTempRMDSSTFileDir(String dbDir, String topicName, int partitionId) {
+    return composePartitionDbDir(dbDir, topicName, partitionId) + File.separator + TEMP_RMD_SST_FILE_DIR;
   }
 
   public static String composeTempSSTFileName(int fileNo) {

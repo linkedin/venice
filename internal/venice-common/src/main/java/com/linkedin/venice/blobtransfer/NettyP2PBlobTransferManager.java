@@ -2,8 +2,6 @@ package com.linkedin.venice.blobtransfer;
 
 import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
-import com.linkedin.venice.exceptions.StorePartitionNotFoundException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.List;
@@ -42,7 +40,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
 
   @Override
   public CompletionStage<InputStream> get(String storeName, int version, int partition)
-      throws VeniceNoStoreException, VenicePeersNotFoundException {
+      throws VenicePeersNotFoundException {
     CompletionStage<InputStream> inputStream;
     BlobPeersDiscoveryResponse response = peerFinder.discoverBlobPeers(storeName, version, partition);
     if (response == null || response.isError()) {
@@ -53,12 +51,12 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       throw new VenicePeersNotFoundException("No peers found for the requested blob");
     }
     try {
+      // TODO: add some retry logic or strategy to choose the peers differently in case of failure
       String chosenHost = discoverPeers.get(0);
       inputStream = nettyClient.get(chosenHost, storeName, version, partition);
     } catch (InterruptedException e) {
-      LOGGER.error("Failed to fetch file from remote peer. Error: {}", e.getMessage());
-      // TODO: add some retry logic
-      throw new StorePartitionNotFoundException(storeName, version, partition);
+      LOGGER.error("The request to fetch the blob was interrupted", e);
+      throw new VenicePeersNotFoundException("The connection to peers is interrupted", e);
     }
 
     return inputStream;

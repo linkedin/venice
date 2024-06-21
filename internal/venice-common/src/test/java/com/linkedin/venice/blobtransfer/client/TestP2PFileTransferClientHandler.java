@@ -7,8 +7,10 @@ import com.linkedin.venice.blobtransfer.BlobTransferPayload;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
+import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
@@ -23,6 +25,8 @@ import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -68,7 +72,7 @@ public class TestP2PFileTransferClientHandler {
         new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
     ch.writeInbound(response);
     try {
-      inputStreamFuture.toCompletableFuture().get();
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
       Assert.assertTrue(e.getCause() instanceof VeniceException);
@@ -83,7 +87,7 @@ public class TestP2PFileTransferClientHandler {
     DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     ch.writeInbound(response);
     try {
-      inputStreamFuture.toCompletableFuture().get();
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
       Assert.assertTrue(e.getCause() instanceof VeniceException);
@@ -99,16 +103,12 @@ public class TestP2PFileTransferClientHandler {
     response.headers().add("Content-Length", "5");
     // content 1
     // length 1
-    HttpContent chunk1 = new DefaultHttpContent(Unpooled.copiedBuffer("0", CharsetUtil.UTF_8));
-
-    // End of a file transfer
-    HttpContent endOfFile1 = LastHttpContent.EMPTY_LAST_CONTENT;
+    HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("0", CharsetUtil.UTF_8));
 
     ch.writeInbound(response);
     ch.writeInbound(chunk1);
-    ch.writeInbound(endOfFile1);
     try {
-      inputStreamFuture.toCompletableFuture().get();
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
       Assert.assertTrue(e.getCause() instanceof VeniceException);
@@ -119,11 +119,11 @@ public class TestP2PFileTransferClientHandler {
   // Technically, it shouldn't happen as the response and content are supposed to arrive in order but just in case
   @Test
   public void testOutOfOrderResponseTransfer() {
-    HttpContent chunk1 = new DefaultHttpContent(Unpooled.copiedBuffer("0", CharsetUtil.UTF_8));
+    HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("0", CharsetUtil.UTF_8));
 
     ch.writeInbound(chunk1);
     try {
-      inputStreamFuture.toCompletableFuture().get();
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
       Assert.assertTrue(e.getCause() instanceof VeniceException);
@@ -132,13 +132,13 @@ public class TestP2PFileTransferClientHandler {
   }
 
   @Test
-  public void testSingleFileTransfer() throws ExecutionException, InterruptedException, IOException {
+  public void testSingleFileTransfer() throws ExecutionException, InterruptedException, IOException, TimeoutException {
     // response
     DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
     response.headers().add("Content-Length", "5");
     // content 1
-    HttpContent chunk = new DefaultHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
+    HttpContent chunk = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
 
     // End of a file transfer
     HttpContent endOfFile = LastHttpContent.EMPTY_LAST_CONTENT;
@@ -151,7 +151,7 @@ public class TestP2PFileTransferClientHandler {
     ch.writeInbound(chunk);
     ch.writeInbound(endOfFile);
     ch.writeInbound(endOfTransfer);
-    inputStreamFuture.toCompletableFuture().get();
+    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // verify the content is written to the disk
     BlobTransferPayload payload = new BlobTransferPayload(baseDir.toString(), TEST_STORE, TEST_VERSION, TEST_PARTITION);
@@ -164,7 +164,8 @@ public class TestP2PFileTransferClientHandler {
   }
 
   @Test
-  public void testMultipleFilesTransfer() throws ExecutionException, InterruptedException, IOException {
+  public void testMultipleFilesTransfer()
+      throws ExecutionException, InterruptedException, IOException, TimeoutException {
     // response 1
     DefaultHttpResponse response1 = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response1.headers().add("Content-Disposition", "filename=\"test_file1.txt\"");
@@ -174,24 +175,21 @@ public class TestP2PFileTransferClientHandler {
     response2.headers().add("Content-Disposition", "filename=\"test_file2.txt\"");
     response2.headers().add("Content-Length", "10");
     // content
-    HttpContent chunk1 = new DefaultHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
+    HttpContent chunk1 = new DefaultLastHttpContent(Unpooled.copiedBuffer("12345", CharsetUtil.UTF_8));
     HttpContent chunk2 = new DefaultHttpContent(Unpooled.copiedBuffer("67890", CharsetUtil.UTF_8));
-    HttpContent chunk3 = new DefaultHttpContent(Unpooled.copiedBuffer("13579", CharsetUtil.UTF_8));
-    // End of a file transfer
-    HttpContent endOfFile = LastHttpContent.EMPTY_LAST_CONTENT;
+    HttpContent chunk3 = new DefaultLastHttpContent(Unpooled.copiedBuffer("13579", CharsetUtil.UTF_8));
+
     // End of all file transfer
-    DefaultHttpResponse endOfTransfer = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    DefaultHttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
 
     ch.writeInbound(response1);
     ch.writeInbound(chunk1);
-    ch.writeInbound(endOfFile);
     ch.writeInbound(response2);
     ch.writeInbound(chunk2);
     ch.writeInbound(chunk3);
-    ch.writeInbound(endOfFile);
     ch.writeInbound(endOfTransfer);
-    inputStreamFuture.toCompletableFuture().get();
+    inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // verify the content is written to the disk
     BlobTransferPayload payload = new BlobTransferPayload(baseDir.toString(), TEST_STORE, TEST_VERSION, TEST_PARTITION);
