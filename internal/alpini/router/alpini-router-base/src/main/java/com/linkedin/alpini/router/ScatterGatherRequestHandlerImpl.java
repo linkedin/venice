@@ -938,12 +938,12 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
             .map(CompletableFuture::completedFuture)
             .map(keyFuture -> keyFuture
                 .thenApply(key -> pathParser.substitutePartitionKey(basePath, key))
-                .thenCompose(pathForThisKey -> _scatterGatherHelper.findPartitionName(pathForThisKey.getResourceName(), keyFuture.join()))
+                .thenCompose(pathForThisKey -> _scatterGatherHelper.findPartitionName(pathForThisKey.getResourceName(),
+                    keyFuture.join()))
                 .exceptionally(e -> {
                   LOG.info("Exception in appendErrorForEveryKey, key={}", keyFuture.join(), e);
-                  return null;    
-                })
-            )
+                  return null;
+                }))
             .collect(Collectors.toList());
         return CompletableFuture.allOf(list.toArray(new CompletableFuture[0]))
             .thenAccept(aVoid2 -> list.stream()
@@ -952,8 +952,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
                 .distinct()
                 .forEach(partitionKey -> {
                   contentMsg.append(", PartitionName=").append(partitionKey);
-                })
-            );
+                }));
       })
       .thenAccept(aVoid -> {
               appendError(
