@@ -934,25 +934,28 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
     } else {
       // For requests with keys, send an error for each key. TODO: Consider if we could rip all of that out?
       complete = complete.thenCompose(aVoid -> {
-        List<CompletableFuture<String>> list = part.getPartitionKeys().stream()
+        List<CompletableFuture<String>> list = part.getPartitionKeys()
+            .stream()
             .map(CompletableFuture::completedFuture)
-            .map(keyFuture -> keyFuture
-                .thenApply(key -> pathParser.substitutePartitionKey(basePath, key))
-                .thenCompose(pathForThisKey -> _scatterGatherHelper.findPartitionName(pathForThisKey.getResourceName(),
-                    keyFuture.join()))
-                .exceptionally(e -> {
-                  LOG.info("Exception in appendErrorForEveryKey, key={}", keyFuture.join(), e);
-                  return null;
-                }))
+            .map(
+                keyFuture -> keyFuture.thenApply(key -> pathParser.substitutePartitionKey(basePath, key))
+                    .thenCompose(
+                        pathForThisKey -> _scatterGatherHelper
+                            .findPartitionName(pathForThisKey.getResourceName(), keyFuture.join()))
+                    .exceptionally(e -> {
+                      LOG.info("Exception in appendErrorForEveryKey, key={}", keyFuture.join(), e);
+                      return null;
+                    }))
             .collect(Collectors.toList());
         return CompletableFuture.allOf(list.toArray(new CompletableFuture[0]))
-            .thenAccept(aVoid2 -> list.stream()
-                .map(CompletableFuture::join)
-                .filter(Objects::nonNull)
-                .distinct()
-                .forEach(partitionKey -> {
-                  contentMsg.append(", PartitionName=").append(partitionKey);
-                }));
+            .thenAccept(
+                aVoid2 -> list.stream()
+                    .map(CompletableFuture::join)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .forEach(partitionKey -> {
+                      contentMsg.append(", PartitionName=").append(partitionKey);
+                    }));
       })
       .thenAccept(aVoid -> {
               appendError(
