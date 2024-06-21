@@ -936,7 +936,8 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
         List<CompletableFuture<String>> list = part.getPartitionKeys().stream()
             .map(CompletableFuture::completedFuture)
             .map(keyFuture -> keyFuture
-                .thenCompose(key -> pathParser.substitutePartitionKey(basePath, key))
+                .thenApply(key -> pathParser.substitutePartitionKey(basePath, key))
+                .thenCompose(pathForThisKey -> _scatterGatherHelper.findPartitionName(pathForThisKey.getResourceName(), keyFuture.join()))
                 .exceptionally(e -> {
                   LOG.info("Exception in appendErrorForEveryKey, key={}", keyFuture.join(), e);
                   return null;    
