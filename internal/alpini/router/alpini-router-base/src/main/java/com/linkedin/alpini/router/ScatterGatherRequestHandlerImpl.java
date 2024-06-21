@@ -945,7 +945,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
             )
             .collect(Collectors.toList());
         return CompletableFuture.allOf(list.toArray(new CompletableFuture[0]))
-            .thenAccept(aVoid -> list.stream()
+            .thenAccept(aVoid2 -> list.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
                 .distinct()
