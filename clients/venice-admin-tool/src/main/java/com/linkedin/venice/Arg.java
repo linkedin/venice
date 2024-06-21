@@ -11,6 +11,8 @@ public enum Arg {
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
   SERVER_URL("server-url", "su", true, "Venice server url, eg. http://localhost:1690  This has to be a storage node"),
   VENICE_ZOOKEEPER_URL("venice-zookeeper-url", "vzu", true, "Venice Zookeeper url, eg. localhost:2622"),
+  ZK_PATHS_FILE("zk-paths-file", "zpf", true, "Path to text file with all ZK paths"),
+  VENICE_PATHS_FILE("venice-paths-file", "vpf", true, "Path to text file to write extracted Venice-specific ZK paths"),
   SRC_ZOOKEEPER_URL("src-zookeeper-url", "szu", true, "Source Zookeeper url"),
   DEST_ZOOKEEPER_URL("dest-zookeeper-url", "dzu", true, "Destination Zookeeper url"),
   BASE_PATH("base-path", "bp", true, "Base path for ZK, eg. /venice-parent"),

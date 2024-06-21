@@ -118,6 +118,7 @@ import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
 import static com.linkedin.venice.Arg.VENICE_CLIENT_SSL_CONFIG_FILE;
+import static com.linkedin.venice.Arg.VENICE_PATHS_FILE;
 import static com.linkedin.venice.Arg.VENICE_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.VERSION;
 import static com.linkedin.venice.Arg.VIEW_CLASS;
@@ -127,6 +128,7 @@ import static com.linkedin.venice.Arg.VOLDEMORT_STORE;
 import static com.linkedin.venice.Arg.VSON_STORE;
 import static com.linkedin.venice.Arg.WRITEABILITY;
 import static com.linkedin.venice.Arg.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.Arg.ZK_PATHS_FILE;
 import static com.linkedin.venice.Arg.ZK_SSL_CONFIG_FILE;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -537,6 +539,11 @@ public enum Command {
   CLONE_VENICE_ZK_PATHS(
       "clone-venice-zk-paths", "Clone Venice-specific paths from a source ZK to a destination ZK",
       new Arg[] { SRC_ZOOKEEPER_URL, DEST_ZOOKEEPER_URL, CLUSTER_LIST, BASE_PATH }
+  ),
+  EXTRACT_VENICE_ZK_PATHS_FROM_FILE(
+      "extract-venice-zk-paths-from-file",
+      "Extract Venice-specific paths from a ZK snapshot input text file to an output text file",
+      new Arg[] { ZK_PATHS_FILE, VENICE_PATHS_FILE, CLUSTER_LIST, BASE_PATH }
   );
 
   private final String commandName;

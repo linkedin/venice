@@ -9,21 +9,35 @@ import org.testng.annotations.Test;
 
 
 public class TestCloneVeniceZKPaths {
+  private final Set<String> CLUSTERS = new HashSet<>(Arrays.asList("cluster1", "cluster2"));
+  private final String BASE_PATH = "/venice-parent";
+
   @Test
+  public void mainTest() {
+    testGetVenicePaths();
+    testExtractVenicePaths();
+    // testCloneVenicePaths();
+  }
+
+  public void testCloneVenicePaths() {
+    // TODO write tests for cloneVenicePaths()
+  }
+
+  public void testExtractVenicePaths() {
+    // change this variable to path of where Venice project is stored
+    String directory = "/Users/tonchen/Desktop/";
+    String inputPath = directory + "venice/clients/venice-admin-tool/src/test/java/com/linkedin/venice/zk_paths.txt";
+    String outputPath =
+        directory + "venice/clients/venice-admin-tool/src/test/java/com/linkedin/venice/venice_paths.txt";
+    CloneVeniceZKPaths.extractVenicePaths(inputPath, outputPath, CLUSTERS, BASE_PATH);
+    // look at venice_paths.txt and verify that all (19) Venice-specific paths are extracted correctly
+  }
+
   public void testGetVenicePaths() {
     ArrayList<String> zkPaths = getPaths();
-    Set<String> clusters = new HashSet<>(Arrays.asList("cluster1", "cluster2"));
-    String basePath = "/venice-parent";
-    Set<String> requiredPaths = new HashSet<>(
-        Arrays.asList(
-            "adminTopicMetadata",
-            "executionids",
-            "ParentOfflinePushes",
-            "routers",
-            "StoreGraveyard",
-            "Stores"));
+    Set<String> requiredPaths = CloneVeniceZKPaths.getRequiredPaths();
 
-    ArrayList<String> venicePaths = CloneVeniceZKPaths.getVenicePaths(zkPaths, clusters, basePath, requiredPaths);
+    ArrayList<String> venicePaths = CloneVeniceZKPaths.getVenicePaths(zkPaths, CLUSTERS, BASE_PATH, requiredPaths);
 
     Assert.assertEquals(venicePaths.size(), 19);
     Assert.assertFalse(venicePaths.contains("/venice-parent"));
