@@ -932,27 +932,35 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       appendError(request, responses, status, contentMsg.append(", RoutingPolicy=").append(roles).toString(), ex);
     } else {
       // For requests with keys, send an error for each key. TODO: Consider if we could rip all of that out?
-      for (K key: part.getPartitionKeys()) {
-        complete = complete.thenApply(aVoid -> pathParser.substitutePartitionKey(basePath, key))
-            .thenCompose(pathForThisKey -> {
-              contentMsg.append(", PartitionName=")
-                  .append(_scatterGatherHelper.findPartitionName(pathForThisKey.getResourceName(), key));
-              return null;
-            })
-            .exceptionally(e -> {
-              LOG.info("Exception in appendErrorForEveryKey, key={}", key, e);
-              return null;
-            })
-            .thenApply(aVoid -> {
+      complete = complete.thenCompose(aVoid -> {
+        List<CompletableFuture<String>> list = part.getPartitionKeys().stream()
+            .map(CompletableFuture::completedFuture)
+            .map(keyFuture -> keyFuture
+                .thenCompose(key -> pathParser.substitutePartitionKey(basePath, key))
+                .exceptionally(e -> {
+                  LOG.info("Exception in appendErrorForEveryKey, key={}", keyFuture.join(), e);
+                  return null;    
+                })
+            )
+            .collect(Collectors.toList());
+        return CompletableFuture.allOf(list.toArray(new CompletableFuture[0]))
+            .thenAccept(aVoid -> list.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(partitionKey -> {
+                  contentMsg.append(", PartitionName=").append(partitionKey);
+                })
+            );
+      })
+      .thenAccept(aVoid -> {
               appendError(
                   request,
                   responses,
                   status,
                   contentMsg.append(", RoutingPolicy=").append(roles).toString(),
                   ex);
-              return null;
             });
-      }
     }
     return complete;
   }
