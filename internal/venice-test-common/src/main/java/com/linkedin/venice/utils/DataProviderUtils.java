@@ -64,7 +64,7 @@ public class DataProviderUtils {
 
   @DataProvider(name = "CheckpointingSupported-CheckSum-Types")
   public static Object[][] checkpointingSupportedCheckSumTypes() {
-    return new Object[][] { { CheckSumType.MD5 }, { CheckSumType.INCDIGEST } };
+    return new Object[][] { { CheckSumType.MD5 }, { CheckSumType.ADHASH } };
   }
 
   @DataProvider(name = "dv-client-config-provider")

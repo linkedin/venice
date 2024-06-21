@@ -5,7 +5,7 @@ import java.util.zip.CRC32;
 
 
 /**
- * This incremental digest is used to keep track of the checksum of the data incrementally.
+ * This class AdHash is used to keep track of the checksum of the data incrementally.
  * It adopts the idea of AdHash that:
  * " A message x' which I want to hash may be a simple modification of a message x which I previously
  *   hashed. If I have already computed the hash f(x) of x then, rather than re-computing f(x') from
@@ -21,15 +21,15 @@ import java.util.zip.CRC32;
  *   (https://dl.acm.org/doi/abs/10.1145/3578358.3591328)
  */
 
-public class IncDigestCheckSum extends CheckSum {
+public class AdHash extends CheckSum {
   private volatile long incrementalDigest;
   private final CRC32 crc32 = new CRC32();
 
-  public IncDigestCheckSum() {
+  public AdHash() {
     incrementalDigest = 0;
   }
 
-  public IncDigestCheckSum(byte[] encodedState) {
+  public AdHash(byte[] encodedState) {
     incrementalDigest = ByteUtils.readLong(encodedState, 0);
   }
 
@@ -63,7 +63,7 @@ public class IncDigestCheckSum extends CheckSum {
 
   @Override
   public CheckSumType getType() {
-    return CheckSumType.INCDIGEST;
+    return CheckSumType.ADHASH;
   }
 
   @Override

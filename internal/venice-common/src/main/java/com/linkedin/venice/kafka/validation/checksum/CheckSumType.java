@@ -11,7 +11,7 @@ import java.util.Map;
 public enum CheckSumType {
   NONE(0, true), MD5(1, true), @Deprecated
   ADLER32(2, false), @Deprecated
-  CRC32(3, false), INCDIGEST(4, true);
+  CRC32(3, false), ADHASH(4, true);
 
   /** The value is the byte used on the wire format */
   private final int value;
