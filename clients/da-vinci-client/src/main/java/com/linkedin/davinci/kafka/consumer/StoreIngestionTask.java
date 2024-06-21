@@ -298,7 +298,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
-  private DaVinciRecordTransformer recordTransformer;
+  private final DaVinciRecordTransformer recordTransformer;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -435,10 +435,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.cacheBackend = cacheBackend;
 
     // Ensure getRecordTransformer does not return null
-    DaVinciRecordTransformer tempRecordTransformer =
-        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
-    if (tempRecordTransformer != null) {
-      this.recordTransformer = new InternalDaVinciRecordTransformer(tempRecordTransformer);
+    this.recordTransformer =
+        getRecordTransformer != null && getRecordTransformer.apply(store.getCurrentVersion()) != null
+            ? new InternalDaVinciRecordTransformer(getRecordTransformer.apply(store.getCurrentVersion()))
+            : null;
+    if (this.recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
