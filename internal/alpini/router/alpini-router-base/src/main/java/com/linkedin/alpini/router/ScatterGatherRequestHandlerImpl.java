@@ -956,15 +956,9 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
                     .forEach(partitionKey -> {
                       contentMsg.append(", PartitionName=").append(partitionKey);
                     }));
-      })
-      .thenAccept(aVoid -> {
-              appendError(
-                  request,
-                  responses,
-                  status,
-                  contentMsg.append(", RoutingPolicy=").append(roles).toString(),
-                  ex);
-            });
+      }).thenAccept(aVoid -> {
+        appendError(request, responses, status, contentMsg.append(", RoutingPolicy=").append(roles).toString(), ex);
+      });
     }
     return complete;
   }
