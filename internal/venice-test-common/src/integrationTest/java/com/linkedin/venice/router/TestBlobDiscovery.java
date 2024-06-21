@@ -185,9 +185,7 @@ public class TestBlobDiscovery {
 
   @AfterTest
   public void tearDown() {
-    if (daVinciD2 != null) {
-      D2ClientUtils.shutdownClient(daVinciD2);
-    }
+    D2ClientUtils.shutdownClient(daVinciD2);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

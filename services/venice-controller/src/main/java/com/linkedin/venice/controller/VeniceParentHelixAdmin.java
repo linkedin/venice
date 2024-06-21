@@ -2413,87 +2413,48 @@ public class VeniceParentHelixAdmin implements Admin {
             "Cannot convert store to batch-only and enable incremental push together.",
             ErrorType.BAD_REQUEST);
       }
-
-      // Update active-active replication config based on the input if present, otherwise use the current value.
+      // Update active-active replication config.
       setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
           .orElseGet(currStore::isActiveActiveReplicationEnabled);
-      // Update incremental push config.
-      setStore.incrementalPushEnabled =
-          incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
-              .orElseGet(currStore::isIncrementalPushEnabled);
-
-      /*
-       * A user store is being converted to a hybrid store, and active-active replication is enabled for
-       * all hybrid stores via the cluster config, then enable active-active replication automatically.
-       */
-      if (!currStore.isSystemStore() && storeBeingConvertedToHybrid && !setStore.activeActiveReplicationEnabled
+      // Enable active-active replication automatically when batch user store being converted to hybrid store and
+      // active-active replication is enabled for all hybrid store via the cluster config
+      if (storeBeingConvertedToHybrid && !setStore.activeActiveReplicationEnabled && !currStore.isSystemStore()
           && clusterConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
         setStore.activeActiveReplicationEnabled = true;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
-      }
+        if (!hybridDataReplicationPolicy.isPresent()) {
+          LOGGER.info(
+              "Data replication policy was not explicitly set when converting store to hybrid store: {}."
+                  + " Setting it to active-active replication policy.",
+              storeName);
 
-      /*
-       * Enable incremental push for the user store if the following conditions are met:
-       * 1. The cluster configuration allows automatic enabling of incremental push for hybrid active-active user stores.
-       * 2. The store is a hybrid store with active-active replication enabled.
-       * 3. The store is not a system store and incremental push is not already enabled.
-       */
-      if (!currStore.isSystemStore() && !setStore.incrementalPushEnabled && setStore.activeActiveReplicationEnabled
-          && updatedHybridStoreConfig != null
-          && clusterConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
-        setStore.incrementalPushEnabled = true;
-        updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
+          updatedHybridStoreConfig.setDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE);
+          updatedConfigsList.add(DATA_REPLICATION_POLICY);
+        }
       }
-
-      /*
-       * If active-active replication mode is being enabled, and hybrid data replication policy is not set,
-       * and the store is not a system store, then set data replication policy to ACTIVE_ACTIVE DRP.
-       */
-      if (!currStore.isSystemStore() && setStore.activeActiveReplicationEnabled
-          && !hybridDataReplicationPolicy.isPresent() && updatedHybridStoreConfig != null
-          && updatedHybridStoreConfig.getDataReplicationPolicy() != DataReplicationPolicy.ACTIVE_ACTIVE) {
-        LOGGER.info(
-            "Data replication policy was not explicitly set when enabling active-active replication mode for store: {}."
-                + ". Setting it to ACTIVE_ACTIVE DRP.",
-            storeName);
-        updatedHybridStoreConfig.setDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE);
-        updatedConfigsList.add(DATA_REPLICATION_POLICY);
-      }
-
       // When turning off hybrid store, we will also turn off A/A store config.
       if (storeBeingConvertedToBatch && setStore.activeActiveReplicationEnabled) {
         setStore.activeActiveReplicationEnabled = false;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
       }
 
+      // Update incremental push config.
+      setStore.incrementalPushEnabled =
+          incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
+              .orElseGet(currStore::isIncrementalPushEnabled);
+      // Enable incremental push automatically when batch user store being converted to hybrid store and active-active
+      // replication is enabled or being and the cluster config allows it.
+      if (!setStore.incrementalPushEnabled && !currStore.isSystemStore() && storeBeingConvertedToHybrid
+          && setStore.activeActiveReplicationEnabled
+          && clusterConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
+        setStore.incrementalPushEnabled = true;
+        updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
+      }
       // When turning off hybrid store, we will also turn off incremental store config.
       if (storeBeingConvertedToBatch && setStore.incrementalPushEnabled) {
         setStore.incrementalPushEnabled = false;
         updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
-      }
-
-      /*
-       * If active-active replication mode is being disabled, and store is still a hybrid store,
-       * the store is not a system store, then
-       * - change DRP ACTIVE_ACTIVE to NON_AGGREGATE DRP if hybridDataReplicationPolicy is not set
-       * - disable incremental push if it is enabled
-       */
-      if (activeActiveReplicationEnabled.isPresent() && !activeActiveReplicationEnabled.get()
-          && updatedHybridStoreConfig != null && !currStore.isSystemStore()) {
-        if (!hybridDataReplicationPolicy.isPresent()
-            && updatedHybridStoreConfig.getDataReplicationPolicy() == DataReplicationPolicy.ACTIVE_ACTIVE) {
-          LOGGER.info(
-              "Disabling active-active replication mode for store: {}. Setting data replication policy to NON_AGGREGATE",
-              storeName);
-          updatedHybridStoreConfig.setDataReplicationPolicy(DataReplicationPolicy.NON_AGGREGATE);
-          updatedConfigsList.add(DATA_REPLICATION_POLICY);
-        }
-        if (setStore.incrementalPushEnabled && clusterConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
-          LOGGER.info("Disabling active-active replication mode for store: {}. Disabling incremental push", storeName);
-          setStore.incrementalPushEnabled = false;
-          updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
-        }
       }
 
       if (updatedHybridStoreConfig == null) {

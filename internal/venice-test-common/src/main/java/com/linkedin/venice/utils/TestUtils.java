@@ -84,7 +84,6 @@ import java.security.Permission;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -625,7 +624,7 @@ public class TestUtils {
   public static void createAndVerifyStoreInAllRegions(
       String storeName,
       ControllerClient parentControllerClient,
-      Collection<ControllerClient> controllerClientList) {
+      List<ControllerClient> controllerClientList) {
     Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\"").isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       for (ControllerClient client: controllerClientList) {
