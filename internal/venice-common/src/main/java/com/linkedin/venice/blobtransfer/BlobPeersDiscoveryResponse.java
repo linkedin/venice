@@ -1,4 +1,4 @@
-package com.linkedin.venice.blob;
+package com.linkedin.venice.blobtransfer;
 
 import java.util.List;
 
