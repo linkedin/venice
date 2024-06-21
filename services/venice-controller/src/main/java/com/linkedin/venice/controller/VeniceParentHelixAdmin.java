@@ -222,7 +222,6 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -2608,10 +2607,9 @@ public class VeniceParentHelixAdmin implements Admin {
             "Store's max compaction lag seconds: " + setStore.maxCompactionLagSeconds + " shouldn't be smaller than "
                 + "store's min compaction lag seconds: " + setStore.minCompactionLagSeconds);
       }
-      setStore.maxRecordSizeBytes = StoreUtils.getMaxRecordSizeBytes(
-          setStore.chunkingEnabled,
+      setStore.maxRecordSizeBytes =
           maxRecordSizeBytes.map(addToUpdatedConfigList(updatedConfigsList, MAX_RECORD_SIZE_BYTES))
-              .orElseGet(currStore::getMaxRecordSizeBytes));
+              .orElseGet(currStore::getMaxRecordSizeBytes);
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();

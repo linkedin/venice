@@ -6,14 +6,6 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 
 
 public class StoreUtils {
-  public static final int DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING = 10 * 1024 * 1024; // 10MB
-
-  public static int getMaxRecordSizeBytes(boolean chunkingEnabled, int maxRecordSizeBytes) {
-    return (chunkingEnabled && maxRecordSizeBytes == -1)
-        ? DEFAULT_MAX_RECORD_SIZE_BYTES_WITH_CHUNKING
-        : maxRecordSizeBytes;
-  }
-
   /**
    * The default retention time for the RT topic is defined in {@link PubSubConstants#DEFAULT_TOPIC_RETENTION_POLICY_MS},
    * but if the rewind time is larger than this, then the RT topic's retention time needs to be set even higher,
