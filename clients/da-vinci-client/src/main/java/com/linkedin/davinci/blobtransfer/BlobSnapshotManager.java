@@ -1,7 +1,9 @@
-package com.linkedin.davinci.blob;
+package com.linkedin.davinci.blobtransfer;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -17,26 +19,33 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 
 
+/**
+ * This class will take and return a snapshot of a hybrid store, if someone is using a snapshot then it will return
+ * the snapshot that person is using, otherwise, it will return the last snapshot taken if it is not stale
+ * If the snapshot is stale and no one is using it, it will update the snapshot and return the new one
+ */
+
 public class BlobSnapshotManager {
   private final Map<String, Map<Integer, AtomicLong>> concurrentSnapshotUsers;
   private Map<String, Map<Integer, Long>> snapShotTimestamps;
   private final long snapshotRetentionTime;
   private final String basePath;
+  private final ReadOnlyStoreRepository readOnlyStoreRepository;
   private final Lock lock = new ReentrantLock();
   private static final Logger LOGGER = LogManager.getLogger(BlobSnapshotManager.class);
 
   /**
    * Constructor for the BlobSnapshotManager
    */
-  public BlobSnapshotManager(String basePath, long snapshotRetentionTime) {
+  public BlobSnapshotManager(
+      String basePath,
+      long snapshotRetentionTime,
+      ReadOnlyStoreRepository readOnlyStoreRepository) {
     this.basePath = basePath;
     this.snapshotRetentionTime = snapshotRetentionTime;
+    this.readOnlyStoreRepository = readOnlyStoreRepository;
     this.snapShotTimestamps = new VeniceConcurrentHashMap<>();
     this.concurrentSnapshotUsers = new VeniceConcurrentHashMap<>();
-  }
-
-  public void setSnapShotTimestamps(Map<String, Map<Integer, Long>> snapShotTimestamps) {
-    this.snapShotTimestamps = snapShotTimestamps;
   }
 
   /**
@@ -46,6 +55,10 @@ public class BlobSnapshotManager {
   public void maybeUpdateHybridSnapshot(RocksDB rocksDB, String topicName, int partitionId) {
     if (rocksDB == null || topicName == null) {
       throw new IllegalArgumentException("RocksDB instance and topicName cannot be null");
+    }
+    if (!isStoreHybrid(topicName)) {
+      LOGGER.warn("Store {} is not hybrid, skipping snapshot update", topicName);
+      return;
     }
     String fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(this.basePath, topicName, partitionId);
     snapShotTimestamps.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
@@ -95,6 +108,10 @@ public class BlobSnapshotManager {
     return concurrentSnapshotUsers.get(topicName).get(partitionId).get();
   }
 
+  void setSnapShotTimestamps(Map<String, Map<Integer, Long>> snapShotTimestamps) {
+    this.snapShotTimestamps = snapShotTimestamps;
+  }
+
   /**
    * Checks if the current snapshot of the partition is stale
    */
@@ -103,6 +120,14 @@ public class BlobSnapshotManager {
       return true;
     }
     return System.currentTimeMillis() - snapShotTimestamps.get(topicName).get(partitionId) > snapshotRetentionTime;
+  }
+
+  private boolean isStoreHybrid(String topicName) {
+    Store store = readOnlyStoreRepository.getStore(topicName);
+    if (store != null) {
+      return store.isHybrid();
+    }
+    return false;
   }
 
   /**

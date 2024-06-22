@@ -1,12 +1,9 @@
-package com.linkedin.davinci.blob;
+package com.linkedin.davinci.blobtransfer;
 
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -26,6 +23,7 @@ public class BlobSnapshotManagerTest {
   private static final String STORE_NAME = Utils.getUniqueString("sstTest");
   private static final int PARTITION_ID = 0;
   private static final String BASE_PATH = Utils.getUniqueTempPath("sstTest");
+  private static final ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
   private static final String DB_DIR =
       BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID);
 
@@ -33,7 +31,11 @@ public class BlobSnapshotManagerTest {
   public void testHybridSnapshot() throws RocksDBException {
     RocksDB mockRocksDB = mock(RocksDB.class);
     Checkpoint mockCheckpoint = mock(Checkpoint.class);
-    BlobSnapshotManager blobSnapshotManager = spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME));
+    Store mockStore = mock(Store.class);
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.isHybrid()).thenReturn(true);
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
     doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
     doNothing().when(mockCheckpoint)
         .createCheckpoint(
@@ -48,7 +50,11 @@ public class BlobSnapshotManagerTest {
   public void testSnapshotUpdatesWhenStale() throws RocksDBException {
     RocksDB mockRocksDB = mock(RocksDB.class);
     Checkpoint mockCheckpoint = mock(Checkpoint.class);
-    BlobSnapshotManager blobSnapshotManager = spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME));
+    Store mockStore = mock(Store.class);
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.isHybrid()).thenReturn(true);
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
     doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
     doNothing().when(mockCheckpoint).createCheckpoint(DB_DIR);
     blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
@@ -66,7 +72,11 @@ public class BlobSnapshotManagerTest {
   public void testSameSnapshotWhenConcurrentUsers() throws RocksDBException {
     RocksDB mockRocksDB = mock(RocksDB.class);
     Checkpoint mockCheckpoint = mock(Checkpoint.class);
-    BlobSnapshotManager blobSnapshotManager = spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME));
+    Store mockStore = mock(Store.class);
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.isHybrid()).thenReturn(true);
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
     doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
     doNothing().when(mockCheckpoint)
         .createCheckpoint(
@@ -83,25 +93,43 @@ public class BlobSnapshotManagerTest {
     final ExecutorService asyncExecutor = Executors.newFixedThreadPool(2);
     RocksDB mockRocksDB = mock(RocksDB.class);
     Random rand = new Random();
-    int rand_int1 = rand.nextInt(1000);
-    int rand_int2 = rand.nextInt(1000);
     Checkpoint mockCheckpoint = mock(Checkpoint.class);
-    BlobSnapshotManager blobSnapshotManager = spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME));
+    Store mockStore = mock(Store.class);
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.isHybrid()).thenReturn(true);
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
     doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
     doNothing().when(mockCheckpoint)
         .createCheckpoint(
             BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
     asyncExecutor.submit(() -> {
       blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-      Utils.sleep(rand_int1);
+      Utils.sleep(rand.nextInt(1000));
       blobSnapshotManager.decreaseConcurrentUserCount(STORE_NAME, PARTITION_ID);
     });
     asyncExecutor.submit(() -> {
       blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
-      Utils.sleep(rand_int2);
+      Utils.sleep(rand.nextInt(1000));
       blobSnapshotManager.decreaseConcurrentUserCount(STORE_NAME, PARTITION_ID);
     });
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(mockRocksDB, STORE_NAME, PARTITION_ID), 0);
+  }
 
+  @Test
+  public void testSnapshotNotUpdatedWhenNotHybrid() throws RocksDBException {
+    RocksDB mockRocksDB = mock(RocksDB.class);
+    Checkpoint mockCheckpoint = mock(Checkpoint.class);
+    Store mockStore = mock(Store.class);
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.isHybrid()).thenReturn(false);
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(BASE_PATH, SNAPSHOT_RETENTION_TIME, readOnlyStoreRepository));
+    doReturn(mockCheckpoint).when(blobSnapshotManager).createCheckpoint(mockRocksDB);
+    doNothing().when(mockCheckpoint)
+        .createCheckpoint(
+            BASE_PATH + "/" + STORE_NAME + "/" + RocksDBUtils.getPartitionDbName(STORE_NAME, PARTITION_ID));
+    blobSnapshotManager.maybeUpdateHybridSnapshot(mockRocksDB, STORE_NAME, PARTITION_ID);
+    verify(mockCheckpoint, times(0)).createCheckpoint(DB_DIR + "/.snapshot_files");
   }
 }
