@@ -4,6 +4,8 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
+import com.linkedin.davinci.bootstrap.DvcP2PRocksDbBootstrapper;
+import com.linkedin.davinci.bootstrap.RocksDbBootstrapper;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -61,6 +63,9 @@ public class VersionBackend {
   private final StoreBackendStats storeBackendStats;
   private final StoreDeserializerCache storeDeserializerCache;
   private final Lazy<VeniceCompressor> compressor;
+  private final Boolean isStoreHybrid;
+
+  private final RocksDbBootstrapper dbBootstrapper;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -73,6 +78,7 @@ public class VersionBackend {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
+
     if (this.config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       /*
        * Explicitly disable the store restore since we don't want to open other partitions that should be controlled by
@@ -86,6 +92,7 @@ public class VersionBackend {
     this.storageEngine.set(backend.getStorageService().getStorageEngine(version.kafkaTopicName()));
     this.backend.getIngestionBackend().setStorageEngineReference(version.kafkaTopicName(), storageEngine);
     Store store = backend.getStoreRepository().getStoreOrThrow(version.getStoreName());
+    this.isStoreHybrid = store.isHybrid();
     this.storeBackendStats = storeBackendStats;
     // push status store must be enabled both in Da Vinci and the store
     this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled()
@@ -98,6 +105,13 @@ public class VersionBackend {
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
+
+    this.dbBootstrapper = new DvcP2PRocksDbBootstrapper(
+        backend,
+        backend.getConfigLoader().getVeniceServerConfig(),
+        config,
+        version.isBlobTransferEnabled(),
+        store.isHybrid());
   }
 
   synchronized void close() {
@@ -133,7 +147,7 @@ public class VersionBackend {
        * The following function is used to forcibly clean up any leaking data partitions, which are not
        * visibile to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
        * to open because of DaVinci memory limiter.
-        */
+       */
       backend.getStorageService().forceStorageEngineCleanup(topicName);
       backend.getCompressorFactory().removeVersionSpecificCompressor(topicName);
     } catch (VeniceException e) {
@@ -312,6 +326,9 @@ public class VersionBackend {
   }
 
   synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
+    String storeName = version.getStoreName();
+    int versionNumber = version.getNumber();
+
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);
@@ -325,8 +342,11 @@ public class VersionBackend {
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
-        // AtomicReference of storage engine will be updated internally.
-        backend.getIngestionBackend().startConsumption(config, partition);
+        try {
+          dbBootstrapper.bootstrapDatabase(storeName, versionNumber, partition);
+        } catch (Exception e) {
+          LOGGER.error("");
+        }
         tryStartHeartbeat();
       }
       futures.add(partitionFutures.get(partition));
