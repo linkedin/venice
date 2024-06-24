@@ -24,6 +24,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROCESS_CONSUMER_ACTION_WITHOUT_ENQUEUE_ENABLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
@@ -451,8 +452,7 @@ public abstract class StoreIngestionTaskTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     taskPollingService = Executors.newFixedThreadPool(1);
-    storeBufferService =
-        new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled(), mockMetricRepo, true);
+    storeBufferService = new StoreBufferService(3, 10000, 1000, true, mockMetricRepo, true);
     storeBufferService.start();
   }
 
@@ -781,9 +781,11 @@ public abstract class StoreIngestionTaskTest {
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
 
+    Map<String, Object> serverProperties = new HashMap<>(extraServerProperties);
+    serverProperties
+        .put(SERVER_PROCESS_CONSUMER_ACTION_WITHOUT_ENQUEUE_ENABLE, isProcessConsumerActionWithoutEnqueueEnabled());
     StoreIngestionTaskFactory ingestionTaskFactory =
-        getIngestionTaskFactoryBuilder(pollStrategy, partitions, diskUsageForTest, extraServerProperties, false)
-            .build();
+        getIngestionTaskFactoryBuilder(pollStrategy, partitions, diskUsageForTest, serverProperties, false).build();
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
@@ -801,9 +803,17 @@ public abstract class StoreIngestionTaskTest {
 
     Future testSubscribeTaskFuture = null;
     try {
-      beforeStartingConsumption.run();
-      for (int partition: partitions) {
-        storeIngestionTaskUnderTest.subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition));
+
+      if (isProcessConsumerActionWithoutEnqueueEnabled()) {
+        beforeStartingConsumption.run();
+        for (int partition: partitions) {
+          storeIngestionTaskUnderTest.subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition));
+        }
+      } else {
+        for (int partition: partitions) {
+          storeIngestionTaskUnderTest.subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition));
+        }
+        beforeStartingConsumption.run();
       }
 
       // MockKafkaConsumer is prepared. Schedule for polling.
@@ -1018,7 +1028,7 @@ public abstract class StoreIngestionTaskTest {
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
 
-  abstract boolean isStoreWriterBufferAfterLeaderLogicEnabled();
+  abstract boolean isProcessConsumerActionWithoutEnqueueEnabled();
 
   private void prepareAggKafkaConsumerServiceMock() {
     doAnswer(invocation -> {
@@ -2070,6 +2080,40 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
+  @Test(dataProvider = "aaConfigProvider")
+  public void testKillActionPriority(AAConfig aaConfig) throws Exception {
+    if (isProcessConsumerActionWithoutEnqueueEnabled()) {
+      return;
+    }
+    runTest(Utils.setOf(PARTITION_FOO), () -> {
+      localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+      localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
+      // Add a reset consumer action
+      storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(fooTopicPartition);
+      // Add a kill consumer action in higher priority than subscribe and reset.
+      storeIngestionTaskUnderTest.kill();
+    }, () -> {
+      // verify subscribe has not been processed. Because consumption task should process kill action at first
+      verify(mockStorageMetadataService, after(TEST_TIMEOUT_MS).never()).getLastOffset(topic, PARTITION_FOO);
+      /**
+       * Consumers are subscribed lazily; if the store ingestion task is killed before it tries to subscribe to any
+       * topics, there is no consumer subscription.
+       */
+      waitForNonDeterministicCompletion(
+          TEST_TIMEOUT_MS,
+          TimeUnit.MILLISECONDS,
+          () -> !storeIngestionTaskUnderTest.consumerHasAnySubscription());
+      // Verify offset has not been processed. Because consumption task should process kill action at first.
+      // offSetManager.clearOffset should only be invoked one time during clean up after killing this task.
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
+
+      waitForNonDeterministicCompletion(
+          TEST_TIMEOUT_MS,
+          TimeUnit.MILLISECONDS,
+          () -> storeIngestionTaskUnderTest.isRunning() == false);
+    }, aaConfig);
+  }
+
   private byte[] getNumberedKey(int number) {
     return ByteBuffer.allocate(putKeyFoo.length + Integer.BYTES).put(putKeyFoo).putInt(number).array();
   }
@@ -2116,13 +2160,11 @@ public abstract class StoreIngestionTaskTest {
       relevantPartitions.stream()
           .forEach(
               partition -> storeIngestionTaskUnderTest
-                  .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition))
-          );
+                  .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition)));
       relevantPartitions.stream()
           .forEach(
               partition -> storeIngestionTaskUnderTest
-                  .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition), false)
-          );
+                  .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition), false));
     };
     PollStrategy pollStrategy =
         new BlockingObserverPollStrategy(new RandomPollStrategy(false), topicPartitionOffset -> {
@@ -2132,9 +2174,9 @@ public abstract class StoreIngestionTaskTest {
               % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
             LOGGER.info("Restarting consumer after consuming {} messages so far.", messagesConsumedSoFar.get());
 
-            Thread infiniteLockThread =
-                new Thread(runnable, "Subsribe and unsubsribe with message num: " + totalNumberOfMessages);
-            infiniteLockThread.start();
+            Thread resubscribeThread =
+                new Thread(runnable, "Subscribe and unsubscribe with message num: " + totalNumberOfMessages);
+            resubscribeThread.start();
           } else {
             LOGGER.info(
                 "TopicPartition: {}, Offset: {}",

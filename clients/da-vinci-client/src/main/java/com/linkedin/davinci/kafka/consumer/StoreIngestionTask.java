@@ -107,7 +107,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
@@ -1331,10 +1330,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LatencyUtils.getElapsedTimeFromMsToMs(startTime),
             endTime);
       }
+      Consumer<ConsumerAction> actionCleaner = action -> {
+        // Remove the action that is processed recently (not necessarily the head of consumerActionsQueue).
+        if (consumerActionsQueue.remove(action)) {
+          partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
+        }
+      };
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
-        processConsumerActions(store);
+        processConsumerActions(store, consumerActionsQueue::peek, actionCleaner);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
         maybeSendIngestionHeartbeat();
@@ -1534,10 +1539,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Consumes the kafka actions messages in the queue, when consumer action processing without enqueue is not enabled.
-   * When it is enabled, it only deals with KILL ACTION.
-   */
-  private void processConsumerActions(Store store) throws InterruptedException {
+    *  Will be executed in other threads called by StoreIngestionTask thread or not, depend on process consumer action
+    *  without enqueue enabled or not.
+    */
+  private void processConsumerActions(
+      Store store,
+      Supplier<ConsumerAction> actionProvider,
+      Consumer<ConsumerAction> actionCleaner) throws InterruptedException {
     Instant startTime = Instant.now();
     if (serverConfig.isProcessConsumerActionWithoutEnqueueEnabled() && killedActionReceived.get()) {
       LOGGER.info("Kill this consumer task for Topic: {}", versionTopic);
@@ -1546,7 +1554,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
-      ConsumerAction action = consumerActionsQueue.peek();
+      ConsumerAction action = actionProvider.get();
       if (action == null) {
         break;
       }
@@ -1559,10 +1567,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         action.incrementAttempt();
         processConsumerAction(action, store);
         action.getFuture().complete(null);
-        // Remove the action that is processed recently (not necessarily the head of consumerActionsQueue).
-        if (consumerActionsQueue.remove(action)) {
-          partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
-        }
+        actionCleaner.accept(action);
         LOGGER.info(
             "Finished consumer action {} in {}ms",
             action,
@@ -1585,11 +1590,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         action.getFuture().completeExceptionally(e);
         // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
         PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
-
-        // Remove the action that is failed to execute recently (not necessarily the head of consumerActionsQueue).
-        if (consumerActionsQueue.remove(action)) {
-          partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
-        }
+        actionCleaner.accept(action);
         if (state != null && !state.isCompletionReported()) {
           reportError(
               "Error when processing consumer action: " + action,
@@ -1604,9 +1605,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void processConsumerActionOrEnqueue(ConsumerAction action) {
-    if (action == null) {
-      return;
-    }
     if (!serverConfig.isProcessConsumerActionWithoutEnqueueEnabled()) {
       partitionToPendingConsumerActionCountMap.computeIfAbsent(action.getPartition(), x -> new AtomicInteger(0))
           .incrementAndGet();
@@ -1619,46 +1617,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     Store store = storeRepository.getStore(storeName);
-    final long actionProcessStartTimeInMs = System.currentTimeMillis();
+    AtomicReference<ConsumerAction> consumerAction = new AtomicReference<>(action);
     try {
-      LOGGER.info(
-          "Starting consumer action {}. Latency from creating action to starting action {}ms",
-          action,
-          LatencyUtils.getElapsedTimeFromMsToMs(action.getCreateTimestampInMs()));
-      try (AutoCloseableLock ignore = partitionLockManager.getLockForResource(action.getTopicPartition())) {
-        action.incrementAttempt();
-        if (killedActionReceived.get()) {
-          throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + versionTopic);
-        }
-        processConsumerAction(action, store);
-        action.getFuture().complete(null);
-      }
-      LOGGER.info(
-          "Finished consumer action {} in {}ms",
-          action,
-          LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs));
+      processConsumerActions(store, consumerAction::get, t -> consumerAction.set(null));
     } catch (InterruptedException e) {
-      LOGGER.info("{} interrupted, skipping error reporting because server is shutting down", ingestionTaskName, e);
-    } catch (Throwable e) {
-      if (action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS) {
-        LOGGER.warn("Failed to process consumer action {}, will retry later.", action, e);
-        return;
-      }
-      LOGGER.error(
-          "Failed to execute consumer action {} after {} attempts. Total elapsed time: {}ms",
-          action,
-          action.getAttemptsCount(),
-          LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs),
-          e);
-      // Mark action as failed since it has exhausted all the retries.
-      action.getFuture().completeExceptionally(e);
-      // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
-      PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
-      if (state != null && !state.isCompletionReported()) {
-        reportError("Error when processing consumer action: " + action, action.getPartition(), new VeniceException(e));
-      }
+      LOGGER.warn("Throw this exception.");
+      throw new RuntimeException(e.getMessage());
     }
-
   }
 
   /**
