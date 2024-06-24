@@ -435,10 +435,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.cacheBackend = cacheBackend;
 
     // Ensure getRecordTransformer does not return null
+    DaVinciRecordTransformer clientRecordTransformer =
+        getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
     this.recordTransformer =
-        getRecordTransformer != null && getRecordTransformer.apply(store.getCurrentVersion()) != null
-            ? new InternalDaVinciRecordTransformer(getRecordTransformer.apply(store.getCurrentVersion()))
-            : null;
+        clientRecordTransformer != null ? new InternalDaVinciRecordTransformer(clientRecordTransformer) : null;
     if (this.recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
