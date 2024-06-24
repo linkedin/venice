@@ -61,7 +61,7 @@ import scala.collection.JavaConverters;
  *
  * Spark's implementation is not ideal to be used directly for two reasons:
  * <ul>
- *   <li>It cannot handle complex unions in the version of Spark that we use (3.1.1). The support was added in 3.4.0.</li>
+ *   <li>It cannot handle complex unions in the version of Spark that we use (3.3.3). The support was added in 3.4.0.</li>
  *   <li>It converts directly to Avro binary that we need to deserialize, and that incurs an additional serde cost.</li>
  * </ul>
  */
