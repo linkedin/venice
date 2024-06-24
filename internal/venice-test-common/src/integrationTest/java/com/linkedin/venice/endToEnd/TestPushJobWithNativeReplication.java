@@ -957,10 +957,23 @@ public class TestPushJobWithNativeReplication {
               }
             });
           }
+          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
+              // Current version should become 1
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 2);
+              }
+            });
+          }
           props.put(TARGETED_REGION_PUSH_ENABLED, true);
           // props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
           TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 20);
-          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
+          try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
             job.run(); // the job should succeed
 
             TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
@@ -969,7 +982,7 @@ public class TestPushJobWithNativeReplication {
                   .getStore()
                   .getColoToCurrentVersions()
                   .values()) {
-                Assert.assertEquals(version, 2);
+                Assert.assertEquals(version, 3);
               }
               // should be able to read all 20 records.
               validateDaVinciClient(storeName, 20);
