@@ -17,6 +17,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -434,14 +435,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
-    this.recordTransformer =
+
+    // Ensure getRecordTransformer does not return null
+    DaVinciRecordTransformer clientRecordTransformer =
         getRecordTransformer != null ? getRecordTransformer.apply(store.getCurrentVersion()) : null;
-    if (recordTransformer != null) {
+    this.recordTransformer =
+        clientRecordTransformer != null ? new BlockingDaVinciRecordTransformer(clientRecordTransformer) : null;
+    if (this.recordTransformer != null) {
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
     }
+
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
