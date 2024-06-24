@@ -179,15 +179,15 @@ public class StoragePersonaRepository {
 
   public StoragePersona getPersonaContainingStore(String storeName) {
     String personaName = storeNamePersonaMap.get(storeName);
-    if (personaName == null)
+    if (personaName == null) {
       return null;
+    }
     return getPersona(personaName);
   }
 
   private boolean isStoreSetValid(StoragePersona persona, Optional<Store> additionalStore) {
     Set<String> setToValidate = new HashSet<>();
-    if (additionalStore.isPresent())
-      setToValidate.add(additionalStore.get().getName());
+    additionalStore.ifPresent(store -> setToValidate.add(store.getName()));
     setToValidate.addAll(persona.getStoresToEnforce());
     return setToValidate.stream()
         .allMatch(

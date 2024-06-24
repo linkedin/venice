@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
@@ -52,7 +51,6 @@ public class TestAdminConsumerService {
         .put(
             CLUSTER_TO_SERVER_D2,
             TestUtils.getClusterToD2String(Collections.singletonMap(someClusterName, "dummy_server_d2")))
-        .put(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, true)
         .put(ADMIN_TOPIC_SOURCE_REGION, adminTopicSourceRegion)
         .put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, adminTopicSourceRegion)
         .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + adminTopicSourceRegion, "blah")

@@ -55,12 +55,12 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -330,7 +330,7 @@ public class TestStoreMigration {
       startMigration(parentControllerUrl, storeName);
 
       // Store migration status output via closure PrintFunction
-      Set<String> statusOutput = new HashSet<String>();
+      List<String> statusOutput = new ArrayList<>();
       PrintFunction printFunction = (message) -> {
         statusOutput.add(message.trim());
         System.err.println(message);
@@ -362,18 +362,20 @@ public class TestStoreMigration {
               .assertEquals(pushStatusStoreReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
 
       // Verify that store and system store only exist in destination cluster after ending migration
-      statusOutput.clear();
       endMigration(parentControllerUrl, storeName);
-      checkMigrationStatus(parentControllerUrl, storeName, printFunction);
 
-      Assert
-          .assertFalse(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, srcClusterName)));
-      Assert
-          .assertTrue(statusOutput.contains(String.format("%s exists in this cluster %s", storeName, destClusterName)));
-      Assert.assertFalse(
-          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, srcClusterName)));
-      Assert.assertTrue(
-          statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, destClusterName)));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        statusOutput.clear();
+        checkMigrationStatus(parentControllerUrl, storeName, printFunction);
+        Assert.assertFalse(
+            statusOutput.contains(String.format("%s exists in this cluster %s", storeName, srcClusterName)));
+        Assert.assertTrue(
+            statusOutput.contains(String.format("%s exists in this cluster %s", storeName, destClusterName)));
+        Assert.assertFalse(
+            statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, srcClusterName)));
+        Assert.assertTrue(
+            statusOutput.contains(String.format("%s exists in this cluster %s", systemStoreName, destClusterName)));
+      });
     } finally {
       Utils.closeQuietlyWithErrorLogged(pushStatusStoreReader);
       D2ClientUtils.shutdownClient(d2Client);

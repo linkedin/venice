@@ -145,39 +145,6 @@ public class ConfigKeys {
   public static final String KAFKA_REPLICATION_FACTOR_RT_TOPICS = "kafka.replication.factor.rt.topics";
 
   /**
-   * TODO: the following 3 configs will be deprecated after the native replication migration is changed to a two-step
-   *       process: 1. Turn on the cluster level config that takes care of newly created stores; 2. Run admin command
-   *       to convert existing stores to native replication.
-   */
-  /**
-   * Cluster-level config to enable native replication for all batch-only stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY = "enable.native.replication.for.batch.only";
-
-  /**
-   * Cluster-level config to enable native replication for all hybrid stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_FOR_HYBRID = "enable.native.replication.for.hybrid";
-
-  /**
-   * Cluster-level config to enable native replication for new batch-only stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY =
-      "enable.native.replication.as.default.for.batch.only";
-
-  /**
-   * Cluster-level config to enable native replication for new hybrid stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID =
-      "enable.native.replication.as.default.for.hybrid";
-
-  /**
-   * Cluster-level config to enable active-active replication for new batch-only stores.
-   */
-  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE =
-      "enable.active.active.replication.as.default.for.batch.only.store";
-
-  /**
    * Cluster-level config to enable active-active replication for new hybrid stores.
    */
   public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE =
@@ -189,7 +156,7 @@ public class ConfigKeys {
   public static final String ENABLE_BLOB_TRANSFER = "enable.blob.transfer";
 
   /**
-   * Sets the default for whether or not do schema validation for all stores
+   * Sets the default for whether to do schema validation or not for all stores
    */
   public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";
 
@@ -304,9 +271,9 @@ public class ConfigKeys {
   public static final String CONTROLLER_ENFORCE_SSL = "controller.enforce.ssl";
 
   /**
-   * Whether child controllers will directly consume the source admin topic in the parent Kafka cluster.
+   * This config specifies if Venice is deployed in a multi-region mode
    */
-  public static final String ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED = "admin.topic.remote.consumption.enabled";
+  public static final String MULTI_REGION = "multi.region";
 
   /**
    * This config defines the source region name of the admin topic
@@ -314,7 +281,8 @@ public class ConfigKeys {
   public static final String ADMIN_TOPIC_SOURCE_REGION = "admin.topic.source.region";
 
   /**
-   * This following config defines whether admin consumption should be enabled or not, and this config will only control the behavior in Child Controller.
+   * This following config defines whether admin consumption should be enabled or not, and this config will only control
+   * the behavior in Child Controller. This is used for store migration.
    */
   public static final String CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED =
       "child.controller.admin.topic.consumption.enabled";
@@ -359,8 +327,15 @@ public class ConfigKeys {
       "controller.store.graveyard.cleanup.sleep.interval.between.list.fetch.minutes";
 
   /**
-   * Whether the superset schema generation in Parent Controller should be done via passed callback or not.
+   * Whether the superset schema generation in Primary Controller should be done via passed callback or not.
    */
+  public static final String CONTROLLER_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
+      "controller.external.superset.schema.generation.enabled";
+
+  /**
+   * Whether the superset schema generation in Primary Controller should be done via passed callback or not.
+   */
+  @Deprecated
   public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
       "controller.parent.external.superset.schema.generation.enabled";
 
@@ -1183,12 +1158,6 @@ public class ConfigKeys {
       "native.replication.source.fabric.as.default.for.hybrid.stores";
 
   /**
-   * We will use this config to determine whether we should enable incremental push for hybrid active-active user stores.
-   * If this config is set to true, we will enable incremental push for hybrid active-active user stores.
-   */
-  public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
-      "enable.incremental.push.for.hybrid.active.active.user.stores";
-  /**
    * We will use this config to determine whether we should enable partial update for hybrid active-active user stores.
    * If this config is set to true, we will enable partial update for hybrid active-active user stores whose latest value
    * schema meets partial update feature requirement.
@@ -1211,7 +1180,7 @@ public class ConfigKeys {
 
   // go/inclusivecode deprecated(alias="child.cluster.allowlist")
   @Deprecated
-  public static final String CHILD_CLUSTER_WHITELIST = "child.cluster.whitelist";
+  public static final String CHILD_CLUSTER_ALLOWLIST_LEGACY = "child.cluster.whitelist";
 
   /**
    * Only required when controller.parent.mode=true
@@ -1236,7 +1205,7 @@ public class ConfigKeys {
 
   // go/inclusivecode deprecated(alias="native.replication.fabric.allowlist")
   @Deprecated
-  public static final String NATIVE_REPLICATION_FABRIC_WHITELIST = "native.replication.fabric.whitelist";
+  public static final String NATIVE_REPLICATION_FABRIC_ALLOWLIST_LEGACY = "native.replication.fabric.whitelist";
 
   /**
    * Previously {@link #CHILD_CLUSTER_ALLOWLIST} is used to also represent the allowlist of source fabrics
@@ -1255,15 +1224,9 @@ public class ConfigKeys {
   public static final String PARENT_KAFKA_CLUSTER_FABRIC_LIST = "parent.kafka.cluster.fabric.list";
 
   /**
-   * Whether A/A is enabled on the controller. When it is true, all A/A required config (e.g.
-   * {@link #ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST}) must be set.
-   */
-  public static final String ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER = "active.active.enabled.on.controller";
-
-  /**
-   * A list of fabrics that are source(s) of the active active real time replication. When active-active replication
-   * is enabled on the controller {@link #ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
-   * where the Venice server should consume from when it accepts the TS (TopicSwitch) message.
+   * A list of regions that are source(s) of the Active/Active real time replication. When running in a multi-region
+   * mode, this list should contain region names where the Venice server should consume from when it accepts the
+   * TS (TopicSwitch) message.
    * Example value of this config: "dc-0, dc-1, dc-2".
    */
   public static final String ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST = "active.active.real.time.source.fabric.list";
@@ -1560,16 +1523,6 @@ public class ConfigKeys {
    * The super cluster name for HAAS. This config is required if HAAS is enabled for the creation of helix clusters.
    */
   public static final String CONTROLLER_HAAS_SUPER_CLUSTER_NAME = "controller.haas.super.cluster.name";
-
-  /**
-   * Whether to enable batch push (including GF job) from Admin in Child Controller.
-   * In theory, we should disable batch push in Child Controller no matter what, but the fact is that today there are
-   * many tests, which are doing batch pushes to an individual cluster setup (only Child Controller), so disabling batch push from Admin
-   * in Child Controller will require a lot of refactoring.
-   * So the current strategy is to enable it by default, but disable it in EI and PROD.
-   */
-  public static final String CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD =
-      "controller.enable.batch.push.from.admin.in.child";
 
   /**
    * A config that turns the key/value profiling stats on and off. This config can be placed in both Router and SNs and it
