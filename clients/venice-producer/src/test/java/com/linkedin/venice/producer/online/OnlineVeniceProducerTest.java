@@ -877,8 +877,12 @@ public class OnlineVeniceProducerTest {
     Version version = new VersionImpl(storeName, 1, "test-job-id");
     version.setPartitionCount(partitionCount);
 
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(1000, 1000, -1, DataReplicationPolicy.NONE, BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        1000,
+        1000,
+        -1,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
 
     ZKStore store = new ZKStore(
         storeName,

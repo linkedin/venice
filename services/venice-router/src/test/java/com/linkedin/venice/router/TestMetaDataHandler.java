@@ -1309,7 +1309,7 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NONE,
+        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();

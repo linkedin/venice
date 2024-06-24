@@ -2480,7 +2480,7 @@ public class VeniceParentHelixAdmin implements Admin {
         updatedConfigsList.add(OFFSET_LAG_TO_GO_ONLINE);
         hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds = DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
         updatedConfigsList.add(TIME_LAG_TO_GO_ONLINE);
-        hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NONE.getValue();
+        hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NON_AGGREGATE.getValue();
         updatedConfigsList.add(DATA_REPLICATION_POLICY);
         hybridStoreConfigRecord.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
         updatedConfigsList.add(BUFFER_REPLAY_POLICY);

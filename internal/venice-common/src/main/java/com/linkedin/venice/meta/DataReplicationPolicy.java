@@ -7,6 +7,7 @@ import java.util.Map;
 
 /**
  * Enums of the policies used to decide how real-time samza data is replicated.
+ * Note: Data replication policy does not play any role for AA enabled hybrid stores.
  */
 public enum DataReplicationPolicy {
   /**
@@ -19,17 +20,9 @@ public enum DataReplicationPolicy {
    */
   AGGREGATE(1),
 
-  /**
-   * This enum value is used in 2 cases:
-   *   1. batch-only stores since it has no real-time data replication.
-   *   2. incremental push stores that do not have Samza jobs.
-   */
+  @Deprecated
   NONE(2),
 
-  /**
-   * Samza job per colo pushes to local real-time topic. Leader SNs replicate data from real-time topic in all colos to
-   * local version topic.
-   */
   @Deprecated
   ACTIVE_ACTIVE(3);
 

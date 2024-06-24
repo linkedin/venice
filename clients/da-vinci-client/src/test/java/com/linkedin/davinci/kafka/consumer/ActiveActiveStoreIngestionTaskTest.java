@@ -215,8 +215,12 @@ public class ActiveActiveStoreIngestionTaskTest {
     builder.setStorageEngineRepository(storageEngineRepository);
 
     // Set up version config and store config
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(100L, 100L, 100L, DataReplicationPolicy.NONE, BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        100L,
+        100L,
+        100L,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
     Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     mockVersion.setHybridStoreConfig(hybridStoreConfig);
 
