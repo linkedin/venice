@@ -27,7 +27,7 @@ public class HeartbeatMonitoringServiceTest {
 
     // Default hybrid store config
     HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(1L, 1L, 1L, DataReplicationPolicy.NONE, BufferReplayPolicy.REWIND_FROM_SOP);
+        new HybridStoreConfigImpl(1L, 1L, 1L, DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_SOP);
 
     // Version configs
     Version backupVersion = new VersionImpl(TEST_STORE, 1, "1"); // Non hybrid version
