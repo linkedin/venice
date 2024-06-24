@@ -5,29 +5,29 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestZNode {
+public class TestTreeNode {
   @Test
-  public void testZNode() {
+  public void testTreeNode() {
     // testing listToTree()
     String basePath = "/venice-parent";
-    ZNode node = CloneVeniceZKPaths.listToTree(getPaths(), basePath);
+    TreeNode node = CloneVeniceZKPaths.listToTree(getPaths(), basePath);
     testListToTree(node);
 
-    // testing ZNode class methods
-    ZNode root = new ZNode(basePath);
-    testZNodeMethods(root);
+    // testing TreeNode class methods
+    TreeNode root = new TreeNode(basePath);
+    testTreeNodeMethods(root);
 
     // testing treeToList()
     ArrayList<String> list = CloneVeniceZKPaths.treeToList(root);
     testTreeToList(list);
   }
 
-  public void testListToTree(ZNode root) {
+  public void testListToTree(TreeNode root) {
     Assert.assertEquals(root.getChildren().size(), 3);
     Assert.assertTrue(root.contains("storeConfigs"));
     Assert.assertTrue(root.contains("cluster1"));
     Assert.assertTrue(root.contains("cluster2"));
-    for (ZNode child: root.getChildren()) {
+    for (TreeNode child: root.getChildren()) {
       switch (child.getVal()) {
         case "storeConfigs":
           Assert.assertEquals(child.getPath(), "/venice-parent/storeConfigs");
@@ -42,17 +42,17 @@ public class TestZNode {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (ZNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster1/" + grandchild.getVal());
             if (grandchild.getVal().equals("adminTopicMetadata")) {
               Assert.assertEquals(grandchild.getChildren().size(), 2);
-              for (ZNode greatgrandchild: grandchild.getChildren()) {
+              for (TreeNode greatgrandchild: grandchild.getChildren()) {
                 Assert.assertEquals(
                     greatgrandchild.getPath(),
                     "/venice-parent/cluster1/adminTopicMetadata/" + greatgrandchild.getVal());
                 if (greatgrandchild.getVal().equals("file2")) {
                   Assert.assertEquals(greatgrandchild.getChildren().size(), 1);
-                  for (ZNode greatgreatgrandchild: greatgrandchild.getChildren()) {
+                  for (TreeNode greatgreatgrandchild: greatgrandchild.getChildren()) {
                     Assert.assertEquals(
                         greatgreatgrandchild.getPath(),
                         "/venice-parent/cluster1/adminTopicMetadata/file2/" + greatgreatgrandchild.getVal());
@@ -74,7 +74,7 @@ public class TestZNode {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (ZNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster2/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
           }
@@ -83,7 +83,7 @@ public class TestZNode {
     }
   }
 
-  public void testZNodeMethods(ZNode root) {
+  public void testTreeNodeMethods(TreeNode root) {
     Assert.assertEquals(root.getVal(), "/venice-parent");
     Assert.assertEquals(root.getPath(), "/venice-parent");
     Assert.assertEquals(root.getChildren().size(), 0);
@@ -94,7 +94,7 @@ public class TestZNode {
     Assert.assertTrue(root.contains("storeConfigs"));
     Assert.assertTrue(root.contains("cluster1"));
     Assert.assertTrue(root.contains("cluster2"));
-    for (ZNode child: root.getChildren()) {
+    for (TreeNode child: root.getChildren()) {
       switch (child.getVal()) {
         case "storeConfigs":
           Assert.assertEquals(child.getPath(), "/venice-parent/storeConfigs");
@@ -121,21 +121,21 @@ public class TestZNode {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (ZNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster1/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
             if (grandchild.getVal().equals("adminTopicMetadata")) {
               grandchild.addChild("file1");
               grandchild.addChild("file2");
               Assert.assertEquals(grandchild.getChildren().size(), 2);
-              for (ZNode greatgrandchild: grandchild.getChildren()) {
+              for (TreeNode greatgrandchild: grandchild.getChildren()) {
                 Assert.assertEquals(
                     greatgrandchild.getPath(),
                     "/venice-parent/cluster1/adminTopicMetadata/" + greatgrandchild.getVal());
                 if (greatgrandchild.getVal().equals("file2")) {
                   greatgrandchild.addChild("file3");
                   Assert.assertEquals(greatgrandchild.getChildren().size(), 1);
-                  for (ZNode greatgreatgrandchild: greatgrandchild.getChildren()) {
+                  for (TreeNode greatgreatgrandchild: greatgrandchild.getChildren()) {
                     Assert.assertEquals(
                         greatgreatgrandchild.getPath(),
                         "/venice-parent/cluster1/adminTopicMetadata/file2/" + greatgreatgrandchild.getVal());
@@ -169,7 +169,7 @@ public class TestZNode {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (ZNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster2/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
           }

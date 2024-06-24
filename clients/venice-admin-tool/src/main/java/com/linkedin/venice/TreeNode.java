@@ -6,25 +6,25 @@ import java.util.Set;
 
 /**
  * Represents a folder in ZooKeeper.
- * ZNodes are similar to directories in a file system so a chain of children can form paths.
+ * TreeNodes are similar to directories in a file system so a chain of children can form paths.
  */
-public class ZNode {
+public class TreeNode {
   /** val represents the name of this current folder */
   private String val;
   /** children represents the subfolders of this current folder */
-  private Set<ZNode> children;
+  private Set<TreeNode> children;
   /** path represents the full path of this folder */
   private String path;
 
-  // root ZNode
-  public ZNode(String val) {
+  // root TreeNode
+  public TreeNode(String val) {
     this.val = val;
     this.children = new HashSet<>();
     this.path = val;
   }
 
-  // non-root ZNode
-  public ZNode(String val, String path) {
+  // non-root TreeNode
+  public TreeNode(String val, String path) {
     this.val = val;
     this.children = new HashSet<>();
     this.path = path + "/" + val;
@@ -34,7 +34,7 @@ public class ZNode {
     return val;
   }
 
-  public Set<ZNode> getChildren() {
+  public Set<TreeNode> getChildren() {
     return children;
   }
 
@@ -43,7 +43,7 @@ public class ZNode {
   }
 
   public void addChild(String folder) {
-    children.add(new ZNode(folder, this.path));
+    children.add(new TreeNode(folder, this.path));
   }
 
   public void deleteChild(String folder) {

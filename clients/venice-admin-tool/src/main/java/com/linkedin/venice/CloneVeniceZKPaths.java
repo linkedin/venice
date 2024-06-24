@@ -83,26 +83,26 @@ public class CloneVeniceZKPaths {
       Set<String> clusterNames,
       String basePath,
       Set<String> requiredPaths) {
-    ZNode requiredPathsTree = buildRequiredPathsTree(clusterNames, basePath, requiredPaths);
-    ZNode zkPathsTree = listToTree(zkPaths, basePath);
+    TreeNode requiredPathsTree = buildRequiredPathsTree(clusterNames, basePath, requiredPaths);
+    TreeNode zkPathsTree = listToTree(zkPaths, basePath);
     getVenicePathsHelper(zkPathsTree, requiredPathsTree);
     return treeToList(zkPathsTree);
   }
 
-  private static void getVenicePathsHelper(ZNode zkPathsTree, ZNode requiredPathsTree) {
+  private static void getVenicePathsHelper(TreeNode zkPathsTree, TreeNode requiredPathsTree) {
     if (requiredPathsTree.getChildren().isEmpty() || zkPathsTree.getChildren().isEmpty()) {
       return;
     }
-    ArrayList<String> znodesToBeDeleted = new ArrayList<>();
-    for (ZNode zkChild: zkPathsTree.getChildren()) {
+    ArrayList<String> TreeNodesToBeDeleted = new ArrayList<>();
+    for (TreeNode zkChild: zkPathsTree.getChildren()) {
       if (!requiredPathsTree.contains(zkChild.getVal())) {
-        znodesToBeDeleted.add(zkChild.getVal());
+        TreeNodesToBeDeleted.add(zkChild.getVal());
       }
     }
-    for (String str: znodesToBeDeleted) {
+    for (String str: TreeNodesToBeDeleted) {
       zkPathsTree.deleteChild(str);
     }
-    for (ZNode requiredChild: requiredPathsTree.getChildren()) {
+    for (TreeNode requiredChild: requiredPathsTree.getChildren()) {
       zkPathsTree.getChildren()
           .stream()
           .filter(node -> node.getVal().equals(requiredChild.getVal()))
@@ -111,13 +111,13 @@ public class CloneVeniceZKPaths {
     }
   }
 
-  public static ZNode buildRequiredPathsTree(Set<String> clusterNames, String basePath, Set<String> requiredPaths) {
-    ZNode root = new ZNode(basePath);
+  public static TreeNode buildRequiredPathsTree(Set<String> clusterNames, String basePath, Set<String> requiredPaths) {
+    TreeNode root = new TreeNode(basePath);
     root.addChild("storeConfigs");
     for (String cluster: clusterNames) {
       root.addChild(cluster);
     }
-    for (ZNode child: root.getChildren()) {
+    for (TreeNode child: root.getChildren()) {
       if (!child.getVal().equals("storeConfigs")) {
         for (String path: requiredPaths) {
           child.addChild(path);
@@ -127,11 +127,11 @@ public class CloneVeniceZKPaths {
     return root;
   }
 
-  public static ZNode listToTree(ArrayList<String> zkPaths, String basePath) {
-    ZNode root = new ZNode(basePath);
+  public static TreeNode listToTree(ArrayList<String> zkPaths, String basePath) {
+    TreeNode root = new TreeNode(basePath);
     for (String path: zkPaths) {
       String[] pathParts = path.substring(1).split("/");
-      ZNode current = root;
+      TreeNode current = root;
       for (int i = 1; i < pathParts.length; i++) {
         String part = pathParts[i];
         if (!current.contains(part)) {
@@ -143,7 +143,7 @@ public class CloneVeniceZKPaths {
     return root;
   }
 
-  public static ArrayList<String> treeToList(ZNode root) {
+  public static ArrayList<String> treeToList(TreeNode root) {
     ArrayList<String> paths = new ArrayList<>();
     treeToListHelper(root, paths);
     // removes <BASE_PATH> from paths
@@ -151,9 +151,9 @@ public class CloneVeniceZKPaths {
     return paths;
   }
 
-  private static void treeToListHelper(ZNode node, ArrayList<String> paths) {
+  private static void treeToListHelper(TreeNode node, ArrayList<String> paths) {
     paths.add(node.getPath());
-    for (ZNode child: node.getChildren()) {
+    for (TreeNode child: node.getChildren()) {
       treeToListHelper(child, paths);
     }
   }

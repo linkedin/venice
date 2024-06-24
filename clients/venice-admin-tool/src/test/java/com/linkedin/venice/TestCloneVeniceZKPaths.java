@@ -82,12 +82,13 @@ public class TestCloneVeniceZKPaths {
   }
 
   public void testBuildRequiredPathsTree() {
-    ZNode root = CloneVeniceZKPaths.buildRequiredPathsTree(CLUSTERS, BASE_PATH, CloneVeniceZKPaths.getRequiredPaths());
+    TreeNode root =
+        CloneVeniceZKPaths.buildRequiredPathsTree(CLUSTERS, BASE_PATH, CloneVeniceZKPaths.getRequiredPaths());
     Assert.assertEquals(root.getChildren().size(), 3);
     Assert.assertTrue(root.contains("storeConfigs"));
     Assert.assertTrue(root.contains("cluster1"));
     Assert.assertTrue(root.contains("cluster2"));
-    for (ZNode child: root.getChildren()) {
+    for (TreeNode child: root.getChildren()) {
       switch (child.getVal()) {
         case "storeConfigs":
           Assert.assertEquals(child.getPath(), "/venice-parent/storeConfigs");
@@ -102,7 +103,7 @@ public class TestCloneVeniceZKPaths {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (ZNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster1/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
           }
@@ -116,7 +117,7 @@ public class TestCloneVeniceZKPaths {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (ZNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster2/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
           }
