@@ -14,6 +14,7 @@ public class TestCloneVeniceZKPaths {
 
   @Test
   public void mainTest() {
+    testBuildRequiredPathsTree();
     testGetVenicePaths();
     testExtractVenicePaths();
     // testCloneVenicePaths();
@@ -36,16 +37,19 @@ public class TestCloneVeniceZKPaths {
   public void testGetVenicePaths() {
     ArrayList<String> zkPaths = getPaths();
     Set<String> requiredPaths = CloneVeniceZKPaths.getRequiredPaths();
-
     ArrayList<String> venicePaths = CloneVeniceZKPaths.getVenicePaths(zkPaths, CLUSTERS, BASE_PATH, requiredPaths);
+    testVenicePathsAsserts(venicePaths);
+  }
 
-    Assert.assertEquals(venicePaths.size(), 19);
+  public void testVenicePathsAsserts(ArrayList<String> venicePaths) {
+    Assert.assertEquals(venicePaths.size(), 21);
     Assert.assertFalse(venicePaths.contains("/venice-parent"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/storeConfigs"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1"));
     Assert.assertFalse(venicePaths.contains("/venice-parent/cluster1/storeConfigs"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadata"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadata/file1"));
+    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadata/file2"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadata/file2/file3"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/executionids"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/ParentOfflinePushes"));
@@ -57,6 +61,7 @@ public class TestCloneVeniceZKPaths {
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/adminTopicMetadata"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/executionids"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/executionids/file1"));
+    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/executionids/file2"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/executionids/file2/file3"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/ParentOfflinePushes"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/routers"));
@@ -76,7 +81,51 @@ public class TestCloneVeniceZKPaths {
     Assert.assertFalse(venicePaths.contains("/venice/cluster1/adminTopicMetadata/file2/file3"));
   }
 
-  private static ArrayList<String> getPaths() {
+  public void testBuildRequiredPathsTree() {
+    ZNode root = CloneVeniceZKPaths.buildRequiredPathsTree(CLUSTERS, BASE_PATH, CloneVeniceZKPaths.getRequiredPaths());
+    Assert.assertEquals(root.getChildren().size(), 3);
+    Assert.assertTrue(root.contains("storeConfigs"));
+    Assert.assertTrue(root.contains("cluster1"));
+    Assert.assertTrue(root.contains("cluster2"));
+    for (ZNode child: root.getChildren()) {
+      switch (child.getVal()) {
+        case "storeConfigs":
+          Assert.assertEquals(child.getPath(), "/venice-parent/storeConfigs");
+          Assert.assertEquals(child.getChildren().size(), 0);
+          break;
+        case "cluster1":
+          Assert.assertEquals(child.getPath(), "/venice-parent/cluster1");
+          Assert.assertEquals(child.getChildren().size(), 6);
+          Assert.assertTrue(child.contains("adminTopicMetadata"));
+          Assert.assertTrue(child.contains("executionids"));
+          Assert.assertTrue(child.contains("ParentOfflinePushes"));
+          Assert.assertTrue(child.contains("routers"));
+          Assert.assertTrue(child.contains("StoreGraveyard"));
+          Assert.assertTrue(child.contains("Stores"));
+          for (ZNode grandchild: child.getChildren()) {
+            Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster1/" + grandchild.getVal());
+            Assert.assertEquals(grandchild.getChildren().size(), 0);
+          }
+          break;
+        case "cluster2":
+          Assert.assertEquals(child.getPath(), "/venice-parent/cluster2");
+          Assert.assertEquals(child.getChildren().size(), 6);
+          Assert.assertTrue(child.contains("adminTopicMetadata"));
+          Assert.assertTrue(child.contains("executionids"));
+          Assert.assertTrue(child.contains("ParentOfflinePushes"));
+          Assert.assertTrue(child.contains("routers"));
+          Assert.assertTrue(child.contains("StoreGraveyard"));
+          Assert.assertTrue(child.contains("Stores"));
+          for (ZNode grandchild: child.getChildren()) {
+            Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster2/" + grandchild.getVal());
+            Assert.assertEquals(grandchild.getChildren().size(), 0);
+          }
+          break;
+      }
+    }
+  }
+
+  public ArrayList<String> getPaths() {
     ArrayList<String> zkPaths = new ArrayList<>();
     zkPaths.add("/venice-parent");
     zkPaths.add("/venice-parent/storeConfigs");
