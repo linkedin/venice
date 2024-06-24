@@ -7,19 +7,19 @@ import org.apache.avro.Schema;
 
 
 /**
- * This is the internal implementation of {@link DaVinciRecordTransformer}. It is used to handle
- * concurrency of lifecycle events.
+ * This is an implementation of {@link DaVinciRecordTransformer} that implements blocking.
+ * It ensures that no puts can proceed until onStartIngestionTask finishes.
  *
  * @param <K> type of the input key
  * @param <V> type of the input value
  * @param <O> type of the output value
  */
 @Experimental
-public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTransformer<K, V, O> {
+public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTransformer<K, V, O> {
   private final DaVinciRecordTransformer recordTransformer;
   private final CountDownLatch startLatch = new CountDownLatch(1);
 
-  public InternalDaVinciRecordTransformer(DaVinciRecordTransformer recordTransformer) {
+  public BlockingDaVinciRecordTransformer(DaVinciRecordTransformer recordTransformer) {
     super(recordTransformer.getStoreVersion());
     this.recordTransformer = recordTransformer;
   }
