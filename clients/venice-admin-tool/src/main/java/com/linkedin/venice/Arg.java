@@ -240,6 +240,10 @@ public enum Arg {
   ),
   MAX_COMPACTION_LAG_SECONDS(
       "max-compaction-lag-seconds", "mxcls", true, "Max compaction lag seconds for version topic of hybrid stores"
+  ),
+  MAX_RECORD_SIZE_BYTES(
+      "max-record-size-bytes", "mrsb", true,
+      "Store-level max record size in bytes. Used by VeniceWriter to fail batch push jobs and pause consumption on nearline jobs."
   ), UNUSED_SCHEMA_DELETION_ENABLED("enable-unused-schema-deletion", "usde", true, "Enable unused schema deletion"),
   PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(

@@ -302,6 +302,10 @@ public interface Store {
 
   void setMaxCompactionLagSeconds(long maxCompactionLagSeconds);
 
+  int getMaxRecordSizeBytes();
+
+  void setMaxRecordSizeBytes(int maxRecordSizeBytes);
+
   void setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled);
 
   boolean isUnusedSchemaDeletionEnabled();

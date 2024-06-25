@@ -27,6 +27,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
@@ -133,6 +134,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setStorageNodeReadQuotaEnabled(srcStore.isStorageNodeReadQuotaEnabled())
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
+            .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -664,6 +666,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Long> getMaxCompactionLagSeconds() {
     return getLong(MAX_COMPACTION_LAG_SECONDS);
+  }
+
+  public UpdateStoreQueryParams setMaxRecordSizeBytes(int maxRecordSizeBytes) {
+    return putInteger(MAX_RECORD_SIZE_BYTES, maxRecordSizeBytes);
+  }
+
+  public Optional<Integer> getMaxRecordSizeBytes() {
+    return getInteger(MAX_RECORD_SIZE_BYTES);
   }
 
   public UpdateStoreQueryParams setUnusedSchemaDeletionEnabled(boolean unusedSchemaDeletionEnabled) {
