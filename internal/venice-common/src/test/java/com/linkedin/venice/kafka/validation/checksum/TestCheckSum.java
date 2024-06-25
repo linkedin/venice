@@ -1,15 +1,16 @@
 package com.linkedin.venice.kafka.validation.checksum;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class TestCheckSum {
-  @Test
-  public void testCheckSum() {
-    CheckSum checkSum = CheckSum.getInstance(CheckSumType.MD5);
+  @Test(dataProvider = "CheckpointingSupported-CheckSum-Types", dataProviderClass = DataProviderUtils.class)
+  public void testCheckSum(CheckSumType checkSumType) {
+    CheckSum checkSum = CheckSum.getInstance(checkSumType);
 
     checkSum.update(1);
 
