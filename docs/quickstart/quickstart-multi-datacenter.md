@@ -116,5 +116,5 @@ exit
 
 #### Step 10: Teardown the cluster
 ```bash
-docker-compose -f docker-compose-single-dc-setup.yaml down
+docker-compose -f docker-compose-multi-dc-setup.yaml down
 ```
