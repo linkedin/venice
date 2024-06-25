@@ -3,8 +3,6 @@ package com.linkedin.venice.blobtransfer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
-import com.linkedin.venice.blobtransfer.ServerBlobFinder;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
