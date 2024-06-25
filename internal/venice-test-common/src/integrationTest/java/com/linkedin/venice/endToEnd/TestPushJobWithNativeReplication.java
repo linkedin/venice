@@ -978,17 +978,19 @@ public class TestPushJobWithNativeReplication {
             File directory = new File(serverWrapper.getDataDirectory() + "/rocksdb/");
             File[] storeDBDirs = directory.listFiles(File::isDirectory);
             long totalStoreSize = 0;
-            for (File storeDB: storeDBDirs) {
-              if (storeDB.getName().startsWith(storeName)) {
-                long size = FileUtils
-                    .sizeOfDirectory(new File(serverWrapper.getDataDirectory() + "/rocksdb/" + storeDB.getName()));
-                ;
-                totalStoreSize += size;
+            if (storeDBDirs != null) {
+              for (File storeDB: storeDBDirs) {
+                if (storeDB.getName().startsWith(storeName)) {
+                  long size = FileUtils
+                      .sizeOfDirectory(new File(serverWrapper.getDataDirectory() + "/rocksdb/" + storeDB.getName()));
+                  ;
+                  totalStoreSize += size;
+                }
               }
+              Assert.assertTrue(
+                  storeSize * 2 >= totalStoreSize,
+                  "2x of store size " + storeSize + " is more than total " + totalStoreSize);
             }
-            Assert.assertTrue(
-                storeSize * 2 >= totalStoreSize,
-                "2x size " + storeSize + " is more than total " + totalStoreSize);
             TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
               // Current version should become 2
               for (int version: parentControllerClient.getStore(storeName)
