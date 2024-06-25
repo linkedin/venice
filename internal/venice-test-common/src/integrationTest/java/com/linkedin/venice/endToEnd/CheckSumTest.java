@@ -105,6 +105,7 @@ public class CheckSumTest {
    * <li> Create two stores with different checksum types in the VPJ.
    * <li> Verify that records can be read from the both stores.
    * <li> Produce records to the rt topic of the first store with CheckSumType set to {@link CheckSumType#ADHASH}.
+   * <li> Produce records to the rt topic of the first store with CheckSumType set to {@link CheckSumType#MD5}.
    * <li> Check that the first store has all the records.
    * <li> Produce records to the rt topic of the second store with CheckSumType set to {@link CheckSumType#MD5}.
    * <li> Check that the second store has all the records.
@@ -139,13 +140,16 @@ public class CheckSumTest {
       createStoresAndVersion(storeNameSecond, CheckSumType.MD5, streamingRewindSeconds, streamingMessageLag);
 
       // Produce to the rt topic of the first store with CheckSumType set to ADHASH.
-      produceToStoreRTTopic(storeNameFirst, 10, CheckSumType.ADHASH);
+      produceToStoreRTTopic(storeNameFirst, 1, 10, CheckSumType.ADHASH);
+
+      // Produce to the rt topic of the first store with CheckSumType set to MD5.
+      produceToStoreRTTopic(storeNameFirst, 11, 20, CheckSumType.MD5);
 
       // Check that the first store has all the records.
-      checkRecords(clientToFirstStore, 10);
+      checkRecords(clientToFirstStore, 20);
 
       // Produce to the rt topic of the second store with CheckSumType set to MD5.
-      produceToStoreRTTopic(storeNameSecond, 10, CheckSumType.MD5);
+      produceToStoreRTTopic(storeNameSecond, 1, 10, CheckSumType.MD5);
 
       // Check that the second store has all the records.
       checkRecords(clientToSecondStore, 10);
@@ -165,10 +169,10 @@ public class CheckSumTest {
     });
   }
 
-  private void produceToStoreRTTopic(String storeName, int numOfRecords, CheckSumType checkSumType) {
+  private void produceToStoreRTTopic(String storeName, int start, int end, CheckSumType checkSumType) {
     LOGGER.info(
         "Producing {} records to the rt topic of store {} with CheckSumType set to {}",
-        numOfRecords,
+        end - start + 1,
         storeName,
         checkSumType);
     SystemProducer veniceProducer = getSamzaProducer(
@@ -176,7 +180,7 @@ public class CheckSumTest {
         storeName,
         Version.PushType.STREAM,
         Pair.create(VeniceWriter.CHECK_SUM_TYPE, checkSumType.name()));
-    for (int i = 1; i <= numOfRecords; i++) {
+    for (int i = start; i <= end; i++) {
       sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
     }
     veniceProducer.stop();
