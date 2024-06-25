@@ -61,6 +61,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final LongAdderRateGauge totalTimestampRegressionDCRErrorRate;
   private final LongAdderRateGauge totalOffsetRegressionDCRErrorRate;
   /**
+   * Sensors for emitting if/when we detect out of order consumer action execution as not only {@link StoreIngestionTask}
+   * thread executing the consumer action.
+   */
+  private final LongAdderRateGauge totalOutOfOrderConsumerActionExecutionErrorRate;
+  /**
    * A gauge reporting the total the percentage of hybrid quota used.
    */
   private double hybridQuotaUsageGauge;
@@ -207,6 +212,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "offset_regression_dcr_error",
         totalStats,
         () -> totalStats.totalOffsetRegressionDCRErrorRate,
+        time);
+
+    this.totalOutOfOrderConsumerActionExecutionErrorRate = registerOnlyTotalRate(
+        "out_of_order_consumer_action_execution_error_rate",
+        totalStats,
+        () -> totalStats.totalOutOfOrderConsumerActionExecutionErrorRate,
         time);
 
     Int2ObjectMap<String> kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
@@ -591,5 +602,9 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordOffsetRegressionDCRError() {
     totalOffsetRegressionDCRErrorRate.record();
+  }
+
+  public void recordTotalOutOfOrderConsumerActionExecutionError() {
+    totalOutOfOrderConsumerActionExecutionErrorRate.record();
   }
 }

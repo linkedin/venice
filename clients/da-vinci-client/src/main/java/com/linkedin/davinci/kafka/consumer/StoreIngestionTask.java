@@ -107,6 +107,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
@@ -1538,6 +1539,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void closeVeniceViewWriters() {
   }
 
+  private void checkConsumerActionOutOfOrderExecution(ConsumerAction consumerAction) {
+    if (!partitionConsumptionStateMap.containsKey(consumerAction.getPartition())) {
+      return;
+    }
+    PartitionConsumptionState partitionConsumptionState =
+        partitionConsumptionStateMap.get(consumerAction.getPartition());
+    if (consumerAction.getSequenceNumber() < partitionConsumptionState.getLastConsumerActionSeqNum()) {
+      LOGGER.warn(
+          "Out of order state transition has been detected, last processed sequence #: {} when processing consumer action: {}",
+          partitionConsumptionState.getLastConsumerActionSeqNum(),
+          consumerAction);
+      hostLevelIngestionStats.recordTotalOutOfOrderConsumerActionExecutionError();
+    }
+    partitionConsumptionState.setLastConsumerActionSeqNum(consumerAction.getSequenceNumber());
+  }
+
   /**
     *  Will be executed in other threads called by StoreIngestionTask thread or not, depend on process consumer action
     *  without enqueue enabled or not.
@@ -1547,7 +1564,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Supplier<ConsumerAction> actionProvider,
       Consumer<ConsumerAction> actionCleaner) throws InterruptedException {
     Instant startTime = Instant.now();
-    if (serverConfig.isProcessConsumerActionWithoutEnqueueEnabled() && killedActionReceived.get()) {
+    if (killedActionReceived.get()) {
       LOGGER.info("Kill this consumer task for Topic: {}", versionTopic);
       // Throw the exception here to break the consumption loop, and then this task is marked as error status.
       throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + versionTopic);
@@ -1565,6 +1582,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             action,
             LatencyUtils.getElapsedTimeFromMsToMs(action.getCreateTimestampInMs()));
         action.incrementAttempt();
+        checkConsumerActionOutOfOrderExecution(action);
         processConsumerAction(action, store);
         action.getFuture().complete(null);
         actionCleaner.accept(action);
@@ -1616,10 +1634,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    Store store = storeRepository.getStore(storeName);
-    AtomicReference<ConsumerAction> consumerAction = new AtomicReference<>(action);
     try {
-      processConsumerActions(store, consumerAction::get, t -> consumerAction.set(null));
+      Store store = storeRepository.getStore(storeName);
+      AtomicReference<ConsumerAction> consumerAction = new AtomicReference<>(action);
+      try (AutoCloseableLock ignore = partitionLockManager.getLockForResource(action.getTopicPartition())) {
+        processConsumerActions(store, consumerAction::get, t -> consumerAction.set(null));
+      }
     } catch (InterruptedException e) {
       LOGGER.warn("Throw this exception.");
       throw new RuntimeException(e.getMessage());
@@ -1793,6 +1813,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partition,
             offsetRecord,
             hybridStoreConfig.isPresent());
+        newPartitionConsumptionState.setLastConsumerActionSeqNum(consumerAction.getSequenceNumber());
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
         kafkaDataIntegrityValidator.setPartitionState(partition, offsetRecord);
@@ -1803,7 +1824,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               "Restart ingestion from the beginning by resetting OffsetRecord for topic-partition: {}. Replica: {}",
               Utils.getReplicaId(topic, partition),
               newPartitionConsumptionState.getReplicaId());
-          resetOffset(partition, topicPartition, true);
+          resetOffset(partition, topicPartition, consumerAction.getSequenceNumber(), true);
           newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
           offsetRecord = newPartitionConsumptionState.getOffsetRecord();
         }
@@ -1887,7 +1908,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         break;
       case RESET_OFFSET:
-        resetOffset(partition, topicPartition, false);
+        resetOffset(partition, topicPartition, consumerAction.getSequenceNumber(), false);
         break;
       case KILL:
         LOGGER.info("Kill this consumer task for Topic: {}", topic);
@@ -1898,7 +1919,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
+  private void resetOffset(
+      int partition,
+      PubSubTopicPartition topicPartition,
+      int consumerActionSeqNum,
+      boolean restartIngestion) {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
 
     if (partitionConsumptionState != null
@@ -1932,13 +1957,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             topicPartition,
             partitionConsumptionState.getReplicaId());
       }
-      partitionConsumptionStateMap.put(
+      PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
+          Utils.getReplicaId(versionTopic, partition),
           partition,
-          new PartitionConsumptionState(
-              Utils.getReplicaId(versionTopic, partition),
-              partition,
-              new OffsetRecord(partitionStateSerializer),
-              hybridStoreConfig.isPresent()));
+          new OffsetRecord(partitionStateSerializer),
+          hybridStoreConfig.isPresent());
+      newPartitionConsumptionState.setLastConsumerActionSeqNum(consumerActionSeqNum);
+      partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
       storageUtilizationManager.initPartition(partition);
       // Reset the error partition tracking
       partitionIngestionExceptionList.set(partition, null);
@@ -2188,8 +2213,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
         // As unsubscription needs to wait for all records drilled and then proceed, wait here will cause endless wait.
-        Runnable runnable = () -> unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition));
-        CompletableFuture.runAsync(runnable);
+        PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, faultyPartition);
+        if (serverConfig.isProcessConsumerActionWithoutEnqueueEnabled()) {
+          Runnable runnable = () -> unSubscribePartition(versionTopicPartition, false);
+          CompletableFuture.runAsync(runnable);
+        } else {
+          unSubscribePartition(versionTopicPartition, false);
+        }
       } else {
         LOGGER.warn(
             "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}",
@@ -3698,8 +3728,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             }
             // As unsubscription needs to wait for all records drilled and then proceed, wait here will cause endless
             // wait.
-            Runnable runnable = () -> unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition));
-            CompletableFuture.runAsync(runnable);
+            PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
+            if (serverConfig.isProcessConsumerActionWithoutEnqueueEnabled()) {
+              Runnable runnable = () -> unSubscribePartition(versionTopicPartition, false);
+              CompletableFuture.runAsync(runnable);
+            } else {
+              unSubscribePartition(versionTopicPartition, false);
+            }
           }
         } else {
           ingestionNotificationDispatcher.reportProgress(partitionConsumptionState);
