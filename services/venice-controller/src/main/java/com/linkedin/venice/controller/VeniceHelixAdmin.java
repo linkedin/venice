@@ -3404,7 +3404,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
 
-      if (store.getBackupStrategy() == BackupStrategy.DELETE_ON_NEW_PUSH_START) {
+      if (deleteBackupOnStartPush) {
         LOGGER.info("Deleting backup versions as the new push started for upcoming version for store: {}", storeName);
       } else {
         LOGGER.info("Retiring old versions after successful push for store: {}", storeName);
