@@ -20,7 +20,7 @@ provided by Venice team.
 
 #### Step 2: Download Venice quickstart Docker compose file
 ```
-wget https://raw.githubusercontent.com/linkedin/venice/main/quickstart/docker-compose.yaml
+wget https://github.com/linkedin/venice/raw/main/docker/docker-compose-single-dc-setup.yaml
 ```
 
 #### Step 3: Run docker compose
