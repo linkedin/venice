@@ -12,6 +12,7 @@ dependencies {
     exclude group: 'com.github.sgroschupf'
     // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
     exclude module: 'zookeeper'
+    exclude group: 'org.apache.helix'
   }
 
   implementation (project(':internal:alpini:netty4:alpini-netty4-base')) { // for SSL Initializer
