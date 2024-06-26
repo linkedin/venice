@@ -270,6 +270,19 @@ subprojects {
     implementation libraries.grpcServices
     implementation libraries.grpcStub
     compileOnly libraries.tomcatAnnotations
+    implementation('org.apache.helix:helix-core:1.4.0:jdk8') {
+      exclude group: 'org.apache.helix'
+    }
+    implementation('org.apache.helix:helix-common:1.4.0:jdk8')  {
+      exclude group: 'org.apache.helix'
+    }
+    implementation('org.apache.helix:zookeeper-api:1.4.0:jdk8') {
+      exclude group: 'org.apache.helix'
+    }
+    implementation('org.apache.helix:metadata-store-directory-common:1.4.0:jdk8') {
+      exclude group: 'org.yaml', module: 'snakeyaml'
+    }
+    implementation('org.apache.helix:metrics-common:1.4.0:jdk8')
   }
 
   idea {
