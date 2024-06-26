@@ -63,7 +63,6 @@ public class VersionBackend {
   private final StoreBackendStats storeBackendStats;
   private final StoreDeserializerCache storeDeserializerCache;
   private final Lazy<VeniceCompressor> compressor;
-
   private final RocksDbBootstrapper dbBootstrapper;
 
   /*
@@ -77,7 +76,6 @@ public class VersionBackend {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
-
     if (this.config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       /*
        * Explicitly disable the store restore since we don't want to open other partitions that should be controlled by

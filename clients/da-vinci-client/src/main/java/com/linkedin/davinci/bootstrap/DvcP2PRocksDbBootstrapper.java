@@ -23,7 +23,6 @@ public class DvcP2PRocksDbBootstrapper extends AbstractBootstrapper {
   private final DaVinciBackend backend;
   private final VeniceStoreVersionConfig veniceStoreVersionConfig;
   private final String p2pBlobTransferBaseDir;
-  private final Boolean isDvcP2pBlobTransferEnabled;
   private final Boolean isBlobTransferEnabled;
   private final Boolean isHybridStore;
 
@@ -40,12 +39,8 @@ public class DvcP2PRocksDbBootstrapper extends AbstractBootstrapper {
         isBlobTransferEnabled,
         isHybridStore,
         new NettyP2PBlobTransferManager(
-            new P2PBlobTransferService(
-                serverConfig.getDvcP2pBlobTransferPort(),
-                serverConfig.getDvcP2pBlobTransferBaseDir()),
-            new NettyFileTransferClient(
-                serverConfig.getDvcP2pFileTransferPort(),
-                serverConfig.getDvcP2pBlobTransferBaseDir()),
+            new P2PBlobTransferService(serverConfig.getDvcP2pBlobTransferPort(), serverConfig.getRocksDBPath()),
+            new NettyFileTransferClient(serverConfig.getDvcP2pFileTransferPort(), serverConfig.getRocksDBPath()),
             new DvcBlobFinder(
                 ClientFactory.getTransportClient(backend.getClientConfig()),
                 backend.getClientConfig().getVeniceURL())));
@@ -59,8 +54,7 @@ public class DvcP2PRocksDbBootstrapper extends AbstractBootstrapper {
       Boolean isBlobTransferEnabled,
       Boolean isHybridStore,
       BlobTransferManager p2pBlobTransferManager) {
-    this.p2pBlobTransferBaseDir = serverConfig.getDvcP2pBlobTransferBaseDir();
-    this.isDvcP2pBlobTransferEnabled = serverConfig.isDvcP2pBlobTransferEnabled();
+    this.p2pBlobTransferBaseDir = serverConfig.getRocksDBPath();
     this.backend = backend;
     this.veniceStoreVersionConfig = veniceStoreVersionConfig;
     this.isBlobTransferEnabled = isBlobTransferEnabled;
@@ -81,7 +75,7 @@ public class DvcP2PRocksDbBootstrapper extends AbstractBootstrapper {
    */
   @Override
   public void bootstrapDatabase(String storeName, int versionNumber, int partitionId) throws VeniceBootstrapException {
-    if (!isDvcP2pBlobTransferEnabled || !isBlobTransferEnabled || isHybridStore) {
+    if (!isBlobTransferEnabled || isHybridStore) {
       bootstrapFromKafka(partitionId);
     } else {
       bootstrapFromBlobs(storeName, versionNumber, partitionId);

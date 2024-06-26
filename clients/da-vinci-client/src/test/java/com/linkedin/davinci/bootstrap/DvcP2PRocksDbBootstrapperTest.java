@@ -67,7 +67,7 @@ public class DvcP2PRocksDbBootstrapperTest {
 
     when(serverConfig.getDvcP2pBlobTransferPort()).thenReturn(1234);
     when(serverConfig.getDvcP2pFileTransferPort()).thenReturn(5678);
-    when(serverConfig.getDvcP2pBlobTransferBaseDir()).thenReturn(baseDirector);
+    when(serverConfig.getRocksDBPath()).thenReturn(baseDirector);
     when(backend.getClientConfig()).thenReturn(mock(ClientConfig.class));
     when(backend.getClientConfig().getVeniceURL()).thenReturn("http://localhost:8080");
     when(backend.getIngestionBackend()).thenReturn(ingestionBackend);
@@ -87,13 +87,9 @@ public class DvcP2PRocksDbBootstrapperTest {
     }).when(mockCompletionStage).whenComplete(any());
   }
 
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBootstrapOptionsBasedOnSettings(
-      boolean isDvcP2pBlobTransferEnabled,
-      boolean isBlobTransferEnabled,
-      boolean isHybridStore) throws VeniceBootstrapException {
-
-    when(serverConfig.isDvcP2pBlobTransferEnabled()).thenReturn(isDvcP2pBlobTransferEnabled);
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBootstrapOptionsBasedOnSettings(boolean isBlobTransferEnabled, boolean isHybridStore)
+      throws VeniceBootstrapException {
 
     DvcP2PRocksDbBootstrapper dvcP2PRocksDbBootstrapper = new DvcP2PRocksDbBootstrapper(
         backend,
@@ -106,7 +102,7 @@ public class DvcP2PRocksDbBootstrapperTest {
     DvcP2PRocksDbBootstrapper spyBootstrapper = spy(dvcP2PRocksDbBootstrapper);
     spyBootstrapper.bootstrapDatabase(storeName, versionNumber, partitionId);
 
-    if (!isDvcP2pBlobTransferEnabled || !isBlobTransferEnabled || isHybridStore) {
+    if (!isBlobTransferEnabled || isHybridStore) {
       verify(spyBootstrapper, times(1)).bootstrapFromKafka(partitionId);
       verify(spyBootstrapper, never()).bootstrapFromBlobs(storeName, versionNumber, partitionId);
     } else {
@@ -116,8 +112,6 @@ public class DvcP2PRocksDbBootstrapperTest {
 
   @Test
   public void testBootstrapFromBlobs_Success() throws Exception {
-    when(serverConfig.isDvcP2pBlobTransferEnabled()).thenReturn(true);
-
     DvcP2PRocksDbBootstrapper dvcP2PRocksDbBootstrapper = new DvcP2PRocksDbBootstrapper(
         backend,
         serverConfig,
@@ -145,7 +139,6 @@ public class DvcP2PRocksDbBootstrapperTest {
 
   @Test
   public void testBootstrapFromBlobs_StartException() throws Exception {
-    when(serverConfig.isDvcP2pBlobTransferEnabled()).thenReturn(true);
     doThrow(new VeniceBootstrapException("Exception")).when(p2pBlobTransferManager).start();
 
     DvcP2PRocksDbBootstrapper dvcP2PRocksDbBootstrapper = new DvcP2PRocksDbBootstrapper(

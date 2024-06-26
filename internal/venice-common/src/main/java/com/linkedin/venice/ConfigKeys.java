@@ -1739,8 +1739,6 @@ public class ConfigKeys {
   // Config to control how much percentage of DVC replica instances are allowed to be offline before failing VPJ push.
   public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO =
       "davinci.push.status.scan.max.offline.instance.ratio";
-  // Denotes whether DVC is allowed to bootstrap via a peer-to-peer blob transfer
-  public static final String DAVINCI_P2P_BLOB_TRANSFER_ENABLED = "davinci.p2p.blob.transfer.enabled";
   // Port used by peer-to-peer transfer service
   public static final String DAVINCI_P2P_BLOB_TRANSFER_PORT = "davinci.p2p.blob.transfer.port";
   // Port used to connect to remote host for file transfer
