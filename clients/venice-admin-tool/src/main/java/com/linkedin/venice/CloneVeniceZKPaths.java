@@ -29,12 +29,12 @@ public class CloneVeniceZKPaths {
    */
   public static void cloneVenicePaths(String srcZK, String destZK, Set<String> clusterNames, String basePath) {
     // get Venice-specific paths from source ZK
-    // TODO: build zk client and connect zookeeper server
-    // ZkClient foo = new ZkClient(zkAddress);
-    // String root = foo.readData("<basepath>");
-    // List<String> rootChildren = foo.getChildren("<basepath>");
-    // foo.close();
-    // ArrayList<String> venicePaths = getVenicePaths(list of paths from srcZK, clusterNames, basePath, requiredPaths);
+    // ZkClient zkClient = new ZkClient(srcZK);
+    // ArrayList<String> rootChildren = new ArrayList<>(zkClient.getChildren(basePath));
+    // ArrayList<String> venicePaths = getVenicePaths(rootChildren, clusterNames, basePath, requiredPaths);
+    // // create Venice-specific paths in destination ZK
+    //
+    // zkClient.close();
   }
 
   /**

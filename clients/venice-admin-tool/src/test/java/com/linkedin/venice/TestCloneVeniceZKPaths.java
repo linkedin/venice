@@ -24,14 +24,21 @@ public class TestCloneVeniceZKPaths {
     // TODO write tests for cloneVenicePaths()
   }
 
+  // tests AdminTool.extractVeniceZKPathsFromFile() as well as CloneVeniceZKPaths.extractVenicePaths()
   public void testExtractVenicePaths() {
     // change this variable to path of where Venice project is stored
     String directory = "/Users/tonchen/Desktop/";
     String inputPath = directory + "venice/clients/venice-admin-tool/src/test/java/com/linkedin/venice/zk_paths.txt";
     String outputPath =
         directory + "venice/clients/venice-admin-tool/src/test/java/com/linkedin/venice/venice_paths.txt";
-    CloneVeniceZKPaths.extractVenicePaths(inputPath, outputPath, CLUSTERS, BASE_PATH);
-    // look at venice_paths.txt and verify that all (19) Venice-specific paths are extracted correctly
+    String[] args = { "--extract-venice-zk-paths-from-file", "--zk-paths-file", inputPath, "--venice-paths-file",
+        outputPath, "--cluster-list", "cluster1, cluster2", "--base-path", BASE_PATH };
+    try {
+      AdminTool.main(args);
+    } catch (Exception e) {
+      System.out.println(e.getMessage());
+    }
+    // manually check venice_paths.txt and verify that all (21) Venice-specific paths are extracted correctly
   }
 
   public void testGetVenicePaths() {
