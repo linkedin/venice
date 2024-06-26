@@ -15,10 +15,15 @@ public abstract class AbstractBootstrapper implements RocksDbBootstrapper {
 
   private static final Logger LOGGER = LogManager.getLogger(AbstractBootstrapper.class);
 
+  // Method to allow injection of RocksDB and Options instances for testing
+  protected RocksDB openRocksDB(Options options, String newDbDir) throws RocksDBException {
+    return RocksDB.open(options, newDbDir);
+  }
+
   protected void verifyBootstrap(String newDbDir) throws RocksDBException {
     // Open the RocksDB instance & check for the first entry
     Options options = new Options().setCreateIfMissing(false);
-    try (RocksDB db = RocksDB.open(options, newDbDir)) {
+    try (RocksDB db = openRocksDB(options, newDbDir)) {
       if (db != null) {
         try (RocksIterator iterator = db.newIterator()) {
           iterator.seekToFirst();

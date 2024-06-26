@@ -1,16 +1,15 @@
 package com.linkedin.davinci.bootstrap;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.blobtransfer.DvcBlobFinder;
 import com.linkedin.venice.blobtransfer.NettyP2PBlobTransferManager;
 import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.exceptions.VeniceBootstrapException;
 import java.io.InputStream;
 import java.util.concurrent.CompletionStage;
@@ -34,25 +33,39 @@ public class DvcP2PRocksDbBootstrapper extends AbstractBootstrapper {
       VeniceStoreVersionConfig veniceStoreVersionConfig,
       Boolean isBlobTransferEnabled,
       Boolean isHybridStore) {
-    int p2pBlobTransferPort = serverConfig.getDvcP2pBlobTransferPort();
-    int p2pFileTransferPort = serverConfig.getDvcP2pFileTransferPort();
-    String routerUrl = backend.getClientConfig().getVeniceURL();
+    this(
+        backend,
+        serverConfig,
+        veniceStoreVersionConfig,
+        isBlobTransferEnabled,
+        isHybridStore,
+        new NettyP2PBlobTransferManager(
+            new P2PBlobTransferService(
+                serverConfig.getDvcP2pBlobTransferPort(),
+                serverConfig.getDvcP2pBlobTransferBaseDir()),
+            new NettyFileTransferClient(
+                serverConfig.getDvcP2pFileTransferPort(),
+                serverConfig.getDvcP2pBlobTransferBaseDir()),
+            new DvcBlobFinder(
+                ClientFactory.getTransportClient(backend.getClientConfig()),
+                backend.getClientConfig().getVeniceURL())));
+  }
 
+  @VisibleForTesting
+  public DvcP2PRocksDbBootstrapper(
+      DaVinciBackend backend,
+      VeniceServerConfig serverConfig,
+      VeniceStoreVersionConfig veniceStoreVersionConfig,
+      Boolean isBlobTransferEnabled,
+      Boolean isHybridStore,
+      BlobTransferManager p2pBlobTransferManager) {
     this.p2pBlobTransferBaseDir = serverConfig.getDvcP2pBlobTransferBaseDir();
     this.isDvcP2pBlobTransferEnabled = serverConfig.isDvcP2pBlobTransferEnabled();
-    this.veniceStoreVersionConfig = veniceStoreVersionConfig;
     this.backend = backend;
+    this.veniceStoreVersionConfig = veniceStoreVersionConfig;
     this.isBlobTransferEnabled = isBlobTransferEnabled;
     this.isHybridStore = isHybridStore;
-
-    P2PBlobTransferService blobTransferService =
-        new P2PBlobTransferService(p2pBlobTransferPort, p2pBlobTransferBaseDir);
-    NettyFileTransferClient fileTransferClient =
-        new NettyFileTransferClient(p2pFileTransferPort, p2pBlobTransferBaseDir);
-    TransportClient transportClient = ClientFactory.getTransportClient(backend.getClientConfig());
-    BlobFinder blobFinder = new DvcBlobFinder(transportClient, routerUrl);
-    this.p2pBlobTransferManager = new NettyP2PBlobTransferManager(blobTransferService, fileTransferClient, blobFinder);
-
+    this.p2pBlobTransferManager = p2pBlobTransferManager;
   }
 
   /**
@@ -108,6 +121,12 @@ public class DvcP2PRocksDbBootstrapper extends AbstractBootstrapper {
 
   @Override
   protected void bootstrapFromKafka(int partitionId) {
+    try {
+      p2pBlobTransferManager.close();
+    } catch (Exception e) {
+      LOGGER.error("Error closing p2pBlobTransferManager ", e.getMessage());
+    }
+
     LOGGER.info("Bootstrapping from Kafka");
     backend.getIngestionBackend().startConsumption(veniceStoreVersionConfig, partitionId);
   }

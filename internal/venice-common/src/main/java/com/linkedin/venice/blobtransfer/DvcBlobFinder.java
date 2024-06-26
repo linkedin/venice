@@ -1,5 +1,9 @@
 package com.linkedin.venice.blobtransfer;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_PARTITION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VERSION;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -50,9 +54,9 @@ public class DvcBlobFinder implements BlobFinder {
 
   private String buildUriForBlobDiscovery(String storeName, int version, int partition) {
     List<NameValuePair> queryParams = new ArrayList<>();
-    queryParams.add(new BasicNameValuePair("store_name", storeName));
-    queryParams.add(new BasicNameValuePair("store_version", Integer.toString(version)));
-    queryParams.add(new BasicNameValuePair("store_partition", Integer.toString(partition)));
+    queryParams.add(new BasicNameValuePair(NAME, storeName));
+    queryParams.add(new BasicNameValuePair(STORE_VERSION, Integer.toString(version)));
+    queryParams.add(new BasicNameValuePair(STORE_PARTITION, Integer.toString(partition)));
     String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
 
     return String.format("%s/%s?%s", routerUrl, TYPE_BLOB_DISCOVERY, queryString);

@@ -500,7 +500,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     dvcP2pBlobTransferPort = dvcP2pBlobTransferEnabled ? serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_PORT) : -1;
     dvcP2pFileTransferPort = dvcP2pBlobTransferEnabled ? serverProperties.getInt(DAVINCI_P2P_FILE_TRANSFER_PORT) : -1;
     dvcP2pBlobTransferBaseDir =
-        dvcP2pBlobTransferEnabled ? serverProperties.getString(DAVINCI_P2P_BLOB_TRANSFER_BASE_DIR, "default") : "";
+        dvcP2pBlobTransferEnabled ? serverProperties.getString(DAVINCI_P2P_BLOB_TRANSFER_BASE_DIR, "") : "";
 
     String lfThreadPoolStrategyStr = serverProperties.getString(
         LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,

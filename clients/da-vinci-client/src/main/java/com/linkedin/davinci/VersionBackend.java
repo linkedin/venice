@@ -63,7 +63,6 @@ public class VersionBackend {
   private final StoreBackendStats storeBackendStats;
   private final StoreDeserializerCache storeDeserializerCache;
   private final Lazy<VeniceCompressor> compressor;
-  private final Boolean isStoreHybrid;
 
   private final RocksDbBootstrapper dbBootstrapper;
 
@@ -92,7 +91,6 @@ public class VersionBackend {
     this.storageEngine.set(backend.getStorageService().getStorageEngine(version.kafkaTopicName()));
     this.backend.getIngestionBackend().setStorageEngineReference(version.kafkaTopicName(), storageEngine);
     Store store = backend.getStoreRepository().getStoreOrThrow(version.getStoreName());
-    this.isStoreHybrid = store.isHybrid();
     this.storeBackendStats = storeBackendStats;
     // push status store must be enabled both in Da Vinci and the store
     this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled()
@@ -344,10 +342,16 @@ public class VersionBackend {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
         try {
           dbBootstrapper.bootstrapDatabase(storeName, versionNumber, partition);
+          tryStartHeartbeat();
         } catch (Exception e) {
-          LOGGER.error("");
+          LOGGER.error(
+              String.format(
+                  "Error bootstrapping for store: %s, version: %s, partition: %s. ",
+                  storeName,
+                  versionNumber,
+                  partition),
+              e.getMessage());
         }
-        tryStartHeartbeat();
       }
       futures.add(partitionFutures.get(partition));
     }
