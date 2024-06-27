@@ -4897,7 +4897,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 DEFAULT_REWIND_TIME_IN_SECONDS,
                 DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
                 DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-                DataReplicationPolicy.NONE,
+                DataReplicationPolicy.NON_AGGREGATE,
                 null));
       } else if (hybridStoreConfig.getDataReplicationPolicy() == null) {
         store.setHybridStoreConfig(
@@ -4905,7 +4905,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 hybridStoreConfig.getRewindTimeInSeconds(),
                 hybridStoreConfig.getOffsetLagThresholdToGoOnline(),
                 hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
-                DataReplicationPolicy.NONE,
+                DataReplicationPolicy.NON_AGGREGATE,
                 hybridStoreConfig.getBufferReplayPolicy()));
       }
       return store;

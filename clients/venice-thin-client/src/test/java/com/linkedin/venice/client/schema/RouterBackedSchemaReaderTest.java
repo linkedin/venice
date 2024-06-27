@@ -501,7 +501,7 @@ public class RouterBackedSchemaReaderTest {
         1000,
         1000,
         -1,
-        DataReplicationPolicy.ACTIVE_ACTIVE,
+        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     ZKStore store = new ZKStore(
