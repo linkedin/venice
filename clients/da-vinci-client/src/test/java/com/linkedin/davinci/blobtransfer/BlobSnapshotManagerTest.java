@@ -93,7 +93,6 @@ public class BlobSnapshotManagerTest {
     final int numberOfThreads = 2;
     final ExecutorService asyncExecutor = Executors.newFixedThreadPool(numberOfThreads);
     final CountDownLatch latch = new CountDownLatch(numberOfThreads);
-
     RocksDB mockRocksDB = mock(RocksDB.class);
     Checkpoint mockCheckpoint = mock(Checkpoint.class);
     Store mockStore = mock(Store.class);
