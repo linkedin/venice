@@ -135,7 +135,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             }
           }
           this.seekToCheckpoint(checkpoints).get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException | ExecutionException | VeniceCoordinateOutOfRangeException e) {
           throw new VeniceException(
               "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions.toString(),
               e);
