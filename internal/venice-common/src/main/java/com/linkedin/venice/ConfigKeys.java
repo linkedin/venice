@@ -2161,4 +2161,11 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP =
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
+  /**
+   * Whether to bypass the consumer action queue. If true, {@link StoreIngestionTask} thread is responsible for executing
+   * consumer action.
+   */
+  public static final String SERVER_PROCESS_CONSUMER_ACTION_WITHOUT_ENQUEUE_ENABLE =
+      "server.process.consumer.action.without.enqueue.enable";
+
 }

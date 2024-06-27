@@ -1,11 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
-public class SITWithPWiseAndBufferAfterLeaderTest extends StoreIngestionTaskTest {
+public class SITWithPWiseAndProcessConsumerActionWithoutEnqueueEnabled extends StoreIngestionTaskTest {
   protected KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy() {
     return KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
   }
 
-  protected boolean isStoreWriterBufferAfterLeaderLogicEnabled() {
+  protected boolean isProcessConsumerActionWithoutEnqueueEnabled() {
     return true;
   }
 }

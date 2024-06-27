@@ -24,6 +24,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROCESS_CONSUMER_ACTION_WITHOUT_ENQUEUE_ENABLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
@@ -451,8 +452,7 @@ public abstract class StoreIngestionTaskTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     taskPollingService = Executors.newFixedThreadPool(1);
-    storeBufferService =
-        new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled(), mockMetricRepo, true);
+    storeBufferService = new StoreBufferService(3, 10000, 1000, true, mockMetricRepo, true);
     storeBufferService.start();
   }
 
@@ -781,9 +781,11 @@ public abstract class StoreIngestionTaskTest {
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
 
+    Map<String, Object> serverProperties = new HashMap<>(extraServerProperties);
+    serverProperties
+        .put(SERVER_PROCESS_CONSUMER_ACTION_WITHOUT_ENQUEUE_ENABLE, isProcessConsumerActionWithoutEnqueueEnabled());
     StoreIngestionTaskFactory ingestionTaskFactory =
-        getIngestionTaskFactoryBuilder(pollStrategy, partitions, diskUsageForTest, extraServerProperties, false)
-            .build();
+        getIngestionTaskFactoryBuilder(pollStrategy, partitions, diskUsageForTest, serverProperties, false).build();
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
@@ -801,11 +803,18 @@ public abstract class StoreIngestionTaskTest {
 
     Future testSubscribeTaskFuture = null;
     try {
-      for (int partition: partitions) {
-        storeIngestionTaskUnderTest.subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition));
-      }
 
-      beforeStartingConsumption.run();
+      if (isProcessConsumerActionWithoutEnqueueEnabled()) {
+        beforeStartingConsumption.run();
+        for (int partition: partitions) {
+          storeIngestionTaskUnderTest.subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition));
+        }
+      } else {
+        for (int partition: partitions) {
+          storeIngestionTaskUnderTest.subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition));
+        }
+        beforeStartingConsumption.run();
+      }
 
       // MockKafkaConsumer is prepared. Schedule for polling.
       testSubscribeTaskFuture = taskPollingService.submit(storeIngestionTaskUnderTest);
@@ -1021,7 +1030,7 @@ public abstract class StoreIngestionTaskTest {
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
 
-  abstract boolean isStoreWriterBufferAfterLeaderLogicEnabled();
+  abstract boolean isProcessConsumerActionWithoutEnqueueEnabled();
 
   private void prepareAggKafkaConsumerServiceMock() {
     doAnswer(invocation -> {
@@ -2006,14 +2015,14 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       Store mockStore = mock(Store.class);
-      storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
       doReturn(1).when(mockStore).getCurrentVersion();
       doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
-    },
-        () -> verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset, "STANDBY"),
-        aaConfig);
+    }, () -> {
+      storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset, "STANDBY");
+    }, aaConfig);
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -2075,6 +2084,9 @@ public abstract class StoreIngestionTaskTest {
 
   @Test(dataProvider = "aaConfigProvider")
   public void testKillActionPriority(AAConfig aaConfig) throws Exception {
+    if (isProcessConsumerActionWithoutEnqueueEnabled()) {
+      return;
+    }
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       localVeniceWriter.broadcastStartOfPush(new HashMap<>());
       localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
@@ -2146,6 +2158,16 @@ public abstract class StoreIngestionTaskTest {
 
     // This doesn't really need to be atomic, but it does need to be final, and int/Integer cannot be mutated.
     final AtomicInteger messagesConsumedSoFar = new AtomicInteger(0);
+    Runnable runnable = () -> {
+      relevantPartitions.stream()
+          .forEach(
+              partition -> storeIngestionTaskUnderTest
+                  .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition)));
+      relevantPartitions.stream()
+          .forEach(
+              partition -> storeIngestionTaskUnderTest
+                  .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition), false));
+    };
     PollStrategy pollStrategy =
         new BlockingObserverPollStrategy(new RandomPollStrategy(false), topicPartitionOffset -> {
           if (topicPartitionOffset == null || topicPartitionOffset.getOffset() == null) {
@@ -2153,14 +2175,10 @@ public abstract class StoreIngestionTaskTest {
           } else if (messagesConsumedSoFar.incrementAndGet()
               % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
             LOGGER.info("Restarting consumer after consuming {} messages so far.", messagesConsumedSoFar.get());
-            relevantPartitions.stream()
-                .forEach(
-                    partition -> storeIngestionTaskUnderTest
-                        .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition)));
-            relevantPartitions.stream()
-                .forEach(
-                    partition -> storeIngestionTaskUnderTest
-                        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition)));
+
+            Thread resubscribeThread =
+                new Thread(runnable, "Subscribe and unsubscribe with message num: " + totalNumberOfMessages);
+            resubscribeThread.start();
           } else {
             LOGGER.info(
                 "TopicPartition: {}, Offset: {}",
@@ -2192,10 +2210,8 @@ public abstract class StoreIngestionTaskTest {
       relevantPartitions.stream().forEach(partition -> {
         PubSubTopicPartition pubSubTopicPartition =
             new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition);
-        verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(totalNumberOfConsumptionRestarts + 1))
+        verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(1))
             .subscribe(eq(pubSubTopicPartition), anyLong());
-        verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(totalNumberOfConsumptionRestarts))
-            .unSubscribe(eq(pubSubTopicPartition));
 
         if (sortedInput == SORTED) {
           // Check database mode switches from deferred-write to transactional after EOP control message

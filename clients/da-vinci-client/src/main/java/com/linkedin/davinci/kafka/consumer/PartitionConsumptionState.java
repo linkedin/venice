@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -203,6 +204,8 @@ public class PartitionConsumptionState {
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
 
+  private AtomicInteger lastConsumerActionSeqNum;
+
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
     this.partition = partition;
@@ -246,6 +249,7 @@ public class PartitionConsumptionState {
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
+    this.lastConsumerActionSeqNum = new AtomicInteger(0);
   }
 
   public int getPartition() {
@@ -832,5 +836,13 @@ public class PartitionConsumptionState {
 
   public String getReplicaId() {
     return replicaId;
+  }
+
+  public void setLastConsumerActionSeqNum(Integer processedConsumerActionSeqNum) {
+    this.lastConsumerActionSeqNum.set(processedConsumerActionSeqNum);
+  }
+
+  public Integer getLastConsumerActionSeqNum() {
+    return this.lastConsumerActionSeqNum.get();
   }
 }

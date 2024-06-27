@@ -95,6 +95,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROCESS_CONSUMER_ACTION_WITHOUT_ENQUEUE_ENABLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES;
@@ -466,6 +467,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
 
+  private final boolean processConsumerActionWithoutEnqueueEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -766,6 +769,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
+    processConsumerActionWithoutEnqueueEnabled =
+        serverProperties.getBoolean(SERVER_PROCESS_CONSUMER_ACTION_WITHOUT_ENQUEUE_ENABLE, true);
   }
 
   long extractIngestionMemoryLimit(
@@ -1362,5 +1367,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getIdentityParserClassName() {
     return identityParserClassName;
+  }
+
+  public boolean isProcessConsumerActionWithoutEnqueueEnabled() {
+    return processConsumerActionWithoutEnqueueEnabled;
   }
 }

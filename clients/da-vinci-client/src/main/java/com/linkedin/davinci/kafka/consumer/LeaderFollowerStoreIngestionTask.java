@@ -328,10 +328,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
-    partitionToPendingConsumerActionCountMap
-        .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
-        .incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(STANDBY_TO_LEADER, topicPartition, nextSeqNum(), checker, true));
+    processConsumerActionOrEnqueue(new ConsumerAction(STANDBY_TO_LEADER, topicPartition, nextSeqNum(), checker, true));
   }
 
   @Override
@@ -339,10 +336,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
-    partitionToPendingConsumerActionCountMap
-        .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
-        .incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(LEADER_TO_STANDBY, topicPartition, nextSeqNum(), checker, true));
+    processConsumerActionOrEnqueue(new ConsumerAction(LEADER_TO_STANDBY, topicPartition, nextSeqNum(), checker, true));
   }
 
   @Override
