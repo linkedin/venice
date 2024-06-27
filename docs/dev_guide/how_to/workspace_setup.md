@@ -21,6 +21,9 @@ git remote add upstream https://github.com/linkedin/venice.git
 git fetch upstream
 ```
 
+## Setting up Java
+We use Java 17 for development. You can download it [here](https://www.oracle.com/java/technologies/javase-jdk17-downloads.html).
+
 ## Setting up the IDE
 We recommend using IntelliJ IDEA for development to take advantage of the debugger, and provide instructions for it.
 However, any IDE of your choice should work.
