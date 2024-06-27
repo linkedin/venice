@@ -7,7 +7,6 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
-import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -34,7 +33,6 @@ public class TestNettyP2PBlobTransferManager {
   BlobFinder finder;
   P2PBlobTransferService server;
   NettyFileTransferClient client;
-  TransportClient transportClient;
   NettyP2PBlobTransferManager manager;
   Path tmpSnapshotDir;
   Path tmpPartitionDir;
@@ -52,7 +50,6 @@ public class TestNettyP2PBlobTransferManager {
     // intentionally use different directories for snapshot and partition so that we can verify the file transfer
     server = new P2PBlobTransferService(port, tmpSnapshotDir.toString());
     client = new NettyFileTransferClient(port, tmpPartitionDir.toString());
-    transportClient = mock(TransportClient.class);
     finder = mock(BlobFinder.class);
     manager = new NettyP2PBlobTransferManager(server, client, finder);
     manager.start();

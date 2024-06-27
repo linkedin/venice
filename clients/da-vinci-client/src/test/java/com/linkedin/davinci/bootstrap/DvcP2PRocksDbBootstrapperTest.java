@@ -17,11 +17,8 @@ import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
-import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.blobtransfer.NettyP2PBlobTransferManager;
-import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
-import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactoryTestUtils;
 import com.linkedin.venice.client.store.transport.TransportClient;
@@ -41,33 +38,25 @@ public class DvcP2PRocksDbBootstrapperTest {
   private DaVinciBackend backend;
   private VeniceServerConfig serverConfig;
   private VeniceStoreVersionConfig veniceStoreVersionConfig;
-  private P2PBlobTransferService blobTransferService;
-  private NettyFileTransferClient fileTransferClient;
   private TransportClient transportClient;
-  private BlobFinder blobFinder;
   private BlobTransferManager p2pBlobTransferManager;
   private IngestionBackend ingestionBackend;
-
-  private final String storeName = "store";
-  private final int versionNumber = 1;
-  private final int partitionId = 1;
-  private final String baseDirector = "/tmp";
+  private static final String storeName = "store";
+  private static final int versionNumber = 1;
+  private static final int partitionId = 1;
 
   @BeforeMethod
   public void setUp() throws Exception {
     backend = mock(DaVinciBackend.class);
     serverConfig = mock(VeniceServerConfig.class);
     veniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
-    blobTransferService = mock(P2PBlobTransferService.class);
-    fileTransferClient = mock(NettyFileTransferClient.class);
     transportClient = mock(TransportClient.class);
-    blobFinder = mock(BlobFinder.class);
     p2pBlobTransferManager = mock(NettyP2PBlobTransferManager.class);
     ingestionBackend = mock(IngestionBackend.class);
 
     when(serverConfig.getDvcP2pBlobTransferPort()).thenReturn(1234);
     when(serverConfig.getDvcP2pFileTransferPort()).thenReturn(5678);
-    when(serverConfig.getRocksDBPath()).thenReturn(baseDirector);
+    when(serverConfig.getRocksDBPath()).thenReturn("/tmp");
     when(backend.getClientConfig()).thenReturn(mock(ClientConfig.class));
     when(backend.getClientConfig().getVeniceURL()).thenReturn("http://localhost:8080");
     when(backend.getIngestionBackend()).thenReturn(ingestionBackend);
@@ -82,7 +71,7 @@ public class DvcP2PRocksDbBootstrapperTest {
 
     doAnswer(invocation -> {
       BiConsumer<InputStream, Throwable> callback = invocation.getArgument(0);
-      callback.accept(mock(InputStream.class), null); // Simulate a successful completion
+      callback.accept(mock(InputStream.class), null);
       return null;
     }).when(mockCompletionStage).whenComplete(any());
   }

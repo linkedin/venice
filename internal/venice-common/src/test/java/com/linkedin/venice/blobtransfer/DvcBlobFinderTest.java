@@ -24,10 +24,10 @@ import org.testng.annotations.Test;
 public class DvcBlobFinderTest {
   private TransportClient transportClient;
   private DvcBlobFinder dvcBlobFinder;
-  private final String routerUrl = "http://localhost:8080";
-  private final String storeName = "testStore";
-  private final int version = 1;
-  private final int partition = 1;
+  private static final String routerUrl = "http://localhost:8080";
+  private static final String storeName = "testStore";
+  private static final int version = 1;
+  private static final int partition = 1;
 
   @BeforeMethod
   public void setUp() {
@@ -38,7 +38,7 @@ public class DvcBlobFinderTest {
   @Test
   public void testDiscoverBlobPeers_Success() throws Exception {
     String responseBodyJson =
-        "{\"error\":false,\"message\":\"khu\",\"discoveryResult\":[\"host1\",\"host2\",\"host3\"]}";
+        "{\"error\":false,\"errorMessage\":\"\",\"discoveryResult\":[\"host1\",\"host2\",\"host3\"]}";
     byte[] responseBody = responseBodyJson.getBytes(StandardCharsets.UTF_8);
     TransportClientResponse mockResponse = new TransportClientResponse(0, null, responseBody);
 
@@ -51,14 +51,15 @@ public class DvcBlobFinderTest {
 
   @Test
   public void testDiscoverBlobPeers_CallsTransportClientWithCorrectURI() throws Exception {
-    String responseBodyJson = "{\"error\":false,\"message\":\"khu\",\"hostNameList\":[\"host1\",\"host2\",\"host3\"]}";
+    String responseBodyJson =
+        "{\"error\":false,\"errorMessage\":\"\",\"discoveryResult\":[\"host1\",\"host2\",\"host3\"]}";
     byte[] responseBody = responseBodyJson.getBytes(StandardCharsets.UTF_8);
     TransportClientResponse mockResponse = new TransportClientResponse(0, null, responseBody);
 
     CompletableFuture<TransportClientResponse> futureResponse = CompletableFuture.completedFuture(mockResponse);
     when(transportClient.get(anyString())).thenReturn(futureResponse);
 
-    BlobPeersDiscoveryResponse response = dvcBlobFinder.discoverBlobPeers(storeName, version, partition);
+    dvcBlobFinder.discoverBlobPeers(storeName, version, partition);
 
     // Capture the argument passed to transportClient.get
     ArgumentCaptor<String> argumentCaptor = ArgumentCaptor.forClass(String.class);
@@ -75,7 +76,7 @@ public class DvcBlobFinderTest {
 
   @Test
   public void testDiscoverBlobPeers_IOException() throws Exception {
-    String responseBodyJson = "{\"error\":true,\"message\":\"some error\",\"discoveryResult\":[]}";
+    String responseBodyJson = "{\"error\":true,\"errorMessage\":\"some error\",\"discoveryResult\":[]}";
     byte[] responseBody = responseBodyJson.getBytes(StandardCharsets.UTF_8);
     TransportClientResponse mockResponse = new TransportClientResponse(0, null, responseBody);
 
@@ -89,12 +90,12 @@ public class DvcBlobFinderTest {
 
     BlobPeersDiscoveryResponse response = dvcBlobFinder.discoverBlobPeers(storeName, version, partition);
     assertEquals(0, response.getDiscoveryResult().size());
-    assertEquals(response.getMessage(), "some error");
+    assertEquals(response.getErrorMessage(), "some error");
     assertTrue(response.isError());
   }
 
   @Test
-  public void testDiscoverBlobPeers_Exceptionally() throws Exception {
+  public void testDiscoverBlobPeers_Exceptionally() {
     CompletableFuture<TransportClientResponse> futureResponse = new CompletableFuture<>();
     futureResponse.completeExceptionally(new RuntimeException("Test Exception"));
     when(transportClient.get(anyString())).thenReturn(futureResponse);
@@ -103,7 +104,7 @@ public class DvcBlobFinderTest {
 
     assertTrue(response.isError());
     assertEquals(
-        response.getMessage(),
+        response.getErrorMessage(),
         "Error finding DVC peers for blob transfer in store: testStore, version: 1, partition: 1");
   }
 }

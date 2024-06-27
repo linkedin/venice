@@ -71,7 +71,7 @@ public class DvcBlobFinder implements BlobFinder {
     BlobPeersDiscoveryResponse errorResponse = new BlobPeersDiscoveryResponse();
     String errorMsg = String.format(errorMessage, storeName, version, partition);
     errorResponse.setError(true);
-    errorResponse.setMessage(errorMsg);
+    errorResponse.setErrorMessage(errorMsg);
     LOGGER.error(errorMsg, throwable);
     return errorResponse;
   }
