@@ -2162,4 +2162,10 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP =
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
+
+  /**
+   * Whether to allow large records (which violate the specified store-level setting `maxRecordSizeBytes` in
+   * {@link com.linkedin.venice.meta.Store}). This feature flag will be read in the VenicePushJob and consumer pool.
+   */
+  public static final String LARGE_RECORDS_ALLOWED = "large.records.allowed";
 }

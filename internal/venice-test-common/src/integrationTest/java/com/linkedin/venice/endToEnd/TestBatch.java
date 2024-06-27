@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.LARGE_RECORDS_ALLOWED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
@@ -47,6 +48,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithCu
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithDuplicateKey;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2;
+import static com.linkedin.venice.writer.VeniceWriter.MAX_RECORD_SIZE_BYTES;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -119,7 +121,7 @@ public abstract class TestBatch {
   private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
   protected static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
-  protected static final int MAX_RECORD_VALUE_SIZE = 3 * 1024 * 1024; // 3 MB apiece
+  protected static final int LARGE_RECORD_VALUE_SIZE = 3 * 1024 * 1024; // 3 MB apiece
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
 
@@ -986,7 +988,25 @@ public abstract class TestBatch {
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range.
     int minSize = 1024 * 1024; // 1MB apiece
-    validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, minSize, MAX_RECORD_VALUE_SIZE);
+    validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, minSize, LARGE_RECORD_VALUE_SIZE);
+  }
+
+  /**
+   * Test that values that are too large will fail the push job only when large records are not allowed.
+   */
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testValuesThatAreTooLarge(boolean largeRecordsAllowed, boolean enforceLimit) throws Exception {
+    final int wayTooLargeRecordValueSize = 11 * 1024 * 1024; // 11 MB (expected default max size is 10 MB)
+    final int maxRecordSizeBytesForTest = (enforceLimit) ? -1 : 15 * 1024 * 1024; // -1 means use default (10 MB)
+    try {
+      testStoreWithLargeValues(true, properties -> {
+        properties.setProperty(LARGE_RECORDS_ALLOWED, String.valueOf(largeRecordsAllowed));
+        properties.setProperty(MAX_RECORD_SIZE_BYTES, String.valueOf(maxRecordSizeBytesForTest));
+      }, null, wayTooLargeRecordValueSize);
+      Assert.assertFalse(!largeRecordsAllowed && enforceLimit, "Too large values should fail only when not allowed");
+    } catch (VeniceException e) {
+      Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of 10.0 MiB"));
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT * 3, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -1022,17 +1042,25 @@ public abstract class TestBatch {
       boolean isChunkingAllowed,
       Consumer<Properties> extraProps,
       String existingStore) throws Exception {
+    return testStoreWithLargeValues(isChunkingAllowed, extraProps, existingStore, LARGE_RECORD_VALUE_SIZE);
+  }
+
+  private String testStoreWithLargeValues(
+      boolean isChunkingAllowed,
+      Consumer<Properties> extraProps,
+      String existingStore,
+      int maxValueSize) throws Exception {
     int numberOfRecords = 10;
 
     InputFileWriter inputFileWriter = inputDir -> new KeyAndValueSchemas(
-        writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, 0, MAX_RECORD_VALUE_SIZE));
+        writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, 0, maxValueSize));
 
     VPJValidator dataValidator = (avroClient, vsonClient, metricsRepository) -> {
       Set<String> keys = new HashSet<>(10);
 
       // Single gets
       for (int i = 0; i < numberOfRecords; i++) {
-        int expectedSize = MAX_RECORD_VALUE_SIZE / numberOfRecords * (i + 1);
+        int expectedSize = maxValueSize / numberOfRecords * (i + 1);
         String key = Integer.toString(i);
         keys.add(key);
         char[] chars = new char[expectedSize];
@@ -1085,7 +1113,7 @@ public abstract class TestBatch {
       Map<String, String> jsonResults = (Map<String, String>) vsonClient.batchGet(keys).get();
       for (String key: keys) {
         int i = Integer.parseInt(key);
-        int expectedSize = MAX_RECORD_VALUE_SIZE / numberOfRecords * (i + 1);
+        int expectedSize = maxValueSize / numberOfRecords * (i + 1);
         char[] chars = new char[expectedSize];
         Arrays.fill(chars, key.charAt(0));
         String expectedString = new String(chars);

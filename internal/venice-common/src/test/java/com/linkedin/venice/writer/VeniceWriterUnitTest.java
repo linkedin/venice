@@ -26,6 +26,7 @@ import static org.testng.Assert.fail;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -52,7 +53,9 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
@@ -614,6 +617,53 @@ public class VeniceWriterUnitTest {
       writer.sendStartOfSegment(0, null);
     } catch (Throwable t) {
       fail("VeniceWriter.close() should not cause StackOverflowError", t);
+    }
+  }
+
+  /**
+   * Testing that VeniceWriter throws RecordTooLargeException when the record is too large in the following scenarios:
+   * 1. If chunking is not enabled. Chunking must be enabled to even get past the ~1MB Kafka event limitation.
+   * 2. If large records are not allowed and the size is > MAX_RECORD_SIZE_BYTES.
+   * Basically, the record size must fit in one of these categories:
+   * Chunking Not Needed < ~1MB < Chunking Needed < MAX_RECORD_SIZE_BYTES
+   */
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
+  public void testPutTooLargeRecord(boolean isChunkingEnabled, boolean areLargeRecordsAllowed) {
+    final int maxRecordSizeBytes = 1024 * 1024; // 1MB
+    final CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    final PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeySerializer(serializer)
+        .setValueSerializer(serializer)
+        .setChunkingEnabled(isChunkingEnabled)
+        .build();
+    final VeniceProperties props = new PropertyBuilder().put(VeniceWriter.LARGE_RECORDS_ALLOWED, areLargeRecordsAllowed)
+        .put(VeniceWriter.MAX_RECORD_SIZE_BYTES, maxRecordSizeBytes)
+        .build();
+    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
+
+    // "no chunking" < maxSizeForUserPayloadPerMessageInBytes < "needs chunking" < maxRecordSizeBytes < "too large"
+    final int NO_CHUNKING_VALUE_SIZE = maxRecordSizeBytes / 2;
+    final int NEEDS_CHUNKING_VALUE_SIZE = maxRecordSizeBytes - 1024; // offset to account for the size of the key
+    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
+
+    for (int size: Arrays.asList(NO_CHUNKING_VALUE_SIZE, NEEDS_CHUNKING_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
+      char[] valueChars = new char[size];
+      Arrays.fill(valueChars, '*');
+      try {
+        writer.put("test-key", new String(valueChars), 1, null);
+        if (size == NO_CHUNKING_VALUE_SIZE) {
+          continue; // Ok behavior. Small records should never throw RecordTooLargeException
+        }
+        if (!isChunkingEnabled || (size == TOO_LARGE_VALUE_SIZE && !areLargeRecordsAllowed)) {
+          Assert.fail("Should've thrown RecordTooLargeException if chunking not enabled or record is too large");
+        }
+      } catch (Exception e) {
+        Assert.assertTrue(e instanceof RecordTooLargeException);
+        Assert.assertNotEquals(size, NO_CHUNKING_VALUE_SIZE, "Small records shouldn't throw RecordTooLargeException");
+      }
     }
   }
 }

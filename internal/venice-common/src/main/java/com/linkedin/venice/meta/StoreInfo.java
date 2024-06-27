@@ -779,6 +779,7 @@ public class StoreInfo {
     return this.maxRecordSizeBytes;
   }
 
+  // TODO: this code running on VPJ should set default value, even for controllers running on older versions right?
   public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
     this.maxRecordSizeBytes = maxRecordSizeBytes;
   }
