@@ -148,9 +148,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final int DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES = 950 * 1024;
 
   /**
-   * Default is max value / no limit, if the limit was not specified by the VeniceProperties.
+   * The default value of -1 from the store is overwritten with a new default of 10 MB.
    */
-  public static final int DEFAULT_MAX_RECORD_SIZE_BYTES = Integer.MAX_VALUE;
+  public static final int DEFAULT_MAX_RECORD_SIZE_BYTES = 10 * 1024 * 1024;
 
   /**
    * This controls the Kafka producer's close timeout.
@@ -307,7 +307,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
     this.areLargeRecordsAllowed = props.getBoolean(LARGE_RECORDS_ALLOWED, true);
-    this.maxRecordSizeBytes = props.getInt(MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES);
+    int maxRecordSizeBytesFromProps = props.getInt(MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES);
+    if (maxRecordSizeBytesFromProps == -1) {
+      maxRecordSizeBytesFromProps = DEFAULT_MAX_RECORD_SIZE_BYTES;
+    }
+    this.maxRecordSizeBytes = maxRecordSizeBytesFromProps;
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
@@ -324,7 +328,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
     if (maxSizeForUserPayloadPerMessageInBytes > maxRecordSizeBytes) {
       throw new VeniceException(
-          MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " cannot be set higher than " + MAX_RECORD_SIZE_BYTES);
+          MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + '=' + maxSizeForUserPayloadPerMessageInBytes
+              + " cannot be set higher than " + MAX_RECORD_SIZE_BYTES + '=' + maxRecordSizeBytes);
     }
     this.isChunkingFlagInvoked = false;
     this.maxAttemptsWhenTopicMissing =

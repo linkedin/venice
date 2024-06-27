@@ -290,7 +290,7 @@ public class PushJobDetailsTest {
       });
       final PushJobDetails value = client.get(key).get();
       assertEquals(value.pushJobLatestCheckpoint.intValue(), RECORD_TOO_LARGE_FAILED.getValue());
-      assertFalse(value.failureDetails.toString().isEmpty(), "Assert no failure recorded in PushJobDetails");
+      assertFalse(value.failureDetails.toString().isEmpty(), "Assert failure recorded in PushJobDetails");
     }
   }
 }

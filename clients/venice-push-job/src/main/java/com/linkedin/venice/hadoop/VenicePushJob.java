@@ -380,6 +380,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
+    pushJobSettingToReturn.largeRecordsAllowed = props.getBoolean(LARGE_RECORDS_ALLOWED, true);
     pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
@@ -2720,7 +2721,6 @@ public class VenicePushJob implements AutoCloseable {
           storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
       pushJobSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
       pushJobSetting.isRmdChunkingEnabled = storeResponse.getStore().isRmdChunkingEnabled();
-      pushJobSetting.largeRecordsAllowed = props.getBoolean(LARGE_RECORDS_ALLOWED, true);
       pushJobSetting.maxRecordSizeBytes = storeResponse.getStore().getMaxRecordSizeBytes();
       pushJobSetting.storeCompressionStrategy = storeResponse.getStore().getCompressionStrategy();
       pushJobSetting.isStoreWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
