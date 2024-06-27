@@ -2206,17 +2206,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       throwStoreDoesNotExist(clusterName, storeName);
     } else {
-      helixAdminClient.createVeniceStorageClusterResources(
-          clusterName,
-          version.kafkaTopicName(),
-          version.getPartitionCount(),
-          store.getReplicationFactor());
       startMonitorOfflinePush(
           clusterName,
           version.kafkaTopicName(),
           version.getPartitionCount(),
           store.getReplicationFactor(),
           store.getOffLinePushStrategy());
+      helixAdminClient.createVeniceStorageClusterResources(
+          clusterName,
+          version.kafkaTopicName(),
+          version.getPartitionCount(),
+          store.getReplicationFactor());
+      try {
+        retireOldStoreVersions(clusterName, storeName, true, store.getCurrentVersion());
+      } catch (Throwable t) {
+        LOGGER.error(
+            "Failed to delete previous backup version while data recovery to store {} in cluster {}",
+            storeName,
+            clusterName,
+            t);
+      }
     }
   }
 
@@ -3395,7 +3404,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
 
-      if (store.getBackupStrategy() == BackupStrategy.DELETE_ON_NEW_PUSH_START) {
+      if (deleteBackupOnStartPush) {
         LOGGER.info("Deleting backup versions as the new push started for upcoming version for store: {}", storeName);
       } else {
         LOGGER.info("Retiring old versions after successful push for store: {}", storeName);

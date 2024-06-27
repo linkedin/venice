@@ -75,6 +75,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -142,7 +143,6 @@ import org.testng.annotations.Test;
 public class TestPushJobWithNativeReplication {
   private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithNativeReplication.class);
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
-
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
@@ -161,6 +161,7 @@ public class TestPushJobWithNativeReplication {
 
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private D2Client d2Client;
+  private VeniceServerWrapper serverWrapper;
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -179,7 +180,6 @@ public class TestPushJobWithNativeReplication {
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-
     Properties controllerProps = new Properties();
     // This property is required for test stores that have 10 partitions
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10);
@@ -209,7 +209,7 @@ public class TestPushJobWithNativeReplication {
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
     D2ClientUtils.startClient(d2Client);
-
+    serverWrapper = clusterWrapper.getVeniceServers().get(0);
   }
 
   @AfterClass(alwaysRun = true)
@@ -957,19 +957,47 @@ public class TestPushJobWithNativeReplication {
               }
             });
           }
-          props.put(TARGETED_REGION_PUSH_ENABLED, true);
-          // props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
-          TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 20);
+          String dataDBPathV1 = serverWrapper.getDataDirectory() + "/rocksdb/" + storeName + "_v1";
+          long storeSize = FileUtils.sizeOfDirectory(new File(dataDBPathV1));
           try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
-            job.run(); // the job should succeed
+            job.run();
 
+            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 2);
+              }
+            });
+          }
+          props.put(TARGETED_REGION_PUSH_ENABLED, true);
+          TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 20);
+          try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
+            job.run(); // the job should succeed
+            File directory = new File(serverWrapper.getDataDirectory() + "/rocksdb/");
+            File[] storeDBDirs = directory.listFiles(File::isDirectory);
+            long totalStoreSize = 0;
+            if (storeDBDirs != null) {
+              for (File storeDB: storeDBDirs) {
+                if (storeDB.getName().startsWith(storeName)) {
+                  long size = FileUtils
+                      .sizeOfDirectory(new File(serverWrapper.getDataDirectory() + "/rocksdb/" + storeDB.getName()));
+                  ;
+                  totalStoreSize += size;
+                }
+              }
+              Assert.assertTrue(
+                  storeSize * 2 >= totalStoreSize,
+                  "2x of store size " + storeSize + " is more than total " + totalStoreSize);
+            }
             TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
               // Current version should become 2
               for (int version: parentControllerClient.getStore(storeName)
                   .getStore()
                   .getColoToCurrentVersions()
                   .values()) {
-                Assert.assertEquals(version, 2);
+                Assert.assertEquals(version, 3);
               }
               // should be able to read all 20 records.
               validateDaVinciClient(storeName, 20);
