@@ -628,7 +628,7 @@ public class VeniceWriterUnitTest {
    * Records without Chunking < ~1MB < Records with Chunking < MAX_RECORD_SIZE_BYTES
    */
   @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
-  public void testRecordTooLarge(boolean isChunkingEnabled, boolean areLargeRecordsAllowed) {
+  public void testPutTooLargeRecord(boolean isChunkingEnabled, boolean areLargeRecordsAllowed) {
     final int maxRecordSizeBytes = 1024 * 1024; // 1MB
     final CompletableFuture mockedFuture = mock(CompletableFuture.class);
     final PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
@@ -642,7 +642,7 @@ public class VeniceWriterUnitTest {
     final VeniceProperties props = new PropertyBuilder().put(VeniceWriter.LARGE_RECORDS_ALLOWED, areLargeRecordsAllowed)
         .put(VeniceWriter.MAX_RECORD_SIZE_BYTES, maxRecordSizeBytes)
         .build();
-    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter(options, props, mockedProducer);
+    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
 
     // "no chunking" < maxSizeForUserPayloadPerMessageInBytes < "needs chunking" < maxRecordSizeBytes < "too large"
     final int NO_CHUNKING_VALUE_SIZE = maxRecordSizeBytes / 2;
@@ -654,6 +654,9 @@ public class VeniceWriterUnitTest {
       Arrays.fill(valueChars, '*');
       try {
         writer.put("test-key", new String(valueChars), 1, null);
+        if (size == NO_CHUNKING_VALUE_SIZE) {
+          continue; // Ok behavior. Small records should never throw RecordTooLargeException
+        }
         if (!isChunkingEnabled || (size == TOO_LARGE_VALUE_SIZE && !areLargeRecordsAllowed)) {
           Assert.fail("Should've thrown RecordTooLargeException if chunking not enabled or record is too large");
         }

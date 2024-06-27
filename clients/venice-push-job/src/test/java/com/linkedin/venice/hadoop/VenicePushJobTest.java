@@ -881,6 +881,49 @@ public class VenicePushJobTest {
     }
   }
 
+  /**
+   * Tests that the error message for the {@link VenicePushJob.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
+   * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testUpdatePushJobDetailsWithJobDetailsRecordTooLarge(boolean chunkingEnabled) {
+    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), getClient())) {
+      // Setup push job settings and mocks
+      PushJobDetails pushJobDetails = vpj.getPushJobDetails();
+      pushJobDetails.chunkingEnabled = chunkingEnabled;
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      setPushJobSettingDefaults(pushJobSetting);
+      vpj.setInputStorageQuotaTracker(mock(InputStorageQuotaTracker.class));
+      final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
+      doReturn(1L).when(dataWriterTaskTracker).getRecordTooLargeFailureCount();
+
+      // The value of chunkingEnabled should dictate the error message returned
+      final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
+      final int latestCheckpoint = pushJobDetails.pushJobLatestCheckpoint;
+      Assert.assertTrue(errorMessage.contains((chunkingEnabled) ? "Venice" : "Kafka"), errorMessage);
+      Assert.assertTrue(errorMessage.contains((chunkingEnabled) ? "10.0 MiB" : "950.0 KiB"), errorMessage);
+      Assert.assertEquals(latestCheckpoint, VenicePushJob.PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
+    }
+  }
+
+  /**
+   * These are mainly for code coverage for the code paths of {@link VenicePushJob#getVeniceWriter(PushJobSetting)} and
+   * {@link VenicePushJob#getVeniceWriterProperties(PushJobSetting)}.
+   */
+  @Test
+  public void testGetVeniceWriter() {
+    Properties props = getVpjRequiredProperties();
+    props.put(VeniceWriter.CLOSE_TIMEOUT_MS, "1000");
+    props.put(VeniceWriter.LARGE_RECORDS_ALLOWED, "true");
+    try (final VenicePushJob vpj = getSpyVenicePushJob(props, getClient())) {
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      setPushJobSettingDefaults(pushJobSetting);
+      final VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = vpj.getVeniceWriter(pushJobSetting);
+      Assert.assertNotNull(veniceWriter, "VeniceWriter should've been constructed and returned");
+      Assert.assertEquals(veniceWriter, vpj.getVeniceWriter(pushJobSetting), "Second get() should return same object");
+    }
+  }
+
   private JobStatusQueryResponse mockJobStatusQuery() {
     JobStatusQueryResponse response = new JobStatusQueryResponse();
     response.setStatus(ExecutionStatus.COMPLETED.toString());
@@ -969,48 +1012,5 @@ public class VenicePushJobTest {
     setting.partitionerClass = DefaultVenicePartitioner.class.getCanonicalName();
     setting.topic = Version.composeKafkaTopic(setting.storeName, 7);
     setting.partitionCount = 1;
-  }
-
-  /**
-   * Tests that the error message for the {@link VenicePushJob.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
-   * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
-   */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  private void testUpdatePushJobDetailsWithJobDetailsRecordTooLarge(boolean chunkingEnabled) {
-    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), getClient())) {
-      // Setup push job settings and mocks
-      PushJobDetails pushJobDetails = vpj.getPushJobDetails();
-      pushJobDetails.chunkingEnabled = chunkingEnabled;
-      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
-      setPushJobSettingDefaults(pushJobSetting);
-      vpj.setInputStorageQuotaTracker(mock(InputStorageQuotaTracker.class));
-      final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
-      doReturn(1L).when(dataWriterTaskTracker).getRecordTooLargeFailureCount();
-
-      // The value of chunkingEnabled should dictate the error message returned
-      final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
-      final int latestCheckpoint = pushJobDetails.pushJobLatestCheckpoint;
-      Assert.assertTrue(errorMessage.contains((chunkingEnabled) ? "Venice" : "Kafka"));
-      Assert.assertTrue(errorMessage.contains((chunkingEnabled) ? "2.0 GiB" : "950.0 KiB"));
-      Assert.assertEquals(latestCheckpoint, VenicePushJob.PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
-    }
-  }
-
-  /**
-   * These are mainly for code coverage for the code paths of {@link VenicePushJob#getVeniceWriter(PushJobSetting)} and
-   * {@link VenicePushJob#getVeniceWriterProperties(PushJobSetting)}.
-   */
-  @Test
-  private void testGetVeniceWriter() {
-    Properties props = getVpjRequiredProperties();
-    props.put(VeniceWriter.CLOSE_TIMEOUT_MS, "1000");
-    props.put(VeniceWriter.LARGE_RECORDS_ALLOWED, "true");
-    try (final VenicePushJob vpj = getSpyVenicePushJob(props, getClient())) {
-      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
-      setPushJobSettingDefaults(pushJobSetting);
-      final VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = vpj.getVeniceWriter(pushJobSetting);
-      Assert.assertNotNull(veniceWriter, "VeniceWriter should've been constructed and returned");
-      Assert.assertEquals(veniceWriter, vpj.getVeniceWriter(pushJobSetting), "Second get() should return same object");
-    }
   }
 }
