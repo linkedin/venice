@@ -8,7 +8,7 @@ permalink: /docs/dev_guide/how_to/workspace_setup
 
 # Venice Workspace Setup
 We recommend using a Unix-based environment for development, such as Linux or macOS.
-If you're on Windows, we recommend using [WSL](https://learn.microsoft.com/en-us/windows/wsl/install).
+If you're on Windows, we recommend using [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install).
 
 ## Fork the Venice Repository
 Fork the Venice repo at https://github.com/linkedin/venice
