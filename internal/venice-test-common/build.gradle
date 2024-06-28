@@ -36,7 +36,6 @@ configurations {
     }
   }
   implementation {
-    exclude group: 'org.apache.kafka'
     exclude group: 'org.mortbay.jetty', module: 'servlet-api'
   }
   integrationTestImplementation.extendsFrom testImplementation
@@ -96,6 +95,7 @@ dependencies {
   implementation libraries.samzaApi
   implementation libraries.spark
   implementation libraries.testng
+  implementation libraries.zstd
 
   implementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'
@@ -106,6 +106,7 @@ dependencies {
   testImplementation project(':internal:venice-common').sourceSets.test.output
   testImplementation libraries.log4j2core
   testImplementation libraries.log4j2api
+  testImplementation libraries.kafkaClients
 
   jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:' + jmh.jmhVersion.get()
   jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')

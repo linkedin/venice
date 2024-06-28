@@ -40,8 +40,9 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 def avroVersion = '1.10.2'
 def avroUtilVersion = '0.3.21'
 def grpcVersion = '1.49.2'
-def kafkaGroup = 'com.linkedin.kafka'
-def kafkaVersion = '2.4.1.65'
+// N.B.: The build should also work when substituting Kafka from the Apache fork to LinkedIn's fork:
+def kafkaGroup = 'org.apache.kafka' // 'com.linkedin.kafka'
+def kafkaVersion = '2.4.1' // '2.4.1.65'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
 def protobufVersion = '3.21.7'
@@ -52,14 +53,15 @@ def alpnAgentVersion = '2.0.10'
 def hadoopVersion = '2.10.2'
 def apacheSparkVersion = '3.3.3'
 def antlrVersion = '4.8'
+def scala = '2.12'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
     antlr4: "org.antlr:antlr4:${antlrVersion}",
     antlr4Runtime: "org.antlr:antlr4-runtime:${antlrVersion}",
-    apacheSparkAvro: "org.apache.spark:spark-avro_2.12:${apacheSparkVersion}",
-    apacheSparkCore: "org.apache.spark:spark-core_2.12:${apacheSparkVersion}",
-    apacheSparkSql: "org.apache.spark:spark-sql_2.12:${apacheSparkVersion}",
+    apacheSparkAvro: "org.apache.spark:spark-avro_${scala}:${apacheSparkVersion}",
+    apacheSparkCore: "org.apache.spark:spark-core_${scala}:${apacheSparkVersion}",
+    apacheSparkSql: "org.apache.spark:spark-sql_${scala}:${apacheSparkVersion}",
     avro: "org.apache.avro:avro:${avroVersion}",
     avroCompiler: "org.apache.avro:avro-compiler:${avroVersion}",
     avroMapred: "org.apache.avro:avro-mapred:${avroVersion}",
@@ -101,7 +103,7 @@ ext.libraries = [
     jna: 'net.java.dev.jna:jna:4.5.1',
     jsr305: 'com.google.code.findbugs:jsr305:3.0.2',
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
-    kafka: "${kafkaGroup}:kafka_2.12:${kafkaVersion}",
+    kafka: "${kafkaGroup}:kafka_${scala}:${kafkaVersion}",
     kafkaClients: "${kafkaGroup}:kafka-clients:${kafkaVersion}",
     kafkaClientsTest: "${kafkaGroup}:kafka-clients:${kafkaVersion}:test",
     log4j2api: "org.apache.logging.log4j:log4j-api:${log4j2Version}",
