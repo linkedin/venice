@@ -7,6 +7,7 @@ import org.apache.spark.sql.connector.read.PartitionReader;
 import org.apache.spark.sql.connector.read.PartitionReaderFactory;
 
 
+// TODO: Explore FilePartitionReaderFactory
 public class VeniceHdfsInputPartitionReaderFactory implements PartitionReaderFactory {
   private static final long serialVersionUID = 1L;
 
