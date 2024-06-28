@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.avro.Conversions;
 import org.apache.avro.LogicalType;
 import org.apache.avro.LogicalTypes;
@@ -367,7 +368,10 @@ public final class RowToAvroConverter {
       return null;
     }
 
-    List<Schema> types = schema.getTypes();
+    // Now that we've checked for null explicitly, we should process everything else as a non-null value.
+    // This is consistent with the way Spark handles unions.
+    List<Schema> types =
+        schema.getTypes().stream().filter(s -> s.getType() != Schema.Type.NULL).collect(Collectors.toList());
     Schema first = types.get(0);
     // If there's only one branch, Spark will use that as the data type
     if (types.size() == 1) {
@@ -376,15 +380,6 @@ public final class RowToAvroConverter {
 
     Schema second = types.get(1);
     if (types.size() == 2) {
-      // If there are only two branches, and one of them is null, Spark will use the non-null type
-      if (first.getType() == Schema.Type.NULL) {
-        return convertInternal(o, dataType, second);
-      }
-
-      if (second.getType() == Schema.Type.NULL) {
-        return convertInternal(o, dataType, first);
-      }
-
       // A union of int and long is read as LongType.
       // This is lossy because we cannot know what type was provided in the input
       if ((first.getType() == Schema.Type.INT && second.getType() == Schema.Type.LONG)
@@ -412,10 +407,8 @@ public final class RowToAvroConverter {
     StructField[] structFields = structType.fields();
     int structFieldIndex = 0;
     for (Schema type: types) {
-      if (type.getType() == Schema.Type.NULL) {
-        // Union branch "null" is not handled in the Catalyst schema
-        continue;
-      }
+      Validate.isTrue(type.getType() != Schema.Type.NULL);
+
       Object unionField = row.get(structFieldIndex);
       if (unionField != null) {
         return convertInternal(unionField, structFields[structFieldIndex].dataType(), type);
