@@ -1,5 +1,9 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.ZkCopier.TreeNode;
+import java.io.File;
+import java.net.URL;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -8,49 +12,47 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestCloneVeniceZKPaths {
+public class TestZkCopier {
   private final Set<String> CLUSTERS = new HashSet<>(Arrays.asList("cluster1", "cluster2"));
   private final String BASE_PATH = "/venice-parent";
 
   @Test
-  public void mainTest() {
+  public void mainTest() throws Exception {
     testBuildRequiredPathsTree();
     testGetVenicePaths();
     testExtractVenicePaths();
-    // testCloneVenicePaths();
   }
 
-  public void testCloneVenicePaths() {
-    // TODO write tests for cloneVenicePaths()
-  }
-
-  // tests AdminTool.extractVeniceZKPathsFromFile() as well as CloneVeniceZKPaths.extractVenicePaths()
-  public void testExtractVenicePaths() {
-    // change this variable to path of where Venice project is stored
-    String directory = "/Users/tonchen/Desktop/";
-    String inputPath = directory + "venice/clients/venice-admin-tool/src/test/java/com/linkedin/venice/zk_paths.txt";
-    String outputPath =
-        directory + "venice/clients/venice-admin-tool/src/test/java/com/linkedin/venice/venice_paths.txt";
-    String[] args = { "--extract-venice-zk-paths-from-file", "--zk-paths-file", inputPath, "--venice-paths-file",
-        outputPath, "--cluster-list", "cluster1, cluster2", "--base-path", BASE_PATH };
+  // tests AdminTool.extractVeniceZKPaths() and ZkCopier.extractVenicePaths()
+  public void testExtractVenicePaths() throws Exception {
+    URL zkResource = TestZkCopier.class.getClassLoader().getResource("zk_paths.txt");
+    File zkResourceFile = Paths.get(zkResource.toURI()).toFile();
+    String inputPath = zkResourceFile.getAbsolutePath();
+    // System.out.println(inputPath);
+    URL veniceResource = TestZkCopier.class.getClassLoader().getResource("venice_paths.txt");
+    File veniceResourceFile = Paths.get(veniceResource.toURI()).toFile();
+    String outputPath = veniceResourceFile.getAbsolutePath();
+    // System.out.println(outputPath);
+    String[] args = { "--extract-venice-zk-paths", "--infile", inputPath, "--outfile", outputPath, "--cluster-list",
+        "cluster1, cluster2", "--base-path", BASE_PATH };
     try {
       AdminTool.main(args);
     } catch (Exception e) {
       System.out.println(e.getMessage());
     }
-    // manually check venice_paths.txt and verify that all (21) Venice-specific paths are extracted correctly
+    // manually check outputPath and verify that all (22) Venice-specific paths are extracted correctly
   }
 
   public void testGetVenicePaths() {
     ArrayList<String> zkPaths = getPaths();
-    Set<String> requiredPaths = CloneVeniceZKPaths.getRequiredPaths();
-    ArrayList<String> venicePaths = CloneVeniceZKPaths.getVenicePaths(zkPaths, CLUSTERS, BASE_PATH, requiredPaths);
+    Set<String> requiredPaths = ZkCopier.getRequiredPaths();
+    ArrayList<String> venicePaths = ZkCopier.getVenicePaths(zkPaths, CLUSTERS, BASE_PATH, requiredPaths);
     testVenicePathsAsserts(venicePaths);
   }
 
   public void testVenicePathsAsserts(ArrayList<String> venicePaths) {
-    Assert.assertEquals(venicePaths.size(), 21);
-    Assert.assertFalse(venicePaths.contains("/venice-parent"));
+    Assert.assertEquals(venicePaths.size(), 22);
+    Assert.assertTrue(venicePaths.contains("/venice-parent"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/storeConfigs"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1"));
     Assert.assertFalse(venicePaths.contains("/venice-parent/cluster1/storeConfigs"));
@@ -74,11 +76,11 @@ public class TestCloneVeniceZKPaths {
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/routers"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/StoreGraveyard"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/Stores"));
-    Assert.assertFalse(venicePaths.contains("/venice-parent/cluster3"));
-    Assert.assertFalse(venicePaths.contains("/venice-parent/cluster3/storeConfigs"));
-    Assert.assertFalse(venicePaths.contains("/venice-parent/cluster3/adminTopicMetadata"));
-    Assert.assertFalse(venicePaths.contains("/venice-parent/cluster3/adminTopicMetadata/file1"));
-    Assert.assertFalse(venicePaths.contains("/venice-parent/cluster3/adminTopicMetadata/file2/file3"));
+    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster"));
+    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/storeConfigs"));
+    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/adminTopicMetadata"));
+    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/adminTopicMetadata/file1"));
+    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/adminTopicMetadata/file2/file3"));
     Assert.assertFalse(venicePaths.contains("/venice"));
     Assert.assertFalse(venicePaths.contains("/venice/storeConfigs"));
     Assert.assertFalse(venicePaths.contains("/venice/cluster1"));
@@ -89,13 +91,12 @@ public class TestCloneVeniceZKPaths {
   }
 
   public void testBuildRequiredPathsTree() {
-    TreeNode root =
-        CloneVeniceZKPaths.buildRequiredPathsTree(CLUSTERS, BASE_PATH, CloneVeniceZKPaths.getRequiredPaths());
+    TreeNode root = ZkCopier.buildRequiredPathsTree(CLUSTERS, BASE_PATH, ZkCopier.getRequiredPaths());
     Assert.assertEquals(root.getChildren().size(), 3);
     Assert.assertTrue(root.contains("storeConfigs"));
     Assert.assertTrue(root.contains("cluster1"));
     Assert.assertTrue(root.contains("cluster2"));
-    for (TreeNode child: root.getChildren()) {
+    for (TreeNode child: root.getChildren().values()) {
       switch (child.getVal()) {
         case "storeConfigs":
           Assert.assertEquals(child.getPath(), "/venice-parent/storeConfigs");
@@ -110,7 +111,7 @@ public class TestCloneVeniceZKPaths {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (TreeNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren().values()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster1/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
           }
@@ -124,7 +125,7 @@ public class TestCloneVeniceZKPaths {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (TreeNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren().values()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster2/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
           }
@@ -157,11 +158,11 @@ public class TestCloneVeniceZKPaths {
     zkPaths.add("/venice-parent/cluster2/routers");
     zkPaths.add("/venice-parent/cluster2/StoreGraveyard");
     zkPaths.add("/venice-parent/cluster2/Stores");
-    zkPaths.add("/venice-parent/cluster3");
-    zkPaths.add("/venice-parent/cluster3/storeConfigs");
-    zkPaths.add("/venice-parent/cluster3/adminTopicMetadata");
-    zkPaths.add("/venice-parent/cluster3/adminTopicMetadata/file1");
-    zkPaths.add("/venice-parent/cluster3/adminTopicMetadata/file2/file3");
+    zkPaths.add("/venice-parent/helix-cluster");
+    zkPaths.add("/venice-parent/helix-cluster/storeConfigs");
+    zkPaths.add("/venice-parent/helix-cluster/adminTopicMetadata");
+    zkPaths.add("/venice-parent/helix-cluster/adminTopicMetadata/file1");
+    zkPaths.add("/venice-parent/helix-cluster/adminTopicMetadata/file2/file3");
     zkPaths.add("/venice");
     zkPaths.add("/venice/storeConfigs");
     zkPaths.add("/venice/cluster1");

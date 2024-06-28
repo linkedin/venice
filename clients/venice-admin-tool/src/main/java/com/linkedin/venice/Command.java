@@ -26,7 +26,6 @@ import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.Arg.DEST_FABRIC;
-import static com.linkedin.venice.Arg.DEST_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.Arg.DISABLE_META_STORE;
 import static com.linkedin.venice.Arg.ENABLE_DISABLED_REPLICA;
@@ -50,6 +49,7 @@ import static com.linkedin.venice.Arg.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.Arg.INFILE;
 import static com.linkedin.venice.Arg.INTERVAL;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
@@ -72,6 +72,7 @@ import static com.linkedin.venice.Arg.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
+import static com.linkedin.venice.Arg.OUTFILE;
 import static com.linkedin.venice.Arg.OWNER;
 import static com.linkedin.venice.Arg.PARTITION;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
@@ -100,7 +101,6 @@ import static com.linkedin.venice.Arg.SERVER_URL;
 import static com.linkedin.venice.Arg.SKIP_DIV;
 import static com.linkedin.venice.Arg.SKIP_LAST_STORE_CREATION;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
-import static com.linkedin.venice.Arg.SRC_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
 import static com.linkedin.venice.Arg.START_DATE;
 import static com.linkedin.venice.Arg.STORAGE_NODE;
@@ -118,7 +118,6 @@ import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
 import static com.linkedin.venice.Arg.VENICE_CLIENT_SSL_CONFIG_FILE;
-import static com.linkedin.venice.Arg.VENICE_PATHS_FILE;
 import static com.linkedin.venice.Arg.VENICE_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.VERSION;
 import static com.linkedin.venice.Arg.VIEW_CLASS;
@@ -128,7 +127,6 @@ import static com.linkedin.venice.Arg.VOLDEMORT_STORE;
 import static com.linkedin.venice.Arg.VSON_STORE;
 import static com.linkedin.venice.Arg.WRITEABILITY;
 import static com.linkedin.venice.Arg.WRITE_COMPUTATION_ENABLED;
-import static com.linkedin.venice.Arg.ZK_PATHS_FILE;
 import static com.linkedin.venice.Arg.ZK_SSL_CONFIG_FILE;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -536,14 +534,10 @@ public enum Command {
       "backup-store-metadata-from-graveyard", "Backup store metadata from graveyard in EI",
       new Arg[] { VENICE_ZOOKEEPER_URL, ZK_SSL_CONFIG_FILE, BACKUP_FOLDER }
   ),
-  CLONE_VENICE_ZK_PATHS(
-      "clone-venice-zk-paths", "Clone Venice-specific paths from a source ZK to a destination ZK",
-      new Arg[] { SRC_ZOOKEEPER_URL, DEST_ZOOKEEPER_URL, CLUSTER_LIST, BASE_PATH }
-  ),
-  EXTRACT_VENICE_ZK_PATHS_FROM_FILE(
-      "extract-venice-zk-paths-from-file",
+  EXTRACT_VENICE_ZK_PATHS(
+      "extract-venice-zk-paths",
       "Extract Venice-specific paths from a ZK snapshot input text file to an output text file",
-      new Arg[] { ZK_PATHS_FILE, VENICE_PATHS_FILE, CLUSTER_LIST, BASE_PATH }
+      new Arg[] { INFILE, OUTFILE, CLUSTER_LIST, BASE_PATH }
   );
 
   private final String commandName;

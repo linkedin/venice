@@ -20,11 +20,11 @@
 /venice-parent/cluster2/routers
 /venice-parent/cluster2/StoreGraveyard
 /venice-parent/cluster2/Stores
-/venice-parent/cluster3
-/venice-parent/cluster3/storeConfigs
-/venice-parent/cluster3/adminTopicMetadata
-/venice-parent/cluster3/adminTopicMetadata/file1
-/venice-parent/cluster3/adminTopicMetadata/file2/file3
+/venice-parent/helix-cluster
+/venice-parent/helix-cluster/storeConfigs
+/venice-parent/helix-cluster/adminTopicMetadata
+/venice-parent/helix-cluster/adminTopicMetadata/file1
+/venice-parent/helix-cluster/adminTopicMetadata/file2/file3
 /venice
 /venice/storeConfigs
 /venice/cluster1

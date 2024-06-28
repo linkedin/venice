@@ -573,11 +573,8 @@ public class AdminTool {
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
           break;
-        case CLONE_VENICE_ZK_PATHS:
-          cloneVeniceZKPaths(cmd);
-          break;
-        case EXTRACT_VENICE_ZK_PATHS_FROM_FILE:
-          extractVeniceZKPathsFromFile(cmd);
+        case EXTRACT_VENICE_ZK_PATHS:
+          extractVeniceZKPaths(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -3097,20 +3094,11 @@ public class AdminTool {
     }
   }
 
-  private static void cloneVeniceZKPaths(CommandLine cmd) {
+  private static void extractVeniceZKPaths(CommandLine cmd) {
     Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
-    CloneVeniceZKPaths.cloneVenicePaths(
-        getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL),
-        getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL),
-        clusterNames,
-        getRequiredArgument(cmd, Arg.BASE_PATH));
-  }
-
-  private static void extractVeniceZKPathsFromFile(CommandLine cmd) {
-    Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
-    CloneVeniceZKPaths.extractVenicePaths(
-        getRequiredArgument(cmd, Arg.ZK_PATHS_FILE),
-        getRequiredArgument(cmd, Arg.VENICE_PATHS_FILE),
+    ZkCopier.extractVenicePaths(
+        getRequiredArgument(cmd, Arg.INFILE),
+        getRequiredArgument(cmd, Arg.OUTFILE),
         clusterNames,
         getRequiredArgument(cmd, Arg.BASE_PATH));
   }

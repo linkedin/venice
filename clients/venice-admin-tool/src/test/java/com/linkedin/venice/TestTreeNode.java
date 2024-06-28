@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.ZkCopier.TreeNode;
 import java.util.ArrayList;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -10,7 +11,7 @@ public class TestTreeNode {
   public void testTreeNode() {
     // testing listToTree()
     String basePath = "/venice-parent";
-    TreeNode node = CloneVeniceZKPaths.listToTree(getPaths(), basePath);
+    TreeNode node = ZkCopier.listToTree(getPaths(), basePath);
     testListToTree(node);
 
     // testing TreeNode class methods
@@ -18,7 +19,7 @@ public class TestTreeNode {
     testTreeNodeMethods(root);
 
     // testing treeToList()
-    ArrayList<String> list = CloneVeniceZKPaths.treeToList(root);
+    ArrayList<String> list = ZkCopier.treeToList(root);
     testTreeToList(list);
   }
 
@@ -27,7 +28,7 @@ public class TestTreeNode {
     Assert.assertTrue(root.contains("storeConfigs"));
     Assert.assertTrue(root.contains("cluster1"));
     Assert.assertTrue(root.contains("cluster2"));
-    for (TreeNode child: root.getChildren()) {
+    for (TreeNode child: root.getChildren().values()) {
       switch (child.getVal()) {
         case "storeConfigs":
           Assert.assertEquals(child.getPath(), "/venice-parent/storeConfigs");
@@ -42,17 +43,17 @@ public class TestTreeNode {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (TreeNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren().values()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster1/" + grandchild.getVal());
             if (grandchild.getVal().equals("adminTopicMetadata")) {
               Assert.assertEquals(grandchild.getChildren().size(), 2);
-              for (TreeNode greatgrandchild: grandchild.getChildren()) {
+              for (TreeNode greatgrandchild: grandchild.getChildren().values()) {
                 Assert.assertEquals(
                     greatgrandchild.getPath(),
                     "/venice-parent/cluster1/adminTopicMetadata/" + greatgrandchild.getVal());
                 if (greatgrandchild.getVal().equals("file2")) {
                   Assert.assertEquals(greatgrandchild.getChildren().size(), 1);
-                  for (TreeNode greatgreatgrandchild: greatgrandchild.getChildren()) {
+                  for (TreeNode greatgreatgrandchild: greatgrandchild.getChildren().values()) {
                     Assert.assertEquals(
                         greatgreatgrandchild.getPath(),
                         "/venice-parent/cluster1/adminTopicMetadata/file2/" + greatgreatgrandchild.getVal());
@@ -74,7 +75,7 @@ public class TestTreeNode {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (TreeNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren().values()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster2/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
           }
@@ -94,7 +95,7 @@ public class TestTreeNode {
     Assert.assertTrue(root.contains("storeConfigs"));
     Assert.assertTrue(root.contains("cluster1"));
     Assert.assertTrue(root.contains("cluster2"));
-    for (TreeNode child: root.getChildren()) {
+    for (TreeNode child: root.getChildren().values()) {
       switch (child.getVal()) {
         case "storeConfigs":
           Assert.assertEquals(child.getPath(), "/venice-parent/storeConfigs");
@@ -121,21 +122,21 @@ public class TestTreeNode {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (TreeNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren().values()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster1/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
             if (grandchild.getVal().equals("adminTopicMetadata")) {
               grandchild.addChild("file1");
               grandchild.addChild("file2");
               Assert.assertEquals(grandchild.getChildren().size(), 2);
-              for (TreeNode greatgrandchild: grandchild.getChildren()) {
+              for (TreeNode greatgrandchild: grandchild.getChildren().values()) {
                 Assert.assertEquals(
                     greatgrandchild.getPath(),
                     "/venice-parent/cluster1/adminTopicMetadata/" + greatgrandchild.getVal());
                 if (greatgrandchild.getVal().equals("file2")) {
                   greatgrandchild.addChild("file3");
                   Assert.assertEquals(greatgrandchild.getChildren().size(), 1);
-                  for (TreeNode greatgreatgrandchild: greatgrandchild.getChildren()) {
+                  for (TreeNode greatgreatgrandchild: greatgrandchild.getChildren().values()) {
                     Assert.assertEquals(
                         greatgreatgrandchild.getPath(),
                         "/venice-parent/cluster1/adminTopicMetadata/file2/" + greatgreatgrandchild.getVal());
@@ -169,7 +170,7 @@ public class TestTreeNode {
           Assert.assertTrue(child.contains("routers"));
           Assert.assertTrue(child.contains("StoreGraveyard"));
           Assert.assertTrue(child.contains("Stores"));
-          for (TreeNode grandchild: child.getChildren()) {
+          for (TreeNode grandchild: child.getChildren().values()) {
             Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster2/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
           }
@@ -179,8 +180,8 @@ public class TestTreeNode {
   }
 
   public void testTreeToList(ArrayList<String> list) {
-    Assert.assertEquals(list.size(), 18);
-    Assert.assertFalse(list.contains("/venice-parent"));
+    Assert.assertEquals(list.size(), 19);
+    Assert.assertTrue(list.contains("/venice-parent"));
     Assert.assertTrue(list.contains("/venice-parent/storeConfigs"));
     Assert.assertTrue(list.contains("/venice-parent/cluster1"));
     Assert.assertFalse(list.contains("/venice-parent/cluster1/storeConfigs"));
