@@ -15,6 +15,7 @@ import com.linkedin.davinci.notifier.RelayNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
@@ -56,8 +57,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       MetricsRepository metricsRepository,
       StorageMetadataService storageMetadataService,
       KafkaStoreIngestionService storeIngestionService,
-      StorageService storageService) {
-    super(storageMetadataService, storeIngestionService, storageService);
+      StorageService storageService,
+      BlobTransferManager blobTransferManager) {
+    super(storageMetadataService, storeIngestionService, storageService, blobTransferManager);
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.configLoader = configLoader;

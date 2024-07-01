@@ -28,11 +28,9 @@ public class DvcBlobFinder implements BlobFinder {
   private static final String ERROR_DISCOVERY_MESSAGE =
       "Error finding DVC peers for blob transfer in store: %s, version: %d, partition: %d";
   private final TransportClient transportClient;
-  private final String routerUrl;
 
-  public DvcBlobFinder(TransportClient transportClient, String routerUrl) {
+  public DvcBlobFinder(TransportClient transportClient) {
     this.transportClient = transportClient;
-    this.routerUrl = routerUrl;
   }
 
   @Override
@@ -59,7 +57,7 @@ public class DvcBlobFinder implements BlobFinder {
     queryParams.add(new BasicNameValuePair(STORE_PARTITION, Integer.toString(partition)));
     String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
 
-    return String.format("%s/%s?%s", routerUrl, TYPE_BLOB_DISCOVERY, queryString);
+    return String.format("/%s?%s", TYPE_BLOB_DISCOVERY, queryString);
   }
 
   private BlobPeersDiscoveryResponse handleError(

@@ -29,6 +29,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.CurrentVersionResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -60,7 +61,6 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.router.api.RouterResourceType;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
-import com.linkedin.venice.routerapi.BlobDiscoveryResponse;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
@@ -541,7 +541,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
 
-    BlobDiscoveryResponse response = new BlobDiscoveryResponse();
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     try {
       // gets the instances for a FULL_PUSH for the store's version and partitionId
       // gets the instance's hostnames from its keys & filter to include only live instances
@@ -556,7 +556,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           .map(CharSequence::toString)
           .filter(instanceHostName -> pushStatusStoreReader.isInstanceAlive(storeName, instanceHostName))
           .collect(Collectors.toList());
-      response.setLiveNodeNames(liveNodeHostNames);
+      response.setDiscoveryResult(liveNodeHostNames);
     } catch (VeniceException e) {
       byte[] errBody =
           (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();

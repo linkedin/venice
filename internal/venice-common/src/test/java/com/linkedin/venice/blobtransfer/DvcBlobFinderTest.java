@@ -24,7 +24,6 @@ import org.testng.annotations.Test;
 public class DvcBlobFinderTest {
   private TransportClient transportClient;
   private DvcBlobFinder dvcBlobFinder;
-  private static final String routerUrl = "http://localhost:8080";
   private static final String storeName = "testStore";
   private static final int version = 1;
   private static final int partition = 1;
@@ -32,11 +31,11 @@ public class DvcBlobFinderTest {
   @BeforeMethod
   public void setUp() {
     transportClient = mock(TransportClient.class);
-    dvcBlobFinder = new DvcBlobFinder(transportClient, routerUrl);
+    dvcBlobFinder = new DvcBlobFinder(transportClient);
   }
 
   @Test
-  public void testDiscoverBlobPeers_Success() throws Exception {
+  public void testDiscoverBlobPeers_Success() {
     String responseBodyJson =
         "{\"error\":false,\"errorMessage\":\"\",\"discoveryResult\":[\"host1\",\"host2\",\"host3\"]}";
     byte[] responseBody = responseBodyJson.getBytes(StandardCharsets.UTF_8);
@@ -50,7 +49,7 @@ public class DvcBlobFinderTest {
   }
 
   @Test
-  public void testDiscoverBlobPeers_CallsTransportClientWithCorrectURI() throws Exception {
+  public void testDiscoverBlobPeers_CallsTransportClientWithCorrectURI() {
     String responseBodyJson =
         "{\"error\":false,\"errorMessage\":\"\",\"discoveryResult\":[\"host1\",\"host2\",\"host3\"]}";
     byte[] responseBody = responseBodyJson.getBytes(StandardCharsets.UTF_8);
@@ -66,8 +65,7 @@ public class DvcBlobFinderTest {
     verify(transportClient).get(argumentCaptor.capture());
 
     String expectedUri = String.format(
-        "%s/TYPE_BLOB_DISCOVERY?store_name=%s&store_version=%d&store_partition=%d",
-        routerUrl,
+        "/TYPE_BLOB_DISCOVERY?store_name=%s&store_version=%d&store_partition=%d",
         storeName,
         version,
         partition);

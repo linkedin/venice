@@ -26,6 +26,11 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
+import com.linkedin.venice.blobtransfer.DvcBlobFinder;
+import com.linkedin.venice.blobtransfer.NettyP2PBlobTransferManager;
+import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
+import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -137,6 +142,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private ReadOnlyLiveClusterConfigRepository liveConfigRepository = null;
   private StorageService storageService = null;
   private KafkaStoreIngestionService storeIngestionService = null;
+  private BlobTransferManager blobTransferManager = null;
   private StorageMetadataService storageMetadataService = null;
   // PartitionState and StoreVersionState serializers are lazily constructed after receiving the init configs
   private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
@@ -187,7 +193,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   @Override
-  public boolean startInner() {
+  public boolean startInner() throws Exception {
     int maxAttempt = 100;
     long waitTime = 500;
     int retryCount = 0;
@@ -575,7 +581,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     return metricClient;
   }
 
-  private void initializeIsolatedIngestionServer() {
+  private void initializeIsolatedIngestionServer() throws Exception {
     stopConsumptionTimeoutInSeconds =
         configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
 
@@ -719,7 +725,19 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         null);
     storeIngestionService.start();
     storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));
-    ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);
+
+    int blobTransferPort = serverConfig.getDvcP2pBlobTransferPort();
+    int fileTransferPort = serverConfig.getDvcP2pBlobTransferPort();
+    String rocksDBPath = serverConfig.getRocksDBPath();
+
+    blobTransferManager = new NettyP2PBlobTransferManager(
+        new P2PBlobTransferService(blobTransferPort, rocksDBPath),
+        new NettyFileTransferClient(fileTransferPort, rocksDBPath),
+        new DvcBlobFinder(ClientFactory.getTransportClient(clientConfig)));
+    blobTransferManager.start();
+
+    ingestionBackend =
+        new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService, blobTransferManager);
 
     if (serverConfig.isLeakedResourceCleanupEnabled()) {
       this.leakedResourceCleaner = new LeakedResourceCleaner(

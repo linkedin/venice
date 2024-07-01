@@ -4,8 +4,6 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
-import com.linkedin.davinci.bootstrap.DvcP2PRocksDbBootstrapper;
-import com.linkedin.davinci.bootstrap.RocksDbBootstrapper;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -63,7 +61,6 @@ public class VersionBackend {
   private final StoreBackendStats storeBackendStats;
   private final StoreDeserializerCache storeDeserializerCache;
   private final Lazy<VeniceCompressor> compressor;
-  private final RocksDbBootstrapper dbBootstrapper;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -101,13 +98,6 @@ public class VersionBackend {
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
-
-    this.dbBootstrapper = new DvcP2PRocksDbBootstrapper(
-        backend,
-        backend.getConfigLoader().getVeniceServerConfig(),
-        config,
-        version.isBlobTransferEnabled(),
-        store.isHybrid());
   }
 
   synchronized void close() {
@@ -338,18 +328,8 @@ public class VersionBackend {
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
-        try {
-          dbBootstrapper.bootstrapDatabase(storeName, versionNumber, partition);
-          tryStartHeartbeat();
-        } catch (Exception e) {
-          LOGGER.error(
-              String.format(
-                  "Error bootstrapping for store: %s, version: %s, partition: %s. ",
-                  storeName,
-                  versionNumber,
-                  partition),
-              e.getMessage());
-        }
+        backend.getIngestionBackend().startConsumption(config, partition);
+        tryStartHeartbeat();
       }
       futures.add(partitionFutures.get(partition));
     }
