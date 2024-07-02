@@ -129,10 +129,12 @@ public class HelixParticipationService extends AbstractVeniceService
     if (!(storeIngestionService instanceof KafkaStoreIngestionService)) {
       throw new VeniceException("Expecting " + KafkaStoreIngestionService.class.getName() + " for ingestion backend!");
     }
+
     this.ingestionBackend = new DefaultIngestionBackend(
         storageMetadataService,
         (KafkaStoreIngestionService) storeIngestionService,
-        storageService);
+        storageService,
+        null);
   }
 
   // Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected

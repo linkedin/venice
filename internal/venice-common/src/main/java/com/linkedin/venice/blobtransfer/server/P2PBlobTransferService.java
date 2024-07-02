@@ -11,6 +11,12 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Comparator;
+import java.util.concurrent.CompletableFuture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -22,6 +28,7 @@ public class P2PBlobTransferService extends AbstractVeniceService {
   private EventLoopGroup bossGroup;
   private EventLoopGroup workerGroup;
   private final int port;
+  private final String baseDir;
   private ChannelFuture channelFuture;
   // TODO 1: move tunable configs to a config class
   // TODO 2: add SSL/auth/Quota support
@@ -32,6 +39,7 @@ public class P2PBlobTransferService extends AbstractVeniceService {
 
   public P2PBlobTransferService(int port, String baseDir) {
     this.port = port;
+    this.baseDir = baseDir;
     this.serverBootstrap = new ServerBootstrap();
 
     Class<? extends ServerChannel> socketChannelClass = NioServerSocketChannel.class;
@@ -60,6 +68,23 @@ public class P2PBlobTransferService extends AbstractVeniceService {
     channelFuture = serverBootstrap.bind(port).sync();
     LOGGER.info("NettyP2PBlobTransferManager started on port: {}", port);
     return true;
+  }
+
+  public CompletableFuture<Void> deleteFiles(String storeName, int version, int partition) {
+    return CompletableFuture.runAsync(() -> {
+      Path path = null;
+      try {
+        path = Paths.get(baseDir, storeName, String.valueOf(version), String.valueOf(partition));
+        if (Files.exists(path)) {
+          Files.walk(path).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+          LOGGER.info("Deleted blobs at path: {}", path);
+        } else {
+          LOGGER.warn("Blob path does not exist: {}", path);
+        }
+      } catch (Exception e) {
+        LOGGER.error("Error occurred while deleting blobs at path: {} - {}", path, e.getMessage());
+      }
+    });
   }
 
   @Override

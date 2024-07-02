@@ -133,7 +133,7 @@ public class VersionBackend {
        * The following function is used to forcibly clean up any leaking data partitions, which are not
        * visibile to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
        * to open because of DaVinci memory limiter.
-        */
+       */
       backend.getStorageService().forceStorageEngineCleanup(topicName);
       backend.getCompressorFactory().removeVersionSpecificCompressor(topicName);
     } catch (VeniceException e) {
@@ -325,7 +325,6 @@ public class VersionBackend {
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
-        // AtomicReference of storage engine will be updated internally.
         backend.getIngestionBackend().startConsumption(config, partition);
         tryStartHeartbeat();
       }

@@ -123,7 +123,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this.serverConfig = serverConfig;
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
-    this.rocksDBPath = serverConfig.getDataBasePath() + File.separator + "rocksdb";
+    this.rocksDBPath = serverConfig.getRocksDBPath();
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.storeVersionStateSerializer = storeVersionStateSerializer;
     this.partitionStateSerializer = partitionStateSerializer;

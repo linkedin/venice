@@ -3,6 +3,7 @@ package com.linkedin.venice.blobtransfer;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 
@@ -41,6 +42,16 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * @return the type of the object returned from the underlying blob client to indicate the upload status
    */
   CompletionStage<T> put(String storeName, int version, int partition);
+
+  /**
+   * Deletes the files associated with the specified store, version, and partition when a blob transfer fails.
+   *
+   * @param storeName the name of the store
+   * @param version the version number of the store
+   * @param partition the partition ID
+   * @return a CompletableFuture that completes when the deletion process is done
+   */
+  CompletableFuture<T> delete(String storeName, int version, int partition);
 
   /**
    * Close the blob transfer manager and related resources
