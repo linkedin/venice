@@ -1743,9 +1743,6 @@ public class ConfigKeys {
   public static final String DAVINCI_P2P_BLOB_TRANSFER_PORT = "davinci.p2p.blob.transfer.port";
   // Port used to connect to remote host for file transfer
   public static final String DAVINCI_P2P_FILE_TRANSFER_PORT = "davinci.p2p.file.transfer.port";
-
-  public static final String DAVINCI_P2P_BLOB_TRANSFER_BASE_DIR = "davinci.p2p.blob.transfer.base.dir";
-
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 

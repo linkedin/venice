@@ -312,9 +312,6 @@ public class VersionBackend {
   }
 
   synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
-    String storeName = version.getStoreName();
-    int versionNumber = version.getNumber();
-
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);

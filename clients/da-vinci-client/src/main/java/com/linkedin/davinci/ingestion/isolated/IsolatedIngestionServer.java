@@ -270,6 +270,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
+    blobTransferManager.close();
     repairService.stop();
   }
 
@@ -727,7 +728,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));
 
     int blobTransferPort = serverConfig.getDvcP2pBlobTransferPort();
-    int fileTransferPort = serverConfig.getDvcP2pBlobTransferPort();
+    int fileTransferPort = serverConfig.getDvcP2pFileTransferPort();
     String rocksDBPath = serverConfig.getRocksDBPath();
 
     blobTransferManager = new NettyP2PBlobTransferManager(

@@ -278,7 +278,7 @@ public class DaVinciBackend implements Closeable {
       ingestionService.addIngestionNotifier(ingestionListener);
 
       int blobTransferPort = backendConfig.getDvcP2pBlobTransferPort();
-      int fileTransferPort = backendConfig.getDvcP2pBlobTransferPort();
+      int fileTransferPort = backendConfig.getDvcP2pFileTransferPort();
       String rocksDBPath = backendConfig.getRocksDBPath();
       this.blobTransferManager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(blobTransferPort, rocksDBPath),
