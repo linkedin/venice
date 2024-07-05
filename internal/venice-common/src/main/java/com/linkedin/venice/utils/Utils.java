@@ -356,7 +356,7 @@ public class Utils {
       }
       String schemaString = IOUtils.toString(inputStream);
       Schema schema = AvroCompatibilityHelper.parse(schemaString);
-      LOGGER.info("Loaded schema from resource path: {}", resourcePath);
+      LOGGER.debug("Loaded schema from resource path: {}", resourcePath);
       LOGGER.debug("Schema literal:\n{}", schema.toString(true));
       return schema;
     }
