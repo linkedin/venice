@@ -1,185 +1,135 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.ADMIN_TOPIC_METADATA;
+import static com.linkedin.venice.zk.VeniceZkPaths.EXECUTION_IDS;
+import static com.linkedin.venice.zk.VeniceZkPaths.PARENT_OFFLINE_PUSHES;
+import static com.linkedin.venice.zk.VeniceZkPaths.ROUTERS;
+import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
+import static com.linkedin.venice.zk.VeniceZkPaths.STORE_CONFIGS;
+import static com.linkedin.venice.zk.VeniceZkPaths.STORE_GRAVEYARD;
+
 import com.linkedin.venice.ZkCopier.TreeNode;
 import java.util.ArrayList;
+import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class TestTreeNode {
+  private static final String CLUSTER_1 = "cluster1";
+  private static final String CLUSTER_2 = "cluster2";
+  private static final String BASE_PATH = "/venice-parent";
+  /** {@code root} is used in {@code testTreeNodeMethods()} to build the tree and then in {@code testTreeToList()} to convert the path tree to a list */
+  private TreeNode root = new TreeNode(BASE_PATH);
+
   @Test
-  public void testTreeNode() {
-    // testing listToTree()
-    String basePath = "/venice-parent";
-    TreeNode node = ZkCopier.listToTree(getPaths(), basePath);
-    testListToTree(node);
-
-    // testing TreeNode class methods
-    TreeNode root = new TreeNode(basePath);
-    testTreeNodeMethods(root);
-
-    // testing treeToList()
-    ArrayList<String> list = ZkCopier.treeToList(root);
-    testTreeToList(list);
-  }
-
-  public void testListToTree(TreeNode root) {
-    Assert.assertEquals(root.getChildren().size(), 3);
-    Assert.assertTrue(root.contains("storeConfigs"));
-    Assert.assertTrue(root.contains("cluster1"));
-    Assert.assertTrue(root.contains("cluster2"));
-    for (TreeNode child: root.getChildren().values()) {
-      switch (child.getVal()) {
-        case "storeConfigs":
-          Assert.assertEquals(child.getPath(), "/venice-parent/storeConfigs");
+  public void testListToTree() {
+    TreeNode testRoot = ZkCopier.pathsListToTree(getPaths(), BASE_PATH);
+    Assert.assertEquals(testRoot.getChildren().size(), 3);
+    Assert.assertTrue(testRoot.containsChild(STORE_CONFIGS));
+    Assert.assertTrue(testRoot.containsChild(CLUSTER_1));
+    Assert.assertTrue(testRoot.containsChild(CLUSTER_2));
+    for (TreeNode child: testRoot.getChildren().values()) {
+      switch (child.getName()) {
+        case STORE_CONFIGS:
           Assert.assertEquals(child.getChildren().size(), 0);
           break;
-        case "cluster1":
-          Assert.assertEquals(child.getPath(), "/venice-parent/cluster1");
+        case CLUSTER_1:
           Assert.assertEquals(child.getChildren().size(), 6);
-          Assert.assertTrue(child.contains("adminTopicMetadata"));
-          Assert.assertTrue(child.contains("executionids"));
-          Assert.assertTrue(child.contains("ParentOfflinePushes"));
-          Assert.assertTrue(child.contains("routers"));
-          Assert.assertTrue(child.contains("StoreGraveyard"));
-          Assert.assertTrue(child.contains("Stores"));
+          testContainsChildAsserts(child);
           for (TreeNode grandchild: child.getChildren().values()) {
-            Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster1/" + grandchild.getVal());
-            if (grandchild.getVal().equals("adminTopicMetadata")) {
+            if (grandchild.getName().equals(ADMIN_TOPIC_METADATA)) {
               Assert.assertEquals(grandchild.getChildren().size(), 2);
               for (TreeNode greatgrandchild: grandchild.getChildren().values()) {
-                Assert.assertEquals(
-                    greatgrandchild.getPath(),
-                    "/venice-parent/cluster1/adminTopicMetadata/" + greatgrandchild.getVal());
-                if (greatgrandchild.getVal().equals("file2")) {
+                if (greatgrandchild.getName().equals("file2")) {
                   Assert.assertEquals(greatgrandchild.getChildren().size(), 1);
-                  for (TreeNode greatgreatgrandchild: greatgrandchild.getChildren().values()) {
-                    Assert.assertEquals(
-                        greatgreatgrandchild.getPath(),
-                        "/venice-parent/cluster1/adminTopicMetadata/file2/" + greatgreatgrandchild.getVal());
-                    Assert.assertEquals(greatgreatgrandchild.getChildren().size(), 0);
-                  }
-                } else {
-                  Assert.assertEquals(greatgrandchild.getChildren().size(), 0);
                 }
               }
             }
           }
           break;
-        case "cluster2":
-          Assert.assertEquals(child.getPath(), "/venice-parent/cluster2");
+        case CLUSTER_2:
           Assert.assertEquals(child.getChildren().size(), 6);
-          Assert.assertTrue(child.contains("adminTopicMetadata"));
-          Assert.assertTrue(child.contains("executionids"));
-          Assert.assertTrue(child.contains("ParentOfflinePushes"));
-          Assert.assertTrue(child.contains("routers"));
-          Assert.assertTrue(child.contains("StoreGraveyard"));
-          Assert.assertTrue(child.contains("Stores"));
-          for (TreeNode grandchild: child.getChildren().values()) {
-            Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster2/" + grandchild.getVal());
-            Assert.assertEquals(grandchild.getChildren().size(), 0);
-          }
+          testContainsChildAsserts(child);
           break;
+        default:
+          Assert.fail("Unexpected child name: " + child.getName());
       }
     }
   }
 
-  public void testTreeNodeMethods(TreeNode root) {
-    Assert.assertEquals(root.getVal(), "/venice-parent");
-    Assert.assertEquals(root.getPath(), "/venice-parent");
+  @Test
+  public void testTreeNodeMethods() {
+    Assert.assertEquals(root.getName(), BASE_PATH);
     Assert.assertEquals(root.getChildren().size(), 0);
-    root.addChild("storeConfigs");
-    root.addChild("cluster1");
-    root.addChild("cluster2");
+    root.addChild(STORE_CONFIGS);
+    root.addChild(CLUSTER_1);
+    root.addChild(CLUSTER_2);
     Assert.assertEquals(root.getChildren().size(), 3);
-    Assert.assertTrue(root.contains("storeConfigs"));
-    Assert.assertTrue(root.contains("cluster1"));
-    Assert.assertTrue(root.contains("cluster2"));
+    Assert.assertTrue(root.containsChild(STORE_CONFIGS));
+    Assert.assertTrue(root.containsChild(CLUSTER_1));
+    Assert.assertTrue(root.containsChild(CLUSTER_2));
     for (TreeNode child: root.getChildren().values()) {
-      switch (child.getVal()) {
-        case "storeConfigs":
-          Assert.assertEquals(child.getPath(), "/venice-parent/storeConfigs");
+      switch (child.getName()) {
+        case STORE_CONFIGS:
           Assert.assertEquals(child.getChildren().size(), 0);
           break;
-        case "cluster1":
-          Assert.assertEquals(child.getPath(), "/venice-parent/cluster1");
+        case CLUSTER_1:
           Assert.assertEquals(child.getChildren().size(), 0);
-          child.addChild("storeConfigs");
-          child.addChild("adminTopicMetadata");
-          child.addChild("executionids");
-          child.addChild("ParentOfflinePushes");
-          child.addChild("routers");
-          child.addChild("StoreGraveyard");
-          child.addChild("Stores");
+          child.addChild(STORE_CONFIGS);
+          child.addChild(ADMIN_TOPIC_METADATA);
+          child.addChild(EXECUTION_IDS);
+          child.addChild(PARENT_OFFLINE_PUSHES);
+          child.addChild(ROUTERS);
+          child.addChild(STORES);
+          child.addChild(STORE_GRAVEYARD);
           Assert.assertEquals(child.getChildren().size(), 7);
-          Assert.assertTrue(child.contains("storeConfigs"));
-          child.deleteChild("storeConfigs");
+          Assert.assertTrue(child.containsChild(STORE_CONFIGS));
+          child.deleteChild(STORE_CONFIGS);
           Assert.assertEquals(child.getChildren().size(), 6);
-          Assert.assertFalse(child.contains("storeConfigs"));
-          Assert.assertTrue(child.contains("adminTopicMetadata"));
-          Assert.assertTrue(child.contains("executionids"));
-          Assert.assertTrue(child.contains("ParentOfflinePushes"));
-          Assert.assertTrue(child.contains("routers"));
-          Assert.assertTrue(child.contains("StoreGraveyard"));
-          Assert.assertTrue(child.contains("Stores"));
+          Assert.assertFalse(child.containsChild(STORE_CONFIGS));
+          testContainsChildAsserts(child);
           for (TreeNode grandchild: child.getChildren().values()) {
-            Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster1/" + grandchild.getVal());
             Assert.assertEquals(grandchild.getChildren().size(), 0);
-            if (grandchild.getVal().equals("adminTopicMetadata")) {
+            if (grandchild.getName().equals(ADMIN_TOPIC_METADATA)) {
               grandchild.addChild("file1");
               grandchild.addChild("file2");
               Assert.assertEquals(grandchild.getChildren().size(), 2);
               for (TreeNode greatgrandchild: grandchild.getChildren().values()) {
-                Assert.assertEquals(
-                    greatgrandchild.getPath(),
-                    "/venice-parent/cluster1/adminTopicMetadata/" + greatgrandchild.getVal());
-                if (greatgrandchild.getVal().equals("file2")) {
+                Assert.assertEquals(greatgrandchild.getChildren().size(), 0);
+                if (greatgrandchild.getName().equals("file2")) {
                   greatgrandchild.addChild("file3");
                   Assert.assertEquals(greatgrandchild.getChildren().size(), 1);
-                  for (TreeNode greatgreatgrandchild: greatgrandchild.getChildren().values()) {
-                    Assert.assertEquals(
-                        greatgreatgrandchild.getPath(),
-                        "/venice-parent/cluster1/adminTopicMetadata/file2/" + greatgreatgrandchild.getVal());
-                    Assert.assertEquals(greatgreatgrandchild.getChildren().size(), 0);
-                  }
-                } else {
-                  Assert.assertEquals(greatgrandchild.getChildren().size(), 0);
                 }
               }
             }
           }
           break;
-        case "cluster2":
-          Assert.assertEquals(child.getPath(), "/venice-parent/cluster2");
+        case CLUSTER_2:
           Assert.assertEquals(child.getChildren().size(), 0);
-          child.addChild("storeConfigs");
-          child.addChild("adminTopicMetadata");
-          child.addChild("executionids");
-          child.addChild("ParentOfflinePushes");
-          child.addChild("routers");
-          child.addChild("StoreGraveyard");
-          child.addChild("Stores");
+          child.addChild(STORE_CONFIGS);
+          child.addChild(ADMIN_TOPIC_METADATA);
+          child.addChild(EXECUTION_IDS);
+          child.addChild(PARENT_OFFLINE_PUSHES);
+          child.addChild(ROUTERS);
+          child.addChild(STORES);
+          child.addChild(STORE_GRAVEYARD);
           Assert.assertEquals(child.getChildren().size(), 7);
-          Assert.assertTrue(child.contains("storeConfigs"));
-          child.deleteChild("storeConfigs");
+          Assert.assertTrue(child.containsChild(STORE_CONFIGS));
+          child.deleteChild(STORE_CONFIGS);
           Assert.assertEquals(child.getChildren().size(), 6);
-          Assert.assertFalse(child.contains("storeConfigs"));
-          Assert.assertTrue(child.contains("adminTopicMetadata"));
-          Assert.assertTrue(child.contains("executionids"));
-          Assert.assertTrue(child.contains("ParentOfflinePushes"));
-          Assert.assertTrue(child.contains("routers"));
-          Assert.assertTrue(child.contains("StoreGraveyard"));
-          Assert.assertTrue(child.contains("Stores"));
-          for (TreeNode grandchild: child.getChildren().values()) {
-            Assert.assertEquals(grandchild.getPath(), "/venice-parent/cluster2/" + grandchild.getVal());
-            Assert.assertEquals(grandchild.getChildren().size(), 0);
-          }
+          Assert.assertFalse(child.containsChild(STORE_CONFIGS));
+          testContainsChildAsserts(child);
           break;
+        default:
+          Assert.fail("Unexpected child name: " + child.getName());
       }
     }
   }
 
-  public void testTreeToList(ArrayList<String> list) {
+  @Test
+  public void testTreeToList() {
+    List<String> list = ZkCopier.pathsTreeToList(root);
     Assert.assertEquals(list.size(), 19);
     Assert.assertTrue(list.contains("/venice-parent"));
     Assert.assertTrue(list.contains("/venice-parent/storeConfigs"));
@@ -204,13 +154,22 @@ public class TestTreeNode {
     Assert.assertTrue(list.contains("/venice-parent/cluster2/Stores"));
   }
 
-  public ArrayList<String> getPaths() {
-    ArrayList<String> paths = new ArrayList<>();
+  public void testContainsChildAsserts(TreeNode child) {
+    Assert.assertTrue(child.containsChild(ADMIN_TOPIC_METADATA));
+    Assert.assertTrue(child.containsChild(EXECUTION_IDS));
+    Assert.assertTrue(child.containsChild(PARENT_OFFLINE_PUSHES));
+    Assert.assertTrue(child.containsChild(ROUTERS));
+    Assert.assertTrue(child.containsChild(STORES));
+    Assert.assertTrue(child.containsChild(STORE_GRAVEYARD));
+  }
+
+  public List<String> getPaths() {
+    List<String> paths = new ArrayList<>();
     paths.add("/venice-parent/storeConfigs");
     paths.add("/venice-parent/cluster1");
     paths.add("/venice-parent/cluster1/adminTopicMetadata");
     paths.add("/venice-parent/cluster1/adminTopicMetadata/file1");
-    paths.add("/venice-parent/cluster1/adminTopicMetadata/file2/file3"); // tests both /file2 and /file/file3
+    paths.add("/venice-parent/cluster1/adminTopicMetadata/file2/file3"); // tests both /file2 and /file2/file3
     paths.add("/venice-parent/cluster1/executionids");
     paths.add("/venice-parent/cluster1/ParentOfflinePushes");
     paths.add("/venice-parent/cluster1/routers");

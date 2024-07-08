@@ -1,3 +1,10 @@
+/venice
+/venice/storeConfigs
+/venice/cluster1
+/venice/cluster1/storeConfigs
+/venice/cluster1/adminTopicMetadata
+/venice/cluster1/adminTopicMetadata/file1
+/venice/cluster1/adminTopicMetadata/file2/file3
 /venice-parent
 /venice-parent/storeConfigs
 /venice-parent/cluster1
@@ -25,10 +32,3 @@
 /venice-parent/helix-cluster/adminTopicMetadata
 /venice-parent/helix-cluster/adminTopicMetadata/file1
 /venice-parent/helix-cluster/adminTopicMetadata/file2/file3
-/venice
-/venice/storeConfigs
-/venice/cluster1
-/venice/cluster1/storeConfigs
-/venice/cluster1/adminTopicMetadata
-/venice/cluster1/adminTopicMetadata/file1
-/venice/cluster1/adminTopicMetadata/file2/file3
