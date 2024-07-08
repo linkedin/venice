@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.EXECUTION_IDS;
+
 import com.linkedin.venice.controller.kafka.consumer.StringToLongMapJSONSerializer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.ZkDataAccessException;
@@ -20,7 +22,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
-  private static final String EXECUTION_ID_DIR = "/executionids";
+  private static final String EXECUTION_ID_DIR = "/" + EXECUTION_IDS;
   private static final int ZK_RETRY_COUNT = 3;
   private static final Logger LOGGER = LogManager.getLogger(ZkExecutionIdAccessor.class);
   private final ZkClient zkclient;

@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.STORE_CONFIGS;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.system.store.MetaStoreWriter;
@@ -24,7 +26,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class ZkStoreConfigAccessor {
   private static final Logger LOGGER = LogManager.getLogger(ZkStoreConfigAccessor.class);
-  private static final String ROOT_PATH = "/storeConfigs";
+  private static final String ROOT_PATH = "/" + STORE_CONFIGS;
 
   private final ZkClient zkClient;
   private final ZkBaseDataAccessor<StoreConfig> dataAccessor;

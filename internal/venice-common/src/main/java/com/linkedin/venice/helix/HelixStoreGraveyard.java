@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.STORE_GRAVEYARD;
+
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -26,7 +28,7 @@ import org.apache.zookeeper.data.Stat;
 public class HelixStoreGraveyard implements StoreGraveyard {
   private static final Logger LOGGER = LogManager.getLogger(HelixStoreGraveyard.class);
 
-  public static final String STORE_GRAVEYARD_PATH = "/StoreGraveyard";
+  public static final String STORE_GRAVEYARD_PATH = "/" + STORE_GRAVEYARD;
 
   protected ZkBaseDataAccessor<Store> dataAccessor;
   // TODO we could put the Store gravyard znode to upper level to make it non-cluster-specific.
