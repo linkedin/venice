@@ -21,6 +21,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFileWithUserSchema;
@@ -39,6 +40,7 @@ import com.linkedin.venice.hadoop.partitioner.NonDeterministicVenicePartitioner;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -442,8 +444,10 @@ public class TestVenicePushJob {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
 
     // disable WriteCompute in store
-    params.setWriteComputationEnabled(false);
-    params.setIncrementalPushEnabled(true);
+    params.setWriteComputationEnabled(false)
+        .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
+        .setHybridRewindSeconds(Time.SECONDS_PER_DAY)
+        .setHybridOffsetLagThreshold(1000);
 
     controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
 
@@ -469,10 +473,14 @@ public class TestVenicePushJob {
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setWriteComputationEnabled(true);
-    params.setIncrementalPushEnabled(false);
+    params.setWriteComputationEnabled(true)
+        .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
+        .setHybridRewindSeconds(Time.SECONDS_PER_DAY)
+        .setHybridOffsetLagThreshold(1000);
 
-    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
+    String valueSchemaStr = loadFileAsString("UserValue.avsc");
+
+    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", valueSchemaStr, params);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
@@ -560,7 +568,9 @@ public class TestVenicePushJob {
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
-                .setIncrementalPushEnabled(true)));
+                .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
+                .setHybridRewindSeconds(Time.SECONDS_PER_DAY)
+                .setHybridOffsetLagThreshold(1000)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     // create a batch version.
@@ -629,8 +639,9 @@ public class TestVenicePushJob {
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
-                .setIncrementalPushEnabled(true)
-                .setWriteComputationEnabled(true)));
+                .setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
+                .setHybridRewindSeconds(Time.SECONDS_PER_DAY)
+                .setHybridOffsetLagThreshold(1000)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, "true");
     // create a batch version.

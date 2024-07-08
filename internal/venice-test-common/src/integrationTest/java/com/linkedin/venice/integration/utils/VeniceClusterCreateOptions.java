@@ -20,6 +20,7 @@ import java.util.Properties;
 
 public class VeniceClusterCreateOptions {
   private final String clusterName;
+  private final boolean multiRegion;
   private final String regionName;
   private final Map<String, String> clusterToD2;
   private final Map<String, String> clusterToServerD2;
@@ -46,6 +47,7 @@ public class VeniceClusterCreateOptions {
 
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
+    this.multiRegion = builder.multiRegion;
     this.regionName = builder.regionName;
     this.clusterToD2 = builder.clusterToD2;
     this.clusterToServerD2 = builder.clusterToServerD2;
@@ -73,6 +75,10 @@ public class VeniceClusterCreateOptions {
 
   public String getClusterName() {
     return clusterName;
+  }
+
+  public boolean isMultiRegion() {
+    return multiRegion;
   }
 
   public String getRegionName() {
@@ -246,6 +252,7 @@ public class VeniceClusterCreateOptions {
 
   public static class Builder {
     private String clusterName;
+    private boolean multiRegion;
     private String regionName;
     private Map<String, String> clusterToD2 = null;
     private Map<String, String> clusterToServerD2 = null;
@@ -273,6 +280,11 @@ public class VeniceClusterCreateOptions {
 
     public Builder clusterName(String clusterName) {
       this.clusterName = clusterName;
+      return this;
+    }
+
+    public Builder multiRegion(boolean multiRegion) {
+      this.multiRegion = multiRegion;
       return this;
     }
 

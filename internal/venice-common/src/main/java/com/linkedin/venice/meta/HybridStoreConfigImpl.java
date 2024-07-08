@@ -14,8 +14,10 @@ import java.util.Objects;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class HybridStoreConfigImpl implements HybridStoreConfig {
+  @Deprecated
   public static final long DEFAULT_REWIND_TIME_IN_SECONDS = Time.SECONDS_PER_DAY;
   public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
+  @Deprecated
   public static final long DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD = 1000L;
 
   private final StoreHybridConfig hybridConfig;

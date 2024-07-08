@@ -1,5 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
+
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -19,37 +21,81 @@ import org.testng.annotations.Test;
 
 public class TestWritePathComputation {
   private static final long GET_LEADER_CONTROLLER_TIMEOUT = 20 * Time.MS_PER_SECOND;
+  private static final String KEY_SCHEMA_STR = "\"string\"";
+  private static final String VALUE_FIELD_NAME = "int_field";
+  private static final String SECOND_VALUE_FIELD_NAME = "opt_int_field";
+  private static final String VALUE_SCHEMA_V2_STR = "{\n" + "\"type\": \"record\",\n"
+      + "\"name\": \"TestValueSchema\",\n" + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n"
+      + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\", \"default\": 10},\n"
+      + "{\"name\": \"" + SECOND_VALUE_FIELD_NAME + "\", \"type\": [\"null\", \"int\"], \"default\": null}]\n" + "}";
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFeatureFlagSingleDC() {
-    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder(1).numberOfControllers(1)
+    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder().setNumberOfClusters(1)
+        .numberOfControllers(1)
         .numberOfServers(1)
         .numberOfRouters(0)
         .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
         .build();
     try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(options)) {
       String clusterName = multiClusterWrapper.getClusterNames()[0];
+      VeniceControllerWrapper childController = multiClusterWrapper.getLeaderController(clusterName);
       String storeName = "test-store0";
+      String storeName2 = "test-store2";
 
       // Create store
-      Admin admin =
+      Admin childAdmin =
           multiClusterWrapper.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getVeniceAdmin();
-      admin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
-      Assert.assertTrue(admin.hasStore(clusterName, storeName));
-      Assert.assertFalse(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
+      childAdmin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
+      childAdmin.createStore(clusterName, storeName2, "tester", KEY_SCHEMA_STR, VALUE_SCHEMA_V2_STR);
+      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(childAdmin.hasStore(clusterName, storeName));
+        Assert.assertFalse(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
+      });
 
       // Set flag
-      String controllerUrl =
-          multiClusterWrapper.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getControllerUrl();
-      try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl)) {
-        TestUtils.assertCommand(
-            controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true)),
-            "Write Compute should be enabled");
-        Assert.assertTrue(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
+      String childControllerUrl = childController.getControllerUrl();
+      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl)) {
+        ControllerResponse response =
+            childControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+        Assert.assertTrue(response.isError());
+        Assert.assertTrue(response.getError().contains("Write computation is only supported for hybrid stores"));
+
+        ControllerResponse response2 = childControllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(1000)
+                .setHybridOffsetLagThreshold(1000)
+                .setWriteComputationEnabled(true));
+        Assert.assertTrue(response2.isError());
+        Assert.assertTrue(response2.getError().contains("top level field probably missing defaults"));
+
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+          Assert.assertFalse(
+              childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled(),
+              "Write Compute should not be enabled before the value schema is not a Record.");
+        });
+
+        assertCommand(
+            childControllerClient.updateStore(
+                storeName2,
+                new UpdateStoreQueryParams().setHybridRewindSeconds(1000)
+                    .setHybridOffsetLagThreshold(1000)
+                    .setWriteComputationEnabled(true)));
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+          Assert.assertTrue(childAdmin.getStore(clusterName, storeName2).isWriteComputationEnabled());
+        });
 
         // Reset flag
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
-        Assert.assertFalse(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
+        assertCommand(
+            childControllerClient
+                .updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false)));
+        assertCommand(
+            childControllerClient
+                .updateStore(storeName2, new UpdateStoreQueryParams().setWriteComputationEnabled(false)));
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+          Assert.assertFalse(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
+          Assert.assertFalse(childAdmin.getStore(clusterName, storeName2).isWriteComputationEnabled());
+        });
       }
     }
   }
@@ -63,12 +109,14 @@ public class TestWritePathComputation {
       VeniceControllerWrapper parentController = twoLayerMultiRegionMultiClusterWrapper.getParentControllers().get(0);
       String clusterName = multiCluster.getClusterNames()[0];
       String storeName = "test-store0";
+      String storeName2 = "test-store2";
 
       // Create store
       Admin parentAdmin =
           twoLayerMultiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName).getVeniceAdmin();
       Admin childAdmin = multiCluster.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       parentAdmin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
+      parentAdmin.createStore(clusterName, storeName2, "tester", KEY_SCHEMA_STR, VALUE_SCHEMA_V2_STR);
       TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
         Assert.assertTrue(parentAdmin.hasStore(clusterName, storeName));
         Assert.assertTrue(childAdmin.hasStore(clusterName, storeName));
@@ -82,7 +130,16 @@ public class TestWritePathComputation {
         ControllerResponse response = parentControllerClient
             .updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
         Assert.assertTrue(response.isError());
-        Assert.assertTrue(response.getError().contains("top level field probably missing defaults"));
+        Assert.assertTrue(response.getError().contains("Write computation is only supported for hybrid stores"));
+
+        ControllerResponse response2 = parentControllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(1000)
+                .setHybridOffsetLagThreshold(1000)
+                .setWriteComputationEnabled(true));
+        Assert.assertTrue(response2.isError());
+        Assert.assertTrue(response2.getError().contains("top level field probably missing defaults"));
+
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
           Assert.assertFalse(
               parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled(),
@@ -92,13 +149,29 @@ public class TestWritePathComputation {
               "Write Compute should not be enabled before the value schema is not a Record.");
         });
 
+        assertCommand(
+            parentControllerClient.updateStore(
+                storeName2,
+                new UpdateStoreQueryParams().setHybridRewindSeconds(1000)
+                    .setHybridOffsetLagThreshold(1000)
+                    .setWriteComputationEnabled(true)));
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+          Assert.assertTrue(parentAdmin.getStore(clusterName, storeName2).isWriteComputationEnabled());
+          Assert.assertTrue(childAdmin.getStore(clusterName, storeName2).isWriteComputationEnabled());
+        });
+
         // Reset flag
-        response = parentControllerClient
-            .updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
-        Assert.assertFalse(response.isError(), "No error is expected to disable Write Compute (that was not enabled)");
+        assertCommand(
+            parentControllerClient
+                .updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false)));
+        assertCommand(
+            parentControllerClient
+                .updateStore(storeName2, new UpdateStoreQueryParams().setWriteComputationEnabled(false)));
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
           Assert.assertFalse(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
           Assert.assertFalse(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
+          Assert.assertFalse(parentAdmin.getStore(clusterName, storeName2).isWriteComputationEnabled());
+          Assert.assertFalse(childAdmin.getStore(clusterName, storeName2).isWriteComputationEnabled());
         });
       }
     }

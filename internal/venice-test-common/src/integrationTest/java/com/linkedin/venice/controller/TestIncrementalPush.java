@@ -11,6 +11,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -59,7 +60,7 @@ public class TestIncrementalPush {
     cluster.getNewStore(storeName);
     long storageQuota = 2L * PARTITION_SIZE;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setIncrementalPushEnabled(true)
+    params.setHybridDataReplicationPolicy(DataReplicationPolicy.NONE)
         .setHybridRewindSeconds(1)
         .setHybridOffsetLagThreshold(1)
         .setStorageQuotaInByte(storageQuota)

@@ -15,7 +15,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_S
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ClUSTER_HEALTH_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DATA_RECOVERY;
@@ -404,9 +403,6 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.post(UPLOAD_PUSH_JOB_STATUS.getPath(), jobRoutes.uploadPushJobStatus(admin));
     httpService.post(SEND_PUSH_JOB_DETAILS.getPath(), jobRoutes.sendPushJobDetails(admin));
-    httpService.post(
-        CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getPath(),
-        storesRoutes.enableNativeReplicationForCluster(admin));
     httpService.post(
         CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER.getPath(),
         storesRoutes.enableActiveActiveReplicationForCluster(admin));

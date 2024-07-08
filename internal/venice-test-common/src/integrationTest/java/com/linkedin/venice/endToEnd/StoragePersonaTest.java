@@ -15,10 +15,8 @@ import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.utils.TestUtils;
@@ -26,7 +24,6 @@ import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -36,8 +33,6 @@ import org.testng.annotations.Test;
 
 public class StoragePersonaTest {
   private VeniceClusterWrapper venice;
-  private ZkServerWrapper parentZk;
-  private VeniceControllerWrapper parentController;
   private ControllerClient controllerClient;
 
   /**
@@ -47,21 +42,21 @@ public class StoragePersonaTest {
    */
   @BeforeClass(alwaysRun = true)
   public void setUp() {
-    Properties extraProperties = new Properties();
-    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 1000000, false, false, extraProperties);
-    parentZk = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), parentZk, venice.getPubSubBrokerWrapper())
-            .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+    venice = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .partitionSize(1000000)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
             .build());
-    controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+    controllerClient = new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs());
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(controllerClient);
-    Utils.closeQuietlyWithErrorLogged(parentController);
-    Utils.closeQuietlyWithErrorLogged(parentZk);
     Utils.closeQuietlyWithErrorLogged(venice);
   }
 

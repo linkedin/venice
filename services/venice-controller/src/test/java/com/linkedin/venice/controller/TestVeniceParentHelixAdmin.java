@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -21,7 +20,6 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
@@ -54,9 +52,6 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
-import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -89,7 +84,6 @@ import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -155,102 +149,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         true,
         false,
         Optional.empty());
-  }
-
-  /**
-   * Partially stubbed class to verify async setup behavior.
-   */
-  private static class AsyncSetupMockVeniceParentHelixAdmin extends VeniceParentHelixAdmin {
-    private Map<String, Store> systemStores = new VeniceConcurrentHashMap<>();
-
-    public AsyncSetupMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
-      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
-    }
-
-    public boolean isAsyncSetupRunning(String clusterName) {
-      return asyncSetupEnabledMap.get(clusterName);
-    }
-
-    @Override
-    public void createStore(
-        String clusterName,
-        String storeName,
-        String owner,
-        String keySchema,
-        String valueSchema,
-        boolean isSystemStore) {
-      if (!(VeniceSystemStoreUtils.isSystemStore(storeName) && isSystemStore)) {
-        throw new VeniceException("Invalid store name and isSystemStore combination. Got store name: " + storeName);
-      }
-      if (systemStores.containsKey(storeName)) {
-        // no op
-        return;
-      }
-      Store newStore = new ZKStore(
-          storeName,
-          owner,
-          System.currentTimeMillis(),
-          PersistenceType.IN_MEMORY,
-          RoutingStrategy.HASH,
-          ReadStrategy.ANY_OF_ONLINE,
-          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-          1);
-      systemStores.put(storeName, newStore);
-    }
-
-    @Override
-    public Store getStore(String clusterName, String storeName) {
-      if (!systemStores.containsKey(storeName)) {
-        return null;
-      }
-      return systemStores.get(storeName).cloneStore();
-    }
-
-    @Override
-    public void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
-      Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
-      Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
-      Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
-      Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
-      Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
-
-      if (!systemStores.containsKey(storeName)) {
-        throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
-      }
-      if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
-        final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
-        final DataReplicationPolicy finalHybridDataReplicationPolicy =
-            hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE);
-        final BufferReplayPolicy finalHybridBufferReplayPolicy =
-            hybridBufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP);
-        systemStores.get(storeName)
-            .setHybridStoreConfig(
-                new HybridStoreConfigImpl(
-                    hybridRewindSeconds.get(),
-                    hybridOffsetLagThreshold.get(),
-                    finalHybridTimeLagThreshold,
-                    finalHybridDataReplicationPolicy,
-                    finalHybridBufferReplayPolicy));
-      }
-    }
-
-    @Override
-    public Version incrementVersionIdempotent(
-        String clusterName,
-        String storeName,
-        String pushJobId,
-        int numberOfPartition,
-        int replicationFactor) {
-      if (!systemStores.containsKey(storeName)) {
-        throw new VeniceNoStoreException("Cannot add version to store " + storeName + " because it's missing.");
-      }
-      Version version = new VersionImpl(storeName, 1, "test-id");
-      version.setReplicationFactor(replicationFactor);
-      List<Version> versions = new ArrayList<>();
-      versions.add(version);
-      systemStores.get(storeName).setVersions(versions);
-      return version;
-    }
   }
 
   @Test
@@ -1745,7 +1643,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
     UpdateStoreQueryParams storeQueryParams1 =
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true).setBlobTransferEnabled(true);
+        new UpdateStoreQueryParams().setChunkingEnabled(true).setBlobTransferEnabled(true);
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.updateStore(clusterName, storeName, storeQueryParams1);
 
@@ -1765,7 +1663,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    assertEquals(updateStore.incrementalPushEnabled, true);
+    Assert.assertTrue(updateStore.chunkingEnabled);
     Assert.assertTrue(updateStore.blobTransferEnabled);
 
     long readQuota = 100L;
@@ -1774,7 +1672,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, String> testPartitionerParams = new HashMap<>();
 
     UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setEnableReads(readability)
-        .setIncrementalPushEnabled(false)
         .setPartitionCount(64)
         .setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner")
         .setPartitionerParams(testPartitionerParams)
@@ -1891,68 +1788,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         updateStore.nativeReplicationSourceFabric.toString(),
         "dc1",
         "Native replication source fabric does not match after updating the store!");
-  }
-
-  @Test
-  public void testDisableHybridConfigWhenActiveActiveOrIncPushConfigIsEnabled() {
-    String storeName = Utils.getUniqueString("testUpdateStore");
-    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
-
-    store.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            1000,
-            100,
-            -1,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
-    store.setActiveActiveReplicationEnabled(true);
-    store.setIncrementalPushEnabled(true);
-    store.setNativeReplicationEnabled(true);
-    store.setChunkingEnabled(true);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
-
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
-
-    parentAdmin.initStorageCluster(clusterName);
-    // When user disable hybrid but also try to manually turn on A/A or Incremental Push, update operation should fail
-    // loudly.
-    assertThrows(
-        () -> parentAdmin.updateStore(
-            clusterName,
-            storeName,
-            new UpdateStoreQueryParams().setHybridRewindSeconds(-1)
-                .setHybridOffsetLagThreshold(-1)
-                .setActiveActiveReplicationEnabled(true)));
-    assertThrows(
-        () -> parentAdmin.updateStore(
-            clusterName,
-            storeName,
-            new UpdateStoreQueryParams().setHybridRewindSeconds(-1)
-                .setHybridOffsetLagThreshold(-1)
-                .setIncrementalPushEnabled(true)));
-
-    parentAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(-1).setHybridRewindSeconds(-1));
-
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
-    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertFalse(internalAdmin.isHybrid(updateStore.getHybridStoreConfig()));
-    Assert.assertFalse(updateStore.incrementalPushEnabled);
-    Assert.assertFalse(updateStore.activeActiveReplicationEnabled);
   }
 
   @Test
@@ -2599,7 +2434,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testHybridAndIncrementalUpdateStoreCommands() {
+  public void testHybridUpdatesPartitionCount() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -2635,19 +2470,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
     assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
-
-    store.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            60,
-            20000,
-            0,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
-    // Incremental push can be enabled on a hybrid store, default inc push policy is inc push to RT now
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
-
-    // veniceWriter.put will be called again for the second update store command
-    verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    assertEquals(updateStore.nativeReplicationSourceFabric.toString(), "dc-hybrid-nr");
+    assertEquals(updateStore.partitionNum, 1024);
   }
 
   @Test
