@@ -8,7 +8,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_FILE_TRANSFER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT_STORE_LIST;
@@ -77,7 +76,7 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciClientMemoryLimitTest {
-  private static final int TEST_TIMEOUT = 240_000;
+  private static final int TEST_TIMEOUT = 180_000;
   private VeniceClusterWrapper venice;
   private D2Client d2Client;
 
@@ -130,8 +129,7 @@ public class DaVinciClientMemoryLimitTest {
         .put(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, "10MB")
         .put(INGESTION_MEMORY_LIMIT_STORE_LIST, String.join(",", memoryLimitStores))
         .put(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, useDaVinciSpecificExecutionStatusForError)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
-        .put(DAVINCI_P2P_FILE_TRANSFER_PORT, TestUtils.getFreePort());
+        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort());
     if (ingestionIsolationEnabledInDaVinci) {
       venicePropertyBuilder.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);
       venicePropertyBuilder.put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, TestUtils.getFreePort());

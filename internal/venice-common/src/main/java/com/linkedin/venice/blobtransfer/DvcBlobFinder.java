@@ -73,4 +73,8 @@ public class DvcBlobFinder implements BlobFinder {
     LOGGER.error(errorMsg, throwable);
     return errorResponse;
   }
+
+  public void close() throws IOException {
+    transportClient.close();
+  }
 }

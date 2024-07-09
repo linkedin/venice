@@ -1,5 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -13,14 +14,16 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.File;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -35,20 +38,22 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;
+  private final VeniceConfigLoader configLoader;
   private final Map<String, AtomicReference<AbstractStorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
-  private static final ScheduledExecutorService blobTransferScheduler = Executors.newScheduledThreadPool(1);
   private final BlobTransferManager blobTransferManager;
 
   public DefaultIngestionBackend(
       StorageMetadataService storageMetadataService,
       KafkaStoreIngestionService storeIngestionService,
       StorageService storageService,
-      BlobTransferManager blobTransferManager) {
+      BlobTransferManager blobTransferManager,
+      VeniceConfigLoader configLoader) {
     this.storageMetadataService = storageMetadataService;
     this.storeIngestionService = storeIngestionService;
     this.storageService = storageService;
     this.blobTransferManager = blobTransferManager;
+    this.configLoader = configLoader;
   }
 
   @Override
@@ -88,56 +93,62 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * Blob transfer should be enabled to boostrap from blobs, and it currently only supports batch-stores.
    */
   private CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
-    if (!store.isBlobTransferEnabled() || store.isHybrid()) {
+    if (!store.isBlobTransferEnabled() || store.isHybrid() || blobTransferManager == null) {
       return CompletableFuture.completedFuture(null);
     }
 
     String storeName = store.getName();
     CompletionStage<InputStream> p2pTransfer = blobTransferManager.get(storeName, versionNumber, partitionId);
+
+    LOGGER
+        .info("Bootstrapping from blobs for store {}, version {}, partition {}", storeName, versionNumber, partitionId);
+
     CompletableFuture<Void> result = new CompletableFuture<>();
 
-    blobTransferScheduler.schedule(() -> {
-      if (!result.isDone()) {
-        handleDeleteAndComplete(
-            storeName,
-            versionNumber,
-            partitionId,
-            new TimeoutException("Blob Transfer timed out after 30 minutes"),
-            result);
-      }
-    }, 30, TimeUnit.MINUTES);
-
-    p2pTransfer.thenAccept(inputStream -> {
-      if (!result.isDone()) {
-        result.complete(null);
-      }
-    }).exceptionally(throwable -> {
-      if (!result.isDone()) {
-        handleDeleteAndComplete(storeName, versionNumber, partitionId, throwable, result);
-      }
-      return null;
-    });
+    try {
+      p2pTransfer.toCompletableFuture().get(30, TimeUnit.MINUTES);
+      result.complete(null);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed bootstrapping from blobs for store {}, version {}, partition {}",
+          storeName,
+          versionNumber,
+          partitionId,
+          e);
+      deleteBlobFiles(storeName, versionNumber, partitionId).thenAccept(deleteResult -> result.completeExceptionally(e))
+          .exceptionally(throwable -> {
+            result.completeExceptionally(new RuntimeException("Blob deletion failed: " + throwable, e));
+            return null;
+          });
+    }
 
     return result;
   }
 
-  private void handleDeleteAndComplete(
-      String storeName,
-      int versionNumber,
-      int partitionId,
-      Throwable throwable,
-      CompletableFuture<Void> result) {
-    blobTransferManager.delete(storeName, versionNumber, partitionId)
-        .thenAccept(deleteResult -> result.completeExceptionally(throwable))
-        .exceptionally(deleteThrowable -> {
-          if (deleteThrowable != null) {
-            result.completeExceptionally(
-                new RuntimeException("Blob transfer failed and deletion failed: " + deleteThrowable, throwable));
-          } else {
-            result.completeExceptionally(throwable);
-          }
-          return null;
-        });
+  /**
+   * Deletes the files associated with the specified store, version, and partition when a blob transfer fails.
+   *
+   * @param storeName the name of the store
+   * @param version the version number of the store
+   * @param partition the partition ID
+   * @return a CompletableFuture that completes when the deletion process is done
+   */
+  private CompletableFuture<Void> deleteBlobFiles(String storeName, int version, int partition) {
+    return CompletableFuture.runAsync(() -> {
+      Path path = null;
+      String baseDir = configLoader.getVeniceServerConfig().getRocksDBPath();
+      try {
+        path = Paths.get(baseDir, storeName, String.valueOf(version), String.valueOf(partition));
+        if (Files.exists(path)) {
+          Files.walk(path).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+          LOGGER.info("Deleted blobs at path: {}", path);
+        } else {
+          LOGGER.warn("Blob path does not exist: {}", path);
+        }
+      } catch (Exception e) {
+        LOGGER.error("Error occurred while deleting blobs at path: {} - {}", path, e.getMessage());
+      }
+    });
   }
 
   @Override

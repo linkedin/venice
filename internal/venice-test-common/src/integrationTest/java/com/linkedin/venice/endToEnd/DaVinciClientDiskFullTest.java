@@ -6,7 +6,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_FILE_TRANSFER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
@@ -149,8 +148,7 @@ public class DaVinciClientDiskFullTest {
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .put(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, useDaVinciSpecificExecutionStatusForError)
         .put(SERVER_DISK_FULL_THRESHOLD, getDiskFullThreshold(largePushRecordCount, largePushRecordMinSize))
-        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
-        .put(DAVINCI_P2P_FILE_TRANSFER_PORT, TestUtils.getFreePort());
+        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort());
     return venicePropertyBuilder.build();
   }
 

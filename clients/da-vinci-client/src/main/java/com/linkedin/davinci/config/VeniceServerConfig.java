@@ -5,7 +5,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOT
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_FILE_TRANSFER_PORT;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -469,7 +468,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
   private final int dvcP2pBlobTransferPort;
-  private final int dvcP2pFileTransferPort;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -493,7 +491,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
 
     dvcP2pBlobTransferPort = serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_PORT, -1);
-    dvcP2pFileTransferPort = serverProperties.getInt(DAVINCI_P2P_FILE_TRANSFER_PORT, -1);
 
     String lfThreadPoolStrategyStr = serverProperties.getString(
         LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
@@ -865,10 +862,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getDvcP2pBlobTransferPort() {
     return dvcP2pBlobTransferPort;
-  }
-
-  public int getDvcP2pFileTransferPort() {
-    return dvcP2pFileTransferPort;
   }
 
   /**

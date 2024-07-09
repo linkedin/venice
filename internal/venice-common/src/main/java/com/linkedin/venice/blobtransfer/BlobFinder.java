@@ -1,5 +1,8 @@
 package com.linkedin.venice.blobtransfer;
 
+import java.io.IOException;
+
+
 public interface BlobFinder {
   /**
    * This method will look through the partitions for the store and version provided until it finds the partition
@@ -7,4 +10,6 @@ public interface BlobFinder {
    */
   BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partitionId);
 
+  default void close() throws IOException {
+  }
 }

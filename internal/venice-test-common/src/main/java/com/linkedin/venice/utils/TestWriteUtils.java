@@ -1,7 +1,6 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_FILE_TRANSFER_PORT;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
@@ -656,7 +655,6 @@ public class TestWriteUtils {
     props.put(VENICE_DISCOVER_URL_PROP, String.format("d2://%s", controllerServiceName));
     props.put(SOURCE_GRID_FABRIC, childRegionNamesToZkAddress.entrySet().iterator().next().getKey());
     props.put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort());
-    props.put(DAVINCI_P2P_FILE_TRANSFER_PORT, TestUtils.getFreePort());
 
     childRegionNamesToZkAddress.forEach(
         (childRegionIdentifier, childRegionD2ZkAddress) -> props

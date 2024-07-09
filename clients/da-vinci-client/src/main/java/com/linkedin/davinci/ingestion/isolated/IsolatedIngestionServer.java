@@ -27,10 +27,6 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.blobtransfer.BlobTransferManager;
-import com.linkedin.venice.blobtransfer.DvcBlobFinder;
-import com.linkedin.venice.blobtransfer.NettyP2PBlobTransferManager;
-import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
-import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -727,18 +723,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     storeIngestionService.start();
     storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));
 
-    int blobTransferPort = serverConfig.getDvcP2pBlobTransferPort();
-    int fileTransferPort = serverConfig.getDvcP2pFileTransferPort();
-    String rocksDBPath = serverConfig.getRocksDBPath();
-
-    blobTransferManager = new NettyP2PBlobTransferManager(
-        new P2PBlobTransferService(blobTransferPort, rocksDBPath),
-        new NettyFileTransferClient(fileTransferPort, rocksDBPath),
-        new DvcBlobFinder(ClientFactory.getTransportClient(clientConfig)));
-    blobTransferManager.start();
-
     ingestionBackend =
-        new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService, blobTransferManager);
+        new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService, null, configLoader);
 
     if (serverConfig.isLeakedResourceCleanupEnabled()) {
       this.leakedResourceCleaner = new LeakedResourceCleaner(

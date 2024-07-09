@@ -277,14 +277,18 @@ public class DaVinciBackend implements Closeable {
       ingestionService.start();
       ingestionService.addIngestionNotifier(ingestionListener);
 
-      int blobTransferPort = backendConfig.getDvcP2pBlobTransferPort();
-      int fileTransferPort = backendConfig.getDvcP2pFileTransferPort();
-      String rocksDBPath = backendConfig.getRocksDBPath();
-      this.blobTransferManager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(blobTransferPort, rocksDBPath),
-          new NettyFileTransferClient(fileTransferPort, rocksDBPath),
-          new DvcBlobFinder(ClientFactory.getTransportClient(clientConfig)));
-      blobTransferManager.start();
+      boolean isBlobTransferEnabled = configLoader.getStoreConfig(clientConfig.getStoreName()).isBlobTransferEnabled();
+      if (isBlobTransferEnabled) {
+        int blobTransferPort = backendConfig.getDvcP2pBlobTransferPort();
+        String rocksDBPath = backendConfig.getRocksDBPath();
+        this.blobTransferManager = new NettyP2PBlobTransferManager(
+            new P2PBlobTransferService(blobTransferPort, rocksDBPath),
+            new NettyFileTransferClient(blobTransferPort, rocksDBPath),
+            new DvcBlobFinder(ClientFactory.getTransportClient(clientConfig)));
+        blobTransferManager.start();
+      } else {
+        blobTransferManager = null;
+      }
 
       if (isIsolatedIngestion() && cacheConfig.isPresent()) {
         // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL
@@ -443,7 +447,12 @@ public class DaVinciBackend implements Closeable {
             ingestionService,
             storageService,
             blobTransferManager)
-        : new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService, blobTransferManager);
+        : new DefaultIngestionBackend(
+            storageMetadataService,
+            ingestionService,
+            storageService,
+            blobTransferManager,
+            configLoader);
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
     // Subscribe all bootstrap version partitions.
@@ -510,7 +519,11 @@ public class DaVinciBackend implements Closeable {
       storeRepository.clear();
       schemaRepository.clear();
       pushStatusStoreWriter.close();
-      blobTransferManager.close();
+
+      if (blobTransferManager != null) {
+        blobTransferManager.close();
+      }
+
       LOGGER.info("Da Vinci backend is closed successfully");
     } catch (Throwable e) {
       String msg = "Unable to stop Da Vinci backend";

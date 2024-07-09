@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_ST
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_FILE_TRANSFER_PORT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
@@ -307,7 +306,6 @@ public abstract class AbstractClientEndToEndSetup {
         .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
         .put(DATA_BASE_PATH, dataPath)
         .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
-        .put(DAVINCI_P2P_FILE_TRANSFER_PORT, TestUtils.getFreePort())
         .build();
 
     // Verify meta system store received the snapshot writes.

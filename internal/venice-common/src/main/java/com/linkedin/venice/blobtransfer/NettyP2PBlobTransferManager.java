@@ -5,7 +5,6 @@ import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -64,13 +63,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   @Override
-  public CompletableFuture<Void> delete(String storeName, int version, int partition) {
-    return blobTransferService.deleteFiles(storeName, version, partition);
-  }
-
-  @Override
   public void close() throws Exception {
     blobTransferService.close();
     nettyClient.close();
+    peerFinder.close();
   }
 }
