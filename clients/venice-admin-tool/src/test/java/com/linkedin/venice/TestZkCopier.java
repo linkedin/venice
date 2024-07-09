@@ -51,7 +51,6 @@ public class TestZkCopier {
     } catch (Exception e) {
       e.printStackTrace();
     }
-    // manually check outputPath and verify that all (22) Venice-specific paths are extracted correctly
   }
 
   @Test
@@ -121,7 +120,7 @@ public class TestZkCopier {
     }
   }
 
-  public void testContainsChildAsserts(TreeNode child) {
+  private void testContainsChildAsserts(TreeNode child) {
     Assert.assertTrue(child.containsChild(ADMIN_TOPIC_METADATA));
     Assert.assertTrue(child.containsChild(EXECUTION_IDS));
     Assert.assertTrue(child.containsChild(PARENT_OFFLINE_PUSHES));
@@ -130,7 +129,7 @@ public class TestZkCopier {
     Assert.assertTrue(child.containsChild(STORE_GRAVEYARD));
   }
 
-  public List<String> getPaths() {
+  private List<String> getPaths() {
     List<String> zkPaths = new ArrayList<>();
     zkPaths.add("/venice");
     zkPaths.add("/venice/storeConfigs");

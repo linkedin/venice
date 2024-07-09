@@ -63,12 +63,11 @@ public class ZkCopier {
   static List<String> getVenicePaths(List<String> zkPaths, Set<String> clusterNames, String basePath) {
     TreeNode requiredPathsTreeRoot = buildRequiredPathsTree(clusterNames, basePath);
     TreeNode zkPathsTreeRoot = pathsListToTree(zkPaths, basePath);
-    if (zkPathsTreeRoot.getName().equals(requiredPathsTreeRoot.getName())) {
-      getVenicePathsHelper(zkPathsTreeRoot, requiredPathsTreeRoot);
-    } else {
+    if (!zkPathsTreeRoot.getName().equals(requiredPathsTreeRoot.getName())) {
       throw new VeniceException(
           "Base path mismatch: " + zkPathsTreeRoot.getName() + " != " + requiredPathsTreeRoot.getName());
     }
+    getVenicePathsHelper(zkPathsTreeRoot, requiredPathsTreeRoot);
     return pathsTreeToList(zkPathsTreeRoot);
   }
 
@@ -118,16 +117,17 @@ public class ZkCopier {
   static TreeNode pathsListToTree(List<String> zkPaths, String basePath) {
     TreeNode root = new TreeNode(basePath);
     for (String path: zkPaths) {
-      if (path.startsWith(basePath)) {
-        String[] pathParts = path.substring(1).split("/");
-        TreeNode current = root;
-        for (int i = 1; i < pathParts.length; i++) {
-          String part = pathParts[i];
-          if (!current.containsChild(part)) {
-            current.addChild(part);
-          }
-          current = current.getChildren().get(part);
+      if (!path.startsWith(basePath)) {
+        continue;
+      }
+      String[] pathParts = path.substring(basePath.length()).split("/");
+      TreeNode current = root;
+      for (int i = 1; i < pathParts.length; i++) {
+        String part = pathParts[i];
+        if (!current.containsChild(part)) {
+          current.addChild(part);
         }
+        current = current.getChildren().get(part);
       }
     }
     return root;
