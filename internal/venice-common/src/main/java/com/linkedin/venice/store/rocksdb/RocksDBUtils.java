@@ -2,6 +2,11 @@ package com.linkedin.venice.store.rocksdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Comparator;
+import java.util.concurrent.CompletableFuture;
 
 
 public class RocksDBUtils {
@@ -95,4 +100,28 @@ public class RocksDBUtils {
     }
     return Integer.parseInt(fileName.substring(TEMP_RMD_SST_FILE_PREFIX.length()));
   }
+
+  /**
+   * Deletes the files associated with the specified store, version, and partition when a blob transfer fails.
+   *
+   * @param storeName the name of the store
+   * @param version the version number of the store
+   * @param partition the partition ID
+   * @return a CompletableFuture that completes when the deletion process is done
+   */
+  public static CompletableFuture<Void> deleteBlobFiles(String baseDir, String storeName, int version, int partition) {
+    return CompletableFuture.runAsync(() -> {
+      Path path = null;
+      try {
+        path = Paths.get(baseDir, storeName, String.valueOf(version), String.valueOf(partition));
+        if (Files.exists(path)) {
+          Files.walk(path).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+        }
+      } catch (Exception e) {
+        new VeniceException(
+            String.format("Error occurred while deleting blobs at path: %s. %s ", path, e.getMessage()));
+      }
+    });
+  }
+
 }
