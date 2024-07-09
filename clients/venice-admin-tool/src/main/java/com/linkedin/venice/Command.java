@@ -8,6 +8,7 @@ import static com.linkedin.venice.Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
 import static com.linkedin.venice.Arg.BACKUP_FOLDER;
 import static com.linkedin.venice.Arg.BACKUP_STRATEGY;
 import static com.linkedin.venice.Arg.BACKUP_VERSION_RETENTION_DAY;
+import static com.linkedin.venice.Arg.BASE_PATH;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
 import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
@@ -16,6 +17,7 @@ import static com.linkedin.venice.Arg.CHUNKING_ENABLED;
 import static com.linkedin.venice.Arg.CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
+import static com.linkedin.venice.Arg.CLUSTER_LIST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.Arg.DATETIME;
@@ -46,6 +48,7 @@ import static com.linkedin.venice.Arg.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.Arg.INFILE;
 import static com.linkedin.venice.Arg.INTERVAL;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
@@ -69,6 +72,7 @@ import static com.linkedin.venice.Arg.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
+import static com.linkedin.venice.Arg.OUTFILE;
 import static com.linkedin.venice.Arg.OWNER;
 import static com.linkedin.venice.Arg.PARTITION;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
@@ -529,6 +533,11 @@ public enum Command {
   BACKUP_STORE_METADATA_FROM_GRAVEYARD(
       "backup-store-metadata-from-graveyard", "Backup store metadata from graveyard in EI",
       new Arg[] { VENICE_ZOOKEEPER_URL, ZK_SSL_CONFIG_FILE, BACKUP_FOLDER }
+  ),
+  EXTRACT_VENICE_ZK_PATHS(
+      "extract-venice-zk-paths",
+      "Extract Venice-specific paths from a ZK snapshot input text file to an output text file",
+      new Arg[] { INFILE, OUTFILE, CLUSTER_LIST, BASE_PATH }
   );
 
   private final String commandName;

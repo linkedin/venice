@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.PARENT_OFFLINE_PUSHES;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.utils.HelixUtils;
@@ -12,7 +14,7 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 
 public class ParentHelixOfflinePushAccessor {
   // Use the different path from the normal offline push status znodes to prevent impacting the offline push monitor.
-  public static final String OFFLINE_PUSH_SUB_PATH = "ParentOfflinePushes";
+  public static final String OFFLINE_PUSH_SUB_PATH = PARENT_OFFLINE_PUSHES;
   private final ZkClient zkClient;
   /**
    * Zk accessor for offline push status ZNodes.

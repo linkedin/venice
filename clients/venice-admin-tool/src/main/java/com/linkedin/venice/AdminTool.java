@@ -573,6 +573,9 @@ public class AdminTool {
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
           break;
+        case EXTRACT_VENICE_ZK_PATHS:
+          extractVeniceZKPaths(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -3089,6 +3092,15 @@ public class AdminTool {
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
+  }
+
+  private static void extractVeniceZKPaths(CommandLine cmd) {
+    Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
+    ZkCopier.extractVenicePaths(
+        getRequiredArgument(cmd, Arg.INFILE),
+        getRequiredArgument(cmd, Arg.OUTFILE),
+        clusterNames,
+        getRequiredArgument(cmd, Arg.BASE_PATH));
   }
 
   private static void configureStoreView(CommandLine cmd) {
