@@ -325,6 +325,7 @@ public class VersionBackend {
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
+        // AtomicReference of storage engine will be updated internally.
         backend.getIngestionBackend().startConsumption(config, partition);
         tryStartHeartbeat();
       }

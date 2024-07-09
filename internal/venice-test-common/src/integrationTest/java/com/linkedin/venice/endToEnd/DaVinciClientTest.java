@@ -119,7 +119,7 @@ import org.testng.annotations.Test;
 public class DaVinciClientTest {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientTest.class);
   private static final int KEY_COUNT = 10;
-  private static final int TEST_TIMEOUT = 180_000;
+  private static final int TEST_TIMEOUT = 120_000;
   private static final String TEST_RECORD_VALUE_SCHEMA =
       "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
   private VeniceClusterWrapper cluster;

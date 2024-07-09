@@ -26,7 +26,6 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -138,7 +137,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private ReadOnlyLiveClusterConfigRepository liveConfigRepository = null;
   private StorageService storageService = null;
   private KafkaStoreIngestionService storeIngestionService = null;
-  private BlobTransferManager blobTransferManager = null;
   private StorageMetadataService storageMetadataService = null;
   // PartitionState and StoreVersionState serializers are lazily constructed after receiving the init configs
   private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
@@ -189,7 +187,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   @Override
-  public boolean startInner() throws Exception {
+  public boolean startInner() {
     int maxAttempt = 100;
     long waitTime = 500;
     int retryCount = 0;
@@ -266,7 +264,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
-    blobTransferManager.close();
     repairService.stop();
   }
 
@@ -578,7 +575,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     return metricClient;
   }
 
-  private void initializeIsolatedIngestionServer() throws Exception {
+  private void initializeIsolatedIngestionServer() {
     stopConsumptionTimeoutInSeconds =
         configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
 
