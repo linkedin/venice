@@ -30,10 +30,10 @@ public class TestMigrateVeniceZKPaths {
   private String destZkAddress;
   private ZkClient destZkClient;
   private ZkServerWrapper destZkServerWrapper;
-  private final String CLUSTER_1 = "cluster1";
-  private final String CLUSTER_2 = "cluster2";
+  private static final String CLUSTER_1 = "cluster1";
+  private static final String CLUSTER_2 = "cluster2";
   private final Set<String> CLUSTERS = new HashSet<>(Arrays.asList(CLUSTER_1, CLUSTER_2));
-  private final String BASE_PATH = "/venice-parent";
+  private static final String BASE_PATH = "/venice-parent";
   private final Set<String> CLUSTER_ZK_PATHS = new HashSet<>(
       Arrays.asList(ADMIN_TOPIC_METADATA, EXECUTION_IDS, PARENT_OFFLINE_PUSHES, ROUTERS, STORE_GRAVEYARD, STORES));
 
@@ -72,15 +72,17 @@ public class TestMigrateVeniceZKPaths {
 
   private void createZkClientPaths(ZkClient zkClient) {
     zkClient.create(BASE_PATH, BASE_PATH, CreateMode.PERSISTENT);
-    zkClient.create(BASE_PATH + "/" + STORE_CONFIGS, STORE_CONFIGS, CreateMode.PERSISTENT);
-    zkClient.create(BASE_PATH + "/" + STORE_CONFIGS + "/file", "file", CreateMode.PERSISTENT);
+    String storeConfigsPath = BASE_PATH + "/" + STORE_CONFIGS;
+    zkClient.create(storeConfigsPath, STORE_CONFIGS, CreateMode.PERSISTENT);
+    zkClient.create(storeConfigsPath + "/file", "file", CreateMode.PERSISTENT);
     for (String cluster: CLUSTERS) {
       String clusterPath = BASE_PATH + "/" + cluster;
       zkClient.create(clusterPath, cluster, CreateMode.PERSISTENT);
       for (String zkPath: CLUSTER_ZK_PATHS) {
-        zkClient.create(clusterPath + "/" + zkPath, zkPath, CreateMode.PERSISTENT);
+        String clusterZkPath = clusterPath + "/" + zkPath;
+        zkClient.create(clusterZkPath, zkPath, CreateMode.PERSISTENT);
         if (zkPath.equals(STORES)) {
-          zkClient.create(clusterPath + "/" + zkPath + "/testStore", "testStore", CreateMode.PERSISTENT);
+          zkClient.create(clusterZkPath + "/testStore", "testStore", CreateMode.PERSISTENT);
         }
       }
     }
@@ -89,21 +91,23 @@ public class TestMigrateVeniceZKPaths {
   private void testZkClientPathsAsserts(ZkClient zkClient) {
     Assert.assertTrue(zkClient.exists(BASE_PATH));
     Assert.assertEquals(zkClient.readData(BASE_PATH), BASE_PATH);
-    Assert.assertTrue(zkClient.exists(BASE_PATH + "/" + STORE_CONFIGS));
-    Assert.assertEquals(zkClient.readData(BASE_PATH + "/" + STORE_CONFIGS), STORE_CONFIGS);
-    Assert.assertTrue(zkClient.exists(BASE_PATH + "/" + STORE_CONFIGS + "/file"));
-    Assert.assertEquals(zkClient.readData(BASE_PATH + "/" + STORE_CONFIGS + "/file"), "file");
+    String storeConfigsPath = BASE_PATH + "/" + STORE_CONFIGS;
+    Assert.assertTrue(zkClient.exists(storeConfigsPath));
+    Assert.assertEquals(zkClient.readData(storeConfigsPath), STORE_CONFIGS);
+    Assert.assertTrue(zkClient.exists(storeConfigsPath + "/file"));
+    Assert.assertEquals(zkClient.readData(storeConfigsPath + "/file"), "file");
     for (String cluster: CLUSTERS) {
       String clusterPath = BASE_PATH + "/" + cluster;
       Assert.assertTrue(zkClient.exists(clusterPath));
       Assert.assertEquals(zkClient.readData(clusterPath), cluster);
       for (String zkPath: CLUSTER_ZK_PATHS) {
-        Assert.assertTrue(zkClient.exists(clusterPath + "/" + zkPath));
-        Assert.assertEquals(zkClient.readData(clusterPath + "/" + zkPath), zkPath);
+        String clusterZkPath = clusterPath + "/" + zkPath;
+        Assert.assertTrue(zkClient.exists(clusterZkPath));
+        Assert.assertEquals(zkClient.readData(clusterZkPath), zkPath);
         if (zkPath.equals(STORES)) {
-          Assert.assertFalse(zkClient.exists(clusterPath + "/" + zkPath + "/assertFalse"));
-          Assert.assertTrue(zkClient.exists(clusterPath + "/" + zkPath + "/testStore"));
-          Assert.assertEquals(zkClient.readData(clusterPath + "/" + zkPath + "/testStore"), "testStore");
+          Assert.assertFalse(zkClient.exists(clusterZkPath + "/assertFalse"));
+          Assert.assertTrue(zkClient.exists(clusterZkPath + "/testStore"));
+          Assert.assertEquals(zkClient.readData(clusterZkPath + "/testStore"), "testStore");
         }
       }
     }
