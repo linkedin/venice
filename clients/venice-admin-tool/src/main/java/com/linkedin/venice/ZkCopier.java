@@ -9,6 +9,7 @@ import static com.linkedin.venice.zk.VeniceZkPaths.STORE_CONFIGS;
 import static com.linkedin.venice.zk.VeniceZkPaths.STORE_GRAVEYARD;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.ZkClientFactory;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -21,11 +22,38 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.io.FileUtils;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.zookeeper.CreateMode;
 
 
 public class ZkCopier {
   private static final Set<String> CLUSTER_ZK_PATHS = new HashSet<>(
       Arrays.asList(ADMIN_TOPIC_METADATA, EXECUTION_IDS, PARENT_OFFLINE_PUSHES, ROUTERS, STORE_GRAVEYARD, STORES));
+
+  /**
+   * Migrate Venice-specific metadata from a source ZK to a destination ZK.
+   * @param srcZkAddress source ZK address
+   * @param destZkAddress destination ZK address
+   * @param clusterNames set of cluster names
+   * @param basePath base path for ZK
+   */
+  public static void migrateVenicePaths(
+      String srcZkAddress,
+      String destZkAddress,
+      Set<String> clusterNames,
+      String basePath) {
+    if (!basePath.startsWith("/")) {
+      throw new VeniceException("Base path must start with a forward slash (/)");
+    }
+    ZkClient srcZkClient = ZkClientFactory.newZkClient(srcZkAddress);
+    TreeNode srcZkPathsTree = getZkClientPathsTree(srcZkClient, clusterNames, basePath);
+    List<String> srcZkPathsList = pathsTreeToList(srcZkPathsTree);
+    List<String> destZkPathsList = getVenicePaths(srcZkPathsList, clusterNames, basePath);
+    ZkClient destZkClient = ZkClientFactory.newZkClient(destZkAddress);
+    for (String path: destZkPathsList) {
+      destZkClient.create(path, srcZkClient.readData(path), CreateMode.PERSISTENT);
+    }
+  }
 
   /**
    * Extract Venice-specific paths from an input text file to an output text file.
@@ -108,6 +136,40 @@ public class ZkCopier {
       }
     }
     return root;
+  }
+
+  /**
+   * Build a tree of ZK paths with {@code basePath} and {@code clusterNames} by fetching children of each cluster path using the ZK client.
+   * @return the root (base path) of the tree
+   */
+  static TreeNode getZkClientPathsTree(ZkClient zkClient, Set<String> clusterNames, String basePath) {
+    TreeNode root = new TreeNode(basePath);
+    TreeNode storeConfigsNode = root.addChild(STORE_CONFIGS);
+    addChildrenToTreeNode(zkClient, storeConfigsNode, basePath + "/" + STORE_CONFIGS);
+    for (String cluster: clusterNames) {
+      TreeNode clusterChild = root.addChild(cluster);
+      String clusterPath = basePath + "/" + cluster;
+      for (String venicePath: CLUSTER_ZK_PATHS) {
+        TreeNode venicePathChild = clusterChild.addChild(venicePath);
+        addChildrenToTreeNode(zkClient, venicePathChild, clusterPath + "/" + venicePath);
+      }
+    }
+    return root;
+  }
+
+  /**
+   * Recursively add children to a {@code TreeNode} by fetching children of a ZK path using the ZK client.
+   * @Note: This method directly modifies the tree {@code node} in the parent method {@code getZkClientPathsTree()}
+   */
+  private static void addChildrenToTreeNode(ZkClient zkClient, TreeNode node, String path) {
+    if (!zkClient.exists(path)) {
+      return;
+    }
+    List<String> children = zkClient.getChildren(path);
+    for (String child: children) {
+      TreeNode childNode = node.addChild(child);
+      addChildrenToTreeNode(zkClient, childNode, path + "/" + child);
+    }
   }
 
   /**

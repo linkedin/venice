@@ -573,6 +573,9 @@ public class AdminTool {
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
           break;
+        case MIGRATE_VENICE_ZK_PATHS:
+          migrateVeniceZKPaths(cmd);
+          break;
         case EXTRACT_VENICE_ZK_PATHS:
           extractVeniceZKPaths(cmd);
           break;
@@ -3092,6 +3095,15 @@ public class AdminTool {
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
+  }
+
+  private static void migrateVeniceZKPaths(CommandLine cmd) {
+    Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
+    ZkCopier.migrateVenicePaths(
+        getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL),
+        getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL),
+        clusterNames,
+        getRequiredArgument(cmd, Arg.BASE_PATH));
   }
 
   private static void extractVeniceZKPaths(CommandLine cmd) {
