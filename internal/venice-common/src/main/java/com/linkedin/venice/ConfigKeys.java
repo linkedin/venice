@@ -1724,6 +1724,11 @@ public class ConfigKeys {
       "use.da.vinci.specific.execution.status.for.error";
 
   /**
+   * Config to control whether to batch push statues among all partitions into one single update events.
+   */
+  public static final String WRITE_BATCHING_PUSH_STATUS = "write.batching.push.status";
+
+  /**
    * The number of threads that will be used to perform SSL handshakes between clients and a router.
    */
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";

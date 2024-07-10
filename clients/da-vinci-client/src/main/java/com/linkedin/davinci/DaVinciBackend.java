@@ -111,6 +111,7 @@ public class DaVinciBackend implements Closeable {
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final ClientConfig clientConfig;
   private BlobTransferManager<Void> blobTransferManager;
+  private final boolean writeBatchingPushStatus;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -123,6 +124,7 @@ public class DaVinciBackend implements Closeable {
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
+      writeBatchingPushStatus = backendConfig.writeBatchingPushStatus();
       this.configLoader = configLoader;
       this.clientConfig = clientConfig;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
@@ -610,8 +612,35 @@ public class DaVinciBackend implements Closeable {
     VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
     if (versionBackend != null && versionBackend.isReportingPushStatus()) {
       Version version = versionBackend.getVersion();
-      pushStatusStoreWriter
-          .writePushStatus(version.getStoreName(), version.getNumber(), partition, status, incrementalPushVersion);
+      if (writeBatchingPushStatus && incrementalPushVersion.isEmpty()) {
+        // Batching the push statuses from all partitions for batch pushes
+        versionBackend.updatePartitionStatus(partition, status);
+        if (status == ExecutionStatus.COMPLETED) {
+          if (!versionBackend.isBatchPushEndSignalSent()
+              && versionBackend.areAllPartitionsOnSameTerminalStatus(status)) {
+            pushStatusStoreWriter.writeVersionLevelPushStatus(
+                version.getStoreName(),
+                version.getNumber(),
+                status,
+                versionBackend.getTrackedPartitions());
+            versionBackend.batchPushEndSignalSent();
+          }
+          // Otherwise, don't send any update
+        } else {
+          // STARTED status
+          if (!versionBackend.isBatchPushStartSignalSent()) {
+            pushStatusStoreWriter.writeVersionLevelPushStatus(
+                version.getStoreName(),
+                version.getNumber(),
+                status,
+                versionBackend.getTrackedPartitions());
+            versionBackend.batchPushStartSignalSent();
+          } // Otherwise, don't send any update
+        }
+      } else {
+        pushStatusStoreWriter
+            .writePushStatus(version.getStoreName(), version.getNumber(), partition, status, incrementalPushVersion);
+      }
     }
   }
 

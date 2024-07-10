@@ -152,6 +152,7 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_STA
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
+import static com.linkedin.venice.ConfigKeys.WRITE_BATCHING_PUSH_STATUS;
 import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_INITIAL_WINDOW_SIZE;
 import static com.linkedin.venice.httpclient5.HttpClient5Utils.H2_MAX_CONCURRENT_STREAMS;
@@ -499,6 +500,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
   private final boolean useDaVinciSpecificExecutionStatusForError;
+  private final boolean writeBatchingPushStatus;
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
   private final boolean blobTransferManagerEnabled;
@@ -830,6 +832,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
     useDaVinciSpecificExecutionStatusForError =
         serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
+    writeBatchingPushStatus = serverProperties.getBoolean(WRITE_BATCHING_PUSH_STATUS, false);
     recordLevelMetricWhenBootstrappingCurrentVersionEnabled =
         serverProperties.getBoolean(SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED, true);
     identityParserClassName = serverProperties.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
@@ -1483,6 +1486,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean useDaVinciSpecificExecutionStatusForError() {
     return useDaVinciSpecificExecutionStatusForError;
+  }
+
+  public boolean writeBatchingPushStatus() {
+    return writeBatchingPushStatus;
   }
 
   public boolean isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled() {
