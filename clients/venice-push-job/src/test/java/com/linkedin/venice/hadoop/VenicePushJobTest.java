@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.ConfigKeys.LARGE_RECORDS_ALLOWED;
 import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
@@ -906,25 +905,6 @@ public class VenicePushJobTest {
   }
 
   /**
-   * Tests that when {@link PushJobSetting#isSourceKafka}=true, {@link VenicePushJob} will override the value of
-   * {@link PushJobSetting#largeRecordsAllowed} and set it to true.
-   */
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testLargeRecordsAllowedRepush(boolean largeRecordsAllowed, boolean isSourceKafka, boolean isSourceETL) {
-    Properties props = getVpjRequiredProperties();
-    props.put(SOURCE_ETL, isSourceETL);
-    props.put(SOURCE_KAFKA, isSourceKafka);
-    props.put(LARGE_RECORDS_ALLOWED, largeRecordsAllowed);
-    final boolean isRepush = isSourceKafka || isSourceETL;
-    if (!(isSourceKafka && isSourceETL)) { // both true is an invalid test case that will cause validation error
-      try (final VenicePushJob vpj = getSpyVenicePushJob(props, getClient())) {
-        PushJobSetting pushJobSetting = vpj.getPushJobSetting();
-        Assert.assertEquals(pushJobSetting.largeRecordsAllowed, largeRecordsAllowed || isRepush);
-      }
-    }
-  }
-
-  /**
    * These are mainly for code coverage for the code paths of {@link VenicePushJob#getVeniceWriter(PushJobSetting)} and
    * {@link VenicePushJob#getVeniceWriterProperties(PushJobSetting)}.
    */
@@ -932,7 +912,6 @@ public class VenicePushJobTest {
   public void testGetVeniceWriter() {
     Properties props = getVpjRequiredProperties();
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 1000);
-    props.put(VeniceWriter.LARGE_RECORDS_ALLOWED, true);
     try (final VenicePushJob vpj = getSpyVenicePushJob(props, getClient())) {
       PushJobSetting pushJobSetting = vpj.getPushJobSetting();
       setPushJobSettingDefaults(pushJobSetting);

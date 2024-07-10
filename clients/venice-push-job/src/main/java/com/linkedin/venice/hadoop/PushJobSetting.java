@@ -114,7 +114,6 @@ public class PushJobSetting implements Serializable {
   public Map<String, String> partitionerParams;
   public boolean chunkingEnabled;
   public boolean rmdChunkingEnabled;
-  public boolean largeRecordsAllowed;
   public int maxRecordSizeBytes;
   public String kafkaSourceRegion;
   public transient RepushInfoResponse repushInfoResponse;

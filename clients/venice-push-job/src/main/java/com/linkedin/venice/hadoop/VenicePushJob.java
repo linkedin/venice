@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
-import static com.linkedin.venice.ConfigKeys.LARGE_RECORDS_ALLOWED;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
@@ -379,7 +378,6 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
-    pushJobSettingToReturn.largeRecordsAllowed = props.getBoolean(LARGE_RECORDS_ALLOWED, true);
     pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
@@ -515,10 +513,6 @@ public class VenicePushJob implements AutoCloseable {
           props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
       pushJobSettingToReturn.compressionMetricCollectionEnabled =
           props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
-    }
-
-    if (pushJobSettingToReturn.isSourceKafka || pushJobSettingToReturn.isSourceETL) {
-      pushJobSettingToReturn.largeRecordsAllowed = true; // safer to simply allow large records on repush
     }
 
     // Compute-engine abstraction related configs
@@ -2347,14 +2341,10 @@ public class VenicePushJob implements AutoCloseable {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaUrl);
     veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
+    veniceWriterProperties.put(VeniceWriter.MAX_RECORD_SIZE_BYTES, pushJobSetting.maxRecordSizeBytes);
     if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)) { /* Writer uses default if not specified */
       veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
     }
-    if (props.containsKey(VeniceWriter.LARGE_RECORDS_ALLOWED)) {
-      veniceWriterProperties
-          .put(VeniceWriter.LARGE_RECORDS_ALLOWED, props.getBoolean(VeniceWriter.LARGE_RECORDS_ALLOWED));
-    }
-    veniceWriterProperties.put(VeniceWriter.MAX_RECORD_SIZE_BYTES, pushJobSetting.maxRecordSizeBytes);
     if (pushJobSetting.sslToKafka) {
       veniceWriterProperties.putAll(sslProperties.get());
     }
@@ -2720,11 +2710,12 @@ public class VenicePushJob implements AutoCloseable {
           storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
       pushJobSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
       pushJobSetting.isRmdChunkingEnabled = storeResponse.getStore().isRmdChunkingEnabled();
-      pushJobSetting.maxRecordSizeBytes = storeResponse.getStore().getMaxRecordSizeBytes();
       pushJobSetting.storeCompressionStrategy = storeResponse.getStore().getCompressionStrategy();
       pushJobSetting.isStoreWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
       pushJobSetting.isStoreIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
       pushJobSetting.hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
+      final boolean isRepush = pushJobSetting.isSourceKafka || pushJobSetting.isSourceETL; // safer to simply allow them
+      pushJobSetting.maxRecordSizeBytes = (isRepush) ? -1 : storeResponse.getStore().getMaxRecordSizeBytes();
     }
     return pushJobSetting.storeResponse;
   }
@@ -2755,7 +2746,6 @@ public class VenicePushJob implements AutoCloseable {
     propKeyValuePairs.add(
         "Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024)
             + " MB. This could be the size of compressed data if the underlying filesystem compresses it");
-    propKeyValuePairs.add("Large Records Allowed: " + pushJobSetting.largeRecordsAllowed);
     propKeyValuePairs.add("Max Venice Record Size: " + pushJobSetting.maxRecordSizeBytes);
     propKeyValuePairs.add("Is Chunking Enabled: " + pushJobSetting.chunkingEnabled);
     propKeyValuePairs.add("Is Replication Metadata Chunking Enabled: " + pushJobSetting.rmdChunkingEnabled);

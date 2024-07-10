@@ -627,8 +627,8 @@ public class VeniceWriterUnitTest {
    * Basically, the record size must fit in one of these categories:
    * Chunking Not Needed < ~1MB < Chunking Needed < MAX_RECORD_SIZE_BYTES
    */
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
-  public void testPutTooLargeRecord(boolean isChunkingEnabled, boolean areLargeRecordsAllowed) {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
+  public void testPutTooLargeRecord(boolean isChunkingEnabled) {
     final int maxRecordSizeBytes = 1024 * 1024; // 1MB
     final CompletableFuture mockedFuture = mock(CompletableFuture.class);
     final PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
@@ -639,30 +639,29 @@ public class VeniceWriterUnitTest {
         .setValueSerializer(serializer)
         .setChunkingEnabled(isChunkingEnabled)
         .build();
-    final VeniceProperties props = new PropertyBuilder().put(VeniceWriter.LARGE_RECORDS_ALLOWED, areLargeRecordsAllowed)
-        .put(VeniceWriter.MAX_RECORD_SIZE_BYTES, maxRecordSizeBytes)
-        .build();
+    final VeniceProperties props =
+        new PropertyBuilder().put(VeniceWriter.MAX_RECORD_SIZE_BYTES, maxRecordSizeBytes).build();
     final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
 
-    // "no chunking" < maxSizeForUserPayloadPerMessageInBytes < "needs chunking" < maxRecordSizeBytes < "too large"
-    final int NO_CHUNKING_VALUE_SIZE = maxRecordSizeBytes / 2;
-    final int NEEDS_CHUNKING_VALUE_SIZE = maxRecordSizeBytes - 1024; // offset to account for the size of the key
+    // "small" < maxSizeForUserPayloadPerMessageInBytes < "large" < maxRecordSizeBytes < "too large"
+    final int SMALL_VALUE_SIZE = maxRecordSizeBytes / 2;
+    final int LARGE_VALUE_SIZE = maxRecordSizeBytes - 1024; // offset to account for the size of the key
     final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
 
-    for (int size: Arrays.asList(NO_CHUNKING_VALUE_SIZE, NEEDS_CHUNKING_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
+    for (int size: Arrays.asList(SMALL_VALUE_SIZE, LARGE_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
       char[] valueChars = new char[size];
       Arrays.fill(valueChars, '*');
       try {
         writer.put("test-key", new String(valueChars), 1, null);
-        if (size == NO_CHUNKING_VALUE_SIZE) {
+        if (size == SMALL_VALUE_SIZE) {
           continue; // Ok behavior. Small records should never throw RecordTooLargeException
         }
-        if (!isChunkingEnabled || (size == TOO_LARGE_VALUE_SIZE && !areLargeRecordsAllowed)) {
+        if (!isChunkingEnabled || size == TOO_LARGE_VALUE_SIZE) {
           Assert.fail("Should've thrown RecordTooLargeException if chunking not enabled or record is too large");
         }
       } catch (Exception e) {
         Assert.assertTrue(e instanceof RecordTooLargeException);
-        Assert.assertNotEquals(size, NO_CHUNKING_VALUE_SIZE, "Small records shouldn't throw RecordTooLargeException");
+        Assert.assertNotEquals(size, SMALL_VALUE_SIZE, "Small records shouldn't throw RecordTooLargeException");
       }
     }
   }

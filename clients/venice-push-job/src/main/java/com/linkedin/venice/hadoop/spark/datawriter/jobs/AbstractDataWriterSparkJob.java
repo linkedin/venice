@@ -227,7 +227,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     jobConf.set(ALLOW_DUPLICATE_KEY, pushJobSetting.isDuplicateKeyAllowed);
     jobConf.set(VeniceWriter.ENABLE_CHUNKING, pushJobSetting.chunkingEnabled);
     jobConf.set(VeniceWriter.ENABLE_RMD_CHUNKING, pushJobSetting.rmdChunkingEnabled);
-    jobConf.set(VeniceWriter.LARGE_RECORDS_ALLOWED, pushJobSetting.largeRecordsAllowed);
     jobConf.set(VeniceWriter.MAX_RECORD_SIZE_BYTES, pushJobSetting.maxRecordSizeBytes);
 
     jobConf.set(STORAGE_QUOTA_PROP, pushJobSetting.storeStorageQuota);

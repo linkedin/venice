@@ -105,7 +105,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final String ENABLE_CHUNKING = VENICE_WRITER_CONFIG_PREFIX + "chunking.enabled";
   public static final String ENABLE_RMD_CHUNKING =
       VENICE_WRITER_CONFIG_PREFIX + "replication.metadata.chunking.enabled";
-  public static final String LARGE_RECORDS_ALLOWED = VENICE_WRITER_CONFIG_PREFIX + "large.records.allowed";
   public static final String MAX_ATTEMPTS_WHEN_TOPIC_MISSING =
       VENICE_WRITER_CONFIG_PREFIX + "max.attemps.when.topic.missing";
   /**
@@ -274,7 +273,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingFlagInvoked;
 
   private final boolean isRmdChunkingEnabled;
-  private final boolean areLargeRecordsAllowed;
   private final int maxRecordSizeBytes;
 
   private final ControlMessage heartBeatMessage;
@@ -306,7 +304,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingEnabled = params.isChunkingEnabled();
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
-    this.areLargeRecordsAllowed = props.getBoolean(LARGE_RECORDS_ALLOWED, true);
     int maxRecordSizeBytesFromProps = props.getInt(MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES);
     if (maxRecordSizeBytesFromProps == -1) {
       maxRecordSizeBytesFromProps = DEFAULT_MAX_RECORD_SIZE_BYTES;
@@ -911,7 +908,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
      */
     int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
-      if (isChunkingEnabled && !isRecordTooLarge(veniceRecordSize)) { // 10MB default
+      if (isChunkingEnabled && !isRecordTooLarge(veniceRecordSize)) {
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1606,7 +1603,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         + "Replication Metadata size: " + replicationMetadataPayloadSize + " bytes, " + "Total payload size: "
         + (serializedKeySize + serializedValueSize + replicationMetadataPayloadSize) + " bytes, "
         + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes"
-        + ((!areLargeRecordsAllowed) ? ", Max Venice record size: " + maxRecordSizeBytes + " bytes" : "") + ".";
+        + ((maxRecordSizeBytes == -1) ? "" : ", Max Venice record size: " + maxRecordSizeBytes + " bytes") + ".";
   }
 
   /**
@@ -2090,7 +2087,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   public boolean isRecordTooLarge(int recordSize) {
-    return !areLargeRecordsAllowed && recordSize > maxRecordSizeBytes;
+    return maxRecordSizeBytes != -1 && recordSize > maxRecordSizeBytes; // -1 means no limit / maximum size
   }
 
   public boolean isChunkingNeededForRecord(int recordSize) {

@@ -2,7 +2,6 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.LARGE_RECORDS_ALLOWED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
@@ -992,18 +991,17 @@ public abstract class TestBatch {
   }
 
   /**
-   * Test that values that are too large will fail the push job only when large records are not allowed.
+   * Test that values that are too large will fail the push job only when the limit is enforced.
    */
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testValuesThatAreTooLarge(boolean largeRecordsAllowed, boolean enforceLimit) throws Exception {
-    final int wayTooLargeRecordValueSize = 11 * 1024 * 1024; // 11 MB (expected default max size is 10 MB)
-    final int maxRecordSizeBytesForTest = (enforceLimit) ? -1 : 15 * 1024 * 1024; // -1 means use default (10 MB)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testValuesThatAreTooLarge(boolean enforceLimit) throws Exception {
+    final int wayTooLargeRecordValueSize = 11 * 1024 * 1024; // 11 MB
+    final int maxRecordSizeBytesForTest = (enforceLimit) ? -1 : 15 * 1024 * 1024; // -1 means use default
     try {
       testStoreWithLargeValues(true, properties -> {
-        properties.setProperty(LARGE_RECORDS_ALLOWED, String.valueOf(largeRecordsAllowed));
         properties.setProperty(MAX_RECORD_SIZE_BYTES, String.valueOf(maxRecordSizeBytesForTest));
       }, null, wayTooLargeRecordValueSize);
-      Assert.assertFalse(!largeRecordsAllowed && enforceLimit, "Too large values should fail only when not allowed");
+      Assert.assertFalse(enforceLimit, "Too large values should fail only when not allowed");
     } catch (VeniceException e) {
       Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of 10.0 MiB"));
     }

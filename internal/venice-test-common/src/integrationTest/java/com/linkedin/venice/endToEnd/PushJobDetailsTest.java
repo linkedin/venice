@@ -10,7 +10,6 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.DEFAULT_VALUE_FI
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.writer.VeniceWriter.LARGE_RECORDS_ALLOWED;
 import static com.linkedin.venice.writer.VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -254,8 +253,8 @@ public class PushJobDetailsTest {
 
   /**
    * Test that the push job details are correctly updated when a large record is pushed.
-   * The settings `LARGE_RECORDS_ALLOWED`, `MAX_RECORD_SIZE_BYTES`, and `MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES`
-   * are set to extremely low values, so that regular records will trigger the "large" condition and fail to be pushed.
+   * The settings `MAX_RECORD_SIZE_BYTES` and `MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES` are set to
+   * extremely low values, so that regular records will trigger the "large" condition and fail to be pushed.
    */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPushJobDetailsRecordTooLarge() throws ExecutionException, InterruptedException {
@@ -274,7 +273,6 @@ public class PushJobDetailsTest {
 
     Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    pushJobProps.setProperty(LARGE_RECORDS_ALLOWED, String.valueOf(false));
     pushJobProps.setProperty(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "0");
     try (final VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
       assertThrows(VeniceException.class, testPushJob::run); // Push job should fail due to large record
