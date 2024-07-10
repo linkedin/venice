@@ -118,7 +118,7 @@ public class RocksDBUtils {
           Files.walk(path).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
         }
       } catch (Exception e) {
-        new VeniceException(
+        throw new VeniceException(
             String.format("Error occurred while deleting blobs at path: %s. %s ", path, e.getMessage()));
       }
     });
