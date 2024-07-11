@@ -20,6 +20,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTI
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
+import static com.linkedin.venice.ConfigKeys.WRITE_BATCHING_PUSH_STATUS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
@@ -166,8 +167,8 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testConcurrentGetAndStart() throws Exception {
-    String storeName1 = createStoreWithMetaSystemStore(KEY_COUNT);
-    String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
+    String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
+    String storeName2 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -213,15 +214,18 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBatchStore(DaVinciConfig clientConfig) throws Exception {
-    String storeName1 = createStoreWithMetaSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
-    String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
-    String storeName3 = createStoreWithMetaSystemStore(KEY_COUNT);
+    String storeName1 =
+        createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT, CompressionStrategy.GZIP, s -> null);
+    String storeName2 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
+    String storeName3 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(WRITE_BATCHING_PUSH_STATUS, true)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -510,7 +514,7 @@ public class DaVinciClientTest {
     int emptyPartition1 = 2;
     int emptyPartition2 = 0;
     String storeName = Utils.getUniqueString("store");
-    String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
+    String storeName2 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setPartitionCount(partitionCount)
         .setPartitionerClass(ConstantVenicePartitioner.class.getName())
         .setPartitionerParams(
@@ -765,7 +769,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBootstrap(DaVinciConfig daVinciConfig) throws Exception {
-    String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
+    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     try (DaVinciClient<Integer, Object> client =
         ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
@@ -864,7 +868,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testPartialSubscription(DaVinciConfig daVinciConfig) throws Exception {
-    String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
+    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     VeniceProperties backendConfig = new PropertyBuilder().build();
 
     Set<Integer> keySet = new HashSet<>();
@@ -901,7 +905,7 @@ public class DaVinciClientTest {
     // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing.
     // Enable ingestion isolation since it's more likely for the race condition to occur and make sure the future is
     // only completed when the main process's ingestion task is subscribed to avoid deadlock.
-    String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
+    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     DaVinciConfig daVinciConfig = new DaVinciConfig();
 
     Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
@@ -926,8 +930,9 @@ public class DaVinciClientTest {
   public void testUnsubscribeBeforeFutureGet() throws Exception {
     // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing and before the
     // future is complete. The future should also return exceptionally.
-    String storeName = createStoreWithMetaSystemStore(10000); // A large amount of keys to give window for potential
-                                                              // race conditions
+    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(10000); // A large amount of keys to give
+                                                                                      // window for potential
+    // race conditions
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
     DaVinciTestContext<String, GenericRecord> daVinciTestContext =
@@ -952,7 +957,7 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testCrashedDaVinciWithIngestionIsolation() throws Exception {
-    String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
+    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
     int port1 = TestUtils.getFreePort();
@@ -1169,18 +1174,20 @@ public class DaVinciClientTest {
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
-  private String createStoreWithMetaSystemStore(int keyCount) throws Exception {
+  private String createStoreWithMetaSystemStoreAndPushStatusSystemStore(int keyCount) throws Exception {
     String storeName = cluster.createStore(keyCount);
     cluster.createMetaSystemStore(storeName);
+    cluster.createPushStatusSystemStore(storeName);
     return storeName;
   }
 
-  private String createStoreWithMetaSystemStore(
+  private String createStoreWithMetaSystemStoreAndPushStatusSystemStore(
       int keyCount,
       CompressionStrategy compressionStrategy,
       Function<String, ByteBuffer> compressionDictionaryGenerator) throws Exception {
     String storeName = cluster.createStore(keyCount, compressionStrategy, compressionDictionaryGenerator);
     cluster.createMetaSystemStore(storeName);
+    cluster.createPushStatusSystemStore(storeName);
     return storeName;
   }
 
