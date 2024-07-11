@@ -2162,4 +2162,10 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP =
       "controller.dangling.topic.occurrence.threshold.for.cleanup";
+
+  /**
+   * Controller config for the default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes}.
+   * Only used in batch push and nearline jobs.
+   */
+  public static final String CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES = "controller.default.max.record.size.bytes";
 }

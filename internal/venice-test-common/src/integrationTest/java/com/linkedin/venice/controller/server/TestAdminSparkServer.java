@@ -84,6 +84,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
    * And please collect the store and version you created in the end of your test case.
    */
 
+  private static final int TEST_MAX_RECORD_SIZE_BYTES = 16 * 1024 * 1024; // arbitrary 16MB
+
   @BeforeClass
   public void setUp() {
     Properties extraProperties = new Properties();
@@ -96,6 +98,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     extraProperties.put(
         ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
         Long.toString(TimeUnit.DAYS.toMillis(7)));
+    extraProperties
+        .put(ConfigKeys.CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES, Integer.toString(TEST_MAX_RECORD_SIZE_BYTES));
     extraProperties.put(ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, Integer.toString(1));
     super.setUp(false, Optional.empty(), extraProperties);
   }
@@ -393,6 +397,14 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
           parentController.getVeniceAdmin().getBackupVersionDefaultRetentionMs(),
           store.getBackupVersionRetentionMs(),
           "Store Info should have correct default retention time in ms.");
+      Assert.assertEquals(
+          parentController.getVeniceAdmin().getDefaultMaxRecordSizeBytes(),
+          TEST_MAX_RECORD_SIZE_BYTES,
+          "Default max record size bytes setting should've been correctly set by the test.");
+      Assert.assertEquals(
+          store.getMaxRecordSizeBytes(),
+          TEST_MAX_RECORD_SIZE_BYTES,
+          "Store Info should have the same default max record size in bytes.");
       Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
       Assert.assertTrue(store.isEnableStoreWrites(), "New store should not be disabled");
       Assert.assertTrue(store.isEnableStoreReads(), "New store should not be disabled");

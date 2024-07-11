@@ -327,6 +327,10 @@ public class StoresRoutes extends AbstractRoute {
         if (storeInfo.getBackupVersionRetentionMs() < 0) {
           storeInfo.setBackupVersionRetentionMs(admin.getBackupVersionDefaultRetentionMs());
         }
+        // This is the only place the default value of maxRecordSizeBytes is set for StoreResponse for VPJ and Consumer
+        if (storeInfo.getMaxRecordSizeBytes() < 0) {
+          storeInfo.setMaxRecordSizeBytes(admin.getDefaultMaxRecordSizeBytes());
+        }
         storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForMultiColos(clusterName, storeName));
         boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
         storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));

@@ -414,6 +414,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private long backupVersionDefaultRetentionMs;
 
+  private int defaultMaxRecordSizeBytes;
+
   private DataRecoveryManager dataRecoveryManager;
 
   protected final PubSubTopicRepository pubSubTopicRepository;
@@ -470,6 +472,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.fatalDataValidationFailureRetentionMs = multiClusterConfigs.getFatalDataValidationFailureRetentionMs();
     this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
     this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
+    this.defaultMaxRecordSizeBytes = multiClusterConfigs.getDefaultMaxRecordSizeBytes();
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.d2Client = d2Client;
@@ -7946,6 +7949,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public long getBackupVersionDefaultRetentionMs() {
     return backupVersionDefaultRetentionMs;
+  }
+
+  /**
+   * @see Admin#getDefaultMaxRecordSizeBytes()
+   */
+  @Override
+  public int getDefaultMaxRecordSizeBytes() {
+    return defaultMaxRecordSizeBytes;
   }
 
   private Pair<NodeReplicasReadinessState, List<Replica>> areAllCurrentVersionReplicasReady(

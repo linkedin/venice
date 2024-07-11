@@ -41,6 +41,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
@@ -178,6 +179,8 @@ import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_MIN_LOG_C
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
@@ -567,6 +570,8 @@ public class VeniceControllerClusterConfig {
   private final boolean disableParentRequestTopicForStreamPushes;
 
   private final int defaultReadQuotaPerRouter;
+
+  private final int defaultMaxRecordSizeBytes; // default value for VeniceWriter.maxRecordSizeBytes
   private final int replicationMetadataVersion;
 
   private final boolean errorLeaderReplicaFailOverEnabled;
@@ -693,6 +698,11 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
+    this.defaultMaxRecordSizeBytes = props.getInt(CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES, 100 * BYTES_PER_MB);
+    if (defaultMaxRecordSizeBytes < BYTES_PER_MB) {
+      throw new VeniceException(
+          "Default max record size must be at least " + generateHumanReadableByteCountString(BYTES_PER_MB));
+    }
     this.replicationMetadataVersion = props.getInt(REPLICATION_METADATA_VERSION, 1);
     this.childDatacenters = props.getString(CHILD_CLUSTER_ALLOWLIST);
     this.errorLeaderReplicaFailOverEnabled = props.getBoolean(FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED, true);
@@ -996,6 +1006,10 @@ public class VeniceControllerClusterConfig {
 
   public int getDefaultReadQuotaPerRouter() {
     return defaultReadQuotaPerRouter;
+  }
+
+  public int getDefaultMaxRecordSizeBytes() {
+    return defaultMaxRecordSizeBytes;
   }
 
   public String getControllerName() {
