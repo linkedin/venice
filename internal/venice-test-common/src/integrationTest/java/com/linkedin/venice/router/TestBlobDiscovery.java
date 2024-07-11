@@ -15,6 +15,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -32,7 +33,6 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.routerapi.BlobDiscoveryResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -215,10 +215,10 @@ public class TestBlobDiscovery {
           HttpStatus.SC_OK,
           "Failed to get resource state for " + storeName + ". Response: " + responseBody);
       ObjectMapper mapper = ObjectMapperFactory.getInstance();
-      BlobDiscoveryResponse blobDiscoveryResponse =
-          mapper.readValue(responseBody.getBytes(), BlobDiscoveryResponse.class);
+      BlobPeersDiscoveryResponse blobDiscoveryResponse =
+          mapper.readValue(responseBody.getBytes(), BlobPeersDiscoveryResponse.class);
       // TODO: add another testcase to retrieve >= 1 live nodes
-      Assert.assertEquals(blobDiscoveryResponse.getLiveNodeHostNames().size(), 0);
+      Assert.assertEquals(blobDiscoveryResponse.getDiscoveryResult().size(), 0);
     } catch (Exception e) {
       fail("Unexpected exception", e);
     }

@@ -66,5 +66,6 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   public void close() throws Exception {
     blobTransferService.close();
     nettyClient.close();
+    peerFinder.close();
   }
 }
