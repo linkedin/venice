@@ -9,7 +9,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -34,7 +33,6 @@ public class DefaultIngestionBackendTest {
   private KafkaStoreIngestionService storeIngestionService;
   private StorageService storageService;
   private BlobTransferManager blobTransferManager;
-  private VeniceConfigLoader configLoader;
   private DefaultIngestionBackend ingestionBackend;
   private VeniceStoreVersionConfig storeConfig;
   private AbstractStorageEngine storageEngine;
@@ -47,7 +45,6 @@ public class DefaultIngestionBackendTest {
     storeIngestionService = mock(KafkaStoreIngestionService.class);
     storageService = mock(StorageService.class);
     blobTransferManager = mock(BlobTransferManager.class);
-    configLoader = mock(VeniceConfigLoader.class);
     storeConfig = mock(VeniceStoreVersionConfig.class);
     storageEngine = mock(AbstractStorageEngine.class);
     metadataRepo = mock(ReadOnlyStoreRepository.class);
