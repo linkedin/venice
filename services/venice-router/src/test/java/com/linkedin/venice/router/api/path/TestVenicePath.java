@@ -77,7 +77,7 @@ public class TestVenicePath {
   private MetricsRepository metricsRepository;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     metricsRepository = new MetricsRepository();
     // retry manager is disabled by default
     retryManager = new RetryManager(metricsRepository, "test-retry-manager", 0, 0);

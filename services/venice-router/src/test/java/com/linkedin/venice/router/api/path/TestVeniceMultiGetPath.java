@@ -36,6 +36,9 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceMultiGetPath {
+  private final RetryManager disabledRetryManager =
+      new RetryManager(new MetricsRepository(), "test-retry-manager", 0, 0);
+
   @BeforeClass
   public void setUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(
@@ -50,6 +53,7 @@ public class TestVeniceMultiGetPath {
   @AfterClass
   public void cleanUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(null);
+    disabledRetryManager.close();
   }
 
   private static byte[] serializeKeys(Iterable<ByteBuffer> keys) {
@@ -117,7 +121,7 @@ public class TestVeniceMultiGetPath {
         -1,
         null,
         1,
-        mock(RetryManager.class));
+        disabledRetryManager);
   }
 
   @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*but received.*")
@@ -146,7 +150,7 @@ public class TestVeniceMultiGetPath {
         -1,
         null,
         1,
-        mock(RetryManager.class));
+        disabledRetryManager);
   }
 
   @Test
@@ -165,7 +169,6 @@ public class TestVeniceMultiGetPath {
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
         .set(multiGetRequestSerializer.serializeObjects(keys));
-
     VenicePath path = new VeniceMultiGetPath(
         storeName,
         version,
@@ -177,7 +180,7 @@ public class TestVeniceMultiGetPath {
         -1,
         null,
         1,
-        mock(RetryManager.class));
+        disabledRetryManager);
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
     Assert.assertFalse(path.isLongTailRetryAllowedForNewRoute());
 
@@ -195,7 +198,7 @@ public class TestVeniceMultiGetPath {
         -1,
         null,
         -1,
-        mock(RetryManager.class));
+        disabledRetryManager);
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
   }
