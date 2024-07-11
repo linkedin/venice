@@ -59,7 +59,7 @@ public class DefaultIngestionBackendTest {
         storeIngestionService,
         storageService,
         blobTransferManager,
-        configLoader.getVeniceServerConfig());
+        veniceServerConfig);
   }
 
   @Test
@@ -86,7 +86,6 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(storeName), eq(versionNumber), eq(partition))).thenReturn(bootstrapFuture);
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(store.isHybrid()).thenReturn(false);
-    when(configLoader.getVeniceServerConfig()).thenReturn(veniceServerConfig);
     when(veniceServerConfig.getRocksDBPath()).thenReturn(baseDir);
 
     ingestionBackend.startConsumption(storeConfig, partition);
