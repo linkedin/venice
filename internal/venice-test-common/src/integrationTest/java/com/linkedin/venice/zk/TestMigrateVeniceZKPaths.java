@@ -1,12 +1,8 @@
 package com.linkedin.venice.zk;
 
-import static com.linkedin.venice.zk.VeniceZkPaths.ADMIN_TOPIC_METADATA;
-import static com.linkedin.venice.zk.VeniceZkPaths.EXECUTION_IDS;
-import static com.linkedin.venice.zk.VeniceZkPaths.PARENT_OFFLINE_PUSHES;
-import static com.linkedin.venice.zk.VeniceZkPaths.ROUTERS;
+import static com.linkedin.venice.zk.VeniceZkPaths.CLUSTER_ZK_PATHS;
 import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
 import static com.linkedin.venice.zk.VeniceZkPaths.STORE_CONFIGS;
-import static com.linkedin.venice.zk.VeniceZkPaths.STORE_GRAVEYARD;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.helix.ZkClientFactory;
@@ -34,8 +30,6 @@ public class TestMigrateVeniceZKPaths {
   private static final String CLUSTER_2 = "cluster2";
   private final Set<String> CLUSTERS = new HashSet<>(Arrays.asList(CLUSTER_1, CLUSTER_2));
   private static final String BASE_PATH = "/venice-parent";
-  private final Set<String> CLUSTER_ZK_PATHS = new HashSet<>(
-      Arrays.asList(ADMIN_TOPIC_METADATA, EXECUTION_IDS, PARENT_OFFLINE_PUSHES, ROUTERS, STORE_GRAVEYARD, STORES));
 
   @BeforeClass
   public void zkSetup() {

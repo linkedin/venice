@@ -1,22 +1,15 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.zk.VeniceZkPaths.ADMIN_TOPIC_METADATA;
-import static com.linkedin.venice.zk.VeniceZkPaths.EXECUTION_IDS;
-import static com.linkedin.venice.zk.VeniceZkPaths.PARENT_OFFLINE_PUSHES;
-import static com.linkedin.venice.zk.VeniceZkPaths.ROUTERS;
-import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
+import static com.linkedin.venice.zk.VeniceZkPaths.CLUSTER_ZK_PATHS;
 import static com.linkedin.venice.zk.VeniceZkPaths.STORE_CONFIGS;
-import static com.linkedin.venice.zk.VeniceZkPaths.STORE_GRAVEYARD;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.ZkClientFactory;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -26,10 +19,15 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
 
 
+/**
+ * <p>
+ *   This class contains methods to 1)migrate Venice-specific metadata from a source ZooKeeper (ZK) to a destination ZK
+ *   and 2)extract Venice-specific paths from an input text file containing ZK paths to an output text file.
+ *   We implement a tree data structure to represent ZK paths as nested children and use it to filter out Venice-specific
+ *   paths efficiently.
+ * </p>
+ */
 public class ZkCopier {
-  private static final Set<String> CLUSTER_ZK_PATHS = new HashSet<>(
-      Arrays.asList(ADMIN_TOPIC_METADATA, EXECUTION_IDS, PARENT_OFFLINE_PUSHES, ROUTERS, STORE_GRAVEYARD, STORES));
-
   /**
    * Migrate Venice-specific metadata from a source ZK to a destination ZK.
    * @param srcZkAddress source ZK address
