@@ -9,6 +9,7 @@ import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.router.RouterThrottleHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
@@ -115,7 +116,8 @@ public class TestVeniceMultiGetPath {
         false,
         -1,
         null,
-        1);
+        1,
+        mock(RetryManager.class));
   }
 
   @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*but received.*")
@@ -143,7 +145,8 @@ public class TestVeniceMultiGetPath {
         false,
         -1,
         null,
-        1);
+        1,
+        mock(RetryManager.class));
   }
 
   @Test
@@ -173,7 +176,8 @@ public class TestVeniceMultiGetPath {
         false,
         -1,
         null,
-        1);
+        1,
+        mock(RetryManager.class));
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
     Assert.assertFalse(path.isLongTailRetryAllowedForNewRoute());
 
@@ -190,7 +194,8 @@ public class TestVeniceMultiGetPath {
         false,
         -1,
         null,
-        -1);
+        -1,
+        mock(RetryManager.class));
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
   }

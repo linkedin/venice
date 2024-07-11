@@ -6,6 +6,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.router.RouterThrottleHandler;
@@ -49,14 +50,16 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
       RouterStats<AggRouterHttpRequestStats> stats,
-      int longTailRetryMaxRouteForMultiKeyReq) throws RouterException {
+      int longTailRetryMaxRouteForMultiKeyReq,
+      RetryManager retryManager) throws RouterException {
     super(
         storeName,
         versionNumber,
         resourceName,
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
-        longTailRetryMaxRouteForMultiKeyReq);
+        longTailRetryMaxRouteForMultiKeyReq,
+        retryManager);
 
     // Validate API version
     int apiVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
@@ -89,7 +92,8 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
       Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap,
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
-      int longTailRetryMaxRouteForMultiKeyReq) {
+      int longTailRetryMaxRouteForMultiKeyReq,
+      RetryManager retryManager) {
     super(
         storeName,
         versionNumber,
@@ -97,7 +101,8 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
         routerKeyMap,
-        longTailRetryMaxRouteForMultiKeyReq);
+        longTailRetryMaxRouteForMultiKeyReq,
+        retryManager);
     setPartitionKeys(routerKeyMap.keySet());
   }
 
@@ -132,7 +137,8 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
         routerKeyMap,
         isSmartLongTailRetryEnabled(),
         getSmartLongTailRetryAbortThresholdMs(),
-        getLongTailRetryMaxRouteForMultiKeyReq());
+        getLongTailRetryMaxRouteForMultiKeyReq(),
+        retryManager);
     subPath.setupRetryRelatedInfo(this);
     return subPath;
   }

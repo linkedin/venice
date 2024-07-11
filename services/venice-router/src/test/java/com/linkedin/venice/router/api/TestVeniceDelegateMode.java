@@ -26,6 +26,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -76,7 +77,7 @@ public class TestVeniceDelegateMode {
       RequestType requestType,
       List<RouterKey> keys,
       Set<String> slowStorageNodeSet) {
-    return new VenicePath(storeName, version, resourceName, false, -1) {
+    return new VenicePath(storeName, version, resourceName, false, -1, mock(RetryManager.class)) {
       private final String ROUTER_REQUEST_VERSION =
           Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 

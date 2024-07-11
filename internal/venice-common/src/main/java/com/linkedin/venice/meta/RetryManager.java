@@ -1,6 +1,6 @@
-package com.linkedin.venice.fastclient.meta;
+package com.linkedin.venice.meta;
 
-import com.linkedin.venice.fastclient.stats.RetryManagerStats;
+import com.linkedin.venice.stats.RetryManagerStats;
 import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
@@ -15,10 +15,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-/**
- * This class offers advanced client retry behaviors. Specifically enforcing a retry budget and relevant monitoring to
- * avoid retry storm and alert users when the retry threshold is misconfigured or service is degrading.
- */
 public class RetryManager implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(RetryManager.class);
   private static final int TOKEN_BUCKET_REFILL_INTERVAL_IN_SECONDS = 1;

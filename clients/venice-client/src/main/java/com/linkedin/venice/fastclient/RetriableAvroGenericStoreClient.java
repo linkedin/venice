@@ -8,7 +8,7 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.fastclient.meta.RetryManager;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.Optional;
@@ -40,7 +40,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final TimeoutProcessor timeoutProcessor;
   /**
    * The long tail retry budget is only applied to long tail retries. If there were any exception that's not a 429 the
-   * retry will be triggered without going through the long tail {@link RetryManager}. If the retry budget is exhausted
+   * retry will be triggered without going through the long tail {@link com.linkedin.venice.meta.RetryManager}. If the retry budget is exhausted
    * then the retry task will do nothing and the request will either complete eventually (original future) or time out.
    */
   private RetryManager singleGetLongTailRetryManager = null;

@@ -39,6 +39,7 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.DictionaryRetrievalService;
@@ -193,6 +194,10 @@ public class RouterServer extends AbstractVeniceService {
   private VeniceJVMStats jvmStats;
 
   private final AggHostHealthStats aggHostHealthStats;
+
+  private RetryManager singleGetRetryManager;
+
+  private RetryManager multiGetRetryManager;
 
   public static void main(String args[]) throws Exception {
     if (args.length != 1) {
@@ -518,13 +523,25 @@ public class RouterServer extends AbstractVeniceService {
         config.getClusterName(),
         compressorFactory,
         metricsRepository);
+    singleGetRetryManager = new RetryManager(
+        metricsRepository,
+        "single-get-long-tail-retry-manager",
+        config.getLongTailRetryBudgetEnforcementWindowInMs(),
+        config.getSingleGetLongTailRetryBudgetPercentDecimal());
+    multiGetRetryManager = new RetryManager(
+        metricsRepository,
+        "multi-get-long-tail-retry-manager",
+        config.getLongTailRetryBudgetEnforcementWindowInMs(),
+        config.getMultiGetLongTailRetryBudgetPercentDecimal());
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,
         partitionFinder,
         routerStats,
         metadataRepository,
         config,
-        compressorFactory);
+        compressorFactory,
+        singleGetRetryManager,
+        multiGetRetryManager);
 
     MetaDataHandler metaDataHandler = new MetaDataHandler(
         routingDataRepository,
@@ -862,6 +879,12 @@ public class RouterServer extends AbstractVeniceService {
     }
     if (heartbeat != null) {
       heartbeat.stopInner();
+    }
+    if (singleGetRetryManager != null) {
+      singleGetRetryManager.close();
+    }
+    if (multiGetRetryManager != null) {
+      multiGetRetryManager.close();
     }
   }
 
