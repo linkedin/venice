@@ -22,7 +22,6 @@ public class P2PBlobTransferService extends AbstractVeniceService {
   private EventLoopGroup bossGroup;
   private EventLoopGroup workerGroup;
   private final int port;
-  private final String baseDir;
   private ChannelFuture channelFuture;
   // TODO 1: move tunable configs to a config class
   // TODO 2: add SSL/auth/Quota support
@@ -33,7 +32,6 @@ public class P2PBlobTransferService extends AbstractVeniceService {
 
   public P2PBlobTransferService(int port, String baseDir) {
     this.port = port;
-    this.baseDir = baseDir;
     this.serverBootstrap = new ServerBootstrap();
 
     Class<? extends ServerChannel> socketChannelClass = NioServerSocketChannel.class;

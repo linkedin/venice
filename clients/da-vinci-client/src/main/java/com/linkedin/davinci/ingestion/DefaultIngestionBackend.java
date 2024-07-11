@@ -1,6 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -34,7 +34,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;
-  private final VeniceConfigLoader configLoader;
+  private final VeniceServerConfig serverConfig;
   private final Map<String, AtomicReference<AbstractStorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
   private final BlobTransferManager blobTransferManager;
@@ -44,12 +44,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
       KafkaStoreIngestionService storeIngestionService,
       StorageService storageService,
       BlobTransferManager blobTransferManager,
-      VeniceConfigLoader configLoader) {
+      VeniceServerConfig serverConfig) {
     this.storageMetadataService = storageMetadataService;
     this.storeIngestionService = storeIngestionService;
     this.storageService = storageService;
     this.blobTransferManager = blobTransferManager;
-    this.configLoader = configLoader;
+    this.serverConfig = serverConfig;
   }
 
   @Override
@@ -67,7 +67,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       return storageEngineAtomicReference;
     });
 
-    CompletionStage<InputStream> bootstrapFuture =
+    CompletionStage<Void> bootstrapFuture =
         bootstrapFromBlobs(storeAndVersion.getFirst(), storeAndVersion.getSecond().getNumber(), partition);
 
     bootstrapFuture.whenComplete((result, throwable) -> {
@@ -76,10 +76,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeVersion,
           partition);
       getStoreIngestionService().startConsumption(storeConfig, partition);
-      LOGGER.info(
-          "Completed starting consumption in ingestion service for store {} partition {}",
-          storeVersion,
-          partition);
     });
   }
 
@@ -88,39 +84,34 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
    * Blob transfer should be enabled to boostrap from blobs, and it currently only supports batch-stores.
    */
-  private CompletionStage<InputStream> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
+  private CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
     if (!store.isBlobTransferEnabled() || store.isHybrid() || blobTransferManager == null) {
       return CompletableFuture.completedFuture(null);
     }
 
     String storeName = store.getName();
-    String baseDir = configLoader.getVeniceServerConfig().getRocksDBPath();
-    CompletionStage<InputStream> p2pTransfer = blobTransferManager.get(storeName, versionNumber, partitionId);
-    CompletableFuture<InputStream> p2pFuture = p2pTransfer.toCompletableFuture();
+    String baseDir = serverConfig.getRocksDBPath();
+    CompletableFuture<InputStream> p2pFuture =
+        blobTransferManager.get(storeName, versionNumber, partitionId).toCompletableFuture();
 
     LOGGER
         .info("Bootstrapping from blobs for store {}, version {}, partition {}", storeName, versionNumber, partitionId);
 
-    CompletableFuture.runAsync(() -> {
+    return CompletableFuture.runAsync(() -> {
       try {
         p2pFuture.get(30, TimeUnit.MINUTES);
       } catch (Exception e) {
-        LOGGER.error(
+        LOGGER.warn(
             "Failed bootstrapping from blobs for store {}, version {}, partition {}",
             storeName,
             versionNumber,
             partitionId,
             e);
-        RocksDBUtils.deleteBlobFiles(baseDir, storeName, versionNumber, partitionId)
-            .thenAccept(deleteResult -> p2pFuture.completeExceptionally(e))
-            .exceptionally(throwable -> {
-              p2pFuture.completeExceptionally(new RuntimeException("Blob deletion failed: " + throwable, e));
-              return null;
-            });
+        RocksDBUtils.deletePartitionDir(baseDir, storeName, versionNumber, partitionId);
+        p2pFuture.cancel(true);
+        // todo: close channels
       }
     });
-
-    return p2pFuture;
   }
 
   @Override

@@ -59,7 +59,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       KafkaStoreIngestionService storeIngestionService,
       StorageService storageService,
       BlobTransferManager blobTransferManager) {
-    super(storageMetadataService, storeIngestionService, storageService, blobTransferManager, configLoader);
+    super(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        blobTransferManager,
+        configLoader.getVeniceServerConfig());
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.configLoader = configLoader;

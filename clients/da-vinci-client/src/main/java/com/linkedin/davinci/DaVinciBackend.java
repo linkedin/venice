@@ -452,7 +452,7 @@ public class DaVinciBackend implements Closeable {
             ingestionService,
             storageService,
             blobTransferManager,
-            configLoader);
+            configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
     // Subscribe all bootstrap version partitions.

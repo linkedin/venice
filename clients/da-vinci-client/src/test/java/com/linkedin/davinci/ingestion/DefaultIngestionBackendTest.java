@@ -25,9 +25,6 @@ import com.linkedin.venice.utils.Pair;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Supplier;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -43,8 +40,6 @@ public class DefaultIngestionBackendTest {
   private AbstractStorageEngine storageEngine;
   private ReadOnlyStoreRepository metadataRepo;
   private VeniceServerConfig veniceServerConfig;
-  @Captor
-  private ArgumentCaptor<Supplier<StoreVersionState>> supplierCaptor;
 
   @BeforeMethod
   public void setUp() {
@@ -64,7 +59,7 @@ public class DefaultIngestionBackendTest {
         storeIngestionService,
         storageService,
         blobTransferManager,
-        configLoader);
+        configLoader.getVeniceServerConfig());
   }
 
   @Test

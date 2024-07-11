@@ -74,6 +74,7 @@ public class DvcBlobFinder implements BlobFinder {
     return errorResponse;
   }
 
+  @Override
   public void close() throws IOException {
     transportClient.close();
   }

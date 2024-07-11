@@ -51,4 +51,9 @@ public class ServerBlobFinder implements BlobFinder {
 
     return response;
   }
+
+  @Override
+  public void close() {
+  }
+
 }
