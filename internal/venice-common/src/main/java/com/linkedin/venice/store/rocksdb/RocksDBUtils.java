@@ -108,9 +108,12 @@ public class RocksDBUtils {
    * @param partition the partition ID
    */
   public static void deletePartitionDir(String baseDir, String storeName, int version, int partition) {
+    String topicName = storeName + "_v" + version;
+    String partitionDir = composePartitionDbDir(baseDir, topicName, partition);
+
     Path path = null;
     try {
-      path = Paths.get(baseDir, storeName, String.valueOf(version), String.valueOf(partition));
+      path = Paths.get(partitionDir);
       if (Files.exists(path)) {
         Files.walk(path).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
       }

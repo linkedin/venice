@@ -34,19 +34,19 @@ public class TestRocksDBUtils {
 
   @Test
   public void testDeletePartitionDir() throws IOException {
-    Files.createDirectories(baseDir.resolve("storeName/1/1"));
+    Files.createDirectories(baseDir.resolve("storeName_v1/storeName_v1_1"));
 
-    Files.createFile(baseDir.resolve("storeName/1/1/file1.txt"));
-    Files.createFile(baseDir.resolve("storeName/1/1/file2.txt"));
+    Files.createFile(baseDir.resolve("storeName_v1/storeName_v1_1/file1.txt"));
+    Files.createFile(baseDir.resolve("storeName_v1/storeName_v1_1/file2.txt"));
 
     // assert files exist
-    assertTrue(Files.exists(baseDir.resolve("storeName/1/1/file1.txt")));
-    assertTrue(Files.exists(baseDir.resolve("storeName/1/1/file2.txt")));
+    assertTrue(Files.exists(baseDir.resolve("storeName_v1/storeName_v1_1/file1.txt")));
+    assertTrue(Files.exists(baseDir.resolve("storeName_v1/storeName_v1_1/file2.txt")));
 
     deletePartitionDir(baseDir.toString(), "storeName", 1, 1);
 
     // assert directory does not exist
-    assertFalse(Files.exists(baseDir.resolve("storeName/1/1")));
+    assertFalse(Files.exists(baseDir.resolve("storeName_v1/storeName_v1_1")));
   }
 
   @Test
@@ -56,28 +56,28 @@ public class TestRocksDBUtils {
     // tmp path1 "rocksdb/storeName/5/5/file1.txt"
     // tmp path2 "rocksdb/storeName/5/6/file1.txt"
 
-    Files.createDirectories(baseDir.resolve("storeName/5/5"));
-    Files.createDirectories(baseDir.resolve("storeName/5/6"));
+    Files.createDirectories(baseDir.resolve("storeName_v5/storeName_v5_5"));
+    Files.createDirectories(baseDir.resolve("storeName_v5/storeName_v5_6"));
 
-    Files.createFile(baseDir.resolve("storeName/5/5/file1.txt"));
-    Files.createFile(baseDir.resolve("storeName/5/6/file2.txt"));
+    Files.createFile(baseDir.resolve("storeName_v5/storeName_v5_5/file1.txt"));
+    Files.createFile(baseDir.resolve("storeName_v5/storeName_v5_6/file2.txt"));
 
     // assert files exist
-    assertTrue(Files.exists(baseDir.resolve("storeName/5/5/file1.txt")));
-    assertTrue(Files.exists(baseDir.resolve("storeName/5/6/file2.txt")));
+    assertTrue(Files.exists(baseDir.resolve("storeName_v5/storeName_v5_5/file1.txt")));
+    assertTrue(Files.exists(baseDir.resolve("storeName_v5/storeName_v5_6/file2.txt")));
 
     deletePartitionDir(baseDir.toString(), "storeName", 5, 6);
 
     // assert version 5, partition 5 should exist
-    assertTrue(Files.exists(baseDir.resolve("storeName/5/5")));
+    assertTrue(Files.exists(baseDir.resolve("storeName_v5/storeName_v5_5")));
 
     // assert version 5, partition 6 should not exist
-    assertFalse(Files.exists(baseDir.resolve("storeName/5/6")));
+    assertFalse(Files.exists(baseDir.resolve("storeName_v5/storeName_v5_6")));
   }
 
   @Test
   public void testDeletePartitionDir_EmptyFiles() throws IOException {
-    Files.createDirectories(baseDir.resolve("storeName/2/2"));
+    Files.createDirectories(baseDir.resolve("storeName_v2/storeName_v2_2"));
     // assert the temp base directory does exist
     assertTrue(Files.exists(baseDir));
     deletePartitionDir(baseDir.toString(), "storeName", 2, 2);
