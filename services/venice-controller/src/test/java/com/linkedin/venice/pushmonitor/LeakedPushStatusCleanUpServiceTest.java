@@ -49,7 +49,7 @@ public class LeakedPushStatusCleanUpServiceTest {
      * Define the behavior of store config; the leaked version will not be in the version list of the store
      */
     Store mockStore = mock(Store.class);
-    doReturn(mockStore).when(metadataRepository).getStoreOrThrow(any());
+    doReturn(mockStore).when(metadataRepository).getStore(any());
     doReturn(currentVersion).when(mockStore).getCurrentVersion();
     doReturn(false).when(mockStore).containsVersion(leakedVersion1);
     doReturn(false).when(mockStore).containsVersion(leakedVersion2);
