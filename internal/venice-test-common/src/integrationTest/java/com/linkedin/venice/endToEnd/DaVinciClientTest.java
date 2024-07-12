@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFR
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_PORT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
@@ -159,7 +158,6 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
         .build();
 
     for (int i = 0; i < 10; ++i) {
@@ -207,7 +205,6 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -342,7 +339,6 @@ public class DaVinciClientTest {
     backendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
     backendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
     backendConfigMap.put(SERVER_DISK_FULL_THRESHOLD, 0.01); // force it to fail
-    backendConfigMap.put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort());
 
     try (DaVinciClient<Integer, Integer> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
         storeName,
@@ -370,7 +366,6 @@ public class DaVinciClientTest {
         // .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -623,7 +618,6 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -688,7 +682,6 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -855,8 +848,7 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testPartialSubscription(DaVinciConfig daVinciConfig) throws Exception {
     String storeName = createStoreWithMetaSystemStore(KEY_COUNT);
-    VeniceProperties backendConfig =
-        new PropertyBuilder().put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort()).build();
+    VeniceProperties backendConfig = new PropertyBuilder().build();
 
     Set<Integer> keySet = new HashSet<>();
     for (int i = 0; i < KEY_COUNT; ++i) {
@@ -964,7 +956,6 @@ public class DaVinciClientTest {
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(D2_ZK_HOSTS_ADDRESS, zkHosts)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
         .build();
 
     // Re-open the same store's database to verify RocksDB metadata partition's lock has been released.

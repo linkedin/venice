@@ -3,7 +3,6 @@ package com.linkedin.venice.fastclient;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_PORT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
@@ -16,7 +15,6 @@ import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -118,7 +116,6 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
             .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
             .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, false)
             .put(DATA_BASE_PATH, dataPath)
-            .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
             .build();
     daVinciClientFactory = new CachingDaVinciClientFactory(
         d2Client,
