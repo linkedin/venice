@@ -3,6 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -230,6 +231,10 @@ public class PushMonitorUtils {
     int completedReplicaCount = 0;
     Set<String> offlineInstanceList = new HashSet<>();
     Set<Integer> incompletePartition = new HashSet<>();
+    /**
+     * This cache is used to reduce the duplicate calls for liveness check as one host can host multiple partitions.
+     */
+    Map<String, Boolean> instanceLivenessCache = new HashMap<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       Map<CharSequence, Integer> instances =
           reader.getPartitionStatus(storeName, version, partitionId, incrementalPushVersion);
@@ -243,7 +248,9 @@ public class PushMonitorUtils {
           completedReplicaCount++;
           continue;
         }
-        boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
+        String instanceName = entry.getKey().toString();
+        boolean isInstanceAlive = instanceLivenessCache
+            .computeIfAbsent(instanceName, ignored -> reader.isInstanceAlive(storeName, instanceName));
         if (!isInstanceAlive) {
           // Keep at most 5 offline instances for logging purpose.
           if (offlineInstanceList.size() < 5) {
