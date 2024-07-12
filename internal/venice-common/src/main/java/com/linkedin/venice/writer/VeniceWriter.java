@@ -1869,13 +1869,21 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       long originTimeStampMs) {
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
-    return producerAdapter.sendMessage(
-        topicPartition.getPubSubTopic().getName(),
-        topicPartition.getPartitionNumber(),
-        KafkaKey.HEART_BEAT,
-        kafkaMessageEnvelope,
-        getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState),
-        callback);
+    try {
+      return producerAdapter.sendMessage(
+          topicPartition.getPubSubTopic().getName(),
+          topicPartition.getPartitionNumber(),
+          KafkaKey.HEART_BEAT,
+          kafkaMessageEnvelope,
+          getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState),
+          callback);
+    } catch (Exception e) {
+      logger.error("Could not send heartbeat for topic {}", topicPartition.getPubSubTopic().getName());
+      CompletableFuture<PubSubProduceResult> heartBeatFuture;
+      heartBeatFuture = new CompletableFuture<>();
+      heartBeatFuture.completeExceptionally(e);
+      return heartBeatFuture;
+    }
   }
 
   /**
