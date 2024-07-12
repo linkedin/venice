@@ -214,6 +214,7 @@ public class TestPushJobWithNativeReplication {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
+    D2ClientUtils.shutdownClient(d2Client);
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 

@@ -15,10 +15,8 @@ import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.utils.TestUtils;
@@ -26,7 +24,6 @@ import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -35,37 +32,32 @@ import org.testng.annotations.Test;
 
 
 public class StoragePersonaTest {
-  private VeniceClusterWrapper venice;
-  private ZkServerWrapper parentZk;
-  private VeniceControllerWrapper parentController;
+  // Ideally this should work with a single region cluster, but today persona only works with a multi region cluster
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper venice;
   private ControllerClient controllerClient;
 
-  /**
-   * This cluster is re-used by some tests, in order to speed up the suite. Some other tests require
-   * certain specific characteristics which makes it awkward to re-use, though not necessarily impossible.
-   * Further reuse of this shared cluster can be attempted later.
-   */
   @BeforeClass(alwaysRun = true)
   public void setUp() {
-    Properties extraProperties = new Properties();
-    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 1000000, false, false, extraProperties);
-    parentZk = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), parentZk, venice.getPubSubBrokerWrapper())
-            .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+    venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
             .build());
-    controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+    controllerClient = new ControllerClient(venice.getClusterNames()[0], venice.getControllerConnectString());
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(controllerClient);
-    Utils.closeQuietlyWithErrorLogged(parentController);
-    Utils.closeQuietlyWithErrorLogged(parentZk);
     Utils.closeQuietlyWithErrorLogged(venice);
   }
 
-  private Store setUpTestStoreAndAddToRepo(long quota) {
+  private Store setUpTestStore(long quota) {
     Store testStore = TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", 100);
     controllerClient
         .createNewStore(testStore.getName(), testStore.getOwner(), STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
@@ -91,13 +83,13 @@ public class StoragePersonaTest {
   @Test
   public void testCreatePersonaNonEmptyStores() {
     StoragePersona persona = createDefaultPersona();
-    String testStoreName1 = setUpTestStoreAndAddToRepo(100).getName();
+    String testStoreName1 = setUpTestStore(100).getName();
     TestUtils.waitForNonDeterministicAssertion(
         60,
         TimeUnit.SECONDS,
         () -> Assert.assertNotNull(controllerClient.getStore(testStoreName1)));
     persona.getStoresToEnforce().add(testStoreName1);
-    String testStoreName2 = setUpTestStoreAndAddToRepo(200).getName();
+    String testStoreName2 = setUpTestStore(200).getName();
     TestUtils.waitForNonDeterministicAssertion(
         60,
         TimeUnit.SECONDS,
@@ -185,7 +177,7 @@ public class StoragePersonaTest {
   @Test(expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = ".*" + QUOTA_FAILED_REGEX)
   public void testCreatePersonaInvalidQuota() {
     StoragePersona persona = createDefaultPersona();
-    String testStoreName = setUpTestStoreAndAddToRepo(100).getName();
+    String testStoreName = setUpTestStore(100).getName();
     persona.getStoresToEnforce().add(testStoreName);
     persona.setQuotaNumber(50);
     ControllerResponse response = controllerClient.createStoragePersona(
@@ -293,14 +285,14 @@ public class StoragePersonaTest {
     StoragePersona persona = createDefaultPersona();
     persona.setQuotaNumber(totalQuota * 3);
     List<String> stores = new ArrayList<>();
-    stores.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
+    stores.add(setUpTestStore(totalQuota).getName());
     persona.getStoresToEnforce().add(stores.get(0));
     controllerClient.createStoragePersona(
         persona.getName(),
         persona.getQuotaNumber(),
         persona.getStoresToEnforce(),
         persona.getOwners());
-    stores.add(setUpTestStoreAndAddToRepo(totalQuota * 2).getName());
+    stores.add(setUpTestStore(totalQuota * 2).getName());
     persona.setStoresToEnforce(new HashSet<>(stores));
     controllerClient.updateStoragePersona(
         persona.getName(),
@@ -317,14 +309,14 @@ public class StoragePersonaTest {
     StoragePersona persona = createDefaultPersona();
     persona.setQuotaNumber(totalQuota);
     List<String> stores = new ArrayList<>();
-    stores.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
+    stores.add(setUpTestStore(totalQuota).getName());
     persona.getStoresToEnforce().add(stores.get(0));
     controllerClient.createStoragePersona(
         persona.getName(),
         persona.getQuotaNumber(),
         persona.getStoresToEnforce(),
         persona.getOwners());
-    stores.add(setUpTestStoreAndAddToRepo(totalQuota * 2).getName());
+    stores.add(setUpTestStore(totalQuota * 2).getName());
     ControllerResponse response = controllerClient.updateStoragePersona(
         persona.getName(),
         new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
@@ -339,8 +331,8 @@ public class StoragePersonaTest {
     StoragePersona persona = createDefaultPersona();
     persona.setQuotaNumber(totalQuota);
     List<String> stores = new ArrayList<>();
-    stores.add(setUpTestStoreAndAddToRepo(totalQuota).getName());
-    stores.add(setUpTestStoreAndAddToRepo(totalQuota * 2).getName());
+    stores.add(setUpTestStore(totalQuota).getName());
+    stores.add(setUpTestStore(totalQuota * 2).getName());
     persona.setStoresToEnforce(new HashSet<>(stores));
     ControllerResponse response = controllerClient.updateStoragePersona(
         persona.getName(),
@@ -372,7 +364,7 @@ public class StoragePersonaTest {
   @Test
   public void testGetPersonaContainingStore() {
     long quota = 1000;
-    Store testStore = setUpTestStoreAndAddToRepo(quota);
+    Store testStore = setUpTestStore(quota);
     StoragePersona persona = createDefaultPersona();
     persona.getStoresToEnforce().add(testStore.getName());
     persona.setQuotaNumber(quota);
@@ -392,7 +384,7 @@ public class StoragePersonaTest {
   @Test
   public void testGetPersonaContainingStorePersonaUpdate() {
     long quota = 1000;
-    Store testStore = setUpTestStoreAndAddToRepo(quota);
+    Store testStore = setUpTestStore(quota);
     StoragePersona persona = createDefaultPersona();
     persona.setQuotaNumber(quota);
     controllerClient.createStoragePersona(
@@ -421,7 +413,7 @@ public class StoragePersonaTest {
 
   @Test
   public void testGetPersonaContainingStoreNoPersona() {
-    Store testStore = setUpTestStoreAndAddToRepo(1000);
+    Store testStore = setUpTestStore(1000);
     StoragePersonaResponse response = controllerClient.getStoragePersonaAssociatedWithStore(testStore.getName());
     Assert.assertNull(response.getStoragePersona());
     Assert.assertFalse(response.isError());
@@ -445,7 +437,7 @@ public class StoragePersonaTest {
         persona.getOwners());
     expected.add(persona);
     persona = createDefaultPersona();
-    persona.getStoresToEnforce().add(setUpTestStoreAndAddToRepo(quota).getName());
+    persona.getStoresToEnforce().add(setUpTestStore(quota).getName());
     persona.setQuotaNumber(quota);
     expected.add(persona);
     controllerClient.createStoragePersona(

@@ -3273,7 +3273,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       LOGGER.info(
-          "Adding Replication metadata schema: for store: {} in cluster: {} metadataSchema: {} "
+          "Adding Replication metadata schema for store: {} in cluster: {} metadataSchema: {} "
               + "replicationMetadataVersionId: {} valueSchemaId: {}",
           storeName,
           clusterName,
@@ -5441,5 +5441,15 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public long getHeartbeatFromSystemStore(String clusterName, String storeName) {
     throw new VeniceUnsupportedOperationException("getHeartbeatFromSystemStore");
+  }
+
+  @Override
+  public HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster) {
+    return getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
+  }
+
+  @Override
+  public PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }

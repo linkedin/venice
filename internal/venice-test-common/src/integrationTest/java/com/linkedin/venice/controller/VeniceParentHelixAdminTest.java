@@ -10,8 +10,6 @@ import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WR
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicPushCompletion;
@@ -32,14 +30,11 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
-import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
@@ -560,40 +555,33 @@ public class VeniceParentHelixAdminTest {
   public void testStoreMetaDataUpdateFromParentToChildController(
       boolean isControllerSslEnabled,
       boolean isSupersetSchemaGeneratorEnabled) throws IOException {
-    Properties properties = new Properties();
+    Properties parentControllerProps = new Properties();
     // This cluster setup don't have server, we cannot perform push here.
-    properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
-    properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
+    parentControllerProps.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
+    parentControllerProps
+        .setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
     if (isSupersetSchemaGeneratorEnabled) {
-      properties.setProperty(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, String.valueOf(true));
-      properties.put(
+      parentControllerProps
+          .setProperty(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, String.valueOf(true));
+      parentControllerProps.put(
           VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR,
           new SupersetSchemaGeneratorWithCustomProp("test_prop"));
     }
 
-    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
-            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
-                .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
-                .build());
-        VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
-                .sslToKafka(isControllerSslEnabled)
-                .regionName(CHILD_REGION_NAME_PREFIX + "0")
-                .build());
-        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, pubSubBrokerWrapper)
-                .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
-                .extraProperties(properties)
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(0)
+                .numberOfRouters(0)
+                .replicationFactor(1)
+                .parentControllerProperties(parentControllerProps)
                 .sslToKafka(isControllerSslEnabled)
                 .build())) {
-      String childControllerUrl = isControllerSslEnabled
-          ? childControllerWrapper.getSecureControllerUrl()
-          : childControllerWrapper.getControllerUrl();
-      String parentControllerUrl = isControllerSslEnabled
-          ? parentControllerWrapper.getSecureControllerUrl()
-          : parentControllerWrapper.getControllerUrl();
+      String childControllerUrl = venice.getChildRegions().get(0).getControllerConnectString();
+      String parentControllerUrl = venice.getControllerConnectString();
       Optional<SSLFactory> sslFactory =
           isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
