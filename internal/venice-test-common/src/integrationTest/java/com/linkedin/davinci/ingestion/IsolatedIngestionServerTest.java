@@ -5,7 +5,6 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildA
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.executeShellCommand;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_PORT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
@@ -130,7 +129,6 @@ public class IsolatedIngestionServerTest {
         .put(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 10)
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 10)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_PORT, TestUtils.getFreePort())
         .build();
     return new VeniceConfigLoader(properties, properties);
   }
