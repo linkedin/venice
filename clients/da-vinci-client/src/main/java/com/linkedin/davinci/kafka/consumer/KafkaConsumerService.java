@@ -244,14 +244,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
   }
 
-  /**
-   * Stop specific subscription associated with the given version topic.
-   */
-  @Override
-  public Set<PubSubTopicPartition> getAllSubscribedTopicPartitionsFor(PubSubTopic versionTopic) {
-    return versionTopicToTopicPartitionToConsumer.get(versionTopic).keySet();
-  }
-
   @Override
   public void batchUnsubscribe(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub) {
     Map<PubSubConsumerAdapter, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();

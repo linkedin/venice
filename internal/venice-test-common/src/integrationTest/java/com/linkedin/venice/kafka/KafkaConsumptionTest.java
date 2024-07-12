@@ -212,8 +212,11 @@ public class KafkaConsumptionTest {
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
-    TopicPartitionReplicaRole topicPartitionReplicaRole =
-        new TopicPartitionReplicaRole(true, true, pubSubTopicPartition, versionTopic);
+    TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
+        true,
+        TopicPartitionReplicaRole.VersionRole.CURRENT,
+        pubSubTopicPartition,
+        versionTopic);
     StorePartitionDataReceiver localDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
         .subscribeConsumerFor(localKafkaUrl, storeIngestionTask, topicPartitionReplicaRole, -1);
     Assert

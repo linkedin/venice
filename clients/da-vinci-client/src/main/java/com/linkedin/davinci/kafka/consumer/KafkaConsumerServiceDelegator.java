@@ -150,11 +150,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   @Override
-  public Set<PubSubTopicPartition> getAllSubscribedTopicPartitionsFor(PubSubTopic versionTopic) {
-    return null;
-  }
-
-  @Override
   public boolean startInner() throws Exception {
     defaultConsumerService.start();
     if (consumerServiceForAAWCLeader != null) {

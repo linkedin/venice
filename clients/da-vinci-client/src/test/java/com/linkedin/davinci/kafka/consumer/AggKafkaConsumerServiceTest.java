@@ -90,7 +90,7 @@ public class AggKafkaConsumerServiceTest {
     when(storeIngestionTask.getVersionTopic()).thenReturn(topic);
     when(storeIngestionTask.getTopicManager(pubSubUrl)).thenReturn(topicManager);
     TopicPartitionReplicaRole topicPartitionReplicaRole =
-        new TopicPartitionReplicaRole(true, true, topicPartition, topic);
+        new TopicPartitionReplicaRole(true, TopicPartitionReplicaRole.VersionRole.CURRENT, topicPartition, topic);
     aggKafkaConsumerServiceSpy.subscribeConsumerFor(pubSubUrl, storeIngestionTask, topicPartitionReplicaRole, -1);
 
     verify(topicManager).prefetchAndCacheLatestOffset(topicPartition);

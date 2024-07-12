@@ -252,11 +252,14 @@ public class KafkaConsumerServiceDelegatorTest {
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic(RT_TOPIC_NAME);
     TopicPartitionReplicaRole topicPartitionForVT = new TopicPartitionReplicaRole(
         true,
-        true,
+        TopicPartitionReplicaRole.VersionRole.CURRENT,
         new PubSubTopicPartitionImpl(versionTopic, PARTITION_ID),
         versionTopic);
-    TopicPartitionReplicaRole topicPartitionForRT =
-        new TopicPartitionReplicaRole(true, true, new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID), versionTopic);
+    TopicPartitionReplicaRole topicPartitionForRT = new TopicPartitionReplicaRole(
+        true,
+        TopicPartitionReplicaRole.VersionRole.CURRENT,
+        new PubSubTopicPartitionImpl(rtTopic, PARTITION_ID),
+        versionTopic);
 
     ConsumedDataReceiver dataReceiver = mock(ConsumedDataReceiver.class);
     doReturn(versionTopic).when(dataReceiver).destinationIdentifier();

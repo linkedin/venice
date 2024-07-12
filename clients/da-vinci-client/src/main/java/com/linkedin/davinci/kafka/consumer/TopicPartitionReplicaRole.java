@@ -10,23 +10,21 @@ public class TopicPartitionReplicaRole {
   PubSubTopicPartition pubSubTopicPartition;
   PubSubTopic versionTopic;
 
+  VersionRole versionRole;
+
+  public enum VersionRole {
+    CURRENT, BACKUP, FUTURE
+  }
+
   public TopicPartitionReplicaRole(
       Boolean isLeader,
-      Boolean isCurrentVersion,
+      VersionRole versionRole,
       PubSubTopicPartition pubSubTopicPartition,
       PubSubTopic versionTopic) {
     this.isLeader = isLeader;
-    this.isCurrentVersion = isCurrentVersion;
+    this.versionRole = versionRole;
     this.pubSubTopicPartition = pubSubTopicPartition;
     this.versionTopic = versionTopic;
-  }
-
-  public void setLeaderRole(Boolean isLeader) {
-    this.isLeader = isLeader;
-  }
-
-  public void setCurrentVersionRole(Boolean currentVersion) {
-    this.isCurrentVersion = currentVersion;
   }
 
   public Boolean isCurrentVersion() {
@@ -40,5 +38,4 @@ public class TopicPartitionReplicaRole {
   public PubSubTopic getVersionTopic() {
     return versionTopic;
   }
-
 }

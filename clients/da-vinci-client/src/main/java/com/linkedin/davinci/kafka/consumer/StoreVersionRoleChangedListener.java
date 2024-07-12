@@ -2,8 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
-import java.util.function.BooleanSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -11,19 +9,12 @@ import org.apache.logging.log4j.Logger;
 public class StoreVersionRoleChangedListener implements StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(StoreDataChangedListener.class);
   private final String storeName;
-
-  private boolean isCurrentVersion;
+  private TopicPartitionReplicaRole.VersionRole versionRole;
   private StoreIngestionTask storeIngestionTask;
 
-  private BooleanSupplier isCurrentVersionSupplier;
-
-  public StoreVersionRoleChangedListener(
-      PubSubTopic versionTopic,
-      BooleanSupplier isCurrentVersionSupplier,
-      StoreIngestionTask storeIngestionTask) {
-    this.storeName = versionTopic.getStoreName();
-    this.isCurrentVersionSupplier = isCurrentVersionSupplier;
-    this.isCurrentVersion = isCurrentVersionSupplier.getAsBoolean();
+  public StoreVersionRoleChangedListener(StoreIngestionTask storeIngestionTask) {
+    this.storeName = storeIngestionTask.getVersionTopic().getStoreName();
+    this.versionRole = storeIngestionTask.getStoreVersionRole();
     this.storeIngestionTask = storeIngestionTask;
   }
 
@@ -43,10 +34,14 @@ public class StoreVersionRoleChangedListener implements StoreDataChangedListener
       return;
     }
 
-    if (isCurrentVersionSupplier.getAsBoolean() != isCurrentVersion) {
-      LOGGER.info("Store version role changed from current version {} to non-current version: {}");
-      this.storeIngestionTask.versionRoleChange();
-      this.isCurrentVersion = isCurrentVersionSupplier.getAsBoolean();
+    TopicPartitionReplicaRole.VersionRole newVersionRole = storeIngestionTask.getStoreVersionRole();
+    if (!versionRole.equals(newVersionRole)) {
+      LOGGER.info(
+          "Store version role changed from previous version role: {} to new version role: {}",
+          versionRole,
+          newVersionRole);
+      this.storeIngestionTask.versionRoleChangeToTriggerResubscribe();
+      this.versionRole = newVersionRole;
     }
   }
 }

@@ -5,7 +5,7 @@ import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
-import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.VERSION_ROLE_CHANGE;
+import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.VERSION_ROLE_CHANGE_TO_TRIGGER_RESUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -50,6 +50,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -475,7 +476,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
-    this.storeVersionRoleChangedListener = new StoreVersionRoleChangedListener(versionTopic, isCurrentVersion, this);
+    this.storeVersionRoleChangedListener = new StoreVersionRoleChangedListener(this);
     this.storeRepository.registerStoreDataChangedListener(storeVersionRoleChangedListener);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
@@ -564,12 +565,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     subscribePartition(topicPartition, true);
   }
 
-  public void versionRoleChange() {
+  // TODO: ensure thread safety for version role change.
+  public synchronized void versionRoleChangeToTriggerResubscribe() {
     throwIfNotRunning();
     for (int partition: partitionConsumptionStateMap.keySet()) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
       partitionToPendingConsumerActionCountMap.computeIfAbsent(partition, x -> new AtomicInteger(0)).incrementAndGet();
-      consumerActionsQueue.add(new ConsumerAction(VERSION_ROLE_CHANGE, pubSubTopicPartition, nextSeqNum(), false));
+      consumerActionsQueue.add(
+          new ConsumerAction(VERSION_ROLE_CHANGE_TO_TRIGGER_RESUBSCRIBE, pubSubTopicPartition, nextSeqNum(), false));
     }
   }
 
@@ -1852,7 +1855,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PubSubTopicPartition pubSubTopicPartition =
             newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
         TopicPartitionReplicaRole topicPartitionReplicaRole =
-            new TopicPartitionReplicaRole(false, isCurrentVersion.getAsBoolean(), pubSubTopicPartition, versionTopic);
+            new TopicPartitionReplicaRole(false, getStoreVersionRole(), pubSubTopicPartition, versionTopic);
         consumerSubscribe(topicPartitionReplicaRole, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
         LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         storageUtilizationManager.initPartition(partition);
@@ -4038,12 +4041,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean hasAllPartitionReportedCompleted() {
-    for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
+    for (Map.Entry<Integer, PartitionConsumptionState> entry : partitionConsumptionStateMap.entrySet()) {
       if (entry.getValue().isCompletionReported()) {
         return false;
       }
     }
 
     return true;
+  }
+
+  public TopicPartitionReplicaRole.VersionRole getStoreVersionRole() {
+    try {
+      int currentVersionNumber = storeRepository.getStoreOrThrow(storeName).getCurrentVersion();
+      if (currentVersionNumber < this.versionNumber) {
+        return TopicPartitionReplicaRole.VersionRole.FUTURE;
+      } else if (currentVersionNumber > this.versionNumber) {
+        return TopicPartitionReplicaRole.VersionRole.BACKUP;
+      } else {
+        return TopicPartitionReplicaRole.VersionRole.CURRENT;
+      }
+    } catch (VeniceNoStoreException e) {
+      LOGGER.error("Unable to find store meta-data for {}", versionTopic, e);
+      throw e;
+    }
   }
 }

@@ -451,7 +451,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
           TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
               false,
-              isCurrentVersion.getAsBoolean(),
+              getStoreVersionRole(),
               partitionConsumptionState.getSourceTopicPartition(topic),
               versionTopic);
 
@@ -480,7 +480,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          */
         endSegment(partition);
         break;
-      case VERSION_ROLE_CHANGE:
+      case VERSION_ROLE_CHANGE_TO_TRIGGER_RESUBSCRIBE:
         partitionConsumptionState = partitionConsumptionStateMap.get(partition);
         if (partitionConsumptionState == null) {
           LOGGER.info(
@@ -635,11 +635,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // Subscribe to local Kafka topic
             PubSubTopicPartition pubSubTopicPartition =
                 partitionConsumptionState.getSourceTopicPartition(currentLeaderTopic);
-            TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
-                true,
-                isCurrentVersion.getAsBoolean(),
-                pubSubTopicPartition,
-                versionTopic);
+            TopicPartitionReplicaRole topicPartitionReplicaRole =
+                new TopicPartitionReplicaRole(true, getStoreVersionRole(), pubSubTopicPartition, versionTopic);
             consumerSubscribe(
                 topicPartitionReplicaRole,
                 partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
@@ -855,7 +852,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState.consumeRemotely());
 
     TopicPartitionReplicaRole topicPartitionReplicaRole =
-        new TopicPartitionReplicaRole(true, isCurrentVersion.getAsBoolean(), leaderTopicPartition, versionTopic);
+        new TopicPartitionReplicaRole(true, getStoreVersionRole(), leaderTopicPartition, versionTopic);
     consumerSubscribe(topicPartitionReplicaRole, leaderStartOffset, leaderSourceKafkaURL);
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(
@@ -939,7 +936,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     String sourceKafkaURL = sourceKafkaURLs.iterator().next();
     TopicPartitionReplicaRole topicPartitionReplicaRole =
-        new TopicPartitionReplicaRole(true, isCurrentVersion.getAsBoolean(), newSourceTopicPartition, versionTopic);
+        new TopicPartitionReplicaRole(true, getStoreVersionRole(), newSourceTopicPartition, versionTopic);
     consumerSubscribe(topicPartitionReplicaRole, upstreamStartOffset, sourceKafkaURL);
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(
@@ -3563,7 +3560,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
     PubSubTopicPartition followerTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
     TopicPartitionReplicaRole topicPartitionReplicaRole =
-        new TopicPartitionReplicaRole(false, isCurrentVersion.getAsBoolean(), followerTopicPartition, versionTopic);
+        new TopicPartitionReplicaRole(false, getStoreVersionRole(), followerTopicPartition, versionTopic);
     long latestProcessedLocalVersionTopicOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
     LOGGER.info(
         "Follower replica: {} unsubscribed, prepare for future re-subscribe.",
@@ -3593,7 +3590,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long leaderStartOffset = partitionConsumptionState.getLeaderOffset(leaderSourceKafkaURL, pubSubTopicRepository);
       // Resubscribe
       TopicPartitionReplicaRole topicPartitionReplicaRole =
-          new TopicPartitionReplicaRole(true, isCurrentVersion.getAsBoolean(), leaderTopicPartition, versionTopic);
+          new TopicPartitionReplicaRole(true, getStoreVersionRole(), leaderTopicPartition, versionTopic);
       consumerSubscribe(
           topicPartitionReplicaRole,
           leaderStartOffset, // Take care about +1 for subscribe

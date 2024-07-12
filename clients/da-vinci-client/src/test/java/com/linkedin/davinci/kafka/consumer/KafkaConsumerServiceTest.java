@@ -158,8 +158,11 @@ public class KafkaConsumerServiceTest {
     when(task.isHybridMode()).thenReturn(true);
     PubSubTopic versionTopic = task.getVersionTopic();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
-    TopicPartitionReplicaRole topicPartitionReplicaRole =
-        new TopicPartitionReplicaRole(true, true, topicPartition, versionTopic);
+    TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
+        true,
+        TopicPartitionReplicaRole.VersionRole.CURRENT,
+        topicPartition,
+        versionTopic);
 
     ConsumedDataReceiver consumedDataReceiver = mock(ConsumedDataReceiver.class);
     when(consumedDataReceiver.destinationIdentifier()).thenReturn(versionTopic);
