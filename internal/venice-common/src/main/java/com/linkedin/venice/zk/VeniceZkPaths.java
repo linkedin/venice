@@ -19,8 +19,10 @@ public class VeniceZkPaths {
   public static final String STORES = "Stores";
   public static final String STORE_CONFIGS = "storeConfigs";
   public static final String STORE_GRAVEYARD = "StoreGraveyard";
+
+  /** Set of all Venice-managed ZooKeeper cluster paths */
   private static final Set<String> CLUSTER_ZK_PATHS_MODIFIABLE = new HashSet<>(
       Arrays.asList(ADMIN_TOPIC_METADATA, EXECUTION_IDS, PARENT_OFFLINE_PUSHES, ROUTERS, STORE_GRAVEYARD, STORES));
-  /** Set of all Venice-managed ZooKeeper cluster paths */
+  /** @see #CLUSTER_ZK_PATHS_MODIFIABLE */
   public static final Set<String> CLUSTER_ZK_PATHS = Collections.unmodifiableSet(CLUSTER_ZK_PATHS_MODIFIABLE);
 }

@@ -45,8 +45,7 @@ public class ZkCopier {
     }
     ZkClient srcZkClient = ZkClientFactory.newZkClient(srcZkAddress);
     TreeNode srcZkPathsTree = getZkClientPathsTree(srcZkClient, clusterNames, basePath);
-    List<String> srcZkPathsList = pathsTreeToList(srcZkPathsTree);
-    List<String> destZkPathsList = getVenicePaths(srcZkPathsList, clusterNames, basePath);
+    List<String> destZkPathsList = getVenicePathsFromTree(srcZkPathsTree, clusterNames, basePath);
     ZkClient destZkClient = ZkClientFactory.newZkClient(destZkAddress);
     for (String path: destZkPathsList) {
       destZkClient.create(path, srcZkClient.readData(path), CreateMode.PERSISTENT);
@@ -74,7 +73,7 @@ public class ZkCopier {
       List<String> zkPaths = FileUtils.readLines(inputFile);
 
       // write Venice-specific paths to output file
-      List<String> venicePaths = getVenicePaths(zkPaths, clusterNames, basePath);
+      List<String> venicePaths = getVenicePathsFromList(zkPaths, clusterNames, basePath);
       File outputFile = new File(outputPath);
       FileUtils.writeLines(outputFile, venicePaths);
     } catch (IOException e) {
@@ -83,17 +82,26 @@ public class ZkCopier {
   }
 
   /**
-   * Get Venice-specific paths from a list of ZK paths filtered by 1)base path, 2)cluster names, and 3)required cluster ZK paths.
+   * Get Venice-specific paths from a list of ZK paths
    * @return a list of Venice-specific paths filtered from {@code zkPaths}
+   * @Note: Converts the list {@code zkPaths} to a tree and calls {@code getVenicePathsFromTree()}
    */
-  static List<String> getVenicePaths(List<String> zkPaths, Set<String> clusterNames, String basePath) {
-    TreeNode requiredPathsTreeRoot = buildRequiredPathsTree(clusterNames, basePath);
+  static List<String> getVenicePathsFromList(List<String> zkPaths, Set<String> clusterNames, String basePath) {
     TreeNode zkPathsTreeRoot = pathsListToTree(zkPaths, basePath);
+    return getVenicePathsFromTree(zkPathsTreeRoot, clusterNames, basePath);
+  }
+
+  /**
+   * Get Venice-specific paths from a tree of ZK paths filtered by 1)base path, 2)cluster names, and 3)required cluster ZK paths.
+   * @return a list of Venice-specific paths filtered from {@code zkPathsTreeRoot}
+   */
+  static List<String> getVenicePathsFromTree(TreeNode zkPathsTreeRoot, Set<String> clusterNames, String basePath) {
+    TreeNode requiredPathsTreeRoot = buildRequiredPathsTree(clusterNames, basePath);
     if (!zkPathsTreeRoot.getName().equals(requiredPathsTreeRoot.getName())) {
       throw new VeniceException(
           "Base path mismatch: " + zkPathsTreeRoot.getName() + " != " + requiredPathsTreeRoot.getName());
     }
-    getVenicePathsHelper(zkPathsTreeRoot, requiredPathsTreeRoot);
+    getVenicePathsFromTreeHelper(zkPathsTreeRoot, requiredPathsTreeRoot);
     return pathsTreeToList(zkPathsTreeRoot);
   }
 
@@ -101,9 +109,9 @@ public class ZkCopier {
    * Recursively match children nodes of {@code zkPathsTreeNode} and {@code requiredPathsTreeNode} and removes unmatched children nodes from {@code zkPathsTreeNode}.
    * @param zkPathsTreeNode node in the ZK paths tree
    * @param requiredPathsTreeNode node in the required paths tree
-   * @Note: This method directly modifies {@code zkPathsTreeNode} in the parent method {@code getVenicePaths()}
+   * @Note: This method directly modifies {@code zkPathsTreeNode} in the parent method {@code getVenicePathsFromTree()}
    */
-  private static void getVenicePathsHelper(TreeNode zkPathsTreeNode, TreeNode requiredPathsTreeNode) {
+  private static void getVenicePathsFromTreeHelper(TreeNode zkPathsTreeNode, TreeNode requiredPathsTreeNode) {
     if (requiredPathsTreeNode.getChildren().isEmpty() || zkPathsTreeNode.getChildren().isEmpty()) {
       return;
     }
@@ -113,7 +121,7 @@ public class ZkCopier {
       String zkChildName = zkEntry.getKey();
       TreeNode zkChild = zkEntry.getValue();
       if (requiredPathsTreeNode.containsChild(zkChildName)) {
-        getVenicePathsHelper(zkChild, requiredPathsTreeNode.getChildren().get(zkChildName));
+        getVenicePathsFromTreeHelper(zkChild, requiredPathsTreeNode.getChildren().get(zkChildName));
       } else {
         iterator.remove();
       }

@@ -53,10 +53,13 @@ public class TestZkCopier {
     }
   }
 
+  /**
+   * Test ZkCopier.getVenicePathsFromList() and ZkCopier.getVenicePathsFromTree()
+   */
   @Test
-  public void testGetVenicePaths() {
+  public void testGetVenicePathsFromList() {
     List<String> zkPaths = getPaths();
-    List<String> venicePaths = ZkCopier.getVenicePaths(zkPaths, CLUSTERS, BASE_PATH);
+    List<String> venicePaths = ZkCopier.getVenicePathsFromList(zkPaths, CLUSTERS, BASE_PATH);
     Assert.assertEquals(venicePaths.size(), 22);
     Assert.assertFalse(venicePaths.contains("/venice"));
     Assert.assertFalse(venicePaths.contains("/venice/storeConfigs"));
