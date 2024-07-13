@@ -934,7 +934,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
     } else {
       // For requests with keys, send an error for each key. TODO: Consider if we could rip all of that out?
       complete = complete.thenCompose(aVoid -> {
-        List<CompletableFuture<String>> list = new ArrayList(part.getPartitionKeys().size());
+        List<CompletableFuture<String>> list = new ArrayList<>(part.getPartitionKeys().size());
         for (K partitionKey: part.getPartitionKeys()) {
           list.add(
               CompletableFuture.completedFuture(partitionKey)
@@ -955,10 +955,11 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
                 distinctSet.add(key);
               }
             });
-            distinctSet.forEach(partitionName -> {
-              contentMsg.append(", PartitionName=").append(partitionName);
-            });
-        }));
+          }
+          distinctSet.forEach(partitionName -> {
+            contentMsg.append(", PartitionName=").append(partitionName);
+          });
+        });
       }).thenAccept(aVoid -> {
         appendError(request, responses, status, contentMsg.append(", RoutingPolicy=").append(roles).toString(), ex);
       });
