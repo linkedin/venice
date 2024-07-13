@@ -946,6 +946,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
                        LOG.info("Exception in appendErrorForEveryKey, key={}", partitionKey, e);
                        return null;
                     }));
+        }
         return CompletableFuture.allOf(list.toArray(new CompletableFuture[0]))
             .thenAccept(
                 aVoid2 -> {
