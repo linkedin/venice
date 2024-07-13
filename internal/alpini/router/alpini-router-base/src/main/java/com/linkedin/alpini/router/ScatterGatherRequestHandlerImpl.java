@@ -941,9 +941,9 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
                    .thenApply(key -> pathParser.substitutePartitionKey(basePath, key))
                    .thenCompose(
                        pathForThisKey -> _scatterGatherHelper
-                           .findPartitionName(pathForThisKey.getResourceName(), keyFuture.join()))
+                           .findPartitionName(pathForThisKey.getResourceName(), partitionKey))
                    .exceptionally(e -> {
-                       LOG.info("Exception in appendErrorForEveryKey, key={}", keyFuture.join(), e);
+                       LOG.info("Exception in appendErrorForEveryKey, key={}", partitionKey, e);
                        return null;
                     }));
         return CompletableFuture.allOf(list.toArray(new CompletableFuture[0]))
