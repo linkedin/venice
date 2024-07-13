@@ -935,32 +935,30 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       // For requests with keys, send an error for each key. TODO: Consider if we could rip all of that out?
       complete = complete.thenCompose(aVoid -> {
         List<CompletableFuture<String>> list = new ArrayList(part.getPartitionKeys().size());
-        for (K partitionKey : part.getPartitionKeys()) {
-          list.add(CompletableFuture.completedFuture(partitionKey)
-                   .thenApply(key -> pathParser.substitutePartitionKey(basePath, key))
-                   .thenCompose(
-                       pathForThisKey -> _scatterGatherHelper
-                           .findPartitionName(pathForThisKey.getResourceName(), partitionKey))
-                   .exceptionally(e -> {
-                       LOG.info("Exception in appendErrorForEveryKey, key={}", partitionKey, e);
-                       return null;
-                    }));
+        for (K partitionKey: part.getPartitionKeys()) {
+          list.add(
+              CompletableFuture.completedFuture(partitionKey)
+                  .thenApply(key -> pathParser.substitutePartitionKey(basePath, key))
+                  .thenCompose(
+                      pathForThisKey -> _scatterGatherHelper
+                          .findPartitionName(pathForThisKey.getResourceName(), partitionKey))
+                  .exceptionally(e -> {
+                    LOG.info("Exception in appendErrorForEveryKey, key={}", partitionKey, e);
+                    return null;
+                  }));
         }
-        return CompletableFuture.allOf(list.toArray(new CompletableFuture[0]))
-            .thenAccept(
-                aVoid2 -> {
-                    HashSet<String> distinctSet = new HashSet<>();
-                    for (CompletableFuture<String> partitionName : list) {
-                        partitionName.thenAccept(key -> {
-                            if (key != null) {
-                                distinctSet.add(key);
-                            }
-                        });
-                    }
-                    distinctSet.forEach(partitionName -> {
-                        contentMsg.append(", PartitionName=").append(partitionName);
-                    });
-                });
+        return CompletableFuture.allOf(list.toArray(new CompletableFuture[0])).thenAccept(aVoid2 -> {
+          HashSet<String> distinctSet = new HashSet<>();
+          for (CompletableFuture<String> partitionName: list) {
+            partitionName.thenAccept(key -> {
+              if (key != null) {
+                distinctSet.add(key);
+              }
+            });
+            distinctSet.forEach(partitionName -> {
+              contentMsg.append(", PartitionName=").append(partitionName);
+            });
+        });
       }).thenAccept(aVoid -> {
         appendError(request, responses, status, contentMsg.append(", RoutingPolicy=").append(roles).toString(), ex);
       });
