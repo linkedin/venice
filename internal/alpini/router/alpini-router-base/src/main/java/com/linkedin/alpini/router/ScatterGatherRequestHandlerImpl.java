@@ -936,8 +936,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       complete = complete.thenCompose(aVoid -> {
         List<CompletableFuture<String>> list = new ArrayList(part.getPartitionKeys().size());
         for (K partitionKey : part.getPartitionKeys()) {
-          list.add(CompletableFuture.completedFuture(pathParser
-                                                     .substitutePartitionKey(basePath, partitionKey))
+          list.add(CompletableFuture.completedFuture(partitionKey)
                    .thenApply(key -> pathParser.substitutePartitionKey(basePath, key))
                    .thenCompose(
                        pathForThisKey -> _scatterGatherHelper
