@@ -214,11 +214,6 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_ATOMIC_FLUSH_ENABLED = "rocksdb.atomic.flush.enabled";
   public static final String ROCKSDB_SEPARATE_RMD_CACHE_ENABLED = "rocksdb.separate.rmd.cache.enabled";
   public static final String ROCKSDB_BLOCK_BASE_FORMAT_VERSION = "rocksdb.block.base.format.version";
-  /**
-   * Whether to enable async io in the read path or not.
-   * https://rocksdb.org/blog/2022/10/07/asynchronous-io-in-rocksdb.html
-   */
-  public static final String ROCKSDB_READ_ASYNC_IO_ENABLED = "rocksdb.read.async.io.enabled";
 
   public static final String ROCKSDB_MAX_LOG_FILE_NUM = "rocksdb.max.log.file.num";
   public static final String ROCKSDB_MAX_LOG_FILE_SIZE = "rocksdb.max.log.file.size";
@@ -289,7 +284,6 @@ public class RocksDBServerConfig {
   private int blockBaseFormatVersion;
   private final int maxLogFileNum;
   private final long maxLogFileSize;
-  private final boolean readAsyncIOEanbled;
   private final String transformerValueSchema;
 
   public RocksDBServerConfig(VeniceProperties props) {
@@ -412,7 +406,6 @@ public class RocksDBServerConfig {
      */
     this.maxLogFileNum = props.getInt(ROCKSDB_MAX_LOG_FILE_NUM, 3);
     this.maxLogFileSize = props.getSizeInBytes(ROCKSDB_MAX_LOG_FILE_SIZE, 10 * 1024 * 1024); // 10MB;
-    this.readAsyncIOEanbled = props.getBoolean(ROCKSDB_READ_ASYNC_IO_ENABLED, true);
     this.transformerValueSchema =
         props.containsKey(RECORD_TRANSFORMER_VALUE_SCHEMA) ? props.getString(RECORD_TRANSFORMER_VALUE_SCHEMA) : "null";
   }
@@ -618,10 +611,6 @@ public class RocksDBServerConfig {
 
   public long getMaxLogFileSize() {
     return maxLogFileSize;
-  }
-
-  public boolean isReadAsyncIOEanbled() {
-    return readAsyncIOEanbled;
   }
 
   public String getTransformerValueSchema() {

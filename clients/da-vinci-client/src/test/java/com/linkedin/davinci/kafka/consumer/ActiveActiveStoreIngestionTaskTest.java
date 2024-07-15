@@ -92,8 +92,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -486,12 +484,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     chunkedManifestBytes = ChunkingTestUtils.prependSchemaId(chunkedManifestBytes, manifestSchemaId).array();
     byte[] topLevelKey2 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key2);
     byte[] chunkedKey1InKey2 = chunkedKeyWithSuffix1.array();
-
     when(storageEngine.getReplicationMetadata(partition, topLevelKey2)).thenReturn(chunkedManifestBytes);
     when(storageEngine.getReplicationMetadata(partition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
-    List<byte[]> chunkedValues = new ArrayList<>(1);
-    chunkedValues.add(chunkedValue1);
-    when(storageEngine.multiGetReplicationMetadata(eq(partition), any())).thenReturn(chunkedValues);
     byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(partition, key2, container, 0L);
     Assert.assertNotNull(result2);
     Assert.assertNotNull(container.getManifest());
@@ -524,12 +518,9 @@ public class ActiveActiveStoreIngestionTaskTest {
     byte[] topLevelKey3 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key3);
     byte[] chunkedKey1InKey3 = chunkedKeyWithSuffix1.array();
     byte[] chunkedKey2InKey3 = chunkedKeyWithSuffix2.array();
-
     when(storageEngine.getReplicationMetadata(partition, topLevelKey3)).thenReturn(chunkedManifestBytes);
     when(storageEngine.getReplicationMetadata(partition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(partition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
-    when(storageEngine.multiGetReplicationMetadata(eq(partition), any()))
-        .thenReturn(Arrays.asList(chunkedValue1, chunkedValue2));
     byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(partition, key3, container, 0L);
     Assert.assertNotNull(result3);
     Assert.assertNotNull(container.getManifest());

@@ -4,8 +4,6 @@ import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -49,12 +47,6 @@ public abstract class AbstractStoragePartition {
   public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated) {
     // Naive default impl is not optimized... only storage engines that support the optimization implement it.
     return ByteBuffer.wrap(get(key));
-  }
-
-  public List<byte[]> multiGet(List<byte[]> keys) {
-    List<byte[]> values = new ArrayList<>(keys.size());
-    keys.forEach(key -> values.add(get(key)));
-    return values;
   }
 
   /**
@@ -169,10 +161,6 @@ public abstract class AbstractStoragePartition {
    */
   public byte[] getReplicationMetadata(byte[] key) {
     throw new VeniceUnsupportedOperationException("getReplicationMetadata");
-  }
-
-  public List<byte[]> multiGetReplicationMetadata(List<byte[]> keys) {
-    throw new VeniceUnsupportedOperationException("multiGetReplicationMetadata");
   }
 
   /**
