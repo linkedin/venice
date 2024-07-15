@@ -245,6 +245,7 @@ public class TestRouterRetry {
         keySet.add(KEY_PREFIX + i);
       }
       Map<String, GenericRecord> result = storeClient.batchGet(keySet).get();
+      Assert.assertEquals(result.size(), MAX_KEY_LIMIT - 1);
       // Retry manager should eventually be initialized
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
         double multiGetRetryLimit = MetricsUtils.getSum(
