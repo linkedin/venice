@@ -990,20 +990,19 @@ public abstract class TestBatch {
     validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, minSize, LARGE_RECORD_VALUE_SIZE);
   }
 
-  /**
-   * Test that values that are too large will fail the push job only when the limit is enforced.
-   */
+  /** Test that values that are too large will fail the push job only when the limit is enforced. */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testValuesThatAreTooLarge(boolean enforceLimit) throws Exception {
+  public void testStoreWithTooLargeValues(boolean enforceLimit) throws Exception {
     final int wayTooLargeRecordValueSize = 11 * 1024 * 1024; // 11 MB
-    final int maxRecordSizeBytesForTest = (enforceLimit) ? -1 : 15 * 1024 * 1024; // -1 means use default
+    final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * 1024 * 1024 : -1; // -1 means no limit
     try {
       testStoreWithLargeValues(true, properties -> {
         properties.setProperty(MAX_RECORD_SIZE_BYTES, String.valueOf(maxRecordSizeBytesForTest));
       }, null, wayTooLargeRecordValueSize);
       Assert.assertFalse(enforceLimit, "Too large values should fail only when not allowed");
     } catch (VeniceException e) {
-      Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of 10.0 MiB"));
+      // 100.0 MiB comes from controller config VeniceControllerConfig.defaultMaxRecordSizeBytes
+      Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of 100.0 MiB"), e.getMessage());
     }
   }
 

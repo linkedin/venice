@@ -7951,9 +7951,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return backupVersionDefaultRetentionMs;
   }
 
-  /**
-   * @see Admin#getDefaultMaxRecordSizeBytes()
-   */
+  /** @see Admin#getDefaultMaxRecordSizeBytes() */
   @Override
   public int getDefaultMaxRecordSizeBytes() {
     return defaultMaxRecordSizeBytes;

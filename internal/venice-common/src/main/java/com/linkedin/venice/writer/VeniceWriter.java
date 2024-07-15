@@ -114,20 +114,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VENICE_WRITER_CONFIG_PREFIX + "max.elapsed.time.for.segment.in.ms";
 
   /**
-   * Maximum Venice record size. Default: {@value DEFAULT_MAX_RECORD_SIZE_BYTES}
-   *
-   * Large records can cause performance issues, so this setting is used to detect and prevent them. Not to be
-   * confused with Kafka record size (which is the ~1MB limit {@link MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
-   * is designed to comply with). Venice records refer to a Venice key-value pair, which can be spread across 1+ Kafka
-   * records / events. Basically: Chunking Not Needed < ~1MB < Chunking Needed < Max Record Size
-   *
-   * 1. If a batch push data contains records larger than this setting, the push job will fail.
-   * 2. If a nearline job contains records larger than this setting, consumption will be paused and manual intervention
-   * will be necessary.
-   */
-  public static final String MAX_RECORD_SIZE_BYTES = VENICE_WRITER_CONFIG_PREFIX + "max.record.size.bytes";
-
-  /**
    * Chunk size. Default: {@value DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
    *
    * N.B.: This must be configured in relation to the following configs:
@@ -139,6 +125,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final String MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES =
       VENICE_WRITER_CONFIG_PREFIX + "max.size.for.user.payload.per.message.in.bytes";
 
+  /**
+   * Maximum Venice record size. Default: {@value DEFAULT_MAX_RECORD_SIZE_BYTES}
+   *
+   * Large records can cause performance issues, so this setting is used to detect and prevent them. Not to be confused
+   * with Kafka record size (which is the ~1MB limit {@link VeniceWriter#MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
+   * is designed to comply with). Venice records refer to a Venice key-value pair, which can be spread across 1+ Kafka
+   * records / events. Basically: Chunking Not Needed < ~1MB < Chunking Needed < Max Record Size
+   *
+   * 1. If a batch push data contains records larger than this setting, the push job will fail.
+   * 2. If a partial update creates records larger than this setting, consumption will be paused and manual
+   * intervention will be necessary.
+   */
+  public static final String MAX_RECORD_SIZE_BYTES = VENICE_WRITER_CONFIG_PREFIX + "max.record.size.bytes";
+
   // Config value defaults
 
   /**
@@ -147,9 +147,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final int DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES = 950 * 1024;
 
   /**
-   * The default value of -1 from the store is overwritten with a new default of 10 MB.
+   * Unlimited / unset (-1) just to be safe. An actual value should be set for batch push jobs and partial updates
+   * using the controller config {@link com.linkedin.venice.ConfigKeys#CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES}.
    */
-  public static final int DEFAULT_MAX_RECORD_SIZE_BYTES = 10 * 1024 * 1024;
+  public static final int DEFAULT_MAX_RECORD_SIZE_BYTES = -1;
 
   /**
    * This controls the Kafka producer's close timeout.
@@ -304,11 +305,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingEnabled = params.isChunkingEnabled();
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
-    int maxRecordSizeBytesFromProps = props.getInt(MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES);
-    if (maxRecordSizeBytesFromProps == -1) {
-      maxRecordSizeBytesFromProps = DEFAULT_MAX_RECORD_SIZE_BYTES;
-    }
-    this.maxRecordSizeBytes = maxRecordSizeBytesFromProps;
+    this.maxRecordSizeBytes = props.getInt(MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES);
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
@@ -323,7 +320,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 + " is true and the topic is Version Topic");
       }
     }
-    if (maxSizeForUserPayloadPerMessageInBytes > maxRecordSizeBytes) {
+    if (maxRecordSizeBytes != -1 && maxSizeForUserPayloadPerMessageInBytes > maxRecordSizeBytes) {
       throw new VeniceException(
           MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + '=' + maxSizeForUserPayloadPerMessageInBytes
               + " cannot be set higher than " + MAX_RECORD_SIZE_BYTES + '=' + maxRecordSizeBytes);

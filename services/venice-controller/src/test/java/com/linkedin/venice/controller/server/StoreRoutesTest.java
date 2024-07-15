@@ -186,9 +186,7 @@ public class StoreRoutesTest {
     Assert.assertEquals(multiStoreStatusResponse.getErrorType(), STORE_NOT_FOUND);
   }
 
-  /**
-   * Testing getStore API code paths for code coverage purposes
-   */
+  /** Testing getStore API code paths for code coverage purposes */
   @Test
   public void testGetStore() throws Exception {
     final Store testStore = new ZKStore(

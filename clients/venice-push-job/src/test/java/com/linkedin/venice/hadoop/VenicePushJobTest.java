@@ -899,7 +899,7 @@ public class VenicePushJobTest {
       // The value of chunkingEnabled should dictate the error message returned
       final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
       final int latestCheckpoint = pushJobDetails.pushJobLatestCheckpoint;
-      Assert.assertTrue(errorMessage.contains((chunkingEnabled) ? "10.0 MiB" : "950.0 KiB"), errorMessage);
+      Assert.assertTrue(errorMessage.contains((chunkingEnabled) ? "100.0 MiB" : "950.0 KiB"), errorMessage);
       Assert.assertEquals(latestCheckpoint, VenicePushJob.PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
     }
   }
@@ -999,9 +999,7 @@ public class VenicePushJobTest {
     doNothing().when(pushJob).runJobAndUpdateStatus();
   }
 
-  /**
-   * Sets basic values for the given {@link PushJobSetting} object in order for VeniceWriter to be constructed.
-   */
+  /** Sets basic values for the given {@link PushJobSetting} object in order for VeniceWriter to be constructed. */
   private void setPushJobSettingDefaults(PushJobSetting setting) {
     setting.storeName = TEST_STORE;
     setting.kafkaUrl = "localhost:9092";
@@ -1009,6 +1007,6 @@ public class VenicePushJobTest {
     setting.partitionerClass = DefaultVenicePartitioner.class.getCanonicalName();
     setting.topic = Version.composeKafkaTopic(setting.storeName, 7);
     setting.partitionCount = 1;
-    setting.maxRecordSizeBytes = -1;
+    setting.maxRecordSizeBytes = 100 * 1024 * 1024;
   }
 }

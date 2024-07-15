@@ -2165,7 +2165,7 @@ public class ConfigKeys {
 
   /**
    * Controller config for the default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes}.
-   * Only used in batch push and nearline jobs.
+   * Only used in batch push jobs and partial updates.
    */
   public static final String CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES = "controller.default.max.record.size.bytes";
 }
