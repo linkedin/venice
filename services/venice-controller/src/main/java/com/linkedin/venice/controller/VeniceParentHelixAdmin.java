@@ -1460,7 +1460,8 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isExistingPushJobARepush = Version.isPushIdRePush(existingPushJobId);
       boolean isIncomingPushJobARepush = Version.isPushIdRePush(pushJobId);
 
-      if (getLingeringStoreVersionChecker()
+      // If version swap is enabled, do not check for lingering push as user may swap at much later time.
+      if (!version.isVersionSwapDeferred() && getLingeringStoreVersionChecker()
           .isStoreVersionLingering(store, version, timer, this, requesterCert, identityParser)) {
         if (pushType.isIncremental()) {
           /**
