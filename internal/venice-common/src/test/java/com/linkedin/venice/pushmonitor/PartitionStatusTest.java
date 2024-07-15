@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -36,5 +37,24 @@ public class PartitionStatusTest {
     assertThrows(
         VeniceException.class,
         () -> readonlyPartitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.COMPLETED, "inc push", 1));
+  }
+
+  @Test
+  public void testHasFatalDataValidationError() {
+    PartitionStatus partitionStatus = new PartitionStatus(partitionId);
+    Assert.assertFalse(partitionStatus.hasFatalDataValidationError());
+
+    partitionStatus.updateReplicaStatus("testInstance1", ExecutionStatus.COMPLETED);
+    Assert.assertFalse(partitionStatus.hasFatalDataValidationError());
+
+    partitionStatus.updateReplicaStatus("testInstance2", ExecutionStatus.ERROR);
+    Assert.assertFalse(partitionStatus.hasFatalDataValidationError());
+
+    partitionStatus.updateReplicaStatus("testInstance3", ExecutionStatus.ERROR, null, 10);
+    Assert.assertFalse(partitionStatus.hasFatalDataValidationError());
+
+    partitionStatus
+        .updateReplicaStatus("testInstance4", ExecutionStatus.ERROR, FATAL_DATA_VALIDATION_ERROR + " for replica", 10);
+    Assert.assertTrue(partitionStatus.hasFatalDataValidationError());
   }
 }
