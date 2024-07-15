@@ -89,7 +89,7 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
 
   public boolean hasFatalDataValidationError() {
     for (ReplicaStatus replicaStatus: replicaStatusMap.values()) {
-      if (ExecutionStatus.isError(replicaStatus.getCurrentStatus())
+      if (ExecutionStatus.isError(replicaStatus.getCurrentStatus()) && replicaStatus.getIncrementalPushVersion() != null
           && replicaStatus.getIncrementalPushVersion().contains(FATAL_DATA_VALIDATION_ERROR)) {
         return true;
       }
