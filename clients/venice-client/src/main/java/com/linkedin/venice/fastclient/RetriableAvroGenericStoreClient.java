@@ -14,6 +14,8 @@ import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
@@ -38,6 +40,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final int longTailRetryThresholdForComputeInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
+  private final ScheduledExecutorService retryManagerExecutorService = Executors.newScheduledThreadPool(1);
   /**
    * The long tail retry budget is only applied to long tail retries. If there were any exception that's not a 429 the
    * retry will be triggered without going through the long tail {@link com.linkedin.venice.meta.RetryManager}. If the retry budget is exhausted
@@ -48,8 +51,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
   // Default value of 0.1 meaning only 10 percent of the user requests are allowed to trigger long tail retry
   private static final double LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL = 0.1d;
-  private static final String SINGLE_GET_LONG_TAIL_RETRY_STATS_PREFIX = "single-get-long-tail-retry-manager";
-  private static final String MULTI_GET_LONG_TAIL_RETRY_STATS_PREFIX = "multi-get-long-tail-retry-manager";
+  private static final String SINGLE_GET_LONG_TAIL_RETRY_STATS_PREFIX = "single-get-long-tail-retry-manager-";
+  private static final String MULTI_GET_LONG_TAIL_RETRY_STATS_PREFIX = "multi-get-long-tail-retry-manager-";
 
   public RetriableAvroGenericStoreClient(
       InternalAvroStoreClient<K, V> delegate,
@@ -73,16 +76,18 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     if (longTailRetryEnabledForSingleGet) {
       this.singleGetLongTailRetryManager = new RetryManager(
           clientConfig.getClusterStats().getMetricsRepository(),
-          SINGLE_GET_LONG_TAIL_RETRY_STATS_PREFIX,
+          SINGLE_GET_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
           clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
-          LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL);
+          LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL,
+          retryManagerExecutorService);
     }
     if (longTailRetryEnabledForBatchGet) {
       this.multiGetLongTailRetryManager = new RetryManager(
           clientConfig.getClusterStats().getMetricsRepository(),
-          MULTI_GET_LONG_TAIL_RETRY_STATS_PREFIX,
+          MULTI_GET_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
           clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
-          LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL);
+          LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL,
+          retryManagerExecutorService);
     }
   }
 
@@ -261,12 +266,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   @Override
   public void close() {
-    if (singleGetLongTailRetryManager != null) {
-      singleGetLongTailRetryManager.close();
-    }
-    if (multiGetLongTailRetryManager != null) {
-      multiGetLongTailRetryManager.close();
-    }
+    retryManagerExecutorService.shutdownNow();
     super.close();
   }
 

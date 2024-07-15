@@ -3,9 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.stats.RetryManagerStats;
 import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.Closeable;
 import java.time.Clock;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -15,7 +13,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class RetryManager implements Closeable {
+public class RetryManager {
   private static final Logger LOGGER = LogManager.getLogger(RetryManager.class);
   private static final int TOKEN_BUCKET_REFILL_INTERVAL_IN_SECONDS = 1;
   /**
@@ -39,16 +37,16 @@ public class RetryManager implements Closeable {
       String metricNamePrefix,
       long enforcementWindowInMs,
       double retryBudgetInPercentDecimal,
-      Clock clock) {
+      Clock clock,
+      ScheduledExecutorService scheduler) {
+    this.scheduler = scheduler;
     if (enforcementWindowInMs <= 0 || retryBudgetInPercentDecimal <= 0) {
-      scheduler = null;
       retryBudgetEnabled.set(false);
     } else {
-      scheduler = Executors.newScheduledThreadPool(1);
       retryBudgetEnabled.set(true);
       lastUpdateTimestamp = clock.millis();
       retryManagerStats = new RetryManagerStats(metricsRepository, metricNamePrefix, this);
-      scheduler.schedule(this::updateRetryTokenBucket, enforcementWindowInMs, TimeUnit.MILLISECONDS);
+      this.scheduler.schedule(this::updateRetryTokenBucket, enforcementWindowInMs, TimeUnit.MILLISECONDS);
     }
     this.enforcementWindowInMs = enforcementWindowInMs;
     this.retryBudgetInPercentDecimal = retryBudgetInPercentDecimal;
@@ -59,8 +57,15 @@ public class RetryManager implements Closeable {
       MetricsRepository metricsRepository,
       String metricNamePrefix,
       long enforcementWindowInMs,
-      double retryBudgetInPercentDecimal) {
-    this(metricsRepository, metricNamePrefix, enforcementWindowInMs, retryBudgetInPercentDecimal, Clock.systemUTC());
+      double retryBudgetInPercentDecimal,
+      ScheduledExecutorService scheduler) {
+    this(
+        metricsRepository,
+        metricNamePrefix,
+        enforcementWindowInMs,
+        retryBudgetInPercentDecimal,
+        Clock.systemUTC(),
+        scheduler);
   }
 
   public void recordRequest() {
@@ -127,12 +132,5 @@ public class RetryManager implements Closeable {
 
   public TokenBucket getRetryTokenBucket() {
     return retryTokenBucket.get();
-  }
-
-  @Override
-  public void close() {
-    if (scheduler != null) {
-      scheduler.shutdownNow();
-    }
   }
 }

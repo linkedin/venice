@@ -39,7 +39,6 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.DictionaryRetrievalService;
@@ -112,6 +111,8 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -195,9 +196,7 @@ public class RouterServer extends AbstractVeniceService {
 
   private final AggHostHealthStats aggHostHealthStats;
 
-  private RetryManager singleGetRetryManager;
-
-  private RetryManager multiGetRetryManager;
+  private ScheduledExecutorService retryManagerExecutorService;
 
   public static void main(String args[]) throws Exception {
     if (args.length != 1) {
@@ -523,16 +522,9 @@ public class RouterServer extends AbstractVeniceService {
         config.getClusterName(),
         compressorFactory,
         metricsRepository);
-    singleGetRetryManager = new RetryManager(
-        metricsRepository,
-        "single-get-long-tail-retry-manager",
-        config.getLongTailRetryBudgetEnforcementWindowInMs(),
-        config.getSingleGetLongTailRetryBudgetPercentDecimal());
-    multiGetRetryManager = new RetryManager(
-        metricsRepository,
-        "multi-get-long-tail-retry-manager",
-        config.getLongTailRetryBudgetEnforcementWindowInMs(),
-        config.getMultiGetLongTailRetryBudgetPercentDecimal());
+
+    retryManagerExecutorService = Executors.newScheduledThreadPool(3);
+
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,
         partitionFinder,
@@ -540,8 +532,8 @@ public class RouterServer extends AbstractVeniceService {
         metadataRepository,
         config,
         compressorFactory,
-        singleGetRetryManager,
-        multiGetRetryManager);
+        metricsRepository,
+        retryManagerExecutorService);
 
     MetaDataHandler metaDataHandler = new MetaDataHandler(
         routingDataRepository,
@@ -880,11 +872,8 @@ public class RouterServer extends AbstractVeniceService {
     if (heartbeat != null) {
       heartbeat.stopInner();
     }
-    if (singleGetRetryManager != null) {
-      singleGetRetryManager.close();
-    }
-    if (multiGetRetryManager != null) {
-      multiGetRetryManager.close();
+    if (retryManagerExecutorService != null) {
+      retryManagerExecutorService.shutdownNow();
     }
   }
 

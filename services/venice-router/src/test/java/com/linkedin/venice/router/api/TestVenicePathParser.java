@@ -19,7 +19,6 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -52,6 +51,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ScheduledExecutorService;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -128,8 +128,8 @@ public class TestVenicePathParser {
         storeRepository,
         mock(VeniceRouterConfig.class),
         mock(CompressorFactory.class),
-        mock(RetryManager.class),
-        mock(RetryManager.class));
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class));
 
     String storeName = "test-store";
     String uri = "storage/" + storeName;
@@ -190,8 +190,8 @@ public class TestVenicePathParser {
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
         compressorFactory,
-        mock(RetryManager.class),
-        mock(RetryManager.class));
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class));
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, 0, 0);
     VenicePath path = parser.parseResourceUri(uri, request);
     String keyB64 = Base64.getEncoder().encodeToString("key".getBytes());
@@ -221,8 +221,8 @@ public class TestVenicePathParser {
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
         compressorFactory,
-        mock(RetryManager.class),
-        mock(RetryManager.class)).parseResourceUri(myUri, request);
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class)).parseResourceUri(myUri, request);
     ByteBuffer partitionKey = path.getPartitionKey().getKeyBuffer();
     Assert.assertEquals(
         path.getPartitionKey().getKeyBuffer(),
@@ -242,8 +242,8 @@ public class TestVenicePathParser {
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
         compressorFactory,
-        mock(RetryManager.class),
-        mock(RetryManager.class)).parseResourceUri("/badAction/storeName/key");
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class)).parseResourceUri("/badAction/storeName/key");
   }
 
   @Test
@@ -289,8 +289,8 @@ public class TestVenicePathParser {
         storeRepository,
         MOCK_ROUTER_CONFIG,
         compressorFactory,
-        mock(RetryManager.class),
-        mock(RetryManager.class));
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class));
     try {
       pathParser.parseResourceUri(myUri, request);
       fail("A RouterException should be thrown here");

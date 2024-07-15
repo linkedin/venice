@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
 
 public class TestVeniceMultiGetPath {
   private final RetryManager disabledRetryManager =
-      new RetryManager(new MetricsRepository(), "test-retry-manager", 0, 0);
+      new RetryManager(new MetricsRepository(), "disabled-test-retry-manager", 0, 0, null);
 
   @BeforeClass
   public void setUp() {
@@ -53,7 +53,6 @@ public class TestVeniceMultiGetPath {
   @AfterClass
   public void cleanUp() {
     RouterExceptionAndTrackingUtils.setRouterStats(null);
-    disabledRetryManager.close();
   }
 
   private static byte[] serializeKeys(Iterable<ByteBuffer> keys) {

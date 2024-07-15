@@ -20,6 +20,7 @@ import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -33,11 +34,15 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.streaming.StreamingUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandlerContext;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
@@ -93,14 +98,27 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
 
   public static final String TYPE_BLOB_DISCOVERY = RouterResourceType.TYPE_BLOB_DISCOVERY.toString();
 
+  private static final String SINGLE_GET_RETRY_MANAGER_STATS_PREFIX = "single-get-long-tail-retry-manager-";
+  private static final String MULTI_GET_RETRY_MANAGER_STATS_PREFIX = "multi-get-long-tail-retry-manager-";
+
   private final VeniceVersionFinder versionFinder;
   private final VenicePartitionFinder partitionFinder;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final ReadOnlyStoreRepository storeRepository;
   private final VeniceRouterConfig routerConfig;
   private final CompressorFactory compressorFactory;
-  private final RetryManager routerSingleGetRetryManager;
-  private final RetryManager routerMultiGetRetryManager;
+  private final MetricsRepository metricsRepository;
+  private final ScheduledExecutorService retryManagerScheduler;
+  private final Map<String, RetryManager> routerSingleGetRetryManagers;
+  private final Map<String, RetryManager> routerMultiGetRetryManagers;
+
+  private final StoreDataChangedListener storeChangedListener = new StoreDataChangedListener() {
+    @Override
+    public void handleStoreDeleted(String storeName) {
+      routerSingleGetRetryManagers.remove(storeName);
+      routerMultiGetRetryManagers.remove(storeName);
+    }
+  };
 
   public VenicePathParser(
       VeniceVersionFinder versionFinder,
@@ -109,16 +127,19 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       ReadOnlyStoreRepository storeRepository,
       VeniceRouterConfig routerConfig,
       CompressorFactory compressorFactory,
-      RetryManager routerSingleGetRetryManager,
-      RetryManager routerMultiGetRetryManager) {
+      MetricsRepository metricsRepository,
+      ScheduledExecutorService retryManagerScheduler) {
     this.versionFinder = versionFinder;
     this.partitionFinder = partitionFinder;
     this.routerStats = routerStats;
     this.storeRepository = storeRepository;
+    this.storeRepository.registerStoreDataChangedListener(storeChangedListener);
     this.routerConfig = routerConfig;
     this.compressorFactory = compressorFactory;
-    this.routerSingleGetRetryManager = routerSingleGetRetryManager;
-    this.routerMultiGetRetryManager = routerMultiGetRetryManager;
+    this.metricsRepository = metricsRepository;
+    this.retryManagerScheduler = retryManagerScheduler;
+    this.routerSingleGetRetryManagers = new VeniceConcurrentHashMap<>();
+    this.routerMultiGetRetryManagers = new VeniceConcurrentHashMap<>();
   };
 
   @Override
@@ -159,6 +180,14 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       String method = fullHttpRequest.method().name();
 
       if (VeniceRouterUtils.isHttpGet(method)) {
+        RetryManager singleGetRetryManager = routerSingleGetRetryManagers.computeIfAbsent(
+            storeName,
+            k -> new RetryManager(
+                metricsRepository,
+                SINGLE_GET_RETRY_MANAGER_STATS_PREFIX + storeName,
+                routerConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
+                routerConfig.getSingleGetLongTailRetryBudgetPercentDecimal(),
+                retryManagerScheduler));
         // single-get request
         path = new VeniceSingleGetPath(
             storeName,
@@ -168,9 +197,17 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
             uri,
             partitionFinder,
             routerStats,
-            routerSingleGetRetryManager);
-        routerSingleGetRetryManager.recordRequest();
+            singleGetRetryManager);
+        singleGetRetryManager.recordRequest();
       } else if (VeniceRouterUtils.isHttpPost(method)) {
+        RetryManager multiGetRetryManager = routerMultiGetRetryManagers.computeIfAbsent(
+            storeName,
+            k -> new RetryManager(
+                metricsRepository,
+                MULTI_GET_RETRY_MANAGER_STATS_PREFIX + storeName,
+                routerConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
+                routerConfig.getMultiGetLongTailRetryBudgetPercentDecimal(),
+                retryManagerScheduler));
         if (resourceType == RouterResourceType.TYPE_STORAGE) {
           // multi-get request
           path = new VeniceMultiGetPath(
@@ -184,7 +221,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               routerConfig.getSmartLongTailRetryAbortThresholdMs(),
               routerStats,
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq(),
-              routerMultiGetRetryManager);
+              multiGetRetryManager);
           path.setResponseHeaders(
               Collections.singletonMap(
                   HttpConstants.VENICE_CLIENT_COMPUTE,
@@ -201,7 +238,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               routerConfig.isSmartLongTailRetryEnabled(),
               routerConfig.getSmartLongTailRetryAbortThresholdMs(),
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq(),
-              routerMultiGetRetryManager);
+              multiGetRetryManager);
 
           if (storeRepository.isReadComputationEnabled(storeName)) {
             path = computePath;
@@ -226,7 +263,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               "The passed in request must be either a GET or " + "be a POST with a resource type of " + TYPE_STORAGE
                   + " or " + TYPE_COMPUTE + ", but instead it was: " + request.toString());
         }
-        routerMultiGetRetryManager.recordRequest();
+        multiGetRetryManager.recordRequest();
       } else {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
             Optional.empty(),
