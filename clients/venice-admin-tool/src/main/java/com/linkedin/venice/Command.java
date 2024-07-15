@@ -344,7 +344,8 @@ public enum Command {
   QUERY_KAFKA_TOPIC(
       "query-kafka-topic", "Query some specific keys from the Venice Topic",
       new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL, START_DATE,
-          END_DATE, PROGRESS_INTERVAL, KEY }
+          KEY },
+      new Arg[] { END_DATE, PROGRESS_INTERVAL }
   ),
   MIGRATE_STORE(
       "migrate-store", "Migrate store from one cluster to another within the same fabric",
