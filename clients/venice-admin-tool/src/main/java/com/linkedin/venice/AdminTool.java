@@ -3097,13 +3097,20 @@ public class AdminTool {
     }
   }
 
-  private static void migrateVeniceZKPaths(CommandLine cmd) {
+  private static void migrateVeniceZKPaths(CommandLine cmd) throws Exception {
     Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
-    ZkCopier.migrateVenicePaths(
-        getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL),
-        getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL),
-        clusterNames,
-        getRequiredArgument(cmd, Arg.BASE_PATH));
+    String srcZKUrl = getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL);
+    String srcZKSSLConfigs = getOptionalArgument(cmd, Arg.SRC_ZK_SSL_CONFIG_FILE, "");
+    String destZKUrl = getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL);
+    String destZKSSLConfigs = getOptionalArgument(cmd, Arg.DEST_ZK_SSL_CONFIG_FILE, "");
+    ZkClient srcZkClient = readZKConfigAndBuildZKClient(srcZKUrl, srcZKSSLConfigs);
+    ZkClient destZkClient = readZKConfigAndBuildZKClient(destZKUrl, destZKSSLConfigs);
+    try {
+      ZkCopier.migrateVenicePaths(srcZkClient, destZkClient, clusterNames, getRequiredArgument(cmd, Arg.BASE_PATH));
+    } finally {
+      srcZkClient.close();
+      destZkClient.close();
+    }
   }
 
   private static void extractVeniceZKPaths(CommandLine cmd) {

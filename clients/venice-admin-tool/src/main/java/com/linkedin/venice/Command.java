@@ -25,6 +25,7 @@ import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.Arg.DEST_FABRIC;
+import static com.linkedin.venice.Arg.DEST_ZK_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.DEST_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.Arg.DISABLE_META_STORE;
@@ -102,6 +103,7 @@ import static com.linkedin.venice.Arg.SERVER_URL;
 import static com.linkedin.venice.Arg.SKIP_DIV;
 import static com.linkedin.venice.Arg.SKIP_LAST_STORE_CREATION;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
+import static com.linkedin.venice.Arg.SRC_ZK_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.SRC_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
 import static com.linkedin.venice.Arg.START_DATE;
@@ -538,7 +540,8 @@ public enum Command {
   ),
   MIGRATE_VENICE_ZK_PATHS(
       "migrate-venice-zk-paths", "Migrate Venice-specific metadata from a source ZK to a destination ZK",
-      new Arg[] { SRC_ZOOKEEPER_URL, DEST_ZOOKEEPER_URL, CLUSTER_LIST, BASE_PATH }
+      new Arg[] { SRC_ZOOKEEPER_URL, DEST_ZOOKEEPER_URL, CLUSTER_LIST, BASE_PATH },
+      new Arg[] { SRC_ZK_SSL_CONFIG_FILE, DEST_ZK_SSL_CONFIG_FILE }
   ),
   EXTRACT_VENICE_ZK_PATHS(
       "extract-venice-zk-paths",
