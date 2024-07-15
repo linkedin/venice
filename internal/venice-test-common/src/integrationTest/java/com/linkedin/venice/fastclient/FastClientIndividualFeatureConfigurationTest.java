@@ -410,8 +410,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
             .setLongTailRetryBudgetEnforcementWindowInMs(1000)
             .setSpeculativeQueryEnabled(false);
-    String multiGetLongTailRetryManagerStatsPrefix = ".multi-get-long-tail-retry-manager--";
-    String singleGetLongTailRetryManagerStatsPrefix = ".single-get-long-tail-retry-manager--";
+    String multiGetLongTailRetryManagerStatsPrefix = ".multi-get-long-tail-retry-manager-" + storeName + "--";
+    String singleGetLongTailRetryManagerStatsPrefix = ".single-get-long-tail-retry-manager-" + storeName + "--";
     MetricsRepository clientMetric = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, clientMetric, StoreMetadataFetchMode.SERVER_BASED_METADATA);
