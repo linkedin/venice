@@ -1598,8 +1598,8 @@ public class AdminTool {
 
     String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     String startDateInPST = getRequiredArgument(cmd, Arg.START_DATE);
-    String endDateInPST = getRequiredArgument(cmd, Arg.END_DATE);
-    String progressInterval = getRequiredArgument(cmd, Arg.PROGRESS_INTERVAL);
+    String endDateInPST = getOptionalArgument(cmd, Arg.END_DATE);
+    String progressInterval = getOptionalArgument(cmd, Arg.PROGRESS_INTERVAL);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
 
     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
@@ -1611,8 +1611,8 @@ public class AdminTool {
           kafkaTopic,
           keyString,
           dateFormat.parse(startDateInPST).getTime(),
-          dateFormat.parse(endDateInPST).getTime(),
-          Long.parseLong(progressInterval));
+          endDateInPST == null ? Long.MAX_VALUE : dateFormat.parse(endDateInPST).getTime(),
+          progressInterval == null ? 1000000 : Long.parseLong(progressInterval));
     }
   }
 

@@ -37,8 +37,8 @@ public class TopicMessageFinder {
       PubSubConsumerAdapter consumer,
       String topic,
       String keyString,
-      long startTimestamp,
-      long endTimestamp,
+      long startTimestampEpochMs,
+      long endTimestampEpochMs,
       long progressInterval) {
     String storeName;
     int version = -1;
@@ -83,8 +83,12 @@ public class TopicMessageFinder {
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
 
     // fetch start and end offset
-    startOffset = consumer.offsetForTime(assignedPubSubTopicPartition, startTimestamp);
-    endOffset = consumer.offsetForTime(assignedPubSubTopicPartition, endTimestamp);
+    startOffset = consumer.offsetForTime(assignedPubSubTopicPartition, startTimestampEpochMs);
+    if (endTimestampEpochMs == Long.MAX_VALUE || endTimestampEpochMs > System.currentTimeMillis()) {
+      endOffset = consumer.endOffset(assignedPubSubTopicPartition);
+    } else {
+      endOffset = consumer.offsetForTime(assignedPubSubTopicPartition, endTimestampEpochMs);
+    }
     LOGGER.info("Got start offset: {} and end offset: {} for the specified time range", startOffset, endOffset);
     return consume(consumer, assignedPubSubTopicPartition, startOffset, endOffset, progressInterval, serializedKey);
   }
