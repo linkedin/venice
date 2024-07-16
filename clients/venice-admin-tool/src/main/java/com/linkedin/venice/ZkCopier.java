@@ -38,6 +38,8 @@ public class ZkCopier {
    * @param destZkClient destination ZK client
    * @param clusterNames set of cluster names
    * @param basePath base path for ZK
+   * @Note: {@code destZkClient} should be a fresh ZK server or must not contain any Venice-specific metadata that needs to be migrated,
+   * otherwise a {@code ZkNodeExistsException} will be thrown
    */
   public static void migrateVenicePaths(
       ZkClient srcZkClient,
