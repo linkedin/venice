@@ -541,7 +541,7 @@ public class TestParentControllerWithMultiDataCenter {
       TestWriteUtils.runPushJob("Test push job 2", props);
       fail("Deferred version swap should fail second push");
     } catch (Exception e) {
-      Assert.assertTrue(e.getMessage().contains("An ongoing push with pushJobId"));
+      Assert.assertTrue(e.getMessage().contains("Unable to start the push with pushJobId"));
     }
   }
 
