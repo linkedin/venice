@@ -1505,10 +1505,13 @@ public class VeniceParentHelixAdmin implements Admin {
             pushJobId,
             storeName);
       } else {
+        String msg = version.isVersionSwapDeferred()
+            ? ". There is already a future version " + version.getNumber() + " exists for the store " + storeName
+                + " please make that version current before starting a next push."
+            : ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic.get()
+                + " is found and it must be terminated before another push can be started.";
         VeniceException e = new ConcurrentBatchPushException(
-            "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
-                + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic.get()
-                + " is found and it must be terminated before another push can be started.");
+            "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + msg);
         e.setStackTrace(EMPTY_STACK_TRACE);
         throw e;
       }
