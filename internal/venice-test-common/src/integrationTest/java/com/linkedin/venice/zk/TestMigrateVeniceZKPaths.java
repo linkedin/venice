@@ -1,13 +1,8 @@
 package com.linkedin.venice.zk;
 
-import static com.linkedin.venice.zk.VeniceZkPaths.ADMIN_TOPIC_METADATA;
 import static com.linkedin.venice.zk.VeniceZkPaths.CLUSTER_ZK_PATHS;
-import static com.linkedin.venice.zk.VeniceZkPaths.EXECUTION_IDS;
-import static com.linkedin.venice.zk.VeniceZkPaths.PARENT_OFFLINE_PUSHES;
-import static com.linkedin.venice.zk.VeniceZkPaths.ROUTERS;
 import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
 import static com.linkedin.venice.zk.VeniceZkPaths.STORE_CONFIGS;
-import static com.linkedin.venice.zk.VeniceZkPaths.STORE_GRAVEYARD;
 
 import com.linkedin.venice.ZkCopier;
 import com.linkedin.venice.helix.ZkClientFactory;
@@ -15,7 +10,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
@@ -62,9 +56,8 @@ public class TestMigrateVeniceZKPaths {
   /** Test migrating metadata from local source ZK to local destination ZK using ZkCopier.migrateVenicePaths()*/
   @Test
   public void testMigrateVenicePaths() {
-    List<String> destZkClientVenicePaths = ZkCopier.migrateVenicePaths(srcZkClient, destZkClient, CLUSTERS, BASE_PATH);
+    ZkCopier.migrateVenicePaths(srcZkClient, destZkClient, CLUSTERS, BASE_PATH);
     testZkClientPathsAsserts(destZkClient);
-    testVenicePathsAsserts(destZkClientVenicePaths);
   }
 
   private void createZkClientPaths(ZkClient zkClient) {
@@ -108,28 +101,5 @@ public class TestMigrateVeniceZKPaths {
         }
       }
     }
-  }
-
-  private void testVenicePathsAsserts(List<String> venicePaths) {
-    Assert.assertEquals(venicePaths.size(), 19);
-    Assert.assertTrue(venicePaths.contains(BASE_PATH));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + STORE_CONFIGS));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + STORE_CONFIGS + "/file"));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_1));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_1 + "/" + ADMIN_TOPIC_METADATA));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_1 + "/" + EXECUTION_IDS));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_1 + "/" + PARENT_OFFLINE_PUSHES));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_1 + "/" + ROUTERS));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_1 + "/" + STORE_GRAVEYARD));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_1 + "/" + STORES));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_1 + "/" + STORES + "/testStore"));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_2));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_2 + "/" + ADMIN_TOPIC_METADATA));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_2 + "/" + EXECUTION_IDS));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_2 + "/" + PARENT_OFFLINE_PUSHES));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_2 + "/" + ROUTERS));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_2 + "/" + STORE_GRAVEYARD));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_2 + "/" + STORES));
-    Assert.assertTrue(venicePaths.contains(BASE_PATH + "/" + CLUSTER_2 + "/" + STORES + "/testStore"));
   }
 }

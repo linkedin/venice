@@ -14,7 +14,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.io.FileUtils;
+import org.apache.helix.zookeeper.datamodel.serializer.ByteArraySerializer;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 
 
@@ -27,6 +30,8 @@ import org.apache.zookeeper.CreateMode;
  * </p>
  */
 public class ZkCopier {
+  private static final Logger LOGGER = LogManager.getLogger(ZkCopier.class);
+
   /**
    * Migrate Venice-specific metadata from a source ZK to a destination ZK.
    * @param srcZkClient source ZK client
@@ -34,7 +39,7 @@ public class ZkCopier {
    * @param clusterNames set of cluster names
    * @param basePath base path for ZK
    */
-  public static List<String> migrateVenicePaths(
+  public static void migrateVenicePaths(
       ZkClient srcZkClient,
       ZkClient destZkClient,
       Set<String> clusterNames,
@@ -44,14 +49,18 @@ public class ZkCopier {
     }
     TreeNode srcZkPathsTree = getZkClientPathsTree(srcZkClient, clusterNames, basePath);
     List<String> destZkPathsList = getVenicePathsFromTree(srcZkPathsTree, clusterNames, basePath);
+    srcZkClient.setZkSerializer(new ByteArraySerializer());
+    destZkClient.setZkSerializer(new ByteArraySerializer());
+    LOGGER.info("Starting Migration");
     for (String path: destZkPathsList) {
       try {
         destZkClient.create(path, srcZkClient.readData(path), CreateMode.PERSISTENT);
       } catch (Exception e) {
-        System.out.println(path + " failed with error: " + e.getMessage());
+        LOGGER.error("Failed to create path: " + path, e);
+        throw new VeniceException(e);
       }
     }
-    return destZkPathsList;
+    LOGGER.info("Ending Migration");
   }
 
   /**
