@@ -532,7 +532,8 @@ public class TestParentControllerWithMultiDataCenter {
     props.setProperty(DEFER_VERSION_SWAP, "true");
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setPartitionCount(1);
+    UpdateStoreQueryParams storeParms =
+        new UpdateStoreQueryParams().setPartitionCount(1).setBootstrapToOnlineTimeoutInHours(1);
     createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParms).close();
 
     TestWriteUtils.runPushJob("Test push job 1", props);
@@ -540,7 +541,7 @@ public class TestParentControllerWithMultiDataCenter {
       TestWriteUtils.runPushJob("Test push job 2", props);
       fail("Deferred version swap should fail second push");
     } catch (Exception e) {
-      Assert.assertTrue(e.getMessage().contains("An ongoing push with pushJobId"));
+      Assert.assertTrue(e.getMessage().contains("Unable to start the push with pushJobId"));
     }
   }
 
