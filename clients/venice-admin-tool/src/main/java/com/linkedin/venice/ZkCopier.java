@@ -49,8 +49,10 @@ public class ZkCopier {
     if (!basePath.startsWith("/")) {
       throw new VeniceException("Base path must start with a forward slash (/)");
     }
-    TreeNode srcZkPathsTree = getZkClientPathsTree(srcZkClient, clusterNames, basePath);
-    List<String> destZkPathsList = getVenicePathsFromTree(srcZkPathsTree, clusterNames, basePath);
+    if (!srcZkClient.exists(basePath)) {
+      throw new VeniceException("Base path does not exist in source ZK");
+    }
+    List<String> destZkPathsList = getZkClientPathsList(srcZkClient, clusterNames, basePath);
     srcZkClient.setZkSerializer(new ByteArraySerializer());
     destZkClient.setZkSerializer(new ByteArraySerializer());
     LOGGER.info("Starting Migration");
@@ -158,44 +160,50 @@ public class ZkCopier {
   }
 
   /**
-   * Build a tree of ZK paths with {@code basePath} and {@code clusterNames} by fetching children of each cluster path using the ZK client.
-   * @return the root (base path) of the tree
+   * Build a sorted list of Venice-specific paths in the ZK client filtered by 1)base path, 2)cluster names, and 3)required cluster ZK paths.
+   * @return a sorted list of Venice-specific paths
    */
-  static TreeNode getZkClientPathsTree(ZkClient zkClient, Set<String> clusterNames, String basePath) {
-    TreeNode root = new TreeNode(basePath);
-    String storeConfigsPath = basePath + "/" + STORE_CONFIGS;
+  static List<String> getZkClientPathsList(ZkClient zkClient, Set<String> clusterNames, String basePath) {
+    List<String> paths = new ArrayList<>();
+    StringBuilder sb = new StringBuilder(basePath);
+    paths.add(sb.toString());
+    String storeConfigsPath = sb.append("/").append(STORE_CONFIGS).toString();
     if (zkClient.exists(storeConfigsPath)) {
-      TreeNode storeConfigsNode = root.addChild(STORE_CONFIGS);
-      addChildrenToTreeNode(zkClient, storeConfigsNode, storeConfigsPath);
+      paths.add(storeConfigsPath);
+      getZkClientPathsListHelper(zkClient, paths, sb);
     }
+    sb.delete(sb.lastIndexOf("/" + STORE_CONFIGS), sb.length());
     for (String cluster: clusterNames) {
-      String clusterPath = basePath + "/" + cluster;
+      String clusterPath = sb.append("/").append(cluster).toString();
       if (zkClient.exists(clusterPath)) {
-        TreeNode clusterChild = root.addChild(cluster);
+        paths.add(clusterPath);
         for (String venicePath: CLUSTER_ZK_PATHS) {
-          String clusterVenicePath = clusterPath + "/" + venicePath;
+          String clusterVenicePath = sb.append("/").append(venicePath).toString();
           if (zkClient.exists(clusterVenicePath)) {
-            TreeNode venicePathChild = clusterChild.addChild(venicePath);
-            addChildrenToTreeNode(zkClient, venicePathChild, clusterVenicePath);
+            paths.add(clusterVenicePath);
+            getZkClientPathsListHelper(zkClient, paths, sb);
           }
+          sb.delete(sb.lastIndexOf("/" + venicePath), sb.length());
         }
       }
+      sb.delete(sb.lastIndexOf("/" + cluster), sb.length());
     }
-    return root;
+    Collections.sort(paths);
+    return paths;
   }
 
   /**
-   * Recursively add children to a {@code TreeNode} by fetching children of a ZK path using the ZK client.
-   * @Note: This method directly modifies the tree {@code node} in the parent method {@code getZkClientPathsTree()}
+   * Recursively traverse the ZK client and add each path to the list.
+   * @Note: This method directly modifies the list {@code paths} in the parent method {@code getZkClientPathsList()}
    */
-  private static void addChildrenToTreeNode(ZkClient zkClient, TreeNode node, String path) {
-    if (!zkClient.exists(path)) {
-      return;
-    }
-    List<String> children = zkClient.getChildren(path);
+  private static void getZkClientPathsListHelper(ZkClient zkClient, List<String> paths, StringBuilder sb) {
+    StringBuilder sbCopy = new StringBuilder(sb);
+    List<String> children = zkClient.getChildren(sbCopy.toString());
     for (String child: children) {
-      TreeNode childNode = node.addChild(child);
-      addChildrenToTreeNode(zkClient, childNode, path + "/" + child);
+      sbCopy.append("/").append(child);
+      paths.add(sbCopy.toString());
+      getZkClientPathsListHelper(zkClient, paths, sbCopy);
+      sbCopy.delete(sbCopy.lastIndexOf("/" + child), sbCopy.length());
     }
   }
 

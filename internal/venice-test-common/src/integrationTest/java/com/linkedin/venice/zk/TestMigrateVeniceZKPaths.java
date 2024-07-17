@@ -11,6 +11,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import org.apache.helix.zookeeper.datamodel.serializer.ByteArraySerializer;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
@@ -40,6 +41,9 @@ public class TestMigrateVeniceZKPaths {
     destZkAddress = destZkServerWrapper.getAddress();
     destZkClient = ZkClientFactory.newZkClient(destZkAddress);
     Assert.assertNotEquals(srcZkAddress, destZkAddress);
+    ByteArraySerializer serializer = new ByteArraySerializer();
+    srcZkClient.setZkSerializer(serializer);
+    destZkClient.setZkSerializer(serializer);
     createZkClientPaths(srcZkClient);
   }
 
@@ -61,18 +65,18 @@ public class TestMigrateVeniceZKPaths {
   }
 
   private void createZkClientPaths(ZkClient zkClient) {
-    zkClient.create(BASE_PATH, BASE_PATH, CreateMode.PERSISTENT);
+    zkClient.create(BASE_PATH, BASE_PATH.getBytes(), CreateMode.PERSISTENT);
     String storeConfigsPath = BASE_PATH + "/" + STORE_CONFIGS;
-    zkClient.create(storeConfigsPath, STORE_CONFIGS, CreateMode.PERSISTENT);
-    zkClient.create(storeConfigsPath + "/file", "file", CreateMode.PERSISTENT);
+    zkClient.create(storeConfigsPath, STORE_CONFIGS.getBytes(), CreateMode.PERSISTENT);
+    zkClient.create(storeConfigsPath + "/file", "file".getBytes(), CreateMode.PERSISTENT);
     for (String cluster: CLUSTERS) {
       String clusterPath = BASE_PATH + "/" + cluster;
-      zkClient.create(clusterPath, cluster, CreateMode.PERSISTENT);
+      zkClient.create(clusterPath, cluster.getBytes(), CreateMode.PERSISTENT);
       for (String zkPath: CLUSTER_ZK_PATHS) {
         String clusterZkPath = clusterPath + "/" + zkPath;
-        zkClient.create(clusterZkPath, zkPath, CreateMode.PERSISTENT);
+        zkClient.create(clusterZkPath, zkPath.getBytes(), CreateMode.PERSISTENT);
         if (zkPath.equals(STORES)) {
-          zkClient.create(clusterZkPath + "/testStore", "testStore", CreateMode.PERSISTENT);
+          zkClient.create(clusterZkPath + "/testStore", "testStore".getBytes(), CreateMode.PERSISTENT);
         }
       }
     }
@@ -80,24 +84,24 @@ public class TestMigrateVeniceZKPaths {
 
   private void testZkClientPathsAsserts(ZkClient zkClient) {
     Assert.assertTrue(zkClient.exists(BASE_PATH));
-    Assert.assertEquals(zkClient.readData(BASE_PATH), BASE_PATH);
+    Assert.assertEquals(zkClient.readData(BASE_PATH), BASE_PATH.getBytes());
     String storeConfigsPath = BASE_PATH + "/" + STORE_CONFIGS;
     Assert.assertTrue(zkClient.exists(storeConfigsPath));
-    Assert.assertEquals(zkClient.readData(storeConfigsPath), STORE_CONFIGS);
+    Assert.assertEquals(zkClient.readData(storeConfigsPath), STORE_CONFIGS.getBytes());
     Assert.assertTrue(zkClient.exists(storeConfigsPath + "/file"));
-    Assert.assertEquals(zkClient.readData(storeConfigsPath + "/file"), "file");
+    Assert.assertEquals(zkClient.readData(storeConfigsPath + "/file"), "file".getBytes());
     for (String cluster: CLUSTERS) {
       String clusterPath = BASE_PATH + "/" + cluster;
       Assert.assertTrue(zkClient.exists(clusterPath));
-      Assert.assertEquals(zkClient.readData(clusterPath), cluster);
+      Assert.assertEquals(zkClient.readData(clusterPath), cluster.getBytes());
       for (String zkPath: CLUSTER_ZK_PATHS) {
         String clusterZkPath = clusterPath + "/" + zkPath;
         Assert.assertTrue(zkClient.exists(clusterZkPath));
-        Assert.assertEquals(zkClient.readData(clusterZkPath), zkPath);
+        Assert.assertEquals(zkClient.readData(clusterZkPath), zkPath.getBytes());
         if (zkPath.equals(STORES)) {
           Assert.assertFalse(zkClient.exists(clusterZkPath + "/assertFalse"));
           Assert.assertTrue(zkClient.exists(clusterZkPath + "/testStore"));
-          Assert.assertEquals(zkClient.readData(clusterZkPath + "/testStore"), "testStore");
+          Assert.assertEquals(zkClient.readData(clusterZkPath + "/testStore"), "testStore".getBytes());
         }
       }
     }
