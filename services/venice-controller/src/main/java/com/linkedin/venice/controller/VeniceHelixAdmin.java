@@ -3269,9 +3269,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
       String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
-      LOGGER.info("Deleting helix resource: {} in cluster: {}", resourceName, clusterName);
-      deleteHelixResource(clusterName, resourceName);
-      LOGGER.info("Killing offline push for: {} in cluster: {}", resourceName, clusterName);
       killOfflinePush(clusterName, resourceName, true);
 
       // Check DIV error in the push status before stopping the monitor.
@@ -5192,6 +5189,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public void deleteHelixResource(String clusterName, String kafkaTopic) {
+    LOGGER.info("Deleting helix resource: {} in cluster: {}", kafkaTopic, clusterName);
     checkControllerLeadershipFor(clusterName);
 
     getHelixAdminClient().dropResource(clusterName, kafkaTopic);
@@ -6526,6 +6524,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER.info("Resource: {} doesn't exist, kill job will be skipped", kafkaTopic);
       return;
     }
+
+    deleteHelixResource(clusterName, kafkaTopic);
+
+    LOGGER.info("Killing offline push for: {} in cluster: {}", kafkaTopic, clusterName);
+
     checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     if (!isForcedKill) {

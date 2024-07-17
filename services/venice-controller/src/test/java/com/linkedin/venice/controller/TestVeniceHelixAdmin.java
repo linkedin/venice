@@ -1,7 +1,15 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
@@ -12,6 +20,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -117,5 +127,33 @@ public class TestVeniceHelixAdmin {
     daVinciStatus = ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
     overallStatus = VeniceHelixAdmin.getOverallPushStatus(veniceStatus, daVinciStatus);
     assertEquals(overallStatus, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL);
+  }
+
+  @Test
+  public void testKillOfflinePush_deleteHelixResource() {
+    String storeName = "abc";
+    String clusterName = "venice-cluster";
+    String instance = "node_1";
+    String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
+    Map<String, List<String>> listMap = new HashMap<>();
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    HelixAdminClient adminClient = mock(HelixAdminClient.class);
+    HelixVeniceClusterResources helixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
+    ClusterLockManager clusterLockManager = mock(ClusterLockManager.class);
+    AutoCloseableLock autoCloseableLock = mock(AutoCloseableLock.class);
+
+    doReturn(adminClient).when(veniceHelixAdmin).getHelixAdminClient();
+    doReturn(listMap).when(adminClient).getDisabledPartitionsMap(clusterName, instance);
+    doReturn(autoCloseableLock).when(clusterLockManager).createStoreWriteLockOnly(anyString());
+    doReturn(clusterLockManager).when(helixVeniceClusterResources).getClusterLockManager();
+    doReturn(helixVeniceClusterResources).when(veniceHelixAdmin).getHelixVeniceClusterResources(anyString());
+    doReturn(true).when(veniceHelixAdmin).isResourceStillAlive(anyString());
+    doNothing().when(veniceHelixAdmin).checkControllerLeadershipFor(anyString());
+    doNothing().when(veniceHelixAdmin).enableDisabledPartition(anyString(), anyString(), anyBoolean());
+    doCallRealMethod().when(veniceHelixAdmin).killOfflinePush(anyString(), anyString(), anyBoolean());
+    doCallRealMethod().when(veniceHelixAdmin).deleteHelixResource(anyString(), anyString());
+
+    veniceHelixAdmin.killOfflinePush(clusterName, kafkaTopic, false);
+    verify(veniceHelixAdmin, times(1)).deleteHelixResource(clusterName, kafkaTopic);
   }
 }
