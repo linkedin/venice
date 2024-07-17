@@ -141,7 +141,11 @@ public class TestVeniceHelixAdmin {
     HelixVeniceClusterResources helixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     ClusterLockManager clusterLockManager = mock(ClusterLockManager.class);
     AutoCloseableLock autoCloseableLock = mock(AutoCloseableLock.class);
+    ReadWriteStoreRepository repo = mock(ReadWriteStoreRepository.class);
+    Store store = mock(Store.class);
 
+    doReturn(repo).when(helixVeniceClusterResources).getStoreMetadataRepository();
+    doReturn(store).when(repo).getStore(anyString());
     doReturn(adminClient).when(veniceHelixAdmin).getHelixAdminClient();
     doReturn(listMap).when(adminClient).getDisabledPartitionsMap(clusterName, instance);
     doReturn(autoCloseableLock).when(clusterLockManager).createStoreWriteLockOnly(anyString());

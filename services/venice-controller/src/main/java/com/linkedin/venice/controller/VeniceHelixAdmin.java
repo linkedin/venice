@@ -3269,6 +3269,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
       String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
+      LOGGER.info("Killing offline push for: {} in cluster: {}", resourceName, clusterName);
+
       killOfflinePush(clusterName, resourceName, true);
 
       // Check DIV error in the push status before stopping the monitor.
@@ -5189,13 +5191,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public void deleteHelixResource(String clusterName, String kafkaTopic) {
-    LOGGER.info("Deleting helix resource: {} in cluster: {}", kafkaTopic, clusterName);
-    checkControllerLeadershipFor(clusterName);
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
 
-    getHelixAdminClient().dropResource(clusterName, kafkaTopic);
-    LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      Store store = resources.getStoreMetadataRepository().getStore(storeName);
+      if (store == null) {
+        throwStoreDoesNotExist(clusterName, storeName);
+      }
+      Version versionToBeDeleted = store.getVersion(versionNumber);
+      if (versionToBeDeleted == null) {
+        LOGGER
+            .info("Version: {} doesn't exist in store: {}, will skip `deleteHelixResource`", versionNumber, storeName);
+        return;
+      }
 
-    enableDisabledPartition(clusterName, kafkaTopic, false);
+      LOGGER.info("Deleting helix resource: {} in cluster: {}", kafkaTopic, clusterName);
+      checkControllerLeadershipFor(clusterName);
+
+      getHelixAdminClient().dropResource(clusterName, kafkaTopic);
+      LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
+
+      enableDisabledPartition(clusterName, kafkaTopic, false);
+    }
   }
 
   public void enableDisabledPartition(String clusterName, String kafkaTopic, boolean enableAll) {
