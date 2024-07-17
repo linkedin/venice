@@ -68,10 +68,11 @@ import org.testng.annotations.Test;
 public class TestBlobDiscovery {
   private static final String INT_KEY_SCHEMA = "\"int\"";
   private static final String INT_VALUE_SCHEMA = "\"int\"";
-  String clusterName;
-  String storeName;
+  private String clusterName;
+  private String storeName;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterVenice;
-  D2Client daVinciD2;
+  private D2Client daVinciD2;
 
   /**
    * Set up a multi-cluster Venice environment with meta system store enabled Venice stores.
@@ -84,19 +85,18 @@ public class TestBlobDiscovery {
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
 
-    VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-            1,
-            2,
-            1,
-            1,
-            3,
-            1,
-            3,
-            Optional.of(parentControllerProps),
-            Optional.empty(),
-            Optional.empty(),
-            false);
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+        1,
+        2,
+        1,
+        1,
+        3,
+        1,
+        3,
+        Optional.of(parentControllerProps),
+        Optional.empty(),
+        Optional.empty(),
+        false);
 
     multiClusterVenice = multiRegionMultiClusterWrapper.getChildRegions().get(0);
     String[] clusterNames = multiClusterVenice.getClusterNames();
@@ -183,9 +183,10 @@ public class TestBlobDiscovery {
     }
   }
 
-  @AfterTest
+  @AfterTest(alwaysRun = true)
   public void tearDown() {
     D2ClientUtils.shutdownClient(daVinciD2);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

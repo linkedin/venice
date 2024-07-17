@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS;
@@ -39,9 +38,6 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -73,8 +69,6 @@ public class TestFatalDataValidationExceptionHandling {
   public static final int NUMBER_OF_SERVERS = 1;
 
   private VeniceClusterWrapper veniceCluster;
-  ZkServerWrapper parentZk = null;
-  VeniceControllerWrapper parentController = null;
 
   protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
@@ -85,8 +79,6 @@ public class TestFatalDataValidationExceptionHandling {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    parentController.close();
-    parentZk.close();
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
@@ -152,25 +144,12 @@ public class TestFatalDataValidationExceptionHandling {
    */
   @Test(timeOut = 2 * 60 * Time.MS_PER_SECOND)
   public void testFatalDataValidationHandling() {
-    Properties controllerConfig = new Properties();
-    controllerConfig.setProperty(CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION, "true");
-    controllerConfig.setProperty(DEPRECATED_TOPIC_MAX_RETENTION_MS, Long.toString(TimeUnit.SECONDS.toMillis(20)));
-    parentZk = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(
-            veniceCluster.getClusterName(),
-            parentZk,
-            veniceCluster.getPubSubBrokerWrapper())
-                .childControllers(new VeniceControllerWrapper[] { veniceCluster.getLeaderVeniceController() })
-                .extraProperties(controllerConfig)
-                .build());
-
     final String storeName = Utils.getUniqueString("batch-store-test");
     final String[] storeNames = new String[] { storeName };
 
     try (
         ControllerClient controllerClient =
-            new ControllerClient(veniceCluster.getClusterName(), parentController.getControllerUrl());
+            new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
         TopicManager topicManager = veniceCluster.getLeaderVeniceController().getVeniceAdmin().getTopicManager()) {
       createStoresAndVersions(controllerClient, storeNames);
       String versionTopicName = Version.composeKafkaTopic(storeName, 1);

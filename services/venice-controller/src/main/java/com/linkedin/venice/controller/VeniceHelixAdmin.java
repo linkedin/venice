@@ -998,7 +998,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private void configureNewStore(Store newStore, VeniceControllerClusterConfig config, int largestUsedVersionNumber) {
     newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
-    newStore.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
+    newStore.setActiveActiveReplicationEnabled(
+        config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly() && !newStore.isSystemStore());
 
     /**
      * Initialize default NR source fabric base on default config for different store types.
@@ -3333,7 +3334,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
+  private boolean hasFatalDataValidationError(PushMonitor pushMonitor, String topicName) {
     try {
       OfflinePushStatus offlinePushStatus = pushMonitor.getOfflinePushOrThrow(topicName);
       return offlinePushStatus.hasFatalDataValidationError();
@@ -4274,7 +4275,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
         store.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
         store.setActiveActiveReplicationEnabled(
-            store.isActiveActiveReplicationEnabled() || config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
+            store.isActiveActiveReplicationEnabled()
+                || (config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly() && !store.isSystemStore()));
       }
       store.setIncrementalPushEnabled(incrementalPushEnabled);
 
@@ -4685,7 +4687,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 clusterConfig.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
             store.setActiveActiveReplicationEnabled(
                 store.isActiveActiveReplicationEnabled()
-                    || clusterConfig.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
+                    || (clusterConfig.isActiveActiveReplicationEnabledAsDefaultForBatchOnly()
+                        && !store.isSystemStore()));
           } else {
             // Batch-only store is being converted to hybrid store.
             if (!store.isHybrid()) {
@@ -7046,9 +7049,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  /**
-   * @return the aggregate resources required by controller to manage a Venice cluster.
-   */
+  @Override
   public HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster) {
     Optional<HelixVeniceClusterResources> resources = controllerStateModelFactory.getModel(cluster).getResources();
     if (!resources.isPresent()) {
@@ -8299,5 +8300,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // Only for testing
   public void setPushJobDetailsStoreClient(AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client) {
     pushJobDetailsStoreClient = client;
+  }
+
+  @Override
+  public PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }

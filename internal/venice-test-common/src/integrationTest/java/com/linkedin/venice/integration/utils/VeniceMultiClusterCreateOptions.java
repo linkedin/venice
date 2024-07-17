@@ -6,6 +6,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_SERVERS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
@@ -27,6 +28,7 @@ public class VeniceMultiClusterCreateOptions {
   private final boolean enableAllowlist;
   private final boolean enableAutoJoinAllowlist;
   private final boolean sslToStorageNodes;
+  private final boolean sslToKafka;
   private final boolean randomizeClusterName;
   private final boolean multiRegionSetup;
   private final boolean forkServer;
@@ -82,6 +84,10 @@ public class VeniceMultiClusterCreateOptions {
 
   public boolean isSslToStorageNodes() {
     return sslToStorageNodes;
+  }
+
+  public boolean isSslToKafka() {
+    return sslToKafka;
   }
 
   public boolean isRandomizeClusterName() {
@@ -155,6 +161,9 @@ public class VeniceMultiClusterCreateOptions {
         .append("sslToStorageNodes:")
         .append(sslToStorageNodes)
         .append(", ")
+        .append("sslToKafka:")
+        .append(sslToKafka)
+        .append(", ")
         .append("forkServer:")
         .append(forkServer)
         .append(", ")
@@ -195,6 +204,7 @@ public class VeniceMultiClusterCreateOptions {
     rebalanceDelayMs = builder.rebalanceDelayMs;
     minActiveReplica = builder.minActiveReplica;
     sslToStorageNodes = builder.sslToStorageNodes;
+    sslToKafka = builder.sslToKafka;
     randomizeClusterName = builder.randomizeClusterName;
     multiRegionSetup = builder.multiRegionSetup;
     zkServerWrapper = builder.zkServerWrapper;
@@ -207,7 +217,7 @@ public class VeniceMultiClusterCreateOptions {
 
   public static class Builder {
     private String regionName;
-    private final int numberOfClusters;
+    private int numberOfClusters;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private int numberOfServers = DEFAULT_NUMBER_OF_SERVERS;
     private int numberOfRouters = DEFAULT_NUMBER_OF_ROUTERS;
@@ -218,6 +228,7 @@ public class VeniceMultiClusterCreateOptions {
     private boolean enableAllowlist = false;
     private boolean enableAutoJoinAllowlist = false;
     private boolean sslToStorageNodes = DEFAULT_SSL_TO_STORAGE_NODES;
+    private boolean sslToKafka = DEFAULT_SSL_TO_KAFKA;
     private boolean randomizeClusterName = true;
     private boolean multiRegionSetup = false;
     private boolean forkServer = false;
@@ -228,8 +239,9 @@ public class VeniceMultiClusterCreateOptions {
     private Properties childControllerProperties;
     private Properties extraProperties;
 
-    public Builder(int numberOfClusters) {
+    public Builder numberOfClusters(int numberOfClusters) {
       this.numberOfClusters = numberOfClusters;
+      return this;
     }
 
     public Builder regionName(String regionName) {
@@ -288,6 +300,11 @@ public class VeniceMultiClusterCreateOptions {
       return this;
     }
 
+    public Builder sslToKafka(boolean sslToKafka) {
+      this.sslToKafka = sslToKafka;
+      return this;
+    }
+
     public Builder randomizeClusterName(boolean randomizeClusterName) {
       this.randomizeClusterName = randomizeClusterName;
       return this;
@@ -329,6 +346,9 @@ public class VeniceMultiClusterCreateOptions {
     }
 
     private void addDefaults() {
+      if (numberOfClusters == 0) {
+        numberOfClusters = 1;
+      }
       if (!isMinActiveReplicaSet) {
         minActiveReplica = replicationFactor - 1;
       }

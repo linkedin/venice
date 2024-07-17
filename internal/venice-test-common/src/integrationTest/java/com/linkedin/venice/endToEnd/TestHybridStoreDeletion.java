@@ -11,29 +11,24 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -55,11 +50,8 @@ import org.testng.annotations.Test;
 public class TestHybridStoreDeletion {
   private static final Logger LOGGER = LogManager.getLogger(TestHybridStoreDeletion.class);
   public static final int STREAMING_RECORD_SIZE = 1024;
-  public static final int NUMBER_OF_SERVERS = 1;
 
   private VeniceClusterWrapper veniceCluster;
-  ZkServerWrapper parentZk = null;
-  VeniceControllerWrapper parentController = null;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -68,21 +60,10 @@ public class TestHybridStoreDeletion {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    parentController.close();
-    parentZk.close();
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
   private static VeniceClusterWrapper setUpCluster() {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
-    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 1, 1, 1000000, false, false, extraProperties);
-
-    // Add Venice Router
-    Properties routerProperties = new Properties();
-    cluster.addVeniceRouter(routerProperties);
-
-    // Add Venice Server
     Properties serverProperties = new Properties();
     serverProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
@@ -103,17 +84,19 @@ public class TestHybridStoreDeletion {
         SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
         KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
 
-    for (int i = 0; i < NUMBER_OF_SERVERS; i++) {
-      cluster.addVeniceServer(new Properties(), serverProperties);
-    }
-
-    return cluster;
+    return ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(1)
+            .extraProperties(serverProperties)
+            .build());
   }
 
   /**
    * testHybridStoreRTDeletionWhileIngesting does the following:
    *
-   * 1. Set up a Venice cluster with 1 controller, 1 router, and 1 server.
+   * 1. Set up a Venice cluster with 1 parent controller, 1 child controller, 1 router, and 1 server.
    * 2. Limit the shared consumer thread pool size to 1 on the server.
    * 3. Create two hybrid stores.
    * 4. Produce to the rt topic of the first store and allow the thread to produce some amount of data.
@@ -123,43 +106,37 @@ public class TestHybridStoreDeletion {
    */
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testHybridStoreRTDeletionWhileIngesting() {
-    parentZk = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(
-            veniceCluster.getClusterName(),
-            parentZk,
-            veniceCluster.getPubSubBrokerWrapper())
-                .childControllers(new VeniceControllerWrapper[] { veniceCluster.getLeaderVeniceController() })
-                .build());
-
     long streamingRewindSeconds = 25;
     long streamingMessageLag = 2;
     final String storeNameFirst = Utils.getUniqueString("hybrid-store-test-first");
     final String storeNameSecond = Utils.getUniqueString("hybrid-store-test-second");
     final String[] storeNames = new String[] { storeNameFirst, storeNameSecond };
 
-    try (
-        ControllerClient controllerClient =
-            new ControllerClient(veniceCluster.getClusterName(), parentController.getControllerUrl());
-        AvroGenericStoreClient<Object, Object> clientToSecondStore = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeNameSecond).setVeniceURL(veniceCluster.getRandomRouterURL()));
-        TopicManager topicManager =
-            IntegrationTestPushUtils
-                .getTopicManagerRepo(
-                    PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
-                    100,
-                    0l,
-                    veniceCluster.getPubSubBrokerWrapper(),
-                    veniceCluster.getPubSubTopicRepository())
-                .getLocalTopicManager()) {
+    try (TopicManager topicManager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
+                100,
+                0l,
+                veniceCluster.getPubSubBrokerWrapper(),
+                veniceCluster.getPubSubTopicRepository())
+            .getLocalTopicManager()) {
 
-      createStoresAndVersions(controllerClient, storeNames, streamingRewindSeconds, streamingMessageLag);
+      createStoresAndVersions(storeNames, streamingRewindSeconds, streamingMessageLag);
+
+      // Wait until the rt topic of the first store is fully deleted.
+      PubSubTopic rtTopicFirst1 =
+          veniceCluster.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeNameFirst));
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+        Assert.assertTrue(topicManager.containsTopic(rtTopicFirst1));
+      });
 
       // Produce to the rt topic of the first store and allow the thread to produce some amount of data.
       produceToStoreRTTopic(storeNameFirst, 200);
 
       // Delete the rt topic of the first store.
-      controllerClient.deleteKafkaTopic(Version.composeRealTimeTopic(storeNameFirst));
+      topicManager.ensureTopicIsDeletedAndBlock(
+          veniceCluster.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeNameFirst)));
 
       // Wait until the rt topic of the first store is fully deleted.
       PubSubTopic rtTopicFirst =
@@ -171,17 +148,20 @@ public class TestHybridStoreDeletion {
       // Produce to the rt topic of the second store with 10 key-value pairs.
       produceToStoreRTTopic(storeNameSecond, 10);
 
-      // Check that the second store has all the records.
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
-        try {
-          for (int i = 1; i <= 10; i++) {
-            checkLargeRecord(clientToSecondStore, i);
-            LOGGER.info("Checked record {}", i);
+      try (AvroGenericStoreClient<Object, Object> clientToSecondStore = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeNameSecond).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+        // Check that the second store has all the records.
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            for (int i = 1; i <= 10; i++) {
+              checkLargeRecord(clientToSecondStore, i);
+              LOGGER.info("Checked record {}", i);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
           }
-        } catch (Exception e) {
-          throw new VeniceException(e);
-        }
-      });
+        });
+      }
 
     }
   }
@@ -211,32 +191,28 @@ public class TestHybridStoreDeletion {
     }
   }
 
-  private void createStoresAndVersions(
-      ControllerClient controllerClient,
-      String[] storeNames,
-      long streamingRewindSeconds,
-      long streamingMessageLag) {
-    for (String storeName: storeNames) {
-      // Create store at parent, make it a hybrid store.
-      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
-      controllerClient.updateStore(
-          storeName,
-          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setHybridRewindSeconds(streamingRewindSeconds)
-              .setPartitionCount(1)
-              .setHybridOffsetLagThreshold(streamingMessageLag));
+  private void createStoresAndVersions(String[] storeNames, long streamingRewindSeconds, long streamingMessageLag) {
+    veniceCluster.useControllerClient(controllerClient -> {
+      for (String storeName: storeNames) {
+        // Create store at parent, make it a hybrid store.
+        controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                .setHybridRewindSeconds(streamingRewindSeconds)
+                .setPartitionCount(1)
+                .setHybridOffsetLagThreshold(streamingMessageLag));
 
-      // There should be no version on the store yet.
-      assertEquals(
-          controllerClient.getStore(storeName).getStore().getCurrentVersion(),
-          0,
-          "The newly created store must have a current version of 0");
+        // There should be no version on the store yet.
+        assertEquals(
+            controllerClient.getStore(storeName).getStore().getCurrentVersion(),
+            0,
+            "The newly created store must have a current version of 0");
 
-      // Create a new version, and do an empty push for that version.
-      VersionCreationResponse vcr =
-          controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
-      int versionNumber = vcr.getVersion();
-      assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
-    }
+        // Create a new version, and do an empty push for that version.
+        controllerClient
+            .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, 60L * Time.MS_PER_SECOND);
+      }
+    });
   }
 }
