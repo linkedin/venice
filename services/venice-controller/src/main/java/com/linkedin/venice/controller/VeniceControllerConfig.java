@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
@@ -12,6 +13,7 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_SECURE_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
@@ -23,6 +25,9 @@ import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
@@ -36,8 +41,10 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD;
@@ -45,13 +52,17 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
@@ -67,33 +78,85 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLIN
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_READ_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
+import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE;
+import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
+import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST;
+import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
+import static com.linkedin.venice.ConfigKeys.ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
+import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
+import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
+import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY;
+import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_HYBRID;
+import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST;
+import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
+import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
+import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES;
+import static com.linkedin.venice.ConfigKeys.ENABLE_PARTITION_COUNT_ROUND_UP;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_PROCESSING_CYCLE_DELAY;
 import static com.linkedin.venice.ConfigKeys.FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS;
+import static com.linkedin.venice.ConfigKeys.FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.HELIX_REBALANCE_ALG;
+import static com.linkedin.venice.ConfigKeys.HELIX_SEND_MESSAGE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES;
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
+import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PARTITION_COUNT_ROUND_UP_SIZE;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.PUSH_MONITOR_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUSH_SSL_ALLOWLIST;
+import static com.linkedin.venice.ConfigKeys.PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
+import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
+import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
+import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
@@ -107,52 +170,72 @@ import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
+import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
+import com.linkedin.venice.pushmonitor.PushMonitorType;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
+import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /**
  * Configuration which is specific to a Venice controller.
- *
- * It's quite confusing to have both {@link VeniceControllerConfig} and
- * {@link VeniceControllerClusterConfig}. TODO: remove one of them
  */
-public class VeniceControllerConfig extends VeniceControllerClusterConfig {
+public class VeniceControllerConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerConfig.class);
   private static final String LIST_SEPARATOR = ",\\s*";
 
-  private final int adminPort;
-
+  private final VeniceProperties props;
+  private final String clusterName;
+  private final String zkAddress;
+  private final String controllerName;
   private final String adminHostname;
+  private final int adminPort;
   private final int adminSecurePort;
   private final int controllerClusterReplica;
+  // Name of the Helix cluster for controllers
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
   private final boolean parent;
@@ -337,8 +420,283 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long danglingTopicCleanupIntervalSeconds;
   private final int danglingTopicOccurrenceThresholdForCleanup;
 
+  private final PersistenceType persistenceType;
+  private final ReadStrategy readStrategy;
+  private final OfflinePushStrategy offlinePushStrategy;
+  private final RoutingStrategy routingStrategy;
+  private final int replicationFactor;
+  private final int minNumberOfPartitions;
+  private final int minNumberOfPartitionsForHybrid;
+  private final int maxNumberOfPartitions;
+  private final long partitionSize;
+  private final boolean partitionCountRoundUpEnabled;
+  private final int partitionCountRoundUpSize;
+  private final long offLineJobWaitTimeInMilliseconds;
+  private final Map<String, String> clusterToD2Map;
+  private final Map<String, String> clusterToServerD2Map;
+  private final boolean sslToKafka;
+  private final int helixSendMessageTimeoutMilliseconds;
+  private final int adminTopicReplicationFactor;
+  private final PushMonitorType pushMonitorType;
+
+  private final String kafkaSecurityProtocol;
+  // SSL related config
+  private final Optional<SSLConfig> sslConfig;
+  private final String sslFactoryClassName;
+  private final int refreshAttemptsForZkReconnect;
+  private final long refreshIntervalForZkReconnectInMs;
+  private final boolean enableOfflinePushSSLAllowlist;
+  private final boolean enableNearlinePushSSLAllowlist;
+  private final List<String> pushSSLAllowlist;
+
+  /**
+   * TODO: the follower 3 cluster level configs remains in the code base in case the new cluster level configs are not
+   *       working as expected. Once the new cluster level configs for native replication have been tested in prod, retire
+   *       the following configs.
+   */
+  /**
+   * When this option is enabled, all new batch-only store versions created will have native replication enabled so long
+   * as the store has leader follower also enabled.
+   */
+  private final boolean nativeReplicationEnabledForBatchOnly;
+
+  /**
+   * When this option is enabled, all new hybrid store versions created will have native replication enabled so long
+   * as the store has leader follower also enabled.
+   */
+  private final boolean nativeReplicationEnabledForHybrid;
+
+  /**
+   * When this option is enabled, all new batch-only stores will have native replication enabled in store config so long
+   * as the store has leader follower also enabled.
+   */
+  private final boolean nativeReplicationEnabledAsDefaultForBatchOnly;
+
+  /**
+   * When this option is enabled, all new hybrid stores will have native replication enabled in store config so long
+   * as the store has leader follower also enabled.
+   */
+  private final boolean nativeReplicationEnabledAsDefaultForHybrid;
+
+  private final String nativeReplicationSourceFabricAsDefaultForBatchOnly;
+  private final String nativeReplicationSourceFabricAsDefaultForHybrid;
+
+  /**
+   * When the following option is enabled, active-active enabled new user hybrid store will automatically
+   * have incremental push enabled.
+   */
+  private final boolean enabledIncrementalPushForHybridActiveActiveUserStores;
+
+  private final boolean enablePartialUpdateForHybridActiveActiveUserStores;
+  private final boolean enablePartialUpdateForHybridNonActiveActiveUserStores;
+
+  /**
+   * When this option is enabled, all new batch-only stores will have active-active replication enabled in store config so long
+   * as the store has leader follower also enabled.
+   */
+  private final boolean activeActiveReplicationEnabledAsDefaultForBatchOnly;
+
+  /**
+   * When this option is enabled, all new hybrid stores will have active-active replication enabled in store config so long
+   * as the store has leader follower also enabled.
+   */
+  private final boolean activeActiveReplicationEnabledAsDefaultForHybrid;
+
+  /**
+   * When this option is enabled, new schema registration will validate the schema against all existing store value schemas.
+   */
+  private final boolean controllerSchemaValidationEnabled;
+
+  /**
+   * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
+   */
+  private final long delayToRebalanceMS;
+  /**
+   * If the replica count smaller than minActiveReplica, helix would trigger the re-balance immediately.
+   * This config is deprecated. Replication factor config is moved to store/version-level config
+   */
+  @Deprecated
+  private final int minActiveReplica;
+
+  /**
+   * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
+   */
+  private final String kafkaBootstrapServers;
+
+  private final String sslKafkaBootStrapServers;
+
+  /**
+   * Number of replicas for each kafka topic. It can be different from the Venice Storage Node replication factor,
+   * defined by {@value com.linkedin.venice.ConfigKeys#DEFAULT_REPLICA_FACTOR}.
+   */
+  private final int kafkaReplicationFactor;
+  private final int kafkaReplicationFactorRTTopics;
+  private final Optional<Integer> minInSyncReplicas;
+  private final Optional<Integer> minInSyncReplicasRealTimeTopics;
+  private final Optional<Integer> minInSyncReplicasAdminTopics;
+  private final boolean kafkaLogCompactionForHybridStores;
+  private final long kafkaMinLogCompactionLagInMs;
+
+  /**
+   * Alg used by helix to decide the mapping between replicas and nodes.
+   */
+  private final String helixRebalanceAlg;
+
+  /**
+   * Sleep interval inside {@link LeakedPushStatusCleanUpService}
+   */
+  private final long leakedPushStatusCleanUpServiceSleepIntervalInMs;
+
+  /**
+   * The amount of time a leaked resource is allowed to linger before it is cleaned up.
+   *
+   * A leaked resource per store is allowed to linger for some time in order to gather troubleshooting information.
+   */
+  private final long leakedResourceAllowedLingerTimeInMs;
+
+  /**
+   * Jetty config overrides for Spark server
+   */
+  private final VeniceProperties jettyConfigOverrides;
+
+  /**
+   * Config which disables request_topic calls to the parent controller for stream pushes.  This is meant to discourage
+   * the use of the parent colo for aggregating pushed data, users should instead push to their local colo and allow
+   * Venice AA to aggregate the data.
+   */
+  private final boolean disableParentRequestTopicForStreamPushes;
+
+  private final int defaultReadQuotaPerRouter;
+  private final int replicationMetadataVersion;
+
+  private final boolean errorLeaderReplicaFailOverEnabled;
+
+  private final String childDatacenters;
+
   public VeniceControllerConfig(VeniceProperties props) {
-    super(props);
+    this.props = props;
+    this.clusterName = props.getString(CLUSTER_NAME);
+    this.zkAddress = props.getString(ZOOKEEPER_ADDRESS);
+    this.controllerName = props.getString(CONTROLLER_NAME);
+    this.kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
+    this.kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
+    this.minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
+    this.minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
+    this.minInSyncReplicasAdminTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS);
+    this.kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
+    this.kafkaMinLogCompactionLagInMs =
+        props.getLong(KAFKA_MIN_LOG_COMPACTION_LAG_MS, DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS);
+    this.replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
+    this.minNumberOfPartitions = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
+    this.minNumberOfPartitionsForHybrid = props.getInt(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, minNumberOfPartitions);
+    this.kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
+    this.partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
+    this.maxNumberOfPartitions = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
+    this.partitionCountRoundUpEnabled = props.getBoolean(ENABLE_PARTITION_COUNT_ROUND_UP, false);
+    this.partitionCountRoundUpSize = props.getInt(PARTITION_COUNT_ROUND_UP_SIZE, 1);
+    // If the timeout is longer than 3min, we need to update controller client's timeout as well, otherwise creating
+    // version would fail.
+    this.offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 120000);
+    // By default, delayed rebalance is disabled.
+    this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);
+    // By default, the min active replica is replica factor minus one, which means if more than one server failed,
+    // helix would trigger re-balance immediately.
+    this.minActiveReplica = props.getInt(MIN_ACTIVE_REPLICA, replicationFactor - 1);
+    if (props.containsKey(PERSISTENCE_TYPE)) {
+      this.persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
+    } else {
+      this.persistenceType = PersistenceType.IN_MEMORY;
+    }
+    if (props.containsKey(DEFAULT_READ_STRATEGY)) {
+      this.readStrategy = ReadStrategy.valueOf(props.getString(DEFAULT_READ_STRATEGY));
+    } else {
+      this.readStrategy = ReadStrategy.ANY_OF_ONLINE;
+    }
+    if (props.containsKey(DEFAULT_OFFLINE_PUSH_STRATEGY)) {
+      this.offlinePushStrategy = OfflinePushStrategy.valueOf(props.getString(DEFAULT_OFFLINE_PUSH_STRATEGY));
+    } else {
+      this.offlinePushStrategy = OfflinePushStrategy.WAIT_ALL_REPLICAS;
+    }
+    if (props.containsKey(DEFAULT_ROUTING_STRATEGY)) {
+      this.routingStrategy = RoutingStrategy.valueOf(props.getString(DEFAULT_ROUTING_STRATEGY));
+    } else {
+      this.routingStrategy = RoutingStrategy.CONSISTENT_HASH;
+    }
+
+    this.nativeReplicationEnabledForBatchOnly = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, false);
+    this.nativeReplicationEnabledAsDefaultForBatchOnly =
+        props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, false);
+    this.nativeReplicationEnabledForHybrid = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, false);
+    this.nativeReplicationEnabledAsDefaultForHybrid =
+        props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, false);
+    this.nativeReplicationSourceFabricAsDefaultForBatchOnly =
+        props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "");
+    this.nativeReplicationSourceFabricAsDefaultForHybrid =
+        props.getString(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "");
+    this.activeActiveReplicationEnabledAsDefaultForBatchOnly =
+        props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE, false);
+    this.activeActiveReplicationEnabledAsDefaultForHybrid =
+        props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
+    this.controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
+    this.enabledIncrementalPushForHybridActiveActiveUserStores =
+        props.getBoolean(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
+    this.enablePartialUpdateForHybridActiveActiveUserStores =
+        props.getBoolean(ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
+    this.enablePartialUpdateForHybridNonActiveActiveUserStores =
+        props.getBoolean(ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES, false);
+
+    this.clusterToD2Map = props.getMap(CLUSTER_TO_D2);
+    this.clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
+    this.sslToKafka = props.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false);
+    // In case ssl to kafka is enabled, ssl kafka broker list is a mandatory field
+    this.sslKafkaBootStrapServers = sslToKafka ? props.getString(SSL_KAFKA_BOOTSTRAP_SERVERS) : null;
+    this.helixSendMessageTimeoutMilliseconds = props.getInt(HELIX_SEND_MESSAGE_TIMEOUT_MS, 10000);
+
+    this.kafkaSecurityProtocol = props.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
+    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
+      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
+    }
+    if (doesControllerNeedsSslConfig()) {
+      this.sslConfig = Optional.of(new SSLConfig(props));
+    } else {
+      this.sslConfig = Optional.empty();
+    }
+    this.sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+    this.refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
+    this.refreshIntervalForZkReconnectInMs =
+        props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
+    this.enableOfflinePushSSLAllowlist = props.getBooleanWithAlternative(
+        ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST,
+        // go/inclusivecode deferred(Reference will be removed when clients have migrated)
+        ENABLE_OFFLINE_PUSH_SSL_WHITELIST,
+        true);
+    this.enableNearlinePushSSLAllowlist = props.getBooleanWithAlternative(
+        ENABLE_HYBRID_PUSH_SSL_ALLOWLIST,
+        // go/inclusivecode deferred(Reference will be removed when clients have migrated)
+        ENABLE_HYBRID_PUSH_SSL_WHITELIST,
+        true);
+    this.pushSSLAllowlist = props.getListWithAlternative(PUSH_SSL_ALLOWLIST, PUSH_SSL_WHITELIST, new ArrayList<>());
+    this.helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushRebalanceStrategy.class.getName());
+    this.adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 3);
+    this.pushMonitorType =
+        PushMonitorType.valueOf(props.getString(PUSH_MONITOR_TYPE, PushMonitorType.WRITE_COMPUTE_STORE.name()));
+    if (adminTopicReplicationFactor < 1) {
+      throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
+    }
+    this.leakedPushStatusCleanUpServiceSleepIntervalInMs =
+        props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
+    // 7 days should be enough for detecting and troubleshooting a leaked push status.
+    this.leakedResourceAllowedLingerTimeInMs =
+        props.getLong(LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS, TimeUnit.DAYS.toMillis(7));
+    this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
+    this.disableParentRequestTopicForStreamPushes =
+        props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
+    this.defaultReadQuotaPerRouter =
+        props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
+    this.replicationMetadataVersion = props.getInt(REPLICATION_METADATA_VERSION, 1);
+    this.childDatacenters = props.getString(CHILD_CLUSTER_ALLOWLIST);
+    this.errorLeaderReplicaFailOverEnabled = props.getBoolean(FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED, true);
+
     this.adminPort = props.getInt(ADMIN_PORT);
     this.adminHostname = props.getString(ADMIN_HOSTNAME, () -> Utils.getHostName());
     this.adminSecurePort = props.getInt(ADMIN_SECURE_PORT);
@@ -611,6 +969,265 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
                   this.activeActiveRealTimeSourceFabrics)
               : "");
     }
+  }
+
+  public VeniceProperties getProps() {
+    return props;
+  }
+
+  public String getClusterName() {
+    return clusterName;
+  }
+
+  public final String getZkAddress() {
+    return zkAddress;
+  }
+
+  private boolean doesControllerNeedsSslConfig() {
+    final boolean controllerSslEnabled = props.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
+    final boolean kafkaNeedsSsl = KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocol);
+
+    return controllerSslEnabled || kafkaNeedsSsl;
+  }
+
+  public boolean isErrorLeaderReplicaFailOverEnabled() {
+    return errorLeaderReplicaFailOverEnabled;
+  }
+
+  public int getDefaultReadQuotaPerRouter() {
+    return defaultReadQuotaPerRouter;
+  }
+
+  public String getControllerName() {
+    return controllerName;
+  }
+
+  public PersistenceType getPersistenceType() {
+    return persistenceType;
+  }
+
+  public ReadStrategy getReadStrategy() {
+    return readStrategy;
+  }
+
+  public OfflinePushStrategy getOfflinePushStrategy() {
+    return offlinePushStrategy;
+  }
+
+  public RoutingStrategy getRoutingStrategy() {
+    return routingStrategy;
+  }
+
+  public int getReplicationFactor() {
+    return replicationFactor;
+  }
+
+  public int getMinNumberOfPartitions() {
+    return minNumberOfPartitions;
+  }
+
+  public int getMinNumberOfPartitionsForHybrid() {
+    return minNumberOfPartitionsForHybrid;
+  }
+
+  public int getKafkaReplicationFactor() {
+    return kafkaReplicationFactor;
+  }
+
+  public int getKafkaReplicationFactorRTTopics() {
+    return kafkaReplicationFactorRTTopics;
+  }
+
+  public long getPartitionSize() {
+    return partitionSize;
+  }
+
+  public boolean isDisableParentRequestTopicForStreamPushes() {
+    return disableParentRequestTopicForStreamPushes;
+  }
+
+  public int getMaxNumberOfPartitions() {
+    return maxNumberOfPartitions;
+  }
+
+  public boolean isPartitionCountRoundUpEnabled() {
+    return partitionCountRoundUpEnabled;
+  }
+
+  public int getPartitionCountRoundUpSize() {
+    return partitionCountRoundUpSize;
+  }
+
+  public long getOffLineJobWaitTimeInMilliseconds() {
+    return offLineJobWaitTimeInMilliseconds;
+  }
+
+  public long getDelayToRebalanceMS() {
+    return delayToRebalanceMS;
+  }
+
+  @Deprecated
+  public int getMinActiveReplica() {
+    return minActiveReplica;
+  }
+
+  /**
+   * @return kafka Bootstrap Urls. If there is more than one url, they are separated by commas.
+   */
+  public String getKafkaBootstrapServers() {
+    return kafkaBootstrapServers;
+  }
+
+  public Map<String, String> getClusterToD2Map() {
+    return clusterToD2Map;
+  }
+
+  public Map<String, String> getClusterToServerD2Map() {
+    return clusterToServerD2Map;
+  }
+
+  public boolean isSslToKafka() {
+    return sslToKafka;
+  }
+
+  public String getSslKafkaBootstrapServers() {
+    return sslKafkaBootStrapServers;
+  }
+
+  public int getHelixSendMessageTimeoutMs() {
+    return helixSendMessageTimeoutMilliseconds;
+  }
+
+  public String getKafkaSecurityProtocol() {
+    return kafkaSecurityProtocol;
+  }
+
+  public Optional<SSLConfig> getSslConfig() {
+    return sslConfig;
+  }
+
+  public String getSslFactoryClassName() {
+    return sslFactoryClassName;
+  }
+
+  public int getRefreshAttemptsForZkReconnect() {
+    return refreshAttemptsForZkReconnect;
+  }
+
+  public long getRefreshIntervalForZkReconnectInMs() {
+    return refreshIntervalForZkReconnectInMs;
+  }
+
+  public boolean isEnableOfflinePushSSLAllowlist() {
+    return enableOfflinePushSSLAllowlist;
+  }
+
+  public List<String> getPushSSLAllowlist() {
+    return pushSSLAllowlist;
+  }
+
+  public boolean isEnableNearlinePushSSLAllowlist() {
+    return enableNearlinePushSSLAllowlist;
+  }
+
+  public String getHelixRebalanceAlg() {
+    return helixRebalanceAlg;
+  }
+
+  public int getAdminTopicReplicationFactor() {
+    return adminTopicReplicationFactor;
+  }
+
+  public PushMonitorType getPushMonitorType() {
+    return pushMonitorType;
+  }
+
+  public Optional<Integer> getMinInSyncReplicas() {
+    return minInSyncReplicas;
+  }
+
+  public Optional<Integer> getMinInSyncReplicasRealTimeTopics() {
+    return minInSyncReplicasRealTimeTopics;
+  }
+
+  public Optional<Integer> getMinInSyncReplicasAdminTopics() {
+    return minInSyncReplicasAdminTopics;
+  }
+
+  public boolean isKafkaLogCompactionForHybridStoresEnabled() {
+    return kafkaLogCompactionForHybridStores;
+  }
+
+  public long getKafkaMinLogCompactionLagInMs() {
+    return kafkaMinLogCompactionLagInMs;
+  }
+
+  public boolean isNativeReplicationEnabledForBatchOnly() {
+    return nativeReplicationEnabledForBatchOnly;
+  }
+
+  public boolean isNativeReplicationEnabledAsDefaultForBatchOnly() {
+    return nativeReplicationEnabledAsDefaultForBatchOnly;
+  }
+
+  public boolean isNativeReplicationEnabledForHybrid() {
+    return nativeReplicationEnabledForHybrid;
+  }
+
+  public boolean isNativeReplicationEnabledAsDefaultForHybrid() {
+    return nativeReplicationEnabledAsDefaultForHybrid;
+  }
+
+  public boolean isActiveActiveReplicationEnabledAsDefaultForBatchOnly() {
+    return activeActiveReplicationEnabledAsDefaultForBatchOnly;
+  }
+
+  public boolean isActiveActiveReplicationEnabledAsDefaultForHybrid() {
+    return activeActiveReplicationEnabledAsDefaultForHybrid;
+  }
+
+  public boolean isControllerSchemaValidationEnabled() {
+    return controllerSchemaValidationEnabled;
+  }
+
+  public long getLeakedPushStatusCleanUpServiceSleepIntervalInMs() {
+    return leakedPushStatusCleanUpServiceSleepIntervalInMs;
+  }
+
+  public long getLeakedResourceAllowedLingerTimeInMs() {
+    return leakedResourceAllowedLingerTimeInMs;
+  }
+
+  public String getNativeReplicationSourceFabricAsDefaultForBatchOnly() {
+    return nativeReplicationSourceFabricAsDefaultForBatchOnly;
+  }
+
+  public String getNativeReplicationSourceFabricAsDefaultForHybrid() {
+    return nativeReplicationSourceFabricAsDefaultForHybrid;
+  }
+
+  public VeniceProperties getJettyConfigOverrides() {
+    return jettyConfigOverrides;
+  }
+
+  public int getReplicationMetadataVersion() {
+    return replicationMetadataVersion;
+  }
+
+  public String getChildDatacenters() {
+    return childDatacenters;
+  }
+
+  public boolean enabledIncrementalPushForHybridActiveActiveUserStores() {
+    return enabledIncrementalPushForHybridActiveActiveUserStores;
+  }
+
+  public boolean isEnablePartialUpdateForHybridActiveActiveUserStores() {
+    return enablePartialUpdateForHybridActiveActiveUserStores;
+  }
+
+  public boolean isEnablePartialUpdateForHybridNonActiveActiveUserStores() {
+    return enablePartialUpdateForHybridNonActiveActiveUserStores;
   }
 
   public int getAdminPort() {

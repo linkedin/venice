@@ -21,8 +21,8 @@ public class VeniceControllerMultiClusterConfig {
   public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> controllerClusterProperties) {
     clusterToControllerConfigMap = new HashMap<>();
     for (VeniceProperties properties: controllerClusterProperties) {
-      final VeniceControllerConfig controllerClusterConfig = new VeniceControllerConfig(properties);
-      clusterToControllerConfigMap.put(controllerClusterConfig.getClusterName(), controllerClusterConfig);
+      final VeniceControllerConfig controllerConfig = new VeniceControllerConfig(properties);
+      clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
     }
   }
 

@@ -1042,11 +1042,11 @@ public class VeniceParentHelixAdmin implements Admin {
       return store.getRmdVersion();
     }
 
-    final VeniceControllerConfig controllerClusterConfig = getMultiClusterConfigs().getControllerConfig(clusterName);
-    if (controllerClusterConfig == null) {
+    final VeniceControllerConfig controllerConfig = getMultiClusterConfigs().getControllerConfig(clusterName);
+    if (controllerConfig == null) {
       throw new VeniceException("No controller cluster config found for cluster " + clusterName);
     }
-    final int rmdVersionID = controllerClusterConfig.getReplicationMetadataVersion();
+    final int rmdVersionID = controllerConfig.getReplicationMetadataVersion();
     LOGGER.info("Use RMD version ID {} for cluster {}", rmdVersionID, clusterName);
     return rmdVersionID;
   }
@@ -2399,8 +2399,8 @@ public class VeniceParentHelixAdmin implements Admin {
           hybridDataReplicationPolicy,
           hybridBufferReplayPolicy);
 
-      // Get VeniceControllerClusterConfig for the cluster
-      VeniceControllerClusterConfig clusterConfig =
+      // Get VeniceControllerConfig for the cluster
+      VeniceControllerConfig controllerConfig =
           veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig();
       // Check if the store is being converted to a hybrid store
       boolean storeBeingConvertedToHybrid = !currStore.isHybrid() && updatedHybridStoreConfig != null
@@ -2426,7 +2426,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Enable active-active replication automatically when batch user store being converted to hybrid store and
       // active-active replication is enabled for all hybrid store via the cluster config
       if (storeBeingConvertedToHybrid && !setStore.activeActiveReplicationEnabled && !currStore.isSystemStore()
-          && clusterConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
+          && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
         setStore.activeActiveReplicationEnabled = true;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
         if (!hybridDataReplicationPolicy.isPresent()) {
@@ -2453,7 +2453,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // replication is enabled or being and the cluster config allows it.
       if (!setStore.incrementalPushEnabled && !currStore.isSystemStore() && storeBeingConvertedToHybrid
           && setStore.activeActiveReplicationEnabled
-          && clusterConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
+          && controllerConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
         setStore.incrementalPushEnabled = true;
         updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
       }
@@ -2682,8 +2682,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (!getVeniceHelixAdmin().isHybrid(currStore.getHybridStoreConfig())
           && getVeniceHelixAdmin().isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
         // This is a new hybrid store and partition count is not specified.
-        VeniceControllerClusterConfig config =
-            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
+        VeniceControllerConfig config = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
         setStore.setPartitionNum(
             PartitionUtils.calculatePartitionCount(
                 storeName,

@@ -36,9 +36,9 @@ public class TestTopicCleanupServiceForParentController {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1000l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(2).when(config).getTopicCleanupDelayFactor();
-    VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
-    doReturn(veniceControllerConfig).when(config).getCommonConfig();
-    doReturn("dc1").when(veniceControllerConfig).getChildDatacenters();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(config).getCommonConfig();
+    doReturn("dc1").when(controllerConfig).getChildDatacenters();
     TopicCleanupServiceStats topicCleanupServiceStats = mock(TopicCleanupServiceStats.class);
     doReturn(new ApacheKafkaAdminAdapterFactory()).when(pubSubClientsFactory).getAdminAdapterFactory();
     doReturn(new ApacheKafkaAdminAdapterFactory()).when(config).getSourceOfTruthAdminAdapterFactory();

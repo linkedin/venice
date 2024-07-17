@@ -64,7 +64,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private HelixCustomizedViewOfflinePushRepository customizedViewRepo;
   private final ReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
-  private final VeniceControllerClusterConfig config;
+  private final VeniceControllerConfig config;
   private final PushMonitorDelegator pushMonitor;
   private final LeakedPushStatusCleanUpService leakedPushStatusCleanUpService;
   private final ZkRoutersClusterManager routersClusterManager;
@@ -367,7 +367,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     return helixManager;
   }
 
-  public VeniceControllerClusterConfig getConfig() {
+  public VeniceControllerConfig getConfig() {
     return config;
   }
 

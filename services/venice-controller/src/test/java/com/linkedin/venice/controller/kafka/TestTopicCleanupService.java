@@ -78,9 +78,9 @@ public class TestTopicCleanupService {
         .getSourceOfTruthAdminAdapterFactory();
     doReturn(1).when(admin).getMinNumberOfUnusedKafkaTopicsToPreserve();
 
-    VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
-    doReturn(veniceControllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
-    doReturn("local,remote").when(veniceControllerConfig).getChildDatacenters();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
+    doReturn("local,remote").when(controllerConfig).getChildDatacenters();
     Map<String, String> dataCenterToBootstrapServerMap = new HashMap<>();
     dataCenterToBootstrapServerMap.put("local", "local");
     dataCenterToBootstrapServerMap.put("remote", "remote");
@@ -443,9 +443,9 @@ public class TestTopicCleanupService {
   public void testCleanVeniceTopicsBlockRTTopicDeletionWhenMisconfigured() {
     // RT topic deletion should be blocked when controller is misconfigured
     // Mis-configured where local data center is not in the child data centers list
-    VeniceControllerConfig veniceControllerConfig = mock(VeniceControllerConfig.class);
-    doReturn(veniceControllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
-    doReturn("remote").when(veniceControllerConfig).getChildDatacenters();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
+    doReturn("remote").when(controllerConfig).getChildDatacenters();
     TopicCleanupService blockedTopicCleanupService = new TopicCleanupService(
         admin,
         veniceControllerMultiClusterConfig,
