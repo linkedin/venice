@@ -8,6 +8,7 @@ import static com.linkedin.venice.Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
 import static com.linkedin.venice.Arg.BACKUP_FOLDER;
 import static com.linkedin.venice.Arg.BACKUP_STRATEGY;
 import static com.linkedin.venice.Arg.BACKUP_VERSION_RETENTION_DAY;
+import static com.linkedin.venice.Arg.BASE_PATH;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
 import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
@@ -16,6 +17,7 @@ import static com.linkedin.venice.Arg.CHUNKING_ENABLED;
 import static com.linkedin.venice.Arg.CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
+import static com.linkedin.venice.Arg.CLUSTER_LIST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.Arg.DATETIME;
@@ -46,6 +48,7 @@ import static com.linkedin.venice.Arg.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.Arg.INFILE;
 import static com.linkedin.venice.Arg.INTERVAL;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
@@ -60,6 +63,7 @@ import static com.linkedin.venice.Arg.KEY_SCHEMA;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.Arg.MAX_COMPACTION_LAG_SECONDS;
+import static com.linkedin.venice.Arg.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.Arg.MESSAGE_COUNT;
 import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
 import static com.linkedin.venice.Arg.MIN_COMPACTION_LAG_SECONDS;
@@ -68,6 +72,7 @@ import static com.linkedin.venice.Arg.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
+import static com.linkedin.venice.Arg.OUTFILE;
 import static com.linkedin.venice.Arg.OWNER;
 import static com.linkedin.venice.Arg.PARTITION;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
@@ -256,7 +261,7 @@ public enum Command {
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
-          MAX_COMPACTION_LAG_SECONDS, UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED }
+          MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -528,6 +533,11 @@ public enum Command {
   BACKUP_STORE_METADATA_FROM_GRAVEYARD(
       "backup-store-metadata-from-graveyard", "Backup store metadata from graveyard in EI",
       new Arg[] { VENICE_ZOOKEEPER_URL, ZK_SSL_CONFIG_FILE, BACKUP_FOLDER }
+  ),
+  EXTRACT_VENICE_ZK_PATHS(
+      "extract-venice-zk-paths",
+      "Extract Venice-specific paths from a ZK snapshot input text file to an output text file",
+      new Arg[] { INFILE, OUTFILE, CLUSTER_LIST, BASE_PATH }
   );
 
   private final String commandName;

@@ -573,6 +573,9 @@ public class AdminTool {
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
           break;
+        case EXTRACT_VENICE_ZK_PATHS:
+          extractVeniceZKPaths(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -1150,6 +1153,7 @@ public class AdminTool {
     integerParam(cmd, Arg.LATEST_SUPERSET_SCHEMA_ID, p -> params.setLatestSupersetSchemaId(p), argSet);
     longParam(cmd, Arg.MIN_COMPACTION_LAG_SECONDS, p -> params.setMinCompactionLagSeconds(p), argSet);
     longParam(cmd, Arg.MAX_COMPACTION_LAG_SECONDS, p -> params.setMaxCompactionLagSeconds(p), argSet);
+    integerParam(cmd, Arg.MAX_RECORD_SIZE_BYTES, params::setMaxRecordSizeBytes, argSet);
     booleanParam(cmd, Arg.UNUSED_SCHEMA_DELETION_ENABLED, p -> params.setUnusedSchemaDeletionEnabled(p), argSet);
     booleanParam(cmd, Arg.BLOB_TRANSFER_ENABLED, p -> params.setBlobTransferEnabled(p), argSet);
 
@@ -3088,6 +3092,15 @@ public class AdminTool {
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
+  }
+
+  private static void extractVeniceZKPaths(CommandLine cmd) {
+    Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
+    ZkCopier.extractVenicePaths(
+        getRequiredArgument(cmd, Arg.INFILE),
+        getRequiredArgument(cmd, Arg.OUTFILE),
+        clusterNames,
+        getRequiredArgument(cmd, Arg.BASE_PATH));
   }
 
   private static void configureStoreView(CommandLine cmd) {

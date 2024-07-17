@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
+
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -29,7 +31,7 @@ import org.apache.logging.log4j.Logger;
 public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   private static final Logger LOGGER = LogManager.getLogger(CachedReadOnlyStoreRepository.class);
 
-  public static final String STORE_REPOSITORY_PATH = "/Stores";
+  public static final String STORE_REPOSITORY_PATH = "/" + STORES;
 
   protected final String clusterName;
   protected final String clusterStoreRepositoryPath;

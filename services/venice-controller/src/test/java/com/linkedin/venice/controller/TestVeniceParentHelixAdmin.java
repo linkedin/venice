@@ -1786,7 +1786,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .setHybridBufferReplayPolicy(REWIND_FROM_SOP)
         .setBootstrapToOnlineTimeoutInHours(48)
         .setReplicationFactor(2)
-        .setBlobTransferEnabled(false);
+        .setBlobTransferEnabled(false)
+        .setMaxRecordSizeBytes(7777);
 
     parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
 
@@ -1818,6 +1819,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
     assertEquals(updateStore.replicationFactor, 2);
     Assert.assertFalse(updateStore.blobTransferEnabled);
+    Assert.assertEquals(updateStore.maxRecordSizeBytes, 7777);
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));

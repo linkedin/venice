@@ -132,6 +132,8 @@ public abstract class CheckSum {
         return new CRC32CheckSum();
       case MD5:
         return new MD5CheckSum();
+      case ADHASH:
+        return new AdHash();
       default:
         return null;
     }
@@ -144,6 +146,8 @@ public abstract class CheckSum {
           return null;
         case MD5:
           return new MD5CheckSum(encodedState);
+        case ADHASH:
+          return new AdHash(encodedState);
         default:
           return null;
       }

@@ -11,9 +11,12 @@ public enum Arg {
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
   SERVER_URL("server-url", "su", true, "Venice server url, eg. http://localhost:1690  This has to be a storage node"),
   VENICE_ZOOKEEPER_URL("venice-zookeeper-url", "vzu", true, "Venice Zookeeper url, eg. localhost:2622"),
+  INFILE("infile", "if", true, "Path to input text file"), OUTFILE("outfile", "of", true, "Path to output text file"),
+  BASE_PATH("base-path", "bp", true, "Base path for ZK, eg. /venice-parent"),
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
   CLUSTER_DEST("cluster-dest", "cd", true, "Store migration destination Venice cluster name"),
+  CLUSTER_LIST("cluster-list", "cl", true, "Comma separated list of cluster names, eg. venice-0, venice-1, ..."),
   STORE("store", "s", true, "Name of Venice store"), STORES("stores", "sts", true, "Name of a group of Venice stores"),
   VERSION("version", "v", true, "Active store version number"),
   LARGEST_USED_VERSION_NUMBER(
@@ -240,6 +243,10 @@ public enum Arg {
   ),
   MAX_COMPACTION_LAG_SECONDS(
       "max-compaction-lag-seconds", "mxcls", true, "Max compaction lag seconds for version topic of hybrid stores"
+  ),
+  MAX_RECORD_SIZE_BYTES(
+      "max-record-size-bytes", "mrsb", true,
+      "Store-level max record size in bytes. Used by VeniceWriter to fail batch push jobs and pause consumption on nearline jobs."
   ), UNUSED_SCHEMA_DELETION_ENABLED("enable-unused-schema-deletion", "usde", true, "Enable unused schema deletion"),
   PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(

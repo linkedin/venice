@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -29,7 +30,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
   private ZkClient zkClient;
   private String cluster = "test-metadata-cluster";
   private String clusterPath = "/test-metadata-cluster";
-  private String storesPath = "/stores";
+  private String storesPath = "/" + STORES;
   private ZkServerWrapper zkServerWrapper;
   private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 

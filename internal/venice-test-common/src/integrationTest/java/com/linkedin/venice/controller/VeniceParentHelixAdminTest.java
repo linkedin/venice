@@ -61,6 +61,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -608,7 +609,7 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGeneration(parentControllerClient);
         testWriteComputeSchemaEnable(parentControllerClient);
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
-        testUpdateCompactionLag(parentControllerClient);
+        testUpdateConfigs(parentControllerClient, childControllerClient);
       }
     }
   }
@@ -907,34 +908,76 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(schemaResponse.getSchemas().length, 2);
   }
 
-  private void testUpdateCompactionLag(ControllerClient parentControllerClient) {
-    // Adding store
+  private void testUpdateConfigs(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+    testUpdateCompactionLag(parentControllerClient, childControllerClient);
+    testUpdateMaxRecordSize(parentControllerClient, childControllerClient);
+    testUpdateBlobTransfer(parentControllerClient, childControllerClient);
+  }
+
+  /**
+   * Base test flow for updating store configurations by updating the store metadata from parent to child controller.
+   * @param parentControllerClient The parent controller client which will perform the update.
+   * @param childControllerClient The child controller client which will receive the update.
+   * @param paramsConsumer Used to create the UpdateStoreQueryParams to update the configurations for the store.
+   * @param responseConsumer Used to validate the configurations have been updated correctly for both parent and child.
+   */
+  private void testUpdateConfig(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient,
+      Consumer<UpdateStoreQueryParams> paramsConsumer,
+      Consumer<StoreResponse> responseConsumer) {
+    // Step 1. Create a store
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
-    String schemaStr =
-        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\", \"default\": 0.0}]}";
-    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
-    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+    String valueSchemaStr = generateSchema(false).toString();
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
 
-    final long expectedMinCompactionLagSeconds = 100;
-    final long expectedMaxCompactionLagSeconds = 200;
+    // Step 2. Update the store configurations
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setMinCompactionLagSeconds(expectedMinCompactionLagSeconds);
-    params.setMaxCompactionLagSeconds(expectedMaxCompactionLagSeconds);
+    paramsConsumer.accept(params);
     parentControllerClient.updateStore(storeName, params);
 
-    // Validate in parent
+    // Step 3. Validate the configurations have been updated correctly for the parent controller
     StoreResponse parentStoreResponse = parentControllerClient.getStore(storeName);
-    Assert.assertEquals(parentStoreResponse.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
-    Assert.assertEquals(parentStoreResponse.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
+    responseConsumer.accept(parentStoreResponse);
 
+    // Step 4. Validate the configurations have been updated correctly for the child controller
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      StoreResponse childStoreResponse = parentControllerClient.getStore(storeName);
-      Assert.assertEquals(childStoreResponse.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
-      Assert.assertEquals(childStoreResponse.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+      responseConsumer.accept(childStoreResponse);
     });
+  }
 
+  private void testUpdateCompactionLag(ControllerClient parentClient, ControllerClient childClient) {
+    final long expectedMinCompactionLagSeconds = 100;
+    final long expectedMaxCompactionLagSeconds = 200;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setMinCompactionLagSeconds(expectedMinCompactionLagSeconds);
+      params.setMaxCompactionLagSeconds(expectedMaxCompactionLagSeconds);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
+      Assert.assertEquals(response.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateMaxRecordSize(ControllerClient parentClient, ControllerClient childClient) {
+    final int expectedMaxRecordSizeBytes = 7 * 1024 * 1024;
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setMaxRecordSizeBytes(expectedMaxRecordSizeBytes),
+        response -> Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), expectedMaxRecordSizeBytes));
+  }
+
+  private void testUpdateBlobTransfer(ControllerClient parentClient, ControllerClient childClient) {
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setBlobTransferEnabled(true),
+        response -> Assert.assertTrue(response.getStore().isBlobTransferEnabled()));
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {

@@ -20,7 +20,7 @@ provided by Venice team.
 
 #### Step 2: Download Venice quickstart Docker compose file
 ```
-wget https://raw.githubusercontent.com/linkedin/venice/main/quickstart/docker-compose.yaml
+wget https://raw.githubusercontent.com/linkedin/venice/main/docker/docker-compose-single-dc-setup.yaml
 ```
 
 #### Step 3: Run docker compose
@@ -28,9 +28,9 @@ This will download and start containers for kafka, zookeeper, venice-controller,
 venice-server, and venice-client.
 Once containers are up and running, it will create a test cluster, namely, `venice-cluster`.
 
-Note: Make sure the `docker-compose.yaml` downloaded in step 2 is in the same directory from which you will run the following command.
+Note: Make sure the `docker-compose-single-dc-setup.yaml` downloaded in step 2 is in the same directory from which you will run the following command.
 ```
-docker compose up -d
+docker compose -f docker-compose-single-dc-setup.yaml up -d
 ```
 
 #### Step 4: Access `venice-client` container's bash shell
@@ -139,7 +139,7 @@ exit
 #### Step 11: Stop docker
 Tear down the venice cluster
 ```
-docker compose down
+docker compose -f docker-compose-single-dc-setup.yaml down
 ```
 
 ## Next steps

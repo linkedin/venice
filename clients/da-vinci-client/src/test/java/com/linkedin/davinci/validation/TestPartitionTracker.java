@@ -297,11 +297,11 @@ public class TestPartitionTracker {
     Assert.assertEquals(partitionTracker.getSegment(guid).getSequenceNumber(), skipSequenceNumber);
   }
 
-  @Test
-  public void testDuplicateMsgsDetected() {
+  @Test(dataProvider = "CheckpointingSupported-CheckSum-Types", dataProviderClass = DataProviderUtils.class)
+  public void testDuplicateMsgsDetected(CheckSumType checkSumType) {
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
-    Segment firstSegment = new Segment(partitionId, 0, CheckSumType.MD5);
+    Segment firstSegment = new Segment(partitionId, 0, checkSumType);
     long offset = 10;
 
     // Send SOS
@@ -360,17 +360,17 @@ public class TestPartitionTracker {
    * This test is to ensure when meeting a mid segment, i.e. segment which doesn't start with SOS, the check sum
    * type and check sum state should be aligned with each other.
    */
-  @Test
-  public void testMidSegmentCheckSumStates() {
+  @Test(dataProvider = "CheckpointingSupported-CheckSum-Types", dataProviderClass = DataProviderUtils.class)
+  public void testMidSegmentCheckSumStates(CheckSumType checkSumType) {
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
-    Segment firstSegment = new Segment(partitionId, 0, CheckSumType.MD5);
-    Segment secondSegment = new Segment(partitionId, 1, CheckSumType.MD5);
+    Segment firstSegment = new Segment(partitionId, 0, checkSumType);
+    Segment secondSegment = new Segment(partitionId, 1, checkSumType);
     long offset = 10;
     OffsetRecord record = TestUtils.getOffsetRecord(offset);
 
-    // Send SOS with check sum type set to MD5
-    ControlMessage startOfSegment = getStartOfSegment(CheckSumType.MD5);
+    // Send SOS with check sum type set to checkpoint-able checkSumType.
+    ControlMessage startOfSegment = getStartOfSegment(checkSumType);
     KafkaMessageEnvelope startOfSegmentMessage =
         getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.empty(), startOfSegment);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
@@ -382,7 +382,7 @@ public class TestPartitionTracker {
         0);
     partitionTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
     partitionTracker.updateOffsetRecord(record);
-    Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.MD5.getValue());
+    Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, checkSumType.getValue());
 
     // The msg is a put msg without check sum type
     Put firstPut = getPutMessage("first_message".getBytes());

@@ -1,5 +1,7 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.zk.VeniceZkPaths.OFFLINE_PUSHES;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -42,7 +44,7 @@ import org.apache.zookeeper.data.Stat;
  * </ul>
  */
 public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
-  public static final String OFFLINE_PUSH_SUB_PATH = "OfflinePushes";
+  public static final String OFFLINE_PUSH_SUB_PATH = OFFLINE_PUSHES;
   private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 3;
   private static final long DEFAULT_ZK_REFRESH_INTERVAL = TimeUnit.SECONDS.toMillis(10);
 

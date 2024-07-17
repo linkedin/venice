@@ -224,6 +224,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
+    setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
+    setBlobTransferEnabled(store.isBlobTransferEnabled());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -847,6 +849,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
     this.storeProperties.maxCompactionLagSeconds = maxCompactionLagSeconds;
+  }
+
+  @Override
+  public int getMaxRecordSizeBytes() {
+    return this.storeProperties.maxRecordSizeBytes;
+  }
+
+  @Override
+  public void setMaxRecordSizeBytes(int maxRecordSizeBytes) {
+    this.storeProperties.maxRecordSizeBytes = maxRecordSizeBytes;
   }
 
   @Override

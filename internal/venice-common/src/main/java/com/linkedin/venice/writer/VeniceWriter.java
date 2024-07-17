@@ -114,6 +114,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VENICE_WRITER_CONFIG_PREFIX + "max.elapsed.time.for.segment.in.ms";
 
   /**
+   * Maximum Venice record size. Default: {@value DEFAULT_MAX_RECORD_SIZE_BYTES}
+   *
+   * Large records can cause performance issues, so this setting is used to detect and prevent them. Not to be
+   * confused with Kafka record size (which is the ~1MB limit {@link MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
+   * is designed to comply with). Venice records refer to a Venice key-value pair, which can be spread across 1+ Kafka
+   * records / events. Basically: Records without Chunking < ~1MB < Records with Chunking < Max Record Size
+   *
+   * 1. If a batch push data contains records larger than this setting, the push job will fail.
+   * 2. If a nearline job contains records larger than this setting, consumption will be paused and manual intervention
+   * will be necessary.
+   */
+  // public static final String MAX_RECORD_SIZE_BYTES = VENICE_WRITER_CONFIG_PREFIX + "max.record.size.bytes";
+
+  /**
    * Chunk size. Default: {@value DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
    *
    * N.B.: This must be configured in relation to the following configs:
@@ -131,6 +145,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * 950 KB for user payload should be conservative enough.
    */
   public static final int DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES = 950 * 1024;
+
+  /**
+   * The default value of -1 is overwritten with 10 MB, if not specified in the VeniceProperties from the constructor.
+   */
+  // public static final int DEFAULT_MAX_RECORD_SIZE_BYTES = 10 * 1024 * 1024;
 
   /**
    * This controls the Kafka producer's close timeout.
@@ -254,6 +273,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingFlagInvoked;
 
   private final boolean isRmdChunkingEnabled;
+  // private final int maxRecordSizeBytes;
 
   private final ControlMessage heartBeatMessage;
 
@@ -284,6 +304,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingEnabled = params.isChunkingEnabled();
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
+    // this.maxRecordSizeBytes = props.getInt(MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES);
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {

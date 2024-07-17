@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.utils.TestUtils.getRandomStore;
+import static com.linkedin.venice.zk.VeniceZkPaths.STORES;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -31,7 +32,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
   private ZkClient zkClient;
   private String cluster = "test-metadata-cluster";
   private String clusterPath = "/test-metadata-cluster";
-  private String storesPath = "/stores";
+  private String storesPath = "/" + STORES;
   private ZkServerWrapper zkServerWrapper;
   private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 

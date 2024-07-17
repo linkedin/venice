@@ -30,6 +30,11 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.venice.blobtransfer.BlobTransferManager;
+import com.linkedin.venice.blobtransfer.DvcBlobFinder;
+import com.linkedin.venice.blobtransfer.NettyP2PBlobTransferManager;
+import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
+import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -86,7 +91,7 @@ import org.apache.logging.log4j.Logger;
 
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
-
+  private final BlobTransferManager blobTransferManager;
   private final VeniceConfigLoader configLoader;
   private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -272,6 +277,19 @@ public class DaVinciBackend implements Closeable {
       ingestionService.start();
       ingestionService.addIngestionNotifier(ingestionListener);
 
+      boolean isBlobTransferEnabled = configLoader.getStoreConfig(clientConfig.getStoreName()).isBlobTransferEnabled();
+      if (isBlobTransferEnabled) {
+        int blobTransferPort = backendConfig.getDvcP2pBlobTransferPort();
+        String rocksDBPath = backendConfig.getRocksDBPath();
+        this.blobTransferManager = new NettyP2PBlobTransferManager(
+            new P2PBlobTransferService(blobTransferPort, rocksDBPath),
+            new NettyFileTransferClient(blobTransferPort, rocksDBPath),
+            new DvcBlobFinder(ClientFactory.getTransportClient(clientConfig)));
+        blobTransferManager.start();
+      } else {
+        blobTransferManager = null;
+      }
+
       if (isIsolatedIngestion() && cacheConfig.isPresent()) {
         // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL
         // settings),
@@ -427,8 +445,14 @@ public class DaVinciBackend implements Closeable {
             metricsRepository,
             storageMetadataService,
             ingestionService,
-            storageService)
-        : new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
+            storageService,
+            blobTransferManager)
+        : new DefaultIngestionBackend(
+            storageMetadataService,
+            ingestionService,
+            storageService,
+            blobTransferManager,
+            configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
     // Subscribe all bootstrap version partitions.
@@ -495,6 +519,11 @@ public class DaVinciBackend implements Closeable {
       storeRepository.clear();
       schemaRepository.clear();
       pushStatusStoreWriter.close();
+
+      if (blobTransferManager != null) {
+        blobTransferManager.close();
+      }
+
       LOGGER.info("Da Vinci backend is closed successfully");
     } catch (Throwable e) {
       String msg = "Unable to stop Da Vinci backend";
