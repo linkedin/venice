@@ -3217,13 +3217,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     aggKafkaConsumerService.resetOffsetFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
-  private void pauseConsumption(String topic, int partitionId) {
+  protected void pauseConsumption(String topic, int partitionId) {
     aggKafkaConsumerService.pauseConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
   }
 
-  private void resumeConsumption(String topic, int partitionId) {
+  protected void resumeConsumption(String topic, int partitionId) {
     aggKafkaConsumerService.resumeConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));

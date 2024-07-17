@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -53,7 +54,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(StorageUtilizationManager.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = getRedundantExceptionFilter();
 
-  private final Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
+  private final Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap; // TODO: ConcurrentMap?
   private final AbstractStorageEngine storageEngine;
   private final Function<Integer, StoragePartitionDiskUsage> storagePartitionDiskUsageFunctionConstructor;
   private final String versionTopic;
@@ -69,6 +70,8 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private final TopicPartitionConsumerFunction resumePartition;
 
   private boolean versionIsOnline;
+
+  private final AtomicInteger maxRecordSizeBytes; // TODO: does this need to be an atomic integer?
 
   /** Should only be changed in {@link #setStoreQuota(Store)} */
   private long storeQuotaInBytes;
@@ -118,6 +121,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.ingestionNotificationDispatcher = ingestionNotificationDispatcher;
     this.pausePartition = pausePartition;
     this.resumePartition = resumePartition;
+    this.maxRecordSizeBytes = new AtomicInteger(store.getMaxRecordSizeBytes());
     setStoreQuota(store);
     Version version = store.getVersion(storeVersion);
     versionIsOnline = isVersionOnline(version);
@@ -165,7 +169,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     Version version = store.getVersion(storeVersion);
     if (version == null) {
       LOGGER.debug(
-          "Version: {}  doesn't exist in the store: {}",
+          "Version: {} doesn't exist in the store: {}",
           Version.parseVersionFromKafkaTopicName(versionTopic),
           storeName);
       return;
@@ -173,13 +177,27 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     versionIsOnline = isVersionOnline(version);
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
       LOGGER.info(
-          "Store: {} changed, updated quota from {} to {} and store quota is {}enabled, "
+          "Store: {} changed, updated quota from {} to {} and store quota is {} enabled, "
               + "so we reset the store quota and resume all partitions.",
           this.storeName,
           this.storeQuotaInBytes,
           store.getStorageQuotaInByte(),
           store.isHybridStoreDiskQuotaEnabled() ? "" : "not ");
       resumeAllPartitions();
+    }
+
+    final int oldMaxRecordSizeBytes = this.maxRecordSizeBytes.get();
+    if (this.maxRecordSizeBytes.compareAndSet(oldMaxRecordSizeBytes, store.getMaxRecordSizeBytes())) {
+      final boolean isRecordLimitIncreased = oldMaxRecordSizeBytes < store.getMaxRecordSizeBytes();
+      LOGGER.info(
+          "Store: {} changed, updated max record size from {} to {}{}.",
+          this.storeName,
+          oldMaxRecordSizeBytes,
+          store.getMaxRecordSizeBytes(),
+          (isRecordLimitIncreased) ? ", so we resume all partitions" : "");
+      if (isRecordLimitIncreased) {
+        resumeAllPartitions(); // TODO: will the interaction clash with the hybrid quota enforcement? needs separate?
+      }
     }
 
     try (AutoCloseableLock ignored = AutoCloseableLock.of(hybridStoreDiskQuotaLock)) {
