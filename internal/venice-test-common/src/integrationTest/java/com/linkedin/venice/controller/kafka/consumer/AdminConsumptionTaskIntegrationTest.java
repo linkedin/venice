@@ -190,7 +190,7 @@ public class AdminConsumptionTaskIntegrationTest {
         byte[] storeDeletionMessage = getStoreDeletionMessage(clusterName, storeName, executionId);
         writer.put(new byte[0], storeDeletionMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-          Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
+          Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
         });
       }
     }

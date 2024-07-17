@@ -44,7 +44,7 @@ public class TestMetadataOperationInMultiCluster {
     String keySchema = "\"string\"";
     String valSchema = "\"string\"";
 
-    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder().setNumberOfClusters(2)
+    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder().numberOfClusters(2)
         .numberOfControllers(3)
         .numberOfServers(1)
         .numberOfRouters(1)
@@ -134,7 +134,7 @@ public class TestMetadataOperationInMultiCluster {
 
   @Test
   public void testRunVPJInMultiCluster() throws Exception {
-    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder().setNumberOfClusters(2)
+    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder().numberOfClusters(2)
         .numberOfControllers(3)
         .numberOfServers(1)
         .numberOfRouters(1)

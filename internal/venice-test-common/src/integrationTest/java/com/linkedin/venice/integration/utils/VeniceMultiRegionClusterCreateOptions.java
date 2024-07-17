@@ -240,12 +240,6 @@ public class VeniceMultiRegionClusterCreateOptions {
       if (numberOfClusters == 0) {
         numberOfClusters = 1;
       }
-      if (parentControllerProperties == null) {
-        parentControllerProperties = new Properties();
-      }
-      if (childControllerProperties == null) {
-        childControllerProperties = new Properties();
-      }
     }
 
     public VeniceMultiRegionClusterCreateOptions build() {

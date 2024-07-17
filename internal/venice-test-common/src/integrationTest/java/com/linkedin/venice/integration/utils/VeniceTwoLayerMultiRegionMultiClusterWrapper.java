@@ -191,7 +191,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       additionalServerProps.putAll(pubSubBrokerProps);
 
       VeniceMultiClusterCreateOptions.Builder builder =
-          new VeniceMultiClusterCreateOptions.Builder().setNumberOfClusters(options.getNumberOfClusters())
+          new VeniceMultiClusterCreateOptions.Builder().numberOfClusters(options.getNumberOfClusters())
               .numberOfControllers(options.getNumberOfChildControllers())
               .numberOfServers(options.getNumberOfServers())
               .numberOfRouters(options.getNumberOfRouters())

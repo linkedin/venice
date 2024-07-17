@@ -31,7 +31,7 @@ public class TestWritePathComputation {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFeatureFlagSingleDC() {
-    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder().setNumberOfClusters(1)
+    VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder().numberOfClusters(1)
         .numberOfControllers(1)
         .numberOfServers(1)
         .numberOfRouters(0)

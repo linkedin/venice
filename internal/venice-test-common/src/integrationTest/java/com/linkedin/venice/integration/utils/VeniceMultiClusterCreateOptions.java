@@ -239,7 +239,7 @@ public class VeniceMultiClusterCreateOptions {
     private Properties childControllerProperties;
     private Properties extraProperties;
 
-    public Builder setNumberOfClusters(int numberOfClusters) {
+    public Builder numberOfClusters(int numberOfClusters) {
       this.numberOfClusters = numberOfClusters;
       return this;
     }
