@@ -313,11 +313,13 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       Collection<SchemaEntry> valueSchemaEntries = schemaRepo.getValueSchemas(storeName);
       int schemaNum = valueSchemaEntries.size();
       MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
+      int index = 0;
       for (SchemaEntry entry: valueSchemaEntries) {
         int schemaId = entry.getId();
-        schemas[schemaId - 1] = new MultiSchemaResponse.Schema();
-        schemas[schemaId - 1].setId(schemaId);
-        schemas[schemaId - 1].setSchemaStr(entry.getSchema().toString());
+        schemas[index] = new MultiSchemaResponse.Schema();
+        schemas[index].setId(schemaId);
+        schemas[index].setSchemaStr(entry.getSchema().toString());
+        index++;
       }
       responseObject.setSchemas(schemas);
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
