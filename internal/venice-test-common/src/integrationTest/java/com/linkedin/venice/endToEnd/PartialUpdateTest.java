@@ -23,6 +23,8 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
@@ -36,6 +38,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToUserWithStringMapSchema;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -63,6 +66,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.spark.datawriter.jobs.DataWriterSparkJob;
@@ -87,7 +91,6 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -212,8 +215,7 @@ public class PartialUpdateTest {
       sendStreamingRecord(veniceProducer, storeName, keyRecord, partialUpdateRecord);
 
       // Perform one time repush to make sure repush can handle RMD chunks data correctly.
-      Properties props =
-          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+      Properties props = defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
       props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
@@ -300,8 +302,7 @@ public class PartialUpdateTest {
     Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties vpjProperties =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    Properties vpjProperties = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
     vpjProperties.put(INCREMENTAL_PUSH, true);
 
@@ -364,8 +365,7 @@ public class PartialUpdateTest {
     Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties vpjProperties =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    Properties vpjProperties = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
     vpjProperties.put(INCREMENTAL_PUSH, true);
     if (useSparkCompute) {
@@ -440,8 +440,7 @@ public class PartialUpdateTest {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties vpjProperties =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    Properties vpjProperties = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
 
     Schema valueSchema = AvroCompatibilityHelper.parse(valueSchemaStr);
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
@@ -561,6 +560,92 @@ public class PartialUpdateTest {
           }
         });
       }
+    }
+  }
+
+  /**
+   * This integration test verifies that in A/A + partial update enabled store, UPDATE on a key that was written in the
+   * batch push should not throw exception, as the update logic should initialize a new RMD record for the original value
+   * and apply updates on top of them.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProviderClass = DataProviderUtils.class)
+  public void testLargeValuesPartialUpdate() throws IOException {
+    final String storeName = Utils.getUniqueString("largeValuesPartialUpdate");
+    String parentControllerUrl = parentController.getControllerUrl();
+    File inputDir = getTempDataDirectory();
+    inputDir.deleteOnExit();
+    final int largeValueSize = BYTES_PER_MB; // 1 MB, intentionally larger than 950 KB
+    final String keySchemaStr = "{\"type\" : \"string\"}";
+    final Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    final String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+
+    VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L)
+              .setMaxRecordSizeBytes(DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES); // 950 KB
+      assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    String key = "1";
+    String primitiveFieldName = "name";
+    String listFieldName = "floatArray";
+    // Produce partial updates on batch pushed keys
+    int totalUpdateCount = 40;
+    // Insert large amount of Map entries to trigger RMD chunking.
+    int singleUpdateEntryCount = 10000;
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      for (int i = 1; i < totalUpdateCount; i++) {
+        producePartialUpdateToArray(
+            storeName,
+            veniceProducer,
+            partialUpdateSchema,
+            key,
+            primitiveFieldName,
+            listFieldName,
+            singleUpdateEntryCount,
+            i);
+      }
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, key);
+          boolean nullRecord = (valueRecord == null);
+          assertFalse(nullRecord);
+          assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
+          assertTrue(
+              ((List<Float>) (valueRecord.get(listFieldName))).size() < totalUpdateCount * singleUpdateEntryCount);
+        } catch (RecordTooLargeException e) {
+          Assert.assertTrue(
+              e.getMessage()
+                  .endsWith(
+                      "Max Venice record size: " + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " bytes."),
+              e.getMessage());
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
     }
   }
 
@@ -842,8 +927,7 @@ public class PartialUpdateTest {
       }
 
       // <!--- Perform one time repush to make sure repush can handle RMD chunks data correctly -->
-      Properties props =
-          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+      Properties props = defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
       props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
@@ -1079,8 +1163,7 @@ public class PartialUpdateTest {
     });
 
     // Perform one time repush to make sure repush can handle RMD chunks data correctly.
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+    Properties props = defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
@@ -1537,8 +1620,7 @@ public class PartialUpdateTest {
       // Records 1-100, id string to name record
       Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-      Properties vpjProperties =
-          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+      Properties vpjProperties = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
       try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL)) {
 
         String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
@@ -1552,9 +1634,7 @@ public class PartialUpdateTest {
                 .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setChunkingEnabled(true)
                 .setCompressionStrategy(compressionStrategy)
-                .setWriteComputationEnabled(true)
-                .setHybridRewindSeconds(10L)
-                .setHybridOffsetLagThreshold(2L));
+                .setWriteComputationEnabled(true));
 
         assertFalse(response.isError());
 
@@ -1766,9 +1846,7 @@ public class PartialUpdateTest {
               .setHybridOffsetLagThreshold(streamingMessageLag)
               .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setWriteComputationEnabled(true)
-              .setChunkingEnabled(true)
-              .setHybridRewindSeconds(10L)
-              .setHybridOffsetLagThreshold(2L));
+              .setChunkingEnabled(true));
 
       assertFalse(response.isError());
 
