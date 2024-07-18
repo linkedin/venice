@@ -451,7 +451,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
           TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
               false,
-              getStoreVersionRole(),
+              versionRole,
               partitionConsumptionState.getSourceTopicPartition(topic),
               versionTopic);
 
@@ -489,7 +489,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               Utils.getReplicaId(topicName, partition));
           return;
         }
-        resubscribe(partitionConsumptionState);
+        resubscribe(partitionConsumptionState, message.getVersionRole());
         break;
       default:
         processCommonConsumerAction(message);
@@ -636,7 +636,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             PubSubTopicPartition pubSubTopicPartition =
                 partitionConsumptionState.getSourceTopicPartition(currentLeaderTopic);
             TopicPartitionReplicaRole topicPartitionReplicaRole =
-                new TopicPartitionReplicaRole(true, getStoreVersionRole(), pubSubTopicPartition, versionTopic);
+                new TopicPartitionReplicaRole(true, versionRole, pubSubTopicPartition, versionTopic);
             consumerSubscribe(
                 topicPartitionReplicaRole,
                 partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
@@ -852,7 +852,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState.consumeRemotely());
 
     TopicPartitionReplicaRole topicPartitionReplicaRole =
-        new TopicPartitionReplicaRole(true, getStoreVersionRole(), leaderTopicPartition, versionTopic);
+        new TopicPartitionReplicaRole(true, versionRole, leaderTopicPartition, versionTopic);
     consumerSubscribe(topicPartitionReplicaRole, leaderStartOffset, leaderSourceKafkaURL);
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(
@@ -936,7 +936,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     String sourceKafkaURL = sourceKafkaURLs.iterator().next();
     TopicPartitionReplicaRole topicPartitionReplicaRole =
-        new TopicPartitionReplicaRole(true, getStoreVersionRole(), newSourceTopicPartition, versionTopic);
+        new TopicPartitionReplicaRole(true, versionRole, newSourceTopicPartition, versionTopic);
     consumerSubscribe(topicPartitionReplicaRole, upstreamStartOffset, sourceKafkaURL);
 
     syncConsumedUpstreamRTOffsetMapIfNeeded(
@@ -3538,44 +3538,44 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * 1. This resubscribe should only be triggered after version role changed: future => current, current => backup,
-   *    as batch only store will unsubscribe and close SIT automatically, no need to do unsubcribe
-   * 2. Hybrid store: .
+   *  Resubscribe operation by passing new version role and partition role to {@link AggKafkaConsumerService}. The action
+   *  for leader and follower replica will be handled differently.
    */
-  private void resubscribe(PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+  private void resubscribe(
+      PartitionConsumptionState partitionConsumptionState,
+      TopicPartitionReplicaRole.VersionRole versionRoleFromConsumerAction) throws InterruptedException {
     if (isLeader(partitionConsumptionState)) {
-      resubscribeAsLeader(partitionConsumptionState);
+      resubscribeAsLeader(partitionConsumptionState, versionRoleFromConsumerAction);
     } else {
-      resubscribeAsFollower(partitionConsumptionState);
+      resubscribeAsFollower(partitionConsumptionState, versionRoleFromConsumerAction);
     }
   }
 
-  protected void resubscribeAsFollower(PartitionConsumptionState partitionConsumptionState)
-      throws InterruptedException {
+  protected void resubscribeAsFollower(
+      PartitionConsumptionState partitionConsumptionState,
+      TopicPartitionReplicaRole.VersionRole versionRoleFromConsumerAction) throws InterruptedException {
     int partition = partitionConsumptionState.getPartition();
     consumerUnSubscribe(versionTopic, partitionConsumptionState);
     waitForAllMessageToBeProcessedFromTopicPartition(
         new PubSubTopicPartitionImpl(versionTopic, partition),
         partitionConsumptionState);
-    partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
+    LOGGER.info(
+        "Follower replica: {} unsubscribe finished, prepare for future re-subscribe.",
+        partitionConsumptionState.getReplicaId());
     PubSubTopicPartition followerTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
     TopicPartitionReplicaRole topicPartitionReplicaRole =
-        new TopicPartitionReplicaRole(false, getStoreVersionRole(), followerTopicPartition, versionTopic);
+        new TopicPartitionReplicaRole(false, versionRoleFromConsumerAction, followerTopicPartition, versionTopic);
     long latestProcessedLocalVersionTopicOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
-    LOGGER.info(
-        "Follower replica: {} unsubscribed, prepare for future re-subscribe.",
-        partitionConsumptionState.getReplicaId());
-    consumerSubscribe(
-        topicPartitionReplicaRole,
-        latestProcessedLocalVersionTopicOffset, // Take care about +1 for subscribe
-        localKafkaServer);
+    consumerSubscribe(topicPartitionReplicaRole, latestProcessedLocalVersionTopicOffset, localKafkaServer);
     LOGGER.info(
         "Follower replica: {} resubscribe to {}",
         partitionConsumptionState.getReplicaId(),
         latestProcessedLocalVersionTopicOffset);
   }
 
-  protected void resubscribeAsLeader(PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+  protected void resubscribeAsLeader(
+      PartitionConsumptionState partitionConsumptionState,
+      TopicPartitionReplicaRole.VersionRole versionRoleFromConsumerAction) throws InterruptedException {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
     int partition = partitionConsumptionState.getPartition();
@@ -3584,17 +3584,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     waitForAllMessageToBeProcessedFromTopicPartition(
         new PubSubTopicPartitionImpl(leaderTopic, partition),
         partitionConsumptionState);
-    LOGGER.info("Leader replica: {} unsubscribed for resubscribe", partitionConsumptionState.getReplicaId());
+    LOGGER.info("Leader replica: {} unsubscribe finished for resubscribe", partitionConsumptionState.getReplicaId());
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     for (String leaderSourceKafkaURL: leaderSourceKafkaURLs) {
       long leaderStartOffset = partitionConsumptionState.getLeaderOffset(leaderSourceKafkaURL, pubSubTopicRepository);
       // Resubscribe
       TopicPartitionReplicaRole topicPartitionReplicaRole =
-          new TopicPartitionReplicaRole(true, getStoreVersionRole(), leaderTopicPartition, versionTopic);
-      consumerSubscribe(
-          topicPartitionReplicaRole,
-          leaderStartOffset, // Take care about +1 for subscribe
-          leaderSourceKafkaURL);
+          new TopicPartitionReplicaRole(true, versionRoleFromConsumerAction, leaderTopicPartition, versionTopic);
+      consumerSubscribe(topicPartitionReplicaRole, leaderStartOffset, leaderSourceKafkaURL);
       LOGGER.info(
           "Leader replica: {} resubscribe to offset {}",
           partitionConsumptionState.getReplicaId(),

@@ -4,13 +4,19 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 
 
-public class TopicPartitionReplicaRole {
-  Boolean isLeader;
-  Boolean isCurrentVersion;
-  PubSubTopicPartition pubSubTopicPartition;
-  PubSubTopic versionTopic;
+/**
+ * This class is for passing the information regarding the role of the partition replica on that host to
+ *  {@link AggKafkaConsumerService} to achieve finer granularity of consumer assignment. Those information should be
+ *  triggered by helix state transition and properly managed by {@link StoreIngestionTask} to be sent to
+ *  {@link AggKafkaConsumerService}. Currently, the role of future/current/backup for version and leader/follower for
+ *  partition are supported. We could add more information regarding this partition replica if needed in the future.
+ */
 
-  VersionRole versionRole;
+public class TopicPartitionReplicaRole {
+  private final Boolean isLeader;
+  private final PubSubTopicPartition pubSubTopicPartition;
+  private final PubSubTopic versionTopic;
+  private final VersionRole versionRole;
 
   public enum VersionRole {
     CURRENT, BACKUP, FUTURE
@@ -27,8 +33,12 @@ public class TopicPartitionReplicaRole {
     this.versionTopic = versionTopic;
   }
 
-  public Boolean isCurrentVersion() {
-    return isCurrentVersion;
+  public boolean isLeaderReplica() {
+    return isLeader;
+  }
+
+  public VersionRole getVersionRole() {
+    return versionRole;
   }
 
   public PubSubTopicPartition getPubSubTopicPartition() {

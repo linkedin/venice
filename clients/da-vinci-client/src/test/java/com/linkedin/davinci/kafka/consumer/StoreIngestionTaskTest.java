@@ -3697,13 +3697,15 @@ public abstract class StoreIngestionTaskTest {
               "Trigger re-subscription after consuming message for {} at offset {}.",
               pubSubTopicPartition,
               offset);
-          storeIngestionTaskUnderTest.versionRoleChangeToTriggerResubscribe();
+          storeIngestionTaskUnderTest
+              .versionRoleChangeToTriggerResubscribe(TopicPartitionReplicaRole.VersionRole.CURRENT);
         } else if (pubSubTopicPartition.getPubSubTopic().isRealTime() && resubscriptionOffsetForRT.contains(offset)) {
           LOGGER.info(
               "Trigger re-subscription after consuming message for {} at offset {}.",
               pubSubTopicPartition,
               offset);
-          storeIngestionTaskUnderTest.versionRoleChangeToTriggerResubscribe();
+          storeIngestionTaskUnderTest
+              .versionRoleChangeToTriggerResubscribe(TopicPartitionReplicaRole.VersionRole.CURRENT);
         }
       }
     };
@@ -3797,7 +3799,8 @@ public abstract class StoreIngestionTaskTest {
       verify(mockAbstractStorageEngine, timeout(10000).times(batchMessagesNum * 2))
           .putWithReplicationMetadata(eq(PARTITION_FOO), any(), any(), any());
 
-      verify(storeIngestionTaskUnderTest, times(totalResubscriptionTriggered)).versionRoleChangeToTriggerResubscribe();
+      verify(storeIngestionTaskUnderTest, times(totalResubscriptionTriggered))
+          .versionRoleChangeToTriggerResubscribe(TopicPartitionReplicaRole.VersionRole.CURRENT);
       verify(mockLocalKafkaConsumer, times(totalLocalVtResubscriptionTriggered + 1)).unSubscribe(fooTopicPartition);
       verify(mockLocalKafkaConsumer, times(totalLocalVtResubscriptionTriggered + 2)).unSubscribe(barTopicPartition);
       PubSubTopicPartition fooRtTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, PARTITION_FOO);

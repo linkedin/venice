@@ -979,7 +979,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // subscribe to the new upstream
     TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
         true,
-        getStoreVersionRole(),
+        versionRole,
         partitionConsumptionState.getSourceTopicPartition(leaderTopic),
         versionTopic);
     leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
@@ -1075,7 +1075,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // Subscribe new leader topic for all regions.
     TopicPartitionReplicaRole topicPartitionReplicaRole = new TopicPartitionReplicaRole(
         true,
-        getStoreVersionRole(),
+        versionRole,
         partitionConsumptionState.getSourceTopicPartition(newSourceTopic),
         versionTopic);
 
@@ -1420,7 +1420,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       // Subscribe (unsubscribe should have processed correctly regardless of remote broker state)
       TopicPartitionReplicaRole topicPartitionReplicaRole =
-          new TopicPartitionReplicaRole(true, getStoreVersionRole(), sourceTopicPartition, versionTopic);
+          new TopicPartitionReplicaRole(true, versionRole, sourceTopicPartition, versionTopic);
       consumerSubscribe(topicPartitionReplicaRole, upstreamOffset, sourceKafkaUrl);
 
       // syncConsumedUpstreamRTOffsetMapIfNeeded

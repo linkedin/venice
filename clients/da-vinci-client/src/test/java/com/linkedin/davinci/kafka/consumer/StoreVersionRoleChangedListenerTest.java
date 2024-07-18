@@ -18,18 +18,19 @@ public class StoreVersionRoleChangedListenerTest {
 
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
-    doReturn(TopicPartitionReplicaRole.VersionRole.FUTURE).when(storeIngestionTask).getStoreVersionRole();
     String storeName = Utils.getUniqueString("storeName");
-    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
+    int versionNumber = 1;
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
     Store store = mock(Store.class);
     doReturn(versionTopic).when(storeIngestionTask).getVersionTopic();
+    doReturn(versionNumber).when(store).getCurrentVersion();
     StoreVersionRoleChangedListener storeVersionRoleChangedListener =
-        new StoreVersionRoleChangedListener(storeIngestionTask);
+        new StoreVersionRoleChangedListener(storeIngestionTask, store, versionNumber);
 
     doReturn(storeName).when(store).getName();
-    doReturn(TopicPartitionReplicaRole.VersionRole.CURRENT).when(storeIngestionTask).getStoreVersionRole();
+    doReturn(2).when(store).getCurrentVersion();
     storeVersionRoleChangedListener.handleStoreChanged(store);
-    verify(storeIngestionTask).versionRoleChangeToTriggerResubscribe();
+    verify(storeIngestionTask).versionRoleChangeToTriggerResubscribe(TopicPartitionReplicaRole.VersionRole.BACKUP);
 
   }
 }

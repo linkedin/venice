@@ -50,7 +50,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -334,6 +333,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private final StoreVersionRoleChangedListener storeVersionRoleChangedListener;
 
+  protected TopicPartitionReplicaRole.VersionRole versionRole;
+
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -476,7 +477,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
-    this.storeVersionRoleChangedListener = new StoreVersionRoleChangedListener(this);
+    this.storeVersionRoleChangedListener = new StoreVersionRoleChangedListener(this, store, versionNumber);
     this.storeRepository.registerStoreDataChangedListener(storeVersionRoleChangedListener);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
@@ -566,13 +567,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   // TODO: ensure thread safety for version role change.
-  public synchronized void versionRoleChangeToTriggerResubscribe() {
+  public synchronized void versionRoleChangeToTriggerResubscribe(TopicPartitionReplicaRole.VersionRole versionRole) {
     throwIfNotRunning();
     for (int partition: partitionConsumptionStateMap.keySet()) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
       partitionToPendingConsumerActionCountMap.computeIfAbsent(partition, x -> new AtomicInteger(0)).incrementAndGet();
       consumerActionsQueue.add(
-          new ConsumerAction(VERSION_ROLE_CHANGE_TO_TRIGGER_RESUBSCRIBE, pubSubTopicPartition, nextSeqNum(), false));
+          new ConsumerAction(
+              VERSION_ROLE_CHANGE_TO_TRIGGER_RESUBSCRIBE,
+              pubSubTopicPartition,
+              nextSeqNum(),
+              null,
+              false,
+              versionRole));
     }
   }
 
@@ -1855,7 +1862,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PubSubTopicPartition pubSubTopicPartition =
             newPartitionConsumptionState.getSourceTopicPartition(topicPartition.getPubSubTopic());
         TopicPartitionReplicaRole topicPartitionReplicaRole =
-            new TopicPartitionReplicaRole(false, getStoreVersionRole(), pubSubTopicPartition, versionTopic);
+            new TopicPartitionReplicaRole(false, versionRole, pubSubTopicPartition, versionTopic);
         consumerSubscribe(topicPartitionReplicaRole, offsetRecord.getLocalVersionTopicOffset(), localKafkaServer);
         LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
         storageUtilizationManager.initPartition(partition);
@@ -4050,19 +4057,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return true;
   }
 
+  public void setVersionRole(TopicPartitionReplicaRole.VersionRole versionRole) {
+    this.versionRole = versionRole;
+  }
+
   public TopicPartitionReplicaRole.VersionRole getStoreVersionRole() {
-    try {
-      int currentVersionNumber = storeRepository.getStoreOrThrow(storeName).getCurrentVersion();
-      if (currentVersionNumber < this.versionNumber) {
-        return TopicPartitionReplicaRole.VersionRole.FUTURE;
-      } else if (currentVersionNumber > this.versionNumber) {
-        return TopicPartitionReplicaRole.VersionRole.BACKUP;
-      } else {
-        return TopicPartitionReplicaRole.VersionRole.CURRENT;
-      }
-    } catch (VeniceNoStoreException e) {
-      LOGGER.error("Unable to find store meta-data for {}", versionTopic, e);
-      throw e;
-    }
+    return versionRole;
   }
 }
