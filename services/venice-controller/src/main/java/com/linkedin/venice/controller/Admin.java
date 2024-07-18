@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
@@ -1001,4 +1002,11 @@ public interface Admin extends AutoCloseable, Closeable {
    * Read the latest heartbeat timestamp from system store. If it failed to read from system store, this method should return -1.
    */
   long getHeartbeatFromSystemStore(String clusterName, String storeName);
+
+  /**
+   * @return the aggregate resources required by controller to manage a Venice cluster.
+   */
+  HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster);
+
+  PubSubTopicRepository getPubSubTopicRepository();
 }

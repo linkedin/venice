@@ -1460,7 +1460,8 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isExistingPushJobARepush = Version.isPushIdRePush(existingPushJobId);
       boolean isIncomingPushJobARepush = Version.isPushIdRePush(pushJobId);
 
-      if (getLingeringStoreVersionChecker()
+      // If version swap is enabled, do not check for lingering push as user may swap at much later time.
+      if (!version.isVersionSwapDeferred() && getLingeringStoreVersionChecker()
           .isStoreVersionLingering(store, version, timer, this, requesterCert, identityParser)) {
         if (pushType.isIncremental()) {
           /**
@@ -1504,10 +1505,13 @@ public class VeniceParentHelixAdmin implements Admin {
             pushJobId,
             storeName);
       } else {
+        String msg = version.isVersionSwapDeferred()
+            ? ". There is already a future version " + version.getNumber() + " exists for the store " + storeName
+                + " please make that version current before starting a next push."
+            : ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic.get()
+                + " is found and it must be terminated before another push can be started.";
         VeniceException e = new ConcurrentBatchPushException(
-            "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
-                + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic.get()
-                + " is found and it must be terminated before another push can be started.");
+            "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + msg);
         e.setStackTrace(EMPTY_STACK_TRACE);
         throw e;
       }
@@ -3273,7 +3277,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       LOGGER.info(
-          "Adding Replication metadata schema: for store: {} in cluster: {} metadataSchema: {} "
+          "Adding Replication metadata schema for store: {} in cluster: {} metadataSchema: {} "
               + "replicationMetadataVersionId: {} valueSchemaId: {}",
           storeName,
           clusterName,
@@ -5441,5 +5445,15 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public long getHeartbeatFromSystemStore(String clusterName, String storeName) {
     throw new VeniceUnsupportedOperationException("getHeartbeatFromSystemStore");
+  }
+
+  @Override
+  public HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster) {
+    return getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
+  }
+
+  @Override
+  public PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }

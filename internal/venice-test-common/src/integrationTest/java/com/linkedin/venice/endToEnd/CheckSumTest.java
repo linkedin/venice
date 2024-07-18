@@ -1,7 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
@@ -20,9 +25,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
@@ -54,8 +56,6 @@ public class CheckSumTest {
   public static final int STREAMING_RECORD_SIZE = 1024;
 
   private VeniceClusterWrapper veniceCluster;
-  ZkServerWrapper parentZk = null;
-  VeniceControllerWrapper parentController = null;
   protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass(alwaysRun = true)
@@ -65,8 +65,6 @@ public class CheckSumTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    parentController.close();
-    parentZk.close();
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
@@ -113,15 +111,6 @@ public class CheckSumTest {
    */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testCheckSum() throws IOException {
-    parentZk = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(
-            veniceCluster.getClusterName(),
-            parentZk,
-            veniceCluster.getPubSubBrokerWrapper())
-                .childControllers(new VeniceControllerWrapper[] { veniceCluster.getLeaderVeniceController() })
-                .build());
-
     long streamingRewindSeconds = 25;
     long streamingMessageLag = 2;
     final String storeNameFirst = Utils.getUniqueString("hybrid-store-for-checksum-first");
