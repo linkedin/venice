@@ -126,7 +126,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VENICE_WRITER_CONFIG_PREFIX + "max.size.for.user.payload.per.message.in.bytes";
 
   /**
-   * Maximum Venice record size. Default: {@value DEFAULT_MAX_RECORD_SIZE_BYTES}
+   * Maximum Venice record size. Default: {@value UNLIMITED_MAX_RECORD_SIZE}
    *
    * Large records can cause performance issues, so this setting is used to detect and prevent them. Not to be confused
    * with Kafka record size (which is the ~1MB limit {@link VeniceWriter#MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
@@ -147,10 +147,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final int DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES = 950 * 1024;
 
   /**
-   * Unlimited / unset (-1) just to be safe. An actual value should be set for batch push jobs and partial updates
-   * using the controller config {@link com.linkedin.venice.ConfigKeys#CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES}.
+   * The default for {@link #maxRecordSizeBytes} is unlimited / unset (-1) just to be safe. A more specific default value
+   * should be set using {@link com.linkedin.venice.ConfigKeys#CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
+   * config on the cluster level.
    */
-  public static final int DEFAULT_MAX_RECORD_SIZE_BYTES = -1;
+  public static final int UNLIMITED_MAX_RECORD_SIZE = -1;
 
   /**
    * This controls the Kafka producer's close timeout.
@@ -320,7 +321,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 + " is true and the topic is Version Topic");
       }
     }
-    if (maxRecordSizeBytes != DEFAULT_MAX_RECORD_SIZE_BYTES
+    if (maxRecordSizeBytes != UNLIMITED_MAX_RECORD_SIZE
         && maxSizeForUserPayloadPerMessageInBytes > maxRecordSizeBytes) {
       throw new VeniceException(
           MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + '=' + maxSizeForUserPayloadPerMessageInBytes
@@ -1601,7 +1602,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         + "Replication Metadata size: " + replicationMetadataPayloadSize + " bytes, " + "Total payload size: "
         + (serializedKeySize + serializedValueSize + replicationMetadataPayloadSize) + " bytes, "
         + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes"
-        + ((maxRecordSizeBytes == DEFAULT_MAX_RECORD_SIZE_BYTES)
+        + ((maxRecordSizeBytes == UNLIMITED_MAX_RECORD_SIZE)
             ? ""
             : ", Max Venice record size: " + maxRecordSizeBytes + " bytes")
         + ".";
@@ -2088,7 +2089,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   public boolean isRecordTooLarge(int recordSize) {
-    return maxRecordSizeBytes != DEFAULT_MAX_RECORD_SIZE_BYTES && recordSize > maxRecordSizeBytes;
+    return maxRecordSizeBytes != UNLIMITED_MAX_RECORD_SIZE && recordSize > maxRecordSizeBytes;
   }
 
   public boolean isChunkingNeededForRecord(int recordSize) {

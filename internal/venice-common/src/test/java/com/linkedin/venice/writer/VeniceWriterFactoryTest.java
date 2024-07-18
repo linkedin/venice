@@ -35,7 +35,7 @@ public class VeniceWriterFactoryTest {
       assertNotNull(capturedBrokerAddr);
       assertEquals(capturedBrokerAddr, "store_v1@kafka:9898");
 
-      assertEquals(veniceWriter.getMaxRecordSizeBytes(), VeniceWriter.DEFAULT_MAX_RECORD_SIZE_BYTES);
+      assertEquals(veniceWriter.getMaxRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
     }
   }
 

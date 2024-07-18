@@ -356,7 +356,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     boolean rmdChunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, false);
     String maxRecordSizeBytesStr = (String) jobProps
-        .getOrDefault(VeniceWriter.MAX_RECORD_SIZE_BYTES, String.valueOf(VeniceWriter.DEFAULT_MAX_RECORD_SIZE_BYTES));
+        .getOrDefault(VeniceWriter.MAX_RECORD_SIZE_BYTES, String.valueOf(VeniceWriter.UNLIMITED_MAX_RECORD_SIZE));
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
 
     VeniceWriterOptions options =

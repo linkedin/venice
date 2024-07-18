@@ -2716,8 +2716,8 @@ public class VenicePushJob implements AutoCloseable {
       pushJobSetting.hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
       pushJobSetting.maxRecordSizeBytes = storeResponse.getStore().getMaxRecordSizeBytes();
       final boolean isRepush = pushJobSetting.isSourceKafka || pushJobSetting.isSourceETL;
-      if (pushJobSetting.maxRecordSizeBytes != VeniceWriter.DEFAULT_MAX_RECORD_SIZE_BYTES && isRepush) {
-        pushJobSetting.maxRecordSizeBytes = VeniceWriter.DEFAULT_MAX_RECORD_SIZE_BYTES; // safer to allow on repush
+      if (isRepush && pushJobSetting.maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) {
+        pushJobSetting.maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE; // safer to allow on repush
         final String repushJobType = (pushJobSetting.isSourceKafka) ? "Kafka" : "ETL";
         LOGGER.info("Setting max record size to unlimited for {} repush job", repushJobType);
       }

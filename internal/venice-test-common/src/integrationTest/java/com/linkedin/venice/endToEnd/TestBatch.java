@@ -995,8 +995,7 @@ public abstract class TestBatch {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testStoreWithTooLargeValues(boolean enforceLimit) throws Exception {
     final int wayTooLargeRecordValueSize = 11 * 1024 * 1024; // 11 MB
-    final int maxRecordSizeBytesForTest =
-        (enforceLimit) ? 10 * 1024 * 1024 : VeniceWriter.DEFAULT_MAX_RECORD_SIZE_BYTES;
+    final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * 1024 * 1024 : VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
     try {
       testStoreWithLargeValues(true, properties -> {
         properties.setProperty(MAX_RECORD_SIZE_BYTES, String.valueOf(maxRecordSizeBytesForTest));
