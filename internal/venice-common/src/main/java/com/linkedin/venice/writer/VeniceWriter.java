@@ -312,20 +312,21 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
       if (!isChunkingEnabled) {
         throw new VeniceException(
-            MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " cannot be set higher than "
-                + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless " + ENABLE_CHUNKING + " is true");
+            MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
+                + ") cannot be set higher than " + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless "
+                + ENABLE_CHUNKING + " is true");
       } else if (isChunkingEnabled && !Version.isVersionTopic(topicName)) {
         throw new VeniceException(
-            MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " cannot be set higher than "
-                + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless " + ENABLE_CHUNKING
-                + " is true and the topic is Version Topic");
+            MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
+                + ") cannot be set higher than " + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless "
+                + ENABLE_CHUNKING + " is true and the topic is Version Topic");
       }
     }
     if (maxRecordSizeBytes != UNLIMITED_MAX_RECORD_SIZE
         && maxSizeForUserPayloadPerMessageInBytes > maxRecordSizeBytes) {
       throw new VeniceException(
-          MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + '=' + maxSizeForUserPayloadPerMessageInBytes
-              + " cannot be set higher than " + MAX_RECORD_SIZE_BYTES + '=' + maxRecordSizeBytes);
+          MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
+              + ") cannot be set higher than " + MAX_RECORD_SIZE_BYTES + " (" + maxRecordSizeBytes + ')');
     }
     this.isChunkingFlagInvoked = false;
     this.maxAttemptsWhenTopicMissing =
@@ -1601,11 +1602,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return "Key size: " + serializedKeySize + " bytes, " + "Value size: " + serializedValueSize + " bytes, "
         + "Replication Metadata size: " + replicationMetadataPayloadSize + " bytes, " + "Total payload size: "
         + (serializedKeySize + serializedValueSize + replicationMetadataPayloadSize) + " bytes, "
-        + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes"
-        + ((maxRecordSizeBytes == UNLIMITED_MAX_RECORD_SIZE)
-            ? ""
-            : ", Max Venice record size: " + maxRecordSizeBytes + " bytes")
-        + ".";
+        + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes, " + ", Max record size: "
+        + ((maxRecordSizeBytes == UNLIMITED_MAX_RECORD_SIZE) ? "unlimited" : maxRecordSizeBytes) + " bytes.";
   }
 
   /**
