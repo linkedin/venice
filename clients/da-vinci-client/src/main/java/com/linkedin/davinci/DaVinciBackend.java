@@ -31,10 +31,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.blobtransfer.BlobTransferManager;
-import com.linkedin.venice.blobtransfer.DvcBlobFinder;
-import com.linkedin.venice.blobtransfer.NettyP2PBlobTransferManager;
-import com.linkedin.venice.blobtransfer.client.NettyFileTransferClient;
-import com.linkedin.venice.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.venice.blobtransfer.BlobTransferUtil;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -91,7 +88,6 @@ import org.apache.logging.log4j.Logger;
 
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
-  private final BlobTransferManager blobTransferManager;
   private final VeniceConfigLoader configLoader;
   private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -110,6 +106,8 @@ public class DaVinciBackend implements Closeable {
   private IngestionBackend ingestionBackend;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
+  private final ClientConfig clientConfig;
+  private BlobTransferManager<Void> blobTransferManager;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -123,6 +121,7 @@ public class DaVinciBackend implements Closeable {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       this.configLoader = configLoader;
+      this.clientConfig = clientConfig;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
           .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
       VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
@@ -277,19 +276,6 @@ public class DaVinciBackend implements Closeable {
       ingestionService.start();
       ingestionService.addIngestionNotifier(ingestionListener);
 
-      boolean isBlobTransferEnabled = configLoader.getStoreConfig(clientConfig.getStoreName()).isBlobTransferEnabled();
-      if (isBlobTransferEnabled) {
-        int blobTransferPort = backendConfig.getDvcP2pBlobTransferPort();
-        String rocksDBPath = backendConfig.getRocksDBPath();
-        this.blobTransferManager = new NettyP2PBlobTransferManager(
-            new P2PBlobTransferService(blobTransferPort, rocksDBPath),
-            new NettyFileTransferClient(blobTransferPort, rocksDBPath),
-            new DvcBlobFinder(ClientFactory.getTransportClient(clientConfig)));
-        blobTransferManager.start();
-      } else {
-        blobTransferManager = null;
-      }
-
       if (isIsolatedIngestion() && cacheConfig.isPresent()) {
         // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL
         // settings),
@@ -381,6 +367,8 @@ public class DaVinciBackend implements Closeable {
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
+
+    boolean bootstrapBlobTransferManger = false;
     for (AbstractStorageEngine storageEngine: storageEngines) {
       String kafkaTopicName = storageEngine.getStoreVersionName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
@@ -403,6 +391,11 @@ public class DaVinciBackend implements Closeable {
       if (version == null) {
         throw new VeniceException(
             "Could not find version: " + versionNumber + " for store: " + storeName + " in storeRepository!");
+      }
+
+      if (version.isBlobTransferEnabled()) {
+        // if any of store subscribed locally has blob transfer enabled, we need to start the blob transfer manager.
+        bootstrapBlobTransferManger = true;
       }
 
       /**
@@ -437,6 +430,16 @@ public class DaVinciBackend implements Closeable {
       } else {
         storageService.closeAllStorageEngines();
       }
+    }
+
+    if (bootstrapBlobTransferManger) {
+      blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerAndStart(
+          configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
+          configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
+          configLoader.getVeniceServerConfig().getRocksDBPath(),
+          clientConfig);
+    } else {
+      blobTransferManager = null;
     }
 
     ingestionBackend = isIsolatedIngestion()
@@ -535,7 +538,7 @@ public class DaVinciBackend implements Closeable {
   public synchronized StoreBackend getStoreOrThrow(String storeName) {
     StoreBackend storeBackend = storeByNameMap.get(storeName);
     if (storeBackend == null) {
-      storeBackend = new StoreBackend(this, storeName);
+      storeBackend = new StoreBackend(this, storeName, clientConfig);
       storeByNameMap.put(storeName, storeBackend);
     }
     return storeBackend;

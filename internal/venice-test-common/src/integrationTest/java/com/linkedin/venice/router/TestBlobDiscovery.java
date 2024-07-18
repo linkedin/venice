@@ -7,17 +7,18 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_BLOB_DISCOVERY;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.fail;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
+import com.linkedin.venice.blobtransfer.DvcBlobFinder;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -34,15 +35,12 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.InputStream;
-import java.nio.charset.Charset;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,13 +51,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeClass;
@@ -182,36 +173,23 @@ public class TestBlobDiscovery {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testBlobDiscovery() throws Exception {
     VeniceClusterWrapper veniceClusterWrapper = multiClusterVenice.getClusters().get(clusterName);
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
       veniceClusterWrapper.updateStore(storeName, new UpdateStoreQueryParams().setBlobTransferEnabled(true));
     });
 
-    String routerURL = veniceClusterWrapper.getRandomRouterURL();
+    ClientConfig clientConfig = new ClientConfig(storeName).setD2Client(daVinciD2)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setMetricsRepository(new MetricsRepository());
 
-    try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
-        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(4000).build())
-        .build()) {
-      client.start();
+    BlobFinder dvcFinder = new DvcBlobFinder(ClientFactory.getTransportClient(clientConfig));
 
-      String uri =
-          routerURL + "/" + TYPE_BLOB_DISCOVERY + "?store_name=" + storeName + "&store_version=1&store_partition=1";
-      HttpGet routerRequest = new HttpGet(uri);
-      HttpResponse response = client.execute(routerRequest, null).get();
-      String responseBody;
-      try (InputStream bodyStream = response.getEntity().getContent()) {
-        responseBody = IOUtils.toString(bodyStream, Charset.defaultCharset());
-      }
-      Assert.assertEquals(
-          response.getStatusLine().getStatusCode(),
-          HttpStatus.SC_OK,
-          "Failed to get resource state for " + storeName + ". Response: " + responseBody);
-      ObjectMapper mapper = ObjectMapperFactory.getInstance();
-      BlobPeersDiscoveryResponse blobDiscoveryResponse =
-          mapper.readValue(responseBody.getBytes(), BlobPeersDiscoveryResponse.class);
-      Assert.assertEquals(blobDiscoveryResponse.getDiscoveryResult().size(), 1);
-    } catch (Exception e) {
-      fail("Unexpected exception", e);
-    }
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+      BlobPeersDiscoveryResponse response = dvcFinder.discoverBlobPeers(storeName, 1, 1);
+      Assert.assertNotNull(response);
+      List<String> hostNames = response.getDiscoveryResult();
+      Assert.assertNotNull(hostNames);
+      Assert.assertEquals(hostNames.size(), 1);
+    });
   }
 
   private void makeSureSystemStoresAreOnline(ControllerClient controllerClient, String storeName) {

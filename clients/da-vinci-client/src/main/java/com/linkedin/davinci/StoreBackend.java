@@ -1,6 +1,8 @@
 package com.linkedin.davinci;
 
 import com.linkedin.davinci.config.StoreBackendConfig;
+import com.linkedin.venice.blobtransfer.BlobTransferUtil;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -29,15 +31,17 @@ public class StoreBackend {
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
   private final ConcurrentRef<VersionBackend> daVinciCurrentVersionRef = new ConcurrentRef<>(this::deleteVersion);
   private final AvroStoreDeserializerCache storeDeserializerCache;
+  private final ClientConfig clientConfig;
   private VersionBackend daVinciCurrentVersion;
   private VersionBackend daVinciFutureVersion;
 
-  StoreBackend(DaVinciBackend backend, String storeName) {
+  StoreBackend(DaVinciBackend backend, String storeName, ClientConfig clientConfig) {
     LOGGER.info("Opening local store {}", storeName);
     this.backend = backend;
     this.storeName = storeName;
     this.config =
         new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
+    this.clientConfig = clientConfig;
     this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeName);
     this.storeDeserializerCache = new AvroStoreDeserializerCache(backend.getSchemaRepository(), storeName, true);
     try {
@@ -163,6 +167,17 @@ public class StoreBackend {
     }
 
     VersionBackend savedVersion = daVinciCurrentVersion;
+    // When subscribe to a current version, and P2P feature is enabled, create and attach the transfer manager.
+    // Note that this is not needed for future version because it's fresh data and no blob would be available.
+    if (savedVersion.getVersion().isBlobTransferEnabled()) {
+      backend.getIngestionBackend()
+          .attachBlobTransferManager(
+              BlobTransferUtil.getP2PBlobTransferManagerAndStart(
+                  backend.getConfigLoader().getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
+                  backend.getConfigLoader().getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
+                  backend.getConfigLoader().getVeniceServerConfig().getRocksDBPath(),
+                  clientConfig));
+    }
     return daVinciCurrentVersion.subscribe(partitions).exceptionally(e -> {
       synchronized (this) {
         addFaultyVersion(savedVersion, e);
