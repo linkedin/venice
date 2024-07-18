@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 
 import com.linkedin.venice.ConfigKeys;
@@ -84,7 +85,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
    * And please collect the store and version you created in the end of your test case.
    */
 
-  private static final int TEST_MAX_RECORD_SIZE_BYTES = 16 * 1024 * 1024; // arbitrary 16MB
+  private static final int TEST_MAX_RECORD_SIZE_BYTES = 16 * BYTES_PER_MB; // arbitrary 16MB
 
   @BeforeClass
   public void setUp() {
@@ -92,7 +93,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
     extraProperties.put(
         ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX + "org.eclipse.jetty.server.Request.maxFormContentSize",
-        ByteUtils.BYTES_PER_MB);
+        BYTES_PER_MB);
     // Set topic cleanup interval to a large number and min number of unused topic to preserve to 1 to test
     // getDeletableStoreTopics deterministically.
     extraProperties.put(

@@ -27,6 +27,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.VALUE_FIELD_PROP
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
 import static org.mockito.ArgumentMatchers.any;
@@ -1007,6 +1008,6 @@ public class VenicePushJobTest {
     setting.partitionerClass = DefaultVenicePartitioner.class.getCanonicalName();
     setting.topic = Version.composeKafkaTopic(setting.storeName, 7);
     setting.partitionCount = 1;
-    setting.maxRecordSizeBytes = 100 * 1024 * 1024;
+    setting.maxRecordSizeBytes = 100 * BYTES_PER_MB;
   }
 }

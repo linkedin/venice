@@ -2,6 +2,8 @@ package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
@@ -628,7 +630,7 @@ public class VeniceWriterUnitTest {
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
   public void testPutTooLargeRecord(boolean isChunkingEnabled) {
-    final int maxRecordSizeBytes = 1024 * 1024; // 1MB
+    final int maxRecordSizeBytes = BYTES_PER_MB; // 1MB
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
@@ -644,7 +646,7 @@ public class VeniceWriterUnitTest {
 
     // "small" < maxSizeForUserPayloadPerMessageInBytes < "large" < maxRecordSizeBytes < "too large"
     final int SMALL_VALUE_SIZE = maxRecordSizeBytes / 2;
-    final int LARGE_VALUE_SIZE = maxRecordSizeBytes - 1024; // offset to account for the size of the key
+    final int LARGE_VALUE_SIZE = maxRecordSizeBytes - BYTES_PER_KB; // offset to account for the size of the key
     final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
 
     for (int size: Arrays.asList(SMALL_VALUE_SIZE, LARGE_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {

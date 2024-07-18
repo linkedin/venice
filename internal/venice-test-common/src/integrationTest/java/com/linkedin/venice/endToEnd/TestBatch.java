@@ -20,6 +20,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.VENICE_STORE_NAM
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
@@ -121,7 +122,7 @@ public abstract class TestBatch {
   private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
   protected static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
-  protected static final int LARGE_RECORD_VALUE_SIZE = 3 * 1024 * 1024; // 3 MB apiece
+  protected static final int LARGE_RECORD_VALUE_SIZE = 3 * BYTES_PER_MB; // 3 MB apiece
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
 
@@ -987,19 +988,19 @@ public abstract class TestBatch {
 
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range.
-    int minSize = 1024 * 1024; // 1MB apiece
+    final int minSize = BYTES_PER_MB; // 1MB apiece
     validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, minSize, LARGE_RECORD_VALUE_SIZE);
   }
 
   /** Test that values that are too large will fail the push job only when the limit is enforced. */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testStoreWithTooLargeValues(boolean enforceLimit) throws Exception {
-    final int wayTooLargeRecordValueSize = 11 * 1024 * 1024; // 11 MB
-    final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * 1024 * 1024 : VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
+    final int tooLargeValueSize = 11 * BYTES_PER_MB; // 11 MB
+    final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * BYTES_PER_MB : VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
     try {
       testStoreWithLargeValues(true, properties -> {
         properties.setProperty(MAX_RECORD_SIZE_BYTES, String.valueOf(maxRecordSizeBytesForTest));
-      }, null, wayTooLargeRecordValueSize);
+      }, null, tooLargeValueSize);
       Assert.assertFalse(enforceLimit, "Too large values should fail only when not allowed");
     } catch (VeniceException e) {
       // 100.0 MiB comes from controller config VeniceControllerConfig.defaultMaxRecordSizeBytes
