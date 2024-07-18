@@ -2322,6 +2322,7 @@ public class VenicePushJob implements AutoCloseable {
           new VeniceWriterOptions.Builder(pushJobSetting.topic).setUseKafkaKeySerializer(true)
               .setPartitioner(partitioner)
               .setPartitionCount(pushJobSetting.partitionCount)
+              .setMaxRecordSizeBytes(pushJobSetting.maxRecordSizeBytes)
               .build();
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(vwOptions);
       LOGGER.info("Created VeniceWriter: {}", newVeniceWriter);
@@ -2332,20 +2333,19 @@ public class VenicePushJob implements AutoCloseable {
 
   private synchronized Properties getVeniceWriterProperties(PushJobSetting pushJobSetting) {
     if (veniceWriterProperties == null) {
-      veniceWriterProperties = createVeniceWriterProperties(pushJobSetting);
+      veniceWriterProperties = createVeniceWriterProperties(pushJobSetting.kafkaUrl, pushJobSetting.sslToKafka);
     }
     return veniceWriterProperties;
   }
 
-  private Properties createVeniceWriterProperties(PushJobSetting pushJobSetting) {
+  private Properties createVeniceWriterProperties(String kafkaUrl, boolean sslToKafka) {
     Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaUrl);
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
-    veniceWriterProperties.put(VeniceWriter.MAX_RECORD_SIZE_BYTES, pushJobSetting.maxRecordSizeBytes);
     if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)) { /* Writer uses default if not specified */
       veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
     }
-    if (pushJobSetting.sslToKafka) {
+    if (sslToKafka) {
       veniceWriterProperties.putAll(sslProperties.get());
     }
     veniceWriterProperties.setProperty(
@@ -2715,8 +2715,9 @@ public class VenicePushJob implements AutoCloseable {
       pushJobSetting.isStoreIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
       pushJobSetting.hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
       pushJobSetting.maxRecordSizeBytes = storeResponse.getStore().getMaxRecordSizeBytes();
-      if (pushJobSetting.maxRecordSizeBytes != -1 && (pushJobSetting.isSourceKafka || pushJobSetting.isSourceETL)) {
-        pushJobSetting.maxRecordSizeBytes = -1; // safer to simply allow large records on repush
+      final boolean isRepush = pushJobSetting.isSourceKafka || pushJobSetting.isSourceETL;
+      if (pushJobSetting.maxRecordSizeBytes != VeniceWriter.DEFAULT_MAX_RECORD_SIZE_BYTES && isRepush) {
+        pushJobSetting.maxRecordSizeBytes = VeniceWriter.DEFAULT_MAX_RECORD_SIZE_BYTES; // safer to allow on repush
         final String repushJobType = (pushJobSetting.isSourceKafka) ? "Kafka" : "ETL";
         LOGGER.info("Setting max record size to unlimited for {} repush job", repushJobType);
       }

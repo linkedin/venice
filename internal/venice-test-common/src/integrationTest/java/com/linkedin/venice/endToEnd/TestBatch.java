@@ -78,6 +78,7 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -994,7 +995,8 @@ public abstract class TestBatch {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testStoreWithTooLargeValues(boolean enforceLimit) throws Exception {
     final int wayTooLargeRecordValueSize = 11 * 1024 * 1024; // 11 MB
-    final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * 1024 * 1024 : -1; // -1 means no limit
+    final int maxRecordSizeBytesForTest =
+        (enforceLimit) ? 10 * 1024 * 1024 : VeniceWriter.DEFAULT_MAX_RECORD_SIZE_BYTES;
     try {
       testStoreWithLargeValues(true, properties -> {
         properties.setProperty(MAX_RECORD_SIZE_BYTES, String.valueOf(maxRecordSizeBytesForTest));

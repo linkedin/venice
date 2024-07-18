@@ -53,7 +53,6 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -630,17 +629,17 @@ public class VeniceWriterUnitTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
   public void testPutTooLargeRecord(boolean isChunkingEnabled) {
     final int maxRecordSizeBytes = 1024 * 1024; // 1MB
-    final CompletableFuture mockedFuture = mock(CompletableFuture.class);
-    final PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
     final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
         .setKeySerializer(serializer)
         .setValueSerializer(serializer)
         .setChunkingEnabled(isChunkingEnabled)
+        .setMaxRecordSizeBytes(maxRecordSizeBytes)
         .build();
-    final VeniceProperties props =
-        new PropertyBuilder().put(VeniceWriter.MAX_RECORD_SIZE_BYTES, maxRecordSizeBytes).build();
+    VeniceProperties props = VeniceProperties.empty();
     final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
 
     // "small" < maxSizeForUserPayloadPerMessageInBytes < "large" < maxRecordSizeBytes < "too large"

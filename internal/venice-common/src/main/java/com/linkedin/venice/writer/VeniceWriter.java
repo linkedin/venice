@@ -305,7 +305,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingEnabled = params.isChunkingEnabled();
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
-    this.maxRecordSizeBytes = props.getInt(MAX_RECORD_SIZE_BYTES, DEFAULT_MAX_RECORD_SIZE_BYTES);
+    this.maxRecordSizeBytes = params.getMaxRecordSizeBytes();
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
@@ -320,7 +320,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 + " is true and the topic is Version Topic");
       }
     }
-    if (maxRecordSizeBytes != -1 && maxSizeForUserPayloadPerMessageInBytes > maxRecordSizeBytes) {
+    if (maxRecordSizeBytes != DEFAULT_MAX_RECORD_SIZE_BYTES
+        && maxSizeForUserPayloadPerMessageInBytes > maxRecordSizeBytes) {
       throw new VeniceException(
           MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + '=' + maxSizeForUserPayloadPerMessageInBytes
               + " cannot be set higher than " + MAX_RECORD_SIZE_BYTES + '=' + maxRecordSizeBytes);
@@ -1600,7 +1601,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         + "Replication Metadata size: " + replicationMetadataPayloadSize + " bytes, " + "Total payload size: "
         + (serializedKeySize + serializedValueSize + replicationMetadataPayloadSize) + " bytes, "
         + "Max available payload size: " + maxSizeForUserPayloadPerMessageInBytes + " bytes"
-        + ((maxRecordSizeBytes == -1) ? "" : ", Max Venice record size: " + maxRecordSizeBytes + " bytes") + ".";
+        + ((maxRecordSizeBytes == DEFAULT_MAX_RECORD_SIZE_BYTES)
+            ? ""
+            : ", Max Venice record size: " + maxRecordSizeBytes + " bytes")
+        + ".";
   }
 
   /**
@@ -2084,7 +2088,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   public boolean isRecordTooLarge(int recordSize) {
-    return maxRecordSizeBytes != -1 && recordSize > maxRecordSizeBytes; // -1 means no limit / maximum size
+    return maxRecordSizeBytes != DEFAULT_MAX_RECORD_SIZE_BYTES && recordSize > maxRecordSizeBytes;
   }
 
   public boolean isChunkingNeededForRecord(int recordSize) {

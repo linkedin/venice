@@ -26,6 +26,7 @@ public class VeniceWriterOptions {
   private final Integer partitionCount;
   private final boolean chunkingEnabled;
   private final boolean rmdChunkingEnabled;
+  private final Integer maxRecordSizeBytes;
   // Set this field if you want to use different broker address than the local broker address
   private final String brokerAddress;
 
@@ -69,6 +70,10 @@ public class VeniceWriterOptions {
     return rmdChunkingEnabled;
   }
 
+  public Integer getMaxRecordSizeBytes() {
+    return maxRecordSizeBytes;
+  }
+
   private VeniceWriterOptions(Builder builder) {
     topicName = builder.topicName;
     keySerializer = builder.keySerializer;
@@ -79,6 +84,7 @@ public class VeniceWriterOptions {
     partitionCount = builder.partitionCount;
     chunkingEnabled = builder.chunkingEnabled;
     rmdChunkingEnabled = builder.rmdChunkingEnabled;
+    maxRecordSizeBytes = builder.maxRecordSizeBytes;
     brokerAddress = builder.brokerAddress;
   }
 
@@ -95,6 +101,15 @@ public class VeniceWriterOptions {
         .append(", ")
         .append("partitionCount:")
         .append(partitionCount != null ? partitionCount : "-")
+        .append(", ")
+        .append("chunkingEnabled:")
+        .append(chunkingEnabled)
+        .append(", ")
+        .append("rmdChunkingEnabled:")
+        .append(rmdChunkingEnabled)
+        .append(", ")
+        .append("maxRecordSizeBytes:")
+        .append(maxRecordSizeBytes != null ? maxRecordSizeBytes : -1)
         .append("}")
         .toString();
   }
@@ -109,6 +124,7 @@ public class VeniceWriterOptions {
     private Integer partitionCount = null; // default null
     private boolean chunkingEnabled; // default false
     private boolean rmdChunkingEnabled; // default false
+    private Integer maxRecordSizeBytes = null; // default null
     private String brokerAddress = null; // default null
 
     private void addDefaults() {
@@ -126,6 +142,9 @@ public class VeniceWriterOptions {
       }
       if (time == null) {
         time = SystemTime.INSTANCE;
+      }
+      if (maxRecordSizeBytes == null) {
+        maxRecordSizeBytes = -1;
       }
     }
 
@@ -187,6 +206,11 @@ public class VeniceWriterOptions {
 
     public Builder setPartitionCount(Integer partitionCount) {
       this.partitionCount = partitionCount;
+      return this;
+    }
+
+    public Builder setMaxRecordSizeBytes(Integer maxRecordSizeBytes) {
+      this.maxRecordSizeBytes = maxRecordSizeBytes;
       return this;
     }
   }
