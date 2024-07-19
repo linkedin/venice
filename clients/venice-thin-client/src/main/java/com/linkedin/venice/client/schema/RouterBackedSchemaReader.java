@@ -477,6 +477,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
         return NOT_EXIST_VALUE_SCHEMA_ENTRY;
       } else {
         valueSchemaEntryMap.put(valueSchemaId, entry);
+        shouldRefreshLatestValueSchemaEntry.compareAndSet(false, true);
         cacheValueAndCanonicalSchemas(entry.getSchema(), valueSchemaId);
         return entry;
       }
