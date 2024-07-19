@@ -282,7 +282,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .setChunkingEnabled(isChunked)
             .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
             .setPartitionCount(storeVersionPartitionCount)
-            .setMaxRecordSizeBytes(store.getMaxRecordSizeBytes())
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
