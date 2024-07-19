@@ -163,8 +163,8 @@ public class TestStoreBackupVersionCleanupService {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
-    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
-    doReturn(controllerConfig).when(config).getControllerConfig(anyString());
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(clusterConfig).when(config).getControllerConfig(anyString());
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
     StoreBackupVersionCleanupService service =
@@ -223,9 +223,9 @@ public class TestStoreBackupVersionCleanupService {
 
     doReturn(new ByteArrayInputStream(OBJECT_MAPPER.writeValueAsBytes(currentVersionResponse))).when(entity)
         .getContent();
-    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
-    doReturn(controllerConfig).when(config).getControllerConfig(anyString());
-    doReturn(true).when(controllerConfig).isBackupVersionMetadataFetchBasedCleanupEnabled();
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(clusterConfig).when(config).getControllerConfig(anyString());
+    doReturn(true).when(clusterConfig).isBackupVersionMetadataFetchBasedCleanupEnabled();
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
     Set<Instance> instSet = new HashSet<>();
@@ -267,9 +267,9 @@ public class TestStoreBackupVersionCleanupService {
     LiveInstanceMonitor liveInstanceMonitor = mock(LiveInstanceMonitor.class);
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
-    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
-    doReturn(controllerConfig).when(config).getControllerConfig(any());
-    doReturn(true).when(controllerConfig).isBackupVersionRetentionBasedCleanupEnabled();
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(clusterConfig).when(config).getControllerConfig(any());
+    doReturn(true).when(clusterConfig).isBackupVersionRetentionBasedCleanupEnabled();
     doReturn(true).when(admin).isLeaderControllerFor(any());
     doReturn(liveInstanceMonitor).when(admin).getLiveInstanceMonitor(anyString());
     doReturn(mockClusterResource).when(admin).getHelixVeniceClusterResources(anyString());

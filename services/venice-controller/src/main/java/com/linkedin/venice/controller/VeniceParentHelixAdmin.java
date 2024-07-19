@@ -437,13 +437,13 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     for (String cluster: this.multiClusterConfigs.getClusters()) {
-      VeniceControllerConfig config = this.multiClusterConfigs.getControllerConfig(cluster);
+      VeniceControllerClusterConfig clusterConfig = this.multiClusterConfigs.getControllerConfig(cluster);
       adminCommandExecutionTrackers.put(
           cluster,
           new AdminCommandExecutionTracker(
-              config.getClusterName(),
+              clusterConfig.getClusterName(),
               this.veniceHelixAdmin.getExecutionIdAccessor(),
-              this.veniceHelixAdmin.getControllerClientMap(config.getClusterName())));
+              this.veniceHelixAdmin.getControllerClientMap(clusterConfig.getClusterName())));
       perStoreAdminLocks.put(cluster, new ConcurrentHashMap<>());
       perClusterAdminLocks.put(cluster, new ReentrantLock());
     }
@@ -1042,11 +1042,11 @@ public class VeniceParentHelixAdmin implements Admin {
       return store.getRmdVersion();
     }
 
-    final VeniceControllerConfig controllerConfig = getMultiClusterConfigs().getControllerConfig(clusterName);
-    if (controllerConfig == null) {
+    final VeniceControllerClusterConfig clusterConfig = getMultiClusterConfigs().getControllerConfig(clusterName);
+    if (clusterConfig == null) {
       throw new VeniceException("No controller cluster config found for cluster " + clusterName);
     }
-    final int rmdVersionID = controllerConfig.getReplicationMetadataVersion();
+    final int rmdVersionID = clusterConfig.getReplicationMetadataVersion();
     LOGGER.info("Use RMD version ID {} for cluster {}", rmdVersionID, clusterName);
     return rmdVersionID;
   }
@@ -1763,7 +1763,8 @@ public class VeniceParentHelixAdmin implements Admin {
   public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
-    VeniceControllerConfig systemSchemaClusterConfig = multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
+    VeniceControllerClusterConfig systemSchemaClusterConfig =
+        multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
 
     if (fabricName.isPresent()) {
       StoreResponse response = controllerClients.get(fabricName.get()).getStore(storeName);
@@ -2399,8 +2400,8 @@ public class VeniceParentHelixAdmin implements Admin {
           hybridDataReplicationPolicy,
           hybridBufferReplayPolicy);
 
-      // Get VeniceControllerConfig for the cluster
-      VeniceControllerConfig controllerConfig =
+      // Get VeniceControllerClusterConfig for the cluster
+      VeniceControllerClusterConfig clusterConfig =
           veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig();
       // Check if the store is being converted to a hybrid store
       boolean storeBeingConvertedToHybrid = !currStore.isHybrid() && updatedHybridStoreConfig != null
@@ -2426,7 +2427,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Enable active-active replication automatically when batch user store being converted to hybrid store and
       // active-active replication is enabled for all hybrid store via the cluster config
       if (storeBeingConvertedToHybrid && !setStore.activeActiveReplicationEnabled && !currStore.isSystemStore()
-          && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
+          && clusterConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
         setStore.activeActiveReplicationEnabled = true;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
         if (!hybridDataReplicationPolicy.isPresent()) {
@@ -2453,7 +2454,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // replication is enabled or being and the cluster config allows it.
       if (!setStore.incrementalPushEnabled && !currStore.isSystemStore() && storeBeingConvertedToHybrid
           && setStore.activeActiveReplicationEnabled
-          && controllerConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
+          && clusterConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
         setStore.incrementalPushEnabled = true;
         updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
       }
@@ -2682,17 +2683,16 @@ public class VeniceParentHelixAdmin implements Admin {
       if (!getVeniceHelixAdmin().isHybrid(currStore.getHybridStoreConfig())
           && getVeniceHelixAdmin().isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
         // This is a new hybrid store and partition count is not specified.
-        VeniceControllerConfig config = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
         setStore.setPartitionNum(
             PartitionUtils.calculatePartitionCount(
                 storeName,
                 setStore.getStorageQuotaInByte(),
                 0,
-                config.getPartitionSize(),
-                config.getMinNumberOfPartitionsForHybrid(),
-                config.getMaxNumberOfPartitions(),
-                config.isPartitionCountRoundUpEnabled(),
-                config.getPartitionCountRoundUpSize()));
+                clusterConfig.getPartitionSize(),
+                clusterConfig.getMinNumberOfPartitionsForHybrid(),
+                clusterConfig.getMaxNumberOfPartitions(),
+                clusterConfig.isPartitionCountRoundUpEnabled(),
+                clusterConfig.getPartitionCountRoundUpSize()));
         LOGGER.info(
             "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
             setStore.getPartitionNum(),
@@ -5275,13 +5275,13 @@ public class VeniceParentHelixAdmin implements Admin {
     ControllerClient value =
         newFabricControllerClientMap.computeIfAbsent(clusterName, cn -> new VeniceConcurrentHashMap<>())
             .computeIfAbsent(fabric, f -> {
-              VeniceControllerConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
-              String d2ZkHost = controllerConfig.getChildControllerD2ZkHost(fabric);
-              String d2ServiceName = controllerConfig.getD2ServiceName();
+              VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+              String d2ZkHost = clusterConfig.getChildControllerD2ZkHost(fabric);
+              String d2ServiceName = clusterConfig.getD2ServiceName();
               if (StringUtils.isNotBlank(d2ZkHost) && StringUtils.isNotBlank(d2ServiceName)) {
                 return new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory);
               }
-              String url = controllerConfig.getChildControllerUrl(fabric);
+              String url = clusterConfig.getChildControllerUrl(fabric);
               if (StringUtils.isNotBlank(url)) {
                 return ControllerClient.constructClusterControllerClient(clusterName, url, sslFactory);
               }

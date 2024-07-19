@@ -248,9 +248,9 @@ public class TestVeniceHelixAdminWithoutCluster {
   public void testSourceRegionSelectionForTargetedRegionPush() {
     // cluster config setup
     VeniceControllerMultiClusterConfig multiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
-    VeniceControllerConfig config = mock(VeniceControllerConfig.class);
-    doReturn(config).when(multiClusterConfigs).getControllerConfig("test_cluster");
-    doReturn("dc-4").when(config).getNativeReplicationSourceFabric();
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(clusterConfig).when(multiClusterConfigs).getControllerConfig("test_cluster");
+    doReturn("dc-4").when(clusterConfig).getNativeReplicationSourceFabric();
 
     // store setup
     Store store = mock(Store.class);

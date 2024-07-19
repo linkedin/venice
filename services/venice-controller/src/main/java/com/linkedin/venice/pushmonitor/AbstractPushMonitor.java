@@ -10,7 +10,7 @@ import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_NOT_CREATED;
 
 import com.linkedin.venice.controller.HelixAdminClient;
-import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -101,7 +101,7 @@ public abstract class AbstractPushMonitor
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
-      VeniceControllerConfig controllerConfig,
+      VeniceControllerClusterConfig clusterConfig,
       PushStatusStoreReader pushStatusStoreReader,
       DisabledPartitionStats disabledPartitionStats) {
     this.clusterName = clusterName;
@@ -117,23 +117,23 @@ public abstract class AbstractPushMonitor
     this.helixAdminClient = helixAdminClient;
     this.disabledPartitionStats = disabledPartitionStats;
 
-    this.disableErrorLeaderReplica = controllerConfig.isErrorLeaderReplicaFailOverEnabled();
+    this.disableErrorLeaderReplica = clusterConfig.isErrorLeaderReplicaFailOverEnabled();
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
-    this.offlineJobResourceAssignmentWaitTimeInMilliseconds = controllerConfig.getOffLineJobWaitTimeInMilliseconds();
+    this.offlineJobResourceAssignmentWaitTimeInMilliseconds = clusterConfig.getOffLineJobWaitTimeInMilliseconds();
     this.pushStatusCollector = new PushStatusCollector(
         metadataRepository,
         pushStatusStoreReader,
         (topic) -> handleCompletedPush(topic),
         (topic, details) -> handleErrorPush(topic, details),
-        controllerConfig.isDaVinciPushStatusScanEnabled(),
-        controllerConfig.getDaVinciPushStatusScanIntervalInSeconds(),
-        controllerConfig.getDaVinciPushStatusScanThreadNumber(),
-        controllerConfig.getDaVinciPushStatusScanNoReportRetryMaxAttempt(),
-        controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceCount(),
-        controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
-        controllerConfig.useDaVinciSpecificExecutionStatusForError());
-    this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
+        clusterConfig.isDaVinciPushStatusScanEnabled(),
+        clusterConfig.getDaVinciPushStatusScanIntervalInSeconds(),
+        clusterConfig.getDaVinciPushStatusScanThreadNumber(),
+        clusterConfig.getDaVinciPushStatusScanNoReportRetryMaxAttempt(),
+        clusterConfig.getDaVinciPushStatusScanMaxOfflineInstanceCount(),
+        clusterConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
+        clusterConfig.useDaVinciSpecificExecutionStatusForError());
+    this.isOfflinePushMonitorDaVinciPushStatusEnabled = clusterConfig.isDaVinciPushStatusEnabled();
     pushStatusCollector.start();
   }
 

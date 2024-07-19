@@ -163,8 +163,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   private static class AsyncSetupMockVeniceParentHelixAdmin extends VeniceParentHelixAdmin {
     private Map<String, Store> systemStores = new VeniceConcurrentHashMap<>();
 
-    public AsyncSetupMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
-      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
+    public AsyncSetupMockVeniceParentHelixAdmin(
+        VeniceHelixAdmin veniceHelixAdmin,
+        VeniceControllerClusterConfig clusterConfig) {
+      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(clusterConfig));
     }
 
     public boolean isAsyncSetupRunning(String clusterName) {
@@ -299,11 +301,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testCreateStoreForMultiCluster() {
     String secondCluster = "testCreateStoreForMultiCluster";
-    VeniceControllerConfig configForSecondCluster = mockConfig(secondCluster);
-    mockResources(configForSecondCluster, secondCluster);
-    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
-    configMap.put(secondCluster, configForSecondCluster);
+    VeniceControllerClusterConfig clusterConfigForSecondCluster = mockConfig(secondCluster);
+    mockResources(clusterConfigForSecondCluster, secondCluster);
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, clusterConfig);
+    configMap.put(secondCluster, clusterConfigForSecondCluster);
     parentAdmin = new VeniceParentHelixAdmin(internalAdmin, new VeniceControllerMultiClusterConfig(configMap));
     Map<String, VeniceWriter> writerMap = new HashMap<>();
     for (String cluster: configMap.keySet()) {
@@ -750,7 +752,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
-        new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+        new PartialMockVeniceParentHelixAdmin(internalAdmin, clusterConfig)) {
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
 
@@ -796,8 +798,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
      */
     private Map<String, Boolean> storeVersionToKillJobStatus = new HashMap<>();
 
-    public PartialMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
-      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
+    public PartialMockVeniceParentHelixAdmin(
+        VeniceHelixAdmin veniceHelixAdmin,
+        VeniceControllerClusterConfig clusterConfig) {
+      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(clusterConfig));
     }
 
     public void setOfflineJobStatus(ExecutionStatus executionStatus) {
@@ -846,7 +850,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
-        new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+        new PartialMockVeniceParentHelixAdmin(internalAdmin, clusterConfig)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.PROGRESS);
 
       assertThrows(
@@ -881,7 +885,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new Pair<>(store, version)).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
-        new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+        new PartialMockVeniceParentHelixAdmin(internalAdmin, clusterConfig)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -971,7 +975,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
-        new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+        new PartialMockVeniceParentHelixAdmin(internalAdmin, clusterConfig)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -1043,7 +1047,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new Pair<>(store, version)).when(internalAdmin)
         .waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
-        new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+        new PartialMockVeniceParentHelixAdmin(internalAdmin, clusterConfig)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
       try {
         partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
@@ -1092,7 +1096,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             -1);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
-        spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
+        spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, clusterConfig))) {
       Version newVersion = partialMockParentAdmin.incrementVersionIdempotent(
           clusterName,
           storeName,
@@ -1145,8 +1149,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
-    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, clusterConfig);
 
     doReturn(
         (LingeringStoreVersionChecker) (
@@ -1248,8 +1252,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
-    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, clusterConfig);
 
     doReturn(
         (LingeringStoreVersionChecker) (
@@ -1355,8 +1359,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
-    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, clusterConfig);
 
     doReturn(
         (LingeringStoreVersionChecker) (
@@ -2401,7 +2405,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAdminCanKillLingeringVersion(boolean isIncrementalPush) {
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
-        new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+        new PartialMockVeniceParentHelixAdmin(internalAdmin, clusterConfig)) {
       long startTime = System.currentTimeMillis();
       TestMockTime mockTime = new TestMockTime(startTime);
       partialMockParentAdmin.setTimer(mockTime);

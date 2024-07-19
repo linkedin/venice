@@ -65,7 +65,7 @@ public class AbstractTestVeniceParentHelixAdmin {
 
   TopicManager topicManager;
   VeniceHelixAdmin internalAdmin;
-  VeniceControllerConfig config;
+  VeniceControllerClusterConfig clusterConfig;
   ZkClient zkClient;
   VeniceWriter veniceWriter;
   VeniceParentHelixAdmin parentAdmin = null;
@@ -120,14 +120,14 @@ public class AbstractTestVeniceParentHelixAdmin {
     HelixReadWriteStoreRepository storeRepository = mock(HelixReadWriteStoreRepository.class);
     doReturn(store).when(storeRepository).getStore(any());
 
-    config = mockConfig(clusterName);
-    doReturn(1).when(config).getReplicationMetadataVersion();
+    clusterConfig = mockConfig(clusterName);
+    doReturn(1).when(clusterConfig).getReplicationMetadataVersion();
 
     controllerClients
         .put(regionName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
 
-    resources = mockResources(config, clusterName);
+    resources = mockResources(clusterConfig, clusterName);
     doReturn(storeRepository).when(resources).getStoreMetadataRepository();
     ZkRoutersClusterManager manager = mock(ZkRoutersClusterManager.class);
     doReturn(manager).when(resources).getRoutersClusterManager();
@@ -156,7 +156,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   public void initializeParentAdmin(Optional<AuthorizerService> authorizerService) {
     parentAdmin = new VeniceParentHelixAdmin(
         internalAdmin,
-        TestUtils.getMultiClusterConfigFromOneCluster(config),
+        TestUtils.getMultiClusterConfigFromOneCluster(clusterConfig),
         false,
         Optional.empty(),
         authorizerService);
@@ -186,30 +186,30 @@ public class AbstractTestVeniceParentHelixAdmin {
     }
   }
 
-  VeniceControllerConfig mockConfig(String clusterName) {
-    VeniceControllerConfig config = mock(VeniceControllerConfig.class);
-    doReturn(clusterName).when(config).getClusterName();
-    doReturn(KAFKA_REPLICA_FACTOR).when(config).getKafkaReplicationFactor();
-    doReturn(KAFKA_REPLICA_FACTOR).when(config).getAdminTopicReplicationFactor();
-    doReturn(10000).when(config).getParentControllerWaitingTimeForConsumptionMs();
-    doReturn("fake_kafka_bootstrap_servers").when(config).getKafkaBootstrapServers();
+  VeniceControllerClusterConfig mockConfig(String clusterName) {
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(clusterName).when(clusterConfig).getClusterName();
+    doReturn(KAFKA_REPLICA_FACTOR).when(clusterConfig).getKafkaReplicationFactor();
+    doReturn(KAFKA_REPLICA_FACTOR).when(clusterConfig).getAdminTopicReplicationFactor();
+    doReturn(10000).when(clusterConfig).getParentControllerWaitingTimeForConsumptionMs();
+    doReturn("fake_kafka_bootstrap_servers").when(clusterConfig).getKafkaBootstrapServers();
     // PushJobStatusStore and participant message store are disabled in this unit test by default because many
     // tests are using verify(veniceWriter).put(...) which could be unpredictable with async setup enabled.
-    doReturn("").when(config).getPushJobStatusStoreClusterName();
-    doReturn(false).when(config).isParticipantMessageStoreEnabled();
+    doReturn("").when(clusterConfig).getPushJobStatusStoreClusterName();
+    doReturn(false).when(clusterConfig).isParticipantMessageStoreEnabled();
     // Disable background threads that may interfere when we try to re-mock internalAdmin later in the tests.
-    doReturn(Long.MAX_VALUE).when(config).getTerminalStateTopicCheckerDelayMs();
+    doReturn(Long.MAX_VALUE).when(clusterConfig).getTerminalStateTopicCheckerDelayMs();
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put(regionName, "localhost");
-    doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
-    doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartitions();
-    doReturn(DefaultIdentityParser.class.getName()).when(config).getIdentityParserClassName();
-    return config;
+    doReturn(childClusterMap).when(clusterConfig).getChildDataCenterControllerUrlMap();
+    doReturn(MAX_PARTITION_NUM).when(clusterConfig).getMaxNumberOfPartitions();
+    doReturn(DefaultIdentityParser.class.getName()).when(clusterConfig).getIdentityParserClassName();
+    return clusterConfig;
   }
 
-  HelixVeniceClusterResources mockResources(VeniceControllerConfig config, String clusterName) {
+  HelixVeniceClusterResources mockResources(VeniceControllerClusterConfig clusterConfig, String clusterName) {
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
-    doReturn(config).when(resources).getConfig();
+    doReturn(clusterConfig).when(resources).getConfig();
     doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
     doReturn(clusterLockManager).when(resources).getClusterLockManager();
     return resources;

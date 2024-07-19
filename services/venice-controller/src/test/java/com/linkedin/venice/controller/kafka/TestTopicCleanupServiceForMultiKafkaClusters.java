@@ -6,7 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -37,10 +37,10 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1000l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(2).when(config).getTopicCleanupDelayFactor();
-    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
-    doReturn(controllerConfig).when(config).getCommonConfig();
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(clusterConfig).when(config).getCommonConfig();
     doReturn(new ApacheKafkaAdminAdapterFactory()).when(config).getSourceOfTruthAdminAdapterFactory();
-    doReturn("fabric1,fabric2").when(controllerConfig).getChildDatacenters();
+    doReturn("fabric1,fabric2").when(clusterConfig).getChildDatacenters();
 
     String kafkaClusterKey1 = "fabric1";
     String kafkaClusterKey2 = "fabric2";
