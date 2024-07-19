@@ -1,7 +1,6 @@
 package com.linkedin.davinci;
 
 import com.linkedin.davinci.config.StoreBackendConfig;
-import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -30,17 +29,15 @@ public class StoreBackend {
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
   private final ConcurrentRef<VersionBackend> daVinciCurrentVersionRef = new ConcurrentRef<>(this::deleteVersion);
   private final AvroStoreDeserializerCache storeDeserializerCache;
-  private final ClientConfig clientConfig;
   private VersionBackend daVinciCurrentVersion;
   private VersionBackend daVinciFutureVersion;
 
-  StoreBackend(DaVinciBackend backend, String storeName, ClientConfig clientConfig) {
+  StoreBackend(DaVinciBackend backend, String storeName) {
     LOGGER.info("Opening local store {}", storeName);
     this.backend = backend;
     this.storeName = storeName;
     this.config =
         new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
-    this.clientConfig = clientConfig;
     this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeName);
     this.storeDeserializerCache = new AvroStoreDeserializerCache(backend.getSchemaRepository(), storeName, true);
     try {

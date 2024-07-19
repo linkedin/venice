@@ -116,7 +116,7 @@ public class StoreBackendTest {
     store.setCurrentVersion(version1.getNumber());
     when(backend.getStoreRepository().getStoreOrThrow(store.getName())).thenReturn(store);
 
-    storeBackend = new StoreBackend(backend, store.getName(), null);
+    storeBackend = new StoreBackend(backend, store.getName());
     when(backend.getStoreOrThrow(store.getName())).thenReturn(storeBackend);
   }
 

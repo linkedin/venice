@@ -38,7 +38,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final VeniceServerConfig serverConfig;
   private final Map<String, AtomicReference<AbstractStorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
-  private BlobTransferManager blobTransferManager;
+  private final BlobTransferManager blobTransferManager;
 
   public DefaultIngestionBackend(
       StorageMetadataService storageMetadataService,
