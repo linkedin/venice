@@ -188,6 +188,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
+  protected final int maxRecordSizeBytes; // TODO: move into VeniceWriter when nearline jobs enforce max record size
+
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -282,8 +284,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .setChunkingEnabled(isChunked)
             .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
             .setPartitionCount(storeVersionPartitionCount)
+            // .setMaxRecordSizeBytes(store.getMaxRecordSizeBytes()) // TODO: allow when nearline jobs are enforced
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
+    this.maxRecordSizeBytes = store.getMaxRecordSizeBytes(); // TODO: move to VeniceWriter when nearline jobs enforce
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
@@ -1893,6 +1897,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       hostLevelIngestionStats.recordTotalFollowerBytesConsumed(processedRecordSize);
       hostLevelIngestionStats.recordTotalFollowerRecordsConsumed();
     }
+  }
+
+  @Override
+  protected final void recordAssembledRecordSizeRatio(long size, long currentTimeMs) {
+    final double sizeRatio =
+        (maxRecordSizeBytes == VeniceWriter.UNLIMITED_MAX_RECORD_SIZE) ? 0 : (double) size / maxRecordSizeBytes;
+    hostLevelIngestionStats.recordAssembledRecordSizeRatio(sizeRatio, currentTimeMs);
   }
 
   private void recordRegionHybridConsumptionStats(

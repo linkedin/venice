@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_SIZE_RATIO;
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.hadoop.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
@@ -79,7 +80,6 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -957,7 +957,6 @@ public abstract class TestBatch {
     String metricName = AbstractVeniceStats.getSensorFullName(storeName, sensorName);
     List<VeniceServerWrapper> veniceServers = veniceCluster.getVeniceServers();
     return Arrays.asList(
-        MetricsUtils.getMin(metricName + ".Min", veniceServers), // default=Double.MIN_VALUE
         MetricsUtils.getMax(metricName + ".Max", veniceServers), // default=Double.MAX_VALUE
         MetricsUtils.getAvg(metricName + ".Avg", veniceServers)); // default=NaN
   }
@@ -989,19 +988,21 @@ public abstract class TestBatch {
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range.
     validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, BYTES_PER_MB, LARGE_VALUE_SIZE);
+    validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_SIZE_RATIO, 0.0, Double.MIN_VALUE);
   }
 
   /** Test that values that are too large will fail the push job only when the limit is enforced. */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testStoreWithTooLargeValues(boolean enforceLimit) throws Exception {
     final int tooLargeValueSize = 11 * BYTES_PER_MB; // 11 MB
-    final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * BYTES_PER_MB : VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
+    final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * BYTES_PER_MB : 12 * BYTES_PER_MB;
     try {
-      testStoreWithLargeValues(properties -> {}, storeParams -> {
+      final String storeName = testStoreWithLargeValues(properties -> {}, storeParams -> {
         storeParams.setChunkingEnabled(true);
         storeParams.setMaxRecordSizeBytes(maxRecordSizeBytesForTest);
       }, null, tooLargeValueSize);
-      Assert.assertFalse(enforceLimit, "Too large values should fail only when not allowed");
+      Assert.assertFalse(enforceLimit, "Too large values should fail only when the limit is not enforced");
+      validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_SIZE_RATIO, 0.0, Double.MIN_VALUE);
     } catch (VeniceException e) {
       final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
       Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of " + limitStr), e.getMessage());
