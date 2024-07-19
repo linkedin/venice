@@ -1,7 +1,6 @@
 package com.linkedin.davinci;
 
 import com.linkedin.davinci.config.StoreBackendConfig;
-import com.linkedin.venice.blobtransfer.BlobTransferUtil;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
@@ -167,17 +166,6 @@ public class StoreBackend {
     }
 
     VersionBackend savedVersion = daVinciCurrentVersion;
-    // When subscribe to a current version, and P2P feature is enabled, create and attach the transfer manager.
-    // Note that this is not needed for future version because it's fresh data and no blob would be available.
-    if (savedVersion.getVersion().isBlobTransferEnabled()) {
-      backend.getIngestionBackend()
-          .attachBlobTransferManager(
-              BlobTransferUtil.getP2PBlobTransferManagerAndStart(
-                  backend.getConfigLoader().getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
-                  backend.getConfigLoader().getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
-                  backend.getConfigLoader().getVeniceServerConfig().getRocksDBPath(),
-                  clientConfig));
-    }
     return daVinciCurrentVersion.subscribe(partitions).exceptionally(e -> {
       synchronized (this) {
         addFaultyVersion(savedVersion, e);

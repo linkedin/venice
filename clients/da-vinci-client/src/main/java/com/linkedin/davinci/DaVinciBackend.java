@@ -286,6 +286,16 @@ public class DaVinciBackend implements Closeable {
             "Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
       }
 
+      if (backendConfig.isBlobTransferManagerEnabled()) {
+        blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerAndStart(
+            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
+            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
+            configLoader.getVeniceServerConfig().getRocksDBPath(),
+            clientConfig);
+      } else {
+        blobTransferManager = null;
+      }
+
       bootstrap();
 
       storeRepository.registerStoreDataChangedListener(storeChangeListener);
@@ -368,7 +378,6 @@ public class DaVinciBackend implements Closeable {
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
 
-    boolean bootstrapBlobTransferManger = false;
     for (AbstractStorageEngine storageEngine: storageEngines) {
       String kafkaTopicName = storageEngine.getStoreVersionName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
@@ -391,11 +400,6 @@ public class DaVinciBackend implements Closeable {
       if (version == null) {
         throw new VeniceException(
             "Could not find version: " + versionNumber + " for store: " + storeName + " in storeRepository!");
-      }
-
-      if (version.isBlobTransferEnabled()) {
-        // if any of store subscribed locally has blob transfer enabled, we need to start the blob transfer manager.
-        bootstrapBlobTransferManger = true;
       }
 
       /**
@@ -430,16 +434,6 @@ public class DaVinciBackend implements Closeable {
       } else {
         storageService.closeAllStorageEngines();
       }
-    }
-
-    if (bootstrapBlobTransferManger) {
-      blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerAndStart(
-          configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
-          configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
-          configLoader.getVeniceServerConfig().getRocksDBPath(),
-          clientConfig);
-    } else {
-      blobTransferManager = null;
     }
 
     ingestionBackend = isIsolatedIngestion()
@@ -495,7 +489,6 @@ public class DaVinciBackend implements Closeable {
     storeByNameMap.clear();
     versionByTopicMap.clear();
     compressorFactory.close();
-
     executor.shutdown();
     try {
       if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {

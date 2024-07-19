@@ -4,7 +4,6 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.venice.blobtransfer.BlobTransferManager;
 import java.io.Closeable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
@@ -55,7 +54,4 @@ public interface IngestionBackend extends Closeable {
 
   // setStorageEngineReference is used by Da Vinci exclusively to speed up storage engine retrieval for read path.
   void setStorageEngineReference(String topicName, AtomicReference<AbstractStorageEngine> storageEngineReference);
-
-  // attach blob transfer manager to the ingestion backend
-  void attachBlobTransferManager(BlobTransferManager blobTransferManager);
 }

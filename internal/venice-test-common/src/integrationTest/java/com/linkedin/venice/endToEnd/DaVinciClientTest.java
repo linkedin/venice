@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
@@ -1018,7 +1019,8 @@ public class DaVinciClientTest {
         .put(DATA_BASE_PATH, dvcPath1)
         .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1)
         .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1);
+        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+        .put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     MetricsRepository metricsRepository = new MetricsRepository();
     VeniceProperties backendConfig1 = configBuilder.build();
     // must be isolated otherwise the store backend would be shared

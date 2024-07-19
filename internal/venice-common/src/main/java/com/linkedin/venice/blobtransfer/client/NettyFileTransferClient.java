@@ -45,8 +45,7 @@ public class NettyFileTransferClient {
     });
   }
 
-  public CompletionStage<InputStream> get(String host, String storeName, int version, int partition)
-      throws InterruptedException {
+  public CompletionStage<InputStream> get(String host, String storeName, int version, int partition) {
     CompletionStage<InputStream> inputStream = new CompletableFuture<>();
     // Connects to the remote host
     try {

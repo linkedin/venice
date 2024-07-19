@@ -90,7 +90,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
    * Blob transfer should be enabled to boostrap from blobs, and it currently only supports batch-stores.
    */
-  private CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
+  CompletionStage<Void> bootstrapFromBlobs(Store store, int versionNumber, int partitionId) {
     // TODO: need to differentiate that's DVC or server. Right now, it doesn't tell so both components can create,
     // though
     // Only DVC would create blobTransferManager.
@@ -179,20 +179,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
     }
   }
 
-  /**
-   * Create blob transfer manager and attach it to the ingestion backend since the creation of blob transfer manager is
-   * ad-hoc, depending on whether there are stores enabled with blob transfer.
-   * @param blobTransferManager
-   */
-  @Override
-  public void attachBlobTransferManager(BlobTransferManager blobTransferManager) {
-    if (this.blobTransferManager == null) {
-      this.blobTransferManager = blobTransferManager;
-    } else {
-      LOGGER.debug("Blob transfer manager is already attached to the ingestion backend");
-    }
-  }
-
   @Override
   public KafkaStoreIngestionService getStoreIngestionService() {
     return storeIngestionService;
@@ -200,14 +186,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
   @Override
   public void close() {
-    try {
-      // blob transfer manager can be attached to ingestion backend
-      if (this.blobTransferManager != null) {
-        this.blobTransferManager.close();
-      }
-    } catch (Exception e) {
-      LOGGER.warn("Failed to close blob transfer manager", e);
-    }
+    // Do nothing here, since this is only a wrapper class.
   }
 
   /**
