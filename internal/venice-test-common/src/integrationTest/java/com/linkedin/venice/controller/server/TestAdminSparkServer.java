@@ -95,8 +95,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     extraProperties.put(
         ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
         Long.toString(TimeUnit.DAYS.toMillis(7)));
-    extraProperties
-        .put(ConfigKeys.CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES, Integer.toString(TEST_MAX_RECORD_SIZE_BYTES));
+    extraProperties.put(ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES, Integer.toString(TEST_MAX_RECORD_SIZE_BYTES));
     extraProperties.put(ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, Integer.toString(1));
     super.setUp(false, Optional.empty(), extraProperties);
   }

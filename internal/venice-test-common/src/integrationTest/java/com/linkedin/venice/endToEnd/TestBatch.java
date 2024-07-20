@@ -988,21 +988,23 @@ public abstract class TestBatch {
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range.
     validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, BYTES_PER_MB, LARGE_VALUE_SIZE);
-    validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_SIZE_RATIO, 0.0, Double.MIN_VALUE);
   }
 
   /** Test that values that are too large will fail the push job only when the limit is enforced. */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testStoreWithTooLargeValues(boolean enforceLimit) throws Exception {
-    final int tooLargeValueSize = 11 * BYTES_PER_MB; // 11 MB
-    final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * BYTES_PER_MB : 12 * BYTES_PER_MB;
+    final int tooLargeValueSize = 5 * BYTES_PER_MB; // 5 MB
+    final int maxRecordSizeBytesForTest = (enforceLimit) ? 4 * BYTES_PER_MB : 6 * BYTES_PER_MB;
     try {
       final String storeName = testStoreWithLargeValues(properties -> {}, storeParams -> {
         storeParams.setChunkingEnabled(true);
         storeParams.setMaxRecordSizeBytes(maxRecordSizeBytesForTest);
       }, null, tooLargeValueSize);
       Assert.assertFalse(enforceLimit, "Too large values should fail only when the limit is not enforced");
-      validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_SIZE_RATIO, 0.0, Double.MIN_VALUE);
+
+      // Add a little wiggle room (1e-3) for generating the test data / record sizes
+      final double maxRatio = (double) tooLargeValueSize / maxRecordSizeBytesForTest + 1e-3;
+      validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_SIZE_RATIO, 1e-3, maxRatio);
     } catch (VeniceException e) {
       final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
       Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of " + limitStr), e.getMessage());

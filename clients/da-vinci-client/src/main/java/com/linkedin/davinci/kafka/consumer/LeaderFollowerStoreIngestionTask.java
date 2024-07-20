@@ -287,7 +287,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // .setMaxRecordSizeBytes(store.getMaxRecordSizeBytes()) // TODO: allow when nearline jobs are enforced
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
-    this.maxRecordSizeBytes = store.getMaxRecordSizeBytes(); // TODO: move to VeniceWriter when nearline jobs enforce
+    this.maxRecordSizeBytes = (store.getMaxRecordSizeBytes() < 0) // TODO: move to VeniceWriter when nearline supported
+        ? serverConfig.getDefaultMaxRecordSizeBytes()
+        : store.getMaxRecordSizeBytes();
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {

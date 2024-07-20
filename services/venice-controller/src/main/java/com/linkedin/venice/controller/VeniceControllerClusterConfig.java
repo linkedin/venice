@@ -37,7 +37,6 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
@@ -76,6 +75,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLIN
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
@@ -614,7 +614,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
-    this.defaultMaxRecordSizeBytes = props.getInt(CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES, 100 * BYTES_PER_MB);
+    this.defaultMaxRecordSizeBytes = props.getInt(DEFAULT_MAX_RECORD_SIZE_BYTES, 100 * BYTES_PER_MB);
     if (defaultMaxRecordSizeBytes < BYTES_PER_MB) {
       throw new VeniceException(
           "Default max record size must be at least " + generateHumanReadableByteCountString(BYTES_PER_MB));
