@@ -21,6 +21,7 @@ import static com.linkedin.venice.hadoop.VenicePushJobConstants.ZSTD_COMPRESSION
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
@@ -48,7 +49,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithCu
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithDuplicateKey;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2;
-import static com.linkedin.venice.writer.VeniceWriter.MAX_RECORD_SIZE_BYTES;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -122,7 +122,7 @@ public abstract class TestBatch {
   private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
   protected static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
-  protected static final int LARGE_RECORD_VALUE_SIZE = 3 * BYTES_PER_MB; // 3 MB apiece
+  protected static final int LARGE_VALUE_SIZE = 3 * BYTES_PER_MB; // 3 MB apiece
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
 
@@ -988,8 +988,7 @@ public abstract class TestBatch {
 
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range.
-    final int minSize = BYTES_PER_MB; // 1MB apiece
-    validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, minSize, LARGE_RECORD_VALUE_SIZE);
+    validatePerStoreMetricsRange(storeName, ASSEMBLED_RECORD_VALUE_SIZE_IN_BYTES, BYTES_PER_MB, LARGE_VALUE_SIZE);
   }
 
   /** Test that values that are too large will fail the push job only when the limit is enforced. */
@@ -998,13 +997,14 @@ public abstract class TestBatch {
     final int tooLargeValueSize = 11 * BYTES_PER_MB; // 11 MB
     final int maxRecordSizeBytesForTest = (enforceLimit) ? 10 * BYTES_PER_MB : VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
     try {
-      testStoreWithLargeValues(true, properties -> {
-        properties.setProperty(MAX_RECORD_SIZE_BYTES, String.valueOf(maxRecordSizeBytesForTest));
+      testStoreWithLargeValues(properties -> {}, storeParams -> {
+        storeParams.setChunkingEnabled(true);
+        storeParams.setMaxRecordSizeBytes(maxRecordSizeBytesForTest);
       }, null, tooLargeValueSize);
       Assert.assertFalse(enforceLimit, "Too large values should fail only when not allowed");
     } catch (VeniceException e) {
-      // 100.0 MiB comes from controller config VeniceControllerConfig.defaultMaxRecordSizeBytes
-      Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of 100.0 MiB"), e.getMessage());
+      final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
+      Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of " + limitStr), e.getMessage());
     }
   }
 
@@ -1041,12 +1041,14 @@ public abstract class TestBatch {
       boolean isChunkingAllowed,
       Consumer<Properties> extraProps,
       String existingStore) throws Exception {
-    return testStoreWithLargeValues(isChunkingAllowed, extraProps, existingStore, LARGE_RECORD_VALUE_SIZE);
+    return testStoreWithLargeValues(extraProps, params -> {
+      params.setChunkingEnabled(isChunkingAllowed);
+    }, existingStore, LARGE_VALUE_SIZE);
   }
 
   private String testStoreWithLargeValues(
-      boolean isChunkingAllowed,
       Consumer<Properties> extraProps,
+      Consumer<UpdateStoreQueryParams> extraStoreParams,
       String existingStore,
       int maxValueSize) throws Exception {
     int numberOfRecords = 10;
@@ -1141,20 +1143,14 @@ public abstract class TestBatch {
             "The entire large value should be filled with the same char: " + key);
       }
     };
+
+    UpdateStoreQueryParams storeParams = new UpdateStoreQueryParams();
+    extraStoreParams.accept(storeParams);
+
     if (existingStore == null) {
-      return testBatchStore(
-          inputFileWriter,
-          extraProps,
-          dataValidator,
-          new UpdateStoreQueryParams().setChunkingEnabled(isChunkingAllowed));
+      return testBatchStore(inputFileWriter, extraProps, dataValidator, storeParams);
     }
-    return testBatchStore(
-        inputFileWriter,
-        extraProps,
-        dataValidator,
-        existingStore,
-        new UpdateStoreQueryParams().setChunkingEnabled(isChunkingAllowed),
-        false);
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, existingStore, storeParams, false);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
