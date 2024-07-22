@@ -182,6 +182,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -985,7 +986,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#addVersionAndStartIngestion(String, String, String, int, int, Version.PushType, String, long, int, boolean, int)
+   * @see Admin#addVersionAndStartIngestion(String, String, String, int, int,
+   *      Version.PushType, String, long, int, boolean, int)
    */
   @Override
   public void addVersionAndStartIngestion(
@@ -1000,8 +1002,25 @@ public class VeniceParentHelixAdmin implements Admin {
       int ignoredRmdVersionID,
       boolean versionSwapDeferred,
       int repushSourceVersion) {
-    // Parent controller will always pick the replicationMetadataVersionId from configs.
+    // Parent controller will always pick the replicationMetadataVersionId from
+    // configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
+
+    // Ensure valid version
+    if (getStore(clusterName, storeName).isDaVinciPushStatusStoreEnabled()) {
+      Set<Map.Entry<String, Integer>> versionSet = getCurrentVersionsForMultiColos(
+          clusterName,
+          SystemStore.SYSTEM_STORE_NAME_PREFIX + VeniceSystemStoreUtils.DAVINCI_PUSH_STATUS_STORE_STR + "_" + storeName)
+              .entrySet();
+      for (Map.Entry<String, Integer> versionColoTuple: versionSet) {
+        if (versionColoTuple.getValue() < 1) {
+          String dataCenterName = versionColoTuple.getKey();
+          String errorSource = SystemStore.SYSTEM_STORE_NAME_PREFIX
+              + VeniceSystemStoreUtils.DAVINCI_PUSH_STATUS_STORE_STR + "_" + storeName;
+          throw new VeniceException("Invalid Version for " + dataCenterName + " " + errorSource);
+        }
+      }
+    }
     Version version = getVeniceHelixAdmin().addVersionOnly(
         clusterName,
         storeName,
