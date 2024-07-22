@@ -231,7 +231,7 @@ public class ConfigKeys {
 
   // Controller specific configs
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
-  /** Cluster name for all parent controllers */
+  // Name of the Helix cluster for controllers
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
 
   /** List of forbidden admin paths */

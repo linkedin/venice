@@ -143,7 +143,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
 
     VeniceProperties newControllerProps = builder.build();
-    VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
+    VeniceControllerClusterConfig newConfig = new VeniceControllerClusterConfig(newControllerProps);
     VeniceHelixAdmin newLeaderAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
@@ -183,7 +183,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         new PropertyBuilder().put(controllerProps.toProperties()).put("cluster.name", newClusterName);
 
     VeniceProperties newClusterProps = builder.build();
-    VeniceControllerConfig newClusterConfig = new VeniceControllerConfig(newClusterProps);
+    VeniceControllerClusterConfig newClusterConfig = new VeniceControllerClusterConfig(newClusterProps);
     veniceAdmin.addConfig(newClusterConfig);
     veniceAdmin.initStorageCluster(newClusterName);
     waitUntilIsLeader(veniceAdmin, newClusterName, LEADER_CHANGE_TIMEOUT_MS);

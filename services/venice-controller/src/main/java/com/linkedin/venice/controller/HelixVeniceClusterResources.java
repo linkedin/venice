@@ -84,7 +84,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       ZkClient zkClient,
       HelixAdapterSerializer adapterSerializer,
       SafeHelixManager helixManager,
-      VeniceControllerConfig config,
+      VeniceControllerClusterConfig config,
       VeniceHelixAdmin admin,
       MetricsRepository metricsRepository,
       RealTimeTopicSwitcher realTimeTopicSwitcher,
@@ -209,7 +209,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
   }
 
-  private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerConfig config) {
+  private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerClusterConfig config) {
     List<String> kafkaURLs = new ArrayList<>(config.getActiveActiveRealTimeSourceFabrics().size());
     for (String fabric: config.getActiveActiveRealTimeSourceFabrics()) {
       String kafkaURL = config.getChildDataCenterKafkaUrlMap().get(fabric);

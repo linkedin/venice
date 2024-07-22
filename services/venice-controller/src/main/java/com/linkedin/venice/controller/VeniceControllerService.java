@@ -133,7 +133,7 @@ public class VeniceControllerService extends AbstractVeniceService {
      * consumes the admin topics.
      */
     String systemClusterName = multiClusterConfigs.getSystemSchemaClusterName();
-    VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemClusterName);
+    VeniceControllerClusterConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemClusterName);
     newSchemaEncountered = (schemaId, schema) -> {
       LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
       try {

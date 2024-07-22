@@ -59,7 +59,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     int newAdminPort = controllerConfig.getAdminPort() + 1; /* Note: this is a dummy port */
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
     VeniceProperties newControllerProps = builder.build();
-    VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
+    VeniceControllerClusterConfig newConfig = new VeniceControllerClusterConfig(newControllerProps);
     VeniceHelixAdmin newAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
@@ -313,7 +313,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     int newAdminPort = controllerConfig.getAdminPort() - 10;
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
     VeniceProperties newControllerProps = builder.build();
-    VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
+    VeniceControllerClusterConfig newConfig = new VeniceControllerClusterConfig(newControllerProps);
     VeniceHelixAdmin newLeaderAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
