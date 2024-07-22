@@ -243,16 +243,15 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
     // We are keeping both features for now. Retry is only allowed if both conditions pass:
     // 1. retry attempts < longTailRetryMaxRouteForMultiKeyReq (if set).
     // 2. we still have retry budget according to retry manager.
-    boolean longTailRetryAllowed;
     if (longTailRetryMaxRouteForMultiKeyReq == -1) {
       // feature is disabled
-      longTailRetryAllowed = true;
+      return retryManager.isRetryAllowed();
     } else if (longTailRetryMaxRouteForMultiKeyReq <= 0) {
-      longTailRetryAllowed = false;
+      return false;
     } else {
-      longTailRetryAllowed = currentAllowedRetryRouteCnt.incrementAndGet() <= longTailRetryMaxRouteForMultiKeyReq;
+      return (currentAllowedRetryRouteCnt.incrementAndGet() <= longTailRetryMaxRouteForMultiKeyReq)
+          && retryManager.isRetryAllowed();
     }
-    return longTailRetryAllowed && retryManager.isRetryAllowed();
   }
 
   @Override
