@@ -1,7 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.controller.HelixAdminClient;
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -55,7 +55,7 @@ public class PushMonitorDelegator implements PushMonitor {
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
-      VeniceControllerClusterConfig clusterConfig,
+      VeniceControllerConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
       DisabledPartitionStats disabledPartitionStats) {
     this.clusterName = clusterName;
@@ -73,7 +73,7 @@ public class PushMonitorDelegator implements PushMonitor {
         aggregateRealTimeSourceKafkaUrl,
         activeActiveRealTimeSourceKafkaURLs,
         helixAdminClient,
-        clusterConfig,
+        controllerConfig,
         pushStatusStoreReader,
         disabledPartitionStats);
     this.clusterLockManager = clusterLockManager;

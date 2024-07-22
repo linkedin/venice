@@ -47,14 +47,14 @@ public class UserSystemStoreLifeCycleHelper {
     this.parentAdmin = parentAdmin;
     this.authorizerService = authorizerService;
     for (String cluster: multiClusterConfig.getClusters()) {
-      VeniceControllerClusterConfig clusterConfig = multiClusterConfig.getControllerConfig(cluster);
+      VeniceControllerConfig controllerConfig = multiClusterConfig.getControllerConfig(cluster);
       Set<VeniceSystemStoreType> autoCreateEnabledSystemStores = new HashSet<>();
-      if (clusterConfig.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
-          && clusterConfig.isAutoMaterializeMetaSystemStoreEnabled()) {
+      if (controllerConfig.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
+          && controllerConfig.isAutoMaterializeMetaSystemStoreEnabled()) {
         autoCreateEnabledSystemStores.add(VeniceSystemStoreType.META_STORE);
       }
-      if (clusterConfig.isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled()
-          && clusterConfig.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled()) {
+      if (controllerConfig.isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled()
+          && controllerConfig.isAutoMaterializeDaVinciPushStatusSystemStoreEnabled()) {
         autoCreateEnabledSystemStores.add(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
       }
       clusterToAutoCreateEnabledSystemStoresMap.put(cluster, autoCreateEnabledSystemStores);

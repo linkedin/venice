@@ -64,7 +64,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private HelixCustomizedViewOfflinePushRepository customizedViewRepo;
   private final ReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
-  private final VeniceControllerClusterConfig clusterConfig;
+  private final VeniceControllerConfig config;
   private final PushMonitorDelegator pushMonitor;
   private final LeakedPushStatusCleanUpService leakedPushStatusCleanUpService;
   private final ZkRoutersClusterManager routersClusterManager;
@@ -84,20 +84,20 @@ public class HelixVeniceClusterResources implements VeniceResource {
       ZkClient zkClient,
       HelixAdapterSerializer adapterSerializer,
       SafeHelixManager helixManager,
-      VeniceControllerClusterConfig clusterConfig,
+      VeniceControllerConfig config,
       VeniceHelixAdmin admin,
       MetricsRepository metricsRepository,
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient) {
     this.clusterName = clusterName;
-    this.clusterConfig = clusterConfig;
+    this.config = config;
     this.helixManager = helixManager;
     this.admin = admin;
     /**
      * So far, Meta system store doesn't support write from parent cluster.
      */
-    if (!clusterConfig.isParent()) {
+    if (!config.isParent()) {
       metaStoreWriter = Optional.of(admin.getMetaStoreWriter());
     } else {
       metaStoreWriter = Optional.empty();
@@ -142,16 +142,16 @@ public class HelixVeniceClusterResources implements VeniceResource {
     this.messageChannel = new HelixStatusMessageChannel(
         helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName),
-        clusterConfig.getHelixSendMessageTimeoutMs());
+        config.getHelixSendMessageTimeoutMs());
     VeniceOfflinePushMonitorAccessor offlinePushMonitorAccessor = new VeniceOfflinePushMonitorAccessor(
         clusterName,
         zkClient,
         adapterSerializer,
-        clusterConfig.getRefreshAttemptsForZkReconnect(),
-        clusterConfig.getRefreshIntervalForZkReconnectInMs());
+        config.getRefreshAttemptsForZkReconnect(),
+        config.getRefreshIntervalForZkReconnectInMs());
     String aggregateRealTimeSourceKafkaUrl =
-        clusterConfig.getChildDataCenterKafkaUrlMap().get(clusterConfig.getAggregateRealTimeSourceRegion());
-    boolean unregisterMetricEnabled = clusterConfig.isUnregisterMetricForDeletedStoreEnabled();
+        config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
+    boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();
 
     this.pushMonitor = new PushMonitorDelegator(
         clusterName,
@@ -163,9 +163,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
         realTimeTopicSwitcher,
         clusterLockManager,
         aggregateRealTimeSourceKafkaUrl,
-        getActiveActiveRealTimeSourceKafkaURLs(clusterConfig),
+        getActiveActiveRealTimeSourceKafkaURLs(config),
         helixAdminClient,
-        clusterConfig,
+        config,
         admin.getPushStatusStoreReader(),
         admin.getDisabledPartitionStats(clusterName));
 
@@ -175,16 +175,16 @@ public class HelixVeniceClusterResources implements VeniceResource {
         storeMetadataRepository,
         admin,
         new AggPushStatusCleanUpStats(clusterName, metricsRepository, storeMetadataRepository, unregisterMetricEnabled),
-        this.clusterConfig.getLeakedPushStatusCleanUpServiceSleepIntervalInMs(),
-        this.clusterConfig.getLeakedResourceAllowedLingerTimeInMs());
+        this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs(),
+        this.config.getLeakedResourceAllowedLingerTimeInMs());
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need
     // to refresh once zk reconnected.
     this.routersClusterManager = new ZkRoutersClusterManager(
         zkClient,
         adapterSerializer,
         clusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(),
-        clusterConfig.getRefreshIntervalForZkReconnectInMs());
+        config.getRefreshAttemptsForZkReconnect(),
+        config.getRefreshIntervalForZkReconnectInMs());
     this.aggPartitionHealthStats = new AggPartitionHealthStats(
         clusterName,
         metricsRepository,
@@ -193,7 +193,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
         pushMonitor);
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer, metaStoreWriter);
     this.accessController = accessController;
-    if (clusterConfig.getErrorPartitionAutoResetLimit() > 0) {
+    if (config.getErrorPartitionAutoResetLimit() > 0) {
       errorPartitionResetTask = new ErrorPartitionResetTask(
           clusterName,
           helixAdminClient,
@@ -201,24 +201,24 @@ public class HelixVeniceClusterResources implements VeniceResource {
           routingDataRepository,
           pushMonitor,
           metricsRepository,
-          clusterConfig.getErrorPartitionAutoResetLimit(),
-          clusterConfig.getErrorPartitionProcessingCycleDelay());
+          config.getErrorPartitionAutoResetLimit(),
+          config.getErrorPartitionProcessingCycleDelay());
     }
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
   }
 
-  private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerClusterConfig clusterConfig) {
-    List<String> kafkaURLs = new ArrayList<>(clusterConfig.getActiveActiveRealTimeSourceFabrics().size());
-    for (String fabric: clusterConfig.getActiveActiveRealTimeSourceFabrics()) {
-      String kafkaURL = clusterConfig.getChildDataCenterKafkaUrlMap().get(fabric);
+  private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerConfig config) {
+    List<String> kafkaURLs = new ArrayList<>(config.getActiveActiveRealTimeSourceFabrics().size());
+    for (String fabric: config.getActiveActiveRealTimeSourceFabrics()) {
+      String kafkaURL = config.getChildDataCenterKafkaUrlMap().get(fabric);
       if (kafkaURL == null) {
         throw new VeniceException(
             String.format(
                 "No A/A source Kafka URL found for fabric %s in %s",
                 fabric,
-                clusterConfig.getChildDataCenterKafkaUrlMap()));
+                config.getChildDataCenterKafkaUrlMap()));
       }
       kafkaURLs.add(kafkaURL);
     }
@@ -241,12 +241,12 @@ public class HelixVeniceClusterResources implements VeniceResource {
          */
         if (store.getReplicationFactor() <= 0) {
           int previousReplicationFactor = store.getReplicationFactor();
-          store.setReplicationFactor(clusterConfig.getReplicationFactor());
+          store.setReplicationFactor(config.getReplicationFactor());
           metadataRepository.updateStore(store);
           LOGGER.info(
               "Updated replication factor from {} to {} for store: {}, in cluster: {}",
               previousReplicationFactor,
-              clusterConfig.getReplicationFactor(),
+              config.getReplicationFactor(),
               store.getName(),
               clusterName);
         }
@@ -367,8 +367,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
     return helixManager;
   }
 
-  public VeniceControllerClusterConfig getConfig() {
-    return clusterConfig;
+  public VeniceControllerConfig getConfig() {
+    return config;
   }
 
   public PushMonitorDelegator getPushMonitor() {

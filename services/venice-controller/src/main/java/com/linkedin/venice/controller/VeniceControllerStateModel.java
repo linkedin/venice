@@ -47,7 +47,7 @@ public class VeniceControllerStateModel extends StateModel {
   private final HelixAdminClient helixAdminClient;
   private final RealTimeTopicSwitcher realTimeTopicSwitcher;
 
-  private VeniceControllerClusterConfig clusterConfig;
+  private VeniceControllerConfig clusterConfig;
   private SafeHelixManager helixManager;
   private HelixVeniceClusterResources clusterResources;
 

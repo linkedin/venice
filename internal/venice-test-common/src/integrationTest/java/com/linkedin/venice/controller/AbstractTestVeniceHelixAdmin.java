@@ -68,7 +68,7 @@ class AbstractTestVeniceHelixAdmin {
   VeniceHelixAdmin veniceAdmin;
   String clusterName;
   String storeOwner = "Doge of Venice";
-  VeniceControllerClusterConfig clusterConfig;
+  VeniceControllerConfig controllerConfig;
   String zkAddress;
   ZkServerWrapper zkServerWrapper;
   PubSubBrokerWrapper pubSubBrokerWrapper;
@@ -104,8 +104,8 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, true);
     controllerProps = new VeniceProperties(properties);
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
-    clusterConfig = new VeniceControllerClusterConfig(controllerProps);
-    multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(clusterConfig);
+    controllerConfig = new VeniceControllerConfig(controllerProps);
+    multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(controllerConfig);
     veniceAdmin = new VeniceHelixAdmin(
         multiClusterConfig,
         metricsRepository,

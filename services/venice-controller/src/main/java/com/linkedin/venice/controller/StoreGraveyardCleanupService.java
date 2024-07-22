@@ -65,7 +65,7 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
           time.sleep((long) sleepIntervalBetweenListFetchMinutes * Time.MS_PER_MINUTE);
           // loop all clusters
           for (String clusterName: multiClusterConfig.getClusters()) {
-            VeniceControllerClusterConfig clusterConfig = multiClusterConfig.getControllerConfig(clusterName);
+            VeniceControllerConfig clusterConfig = multiClusterConfig.getControllerConfig(clusterName);
             boolean cleanupEnabled = clusterConfig.isStoreGraveyardCleanupEnabled();
             int delayInMinutes = clusterConfig.getStoreGraveyardCleanupDelayMinutes();
             if (!cleanupEnabled || !admin.isLeaderControllerFor(clusterName)) {

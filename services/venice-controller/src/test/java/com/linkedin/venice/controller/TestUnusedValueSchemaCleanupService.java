@@ -45,10 +45,10 @@ public class TestUnusedValueSchemaCleanupService {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1).when(config).getUnusedSchemaCleanupIntervalSeconds();
     doReturn(1).when(config).getMinSchemaCountToKeep();
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(clusterConfig).when(config).getControllerConfig(any());
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(config).getControllerConfig(any());
     doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(anyString());
-    doReturn(true).when(clusterConfig).isUnusedValueSchemaCleanupServiceEnabled();
+    doReturn(true).when(controllerConfig).isUnusedValueSchemaCleanupServiceEnabled();
     doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(any());
     ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);
     HelixVeniceClusterResources clusterResources = mock(HelixVeniceClusterResources.class);
@@ -93,8 +93,8 @@ public class TestUnusedValueSchemaCleanupService {
   void testGetUnusedSchema() {
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(true).when(clusterConfig).isUnusedValueSchemaCleanupServiceEnabled();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(true).when(controllerConfig).isUnusedValueSchemaCleanupServiceEnabled();
     doReturn(true).when(parentHelixAdmin).isLeaderControllerFor(any());
     Store store = mockStore();
     ReadWriteSchemaRepository schemaRepository = mock(ReadWriteSchemaRepository.class);

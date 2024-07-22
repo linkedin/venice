@@ -5,7 +5,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
 
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
@@ -30,7 +30,7 @@ import java.util.concurrent.ThreadFactory;
 public class AdminConsumerService extends AbstractVeniceService {
   private static final long WAITING_TIME_FOR_STOP_IN_MS = 5000;
 
-  private final VeniceControllerClusterConfig clusterConfig;
+  private final VeniceControllerConfig config;
   private final VeniceHelixAdmin admin;
   private final ZkAdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final PubSubConsumerAdapterFactory consumerFactory;
@@ -48,21 +48,21 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
-      VeniceControllerClusterConfig clusterConfig,
+      VeniceControllerConfig config,
       MetricsRepository metricsRepository,
       PubSubTopicRepository pubSubTopicRepository,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
-    this.clusterConfig = clusterConfig;
+    this.config = config;
     this.admin = admin;
     this.adminTopicMetadataAccessor =
         new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
     this.metricsRepository = metricsRepository;
-    this.remoteConsumptionEnabled = clusterConfig.isAdminTopicRemoteConsumptionEnabled();
+    this.remoteConsumptionEnabled = config.isAdminTopicRemoteConsumptionEnabled();
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     if (remoteConsumptionEnabled) {
-      String adminTopicSourceRegion = clusterConfig.getAdminTopicSourceRegion();
-      remoteKafkaServerUrl = Optional.of(clusterConfig.getChildDataCenterKafkaUrlMap().get(adminTopicSourceRegion));
+      String adminTopicSourceRegion = config.getAdminTopicSourceRegion();
+      remoteKafkaServerUrl = Optional.of(config.getChildDataCenterKafkaUrlMap().get(adminTopicSourceRegion));
     } else {
       remoteKafkaServerUrl = Optional.empty();
     }
@@ -72,7 +72,7 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    String clusterName = clusterConfig.getClusterName();
+    String clusterName = config.getClusterName();
     consumerTask = getAdminConsumptionTaskForCluster(clusterName);
     consumerThread = threadFactory.newThread(consumerTask);
     consumerThread.start();
@@ -102,22 +102,22 @@ public class AdminConsumerService extends AbstractVeniceService {
         admin,
         adminTopicMetadataAccessor,
         admin.getExecutionIdAccessor(),
-        clusterConfig.isParent(),
+        config.isParent(),
         new AdminConsumptionStats(metricsRepository, clusterName + "-admin_consumption_task"),
-        clusterConfig.getAdminTopicReplicationFactor(),
-        clusterConfig.getMinInSyncReplicasAdminTopics(),
-        clusterConfig.getAdminConsumptionCycleTimeoutMs(),
-        clusterConfig.getAdminConsumptionMaxWorkerThreadPoolSize(),
+        config.getAdminTopicReplicationFactor(),
+        config.getMinInSyncReplicasAdminTopics(),
+        config.getAdminConsumptionCycleTimeoutMs(),
+        config.getAdminConsumptionMaxWorkerThreadPoolSize(),
         pubSubTopicRepository,
         pubSubMessageDeserializer,
-        clusterConfig.getRegionName());
+        config.getRegionName());
   }
 
   /**
    * Skip admin message with specified offset for the given cluster.
    */
   public void setOffsetToSkip(String clusterName, long offset, boolean skipDIV) {
-    if (clusterName.equals(clusterConfig.getClusterName())) {
+    if (clusterName.equals(config.getClusterName())) {
       if (skipDIV) {
         consumerTask.skipMessageDIVWithOffset(offset);
       } else {
@@ -125,7 +125,7 @@ public class AdminConsumerService extends AbstractVeniceService {
       }
     } else {
       throw new VeniceException(
-          "This AdminConsumptionService is for cluster " + clusterConfig.getClusterName()
+          "This AdminConsumptionService is for cluster " + config.getClusterName()
               + ".  Cannot skip admin message with offset " + offset + " for cluster " + clusterName);
     }
   }
@@ -136,11 +136,11 @@ public class AdminConsumerService extends AbstractVeniceService {
    * @return last succeeded execution id for the given cluster.
    */
   public Long getLastSucceededExecutionIdInCluster(String clusterName) {
-    if (clusterName.equals(clusterConfig.getClusterName())) {
+    if (clusterName.equals(config.getClusterName())) {
       return consumerTask.getLastSucceededExecutionId();
     } else {
       throw new VeniceException(
-          "This AdminConsumptionService is for cluster: " + clusterConfig.getClusterName()
+          "This AdminConsumptionService is for cluster: " + config.getClusterName()
               + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
     }
   }
@@ -174,11 +174,11 @@ public class AdminConsumerService extends AbstractVeniceService {
    * @return cluster-level execution id, offset, and upstream offset in a child colo.
    */
   public Map<String, Long> getAdminTopicMetadata(String clusterName) {
-    if (clusterName.equals(clusterConfig.getClusterName())) {
+    if (clusterName.equals(config.getClusterName())) {
       return adminTopicMetadataAccessor.getMetadata(clusterName);
     } else {
       throw new VeniceException(
-          "This AdminConsumptionService is for cluster: " + clusterConfig.getClusterName()
+          "This AdminConsumptionService is for cluster: " + config.getClusterName()
               + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
     }
   }
@@ -187,12 +187,12 @@ public class AdminConsumerService extends AbstractVeniceService {
    * Update cluster-level execution id, offset, and upstream offset in a child colo.
    */
   public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
-    if (clusterName.equals(clusterConfig.getClusterName())) {
+    if (clusterName.equals(config.getClusterName())) {
       Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, upstreamOffset, executionId);
       adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
     } else {
       throw new VeniceException(
-          "This AdminConsumptionService is for cluster: " + clusterConfig.getClusterName()
+          "This AdminConsumptionService is for cluster: " + config.getClusterName()
               + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
     }
   }

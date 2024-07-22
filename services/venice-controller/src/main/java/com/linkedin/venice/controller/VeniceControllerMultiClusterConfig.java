@@ -16,26 +16,26 @@ import java.util.Set;
 
 
 public class VeniceControllerMultiClusterConfig {
-  private final Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap;
+  private final Map<String, VeniceControllerConfig> clusterToControllerConfigMap;
 
   public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> controllerClusterProperties) {
     clusterToControllerConfigMap = new HashMap<>();
     for (VeniceProperties properties: controllerClusterProperties) {
-      final VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(properties);
-      clusterToControllerConfigMap.put(clusterConfig.getClusterName(), clusterConfig);
+      final VeniceControllerConfig controllerConfig = new VeniceControllerConfig(properties);
+      clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
     }
   }
 
   // This contructor is used for testing.
-  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap) {
+  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerConfig> clusterToControllerConfigMap) {
     this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
   }
 
-  public void addClusterConfig(VeniceControllerClusterConfig clusterConfig) {
-    clusterToControllerConfigMap.put(clusterConfig.getClusterName(), clusterConfig);
+  public void addClusterConfig(VeniceControllerConfig controllerConfig) {
+    clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
   }
 
-  public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
+  public VeniceControllerConfig getControllerConfig(String clusterName) {
     if (clusterToControllerConfigMap.containsKey(clusterName)) {
       return clusterToControllerConfigMap.get(clusterName);
     } else {
@@ -195,7 +195,7 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getParentControllerMaxErroredTopicNumToKeep();
   }
 
-  public VeniceControllerClusterConfig getCommonConfig() {
+  public VeniceControllerConfig getCommonConfig() {
     return clusterToControllerConfigMap.values().iterator().next();
   }
 

@@ -258,8 +258,7 @@ public class VeniceController {
 
   private void initializeSystemSchema(Admin admin) {
     String systemStoreCluster = multiClusterConfigs.getSystemSchemaClusterName();
-    VeniceControllerClusterConfig systemStoreClusterConfig =
-        multiClusterConfigs.getControllerConfig(systemStoreCluster);
+    VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemStoreCluster);
     if (!multiClusterConfigs.isParent() && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
       String regionName = systemStoreClusterConfig.getRegionName();
       String childControllerUrl = systemStoreClusterConfig.getChildControllerUrl(regionName);

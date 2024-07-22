@@ -14,7 +14,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -94,9 +94,9 @@ public class SystemStoreInitializationHelperTest {
         .when(admin)
         .getStore(clusterName, systemStoreName);
 
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(clusterConfig).when(multiClusterConfigs).getControllerConfig(clusterName);
-    doReturn(partitionCount).when(clusterConfig).getMinNumberOfPartitions();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(multiClusterConfigs).getControllerConfig(clusterName);
+    doReturn(partitionCount).when(controllerConfig).getMinNumberOfPartitions();
 
     SystemStoreInitializationHelper.setupSystemStore(
         clusterName,
@@ -180,8 +180,8 @@ public class SystemStoreInitializationHelperTest {
         .when(admin)
         .getValueSchemas(clusterName, systemStoreName);
 
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(clusterConfig).when(multiClusterConfigs).getControllerConfig(clusterName);
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(multiClusterConfigs).getControllerConfig(clusterName);
 
     SystemStoreInitializationHelper.setupSystemStore(
         clusterName,

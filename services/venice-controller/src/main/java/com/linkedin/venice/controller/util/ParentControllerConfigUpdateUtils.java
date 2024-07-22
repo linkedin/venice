@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.util;
 
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -45,7 +45,7 @@ public class ParentControllerConfigUpdateUtils {
       UpdateStore setStore,
       boolean storeBeingConvertedToHybrid) {
     Store currentStore = parentHelixAdmin.getVeniceHelixAdmin().getStore(clusterName, storeName);
-    VeniceControllerClusterConfig clusterConfig =
+    VeniceControllerConfig controllerConfig =
         parentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
     boolean partialUpdateConfigChanged = false;
     setStore.writeComputationEnabled = currentStore.isWriteComputationEnabled();
@@ -69,8 +69,8 @@ public class ParentControllerConfigUpdateUtils {
      */
     final boolean shouldEnablePartialUpdateBasedOnClusterConfig =
         storeBeingConvertedToHybrid && (setStore.activeActiveReplicationEnabled
-            ? clusterConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()
-            : clusterConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores());
+            ? controllerConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()
+            : controllerConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores());
     if (!currentStore.isWriteComputationEnabled() && shouldEnablePartialUpdateBasedOnClusterConfig) {
       LOGGER.info("Controller will try to enable partial update based on cluster config for store: " + storeName);
       /**

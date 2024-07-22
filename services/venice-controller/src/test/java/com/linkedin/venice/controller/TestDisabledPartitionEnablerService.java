@@ -22,12 +22,12 @@ public class TestDisabledPartitionEnablerService {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     long defaultRetentionMs = TimeUnit.DAYS.toMillis(7);
     doReturn(defaultRetentionMs).when(config).getBackupVersionDefaultRetentionMs();
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(clusterConfig).when(config).getControllerConfig(anyString());
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(config).getControllerConfig(anyString());
     Set<String> clusters = new HashSet<>();
     doReturn(true).when(admin).isLeaderControllerFor(any());
     clusters.add(clusterName);
-    doReturn(true).when(clusterConfig).isEnableDisabledReplicaEnabled();
+    doReturn(true).when(controllerConfig).isEnableDisabledReplicaEnabled();
     doReturn(clusters).when(config).getClusters();
     TestMockTime time = new TestMockTime();
     DisabledPartitionEnablerService service = new DisabledPartitionEnablerService(admin, config, time);

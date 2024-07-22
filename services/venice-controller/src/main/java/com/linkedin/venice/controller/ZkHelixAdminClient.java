@@ -250,13 +250,13 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           LeaderStandbySMD.name,
           IdealState.RebalanceMode.FULL_AUTO.toString(),
           AutoRebalanceStrategy.class.getName());
-      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      VeniceControllerConfig config = multiClusterConfigs.getControllerConfig(clusterName);
       IdealState idealState = helixAdmin.getResourceIdealState(clusterName, kafkaTopic);
       // We don't set the delayed time per resource, we will use the cluster level helix config to decide
       // the delayed rebalance time
       idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
       idealState.setMinActiveReplicas(replicationFactor - 1);
-      idealState.setRebalanceStrategy(clusterConfig.getHelixRebalanceAlg());
+      idealState.setRebalanceStrategy(config.getHelixRebalanceAlg());
       helixAdmin.setResourceIdealState(clusterName, kafkaTopic, idealState);
       LOGGER.info("Enabled delayed re-balance for resource: {}", kafkaTopic);
       helixAdmin.rebalance(clusterName, kafkaTopic, replicationFactor);

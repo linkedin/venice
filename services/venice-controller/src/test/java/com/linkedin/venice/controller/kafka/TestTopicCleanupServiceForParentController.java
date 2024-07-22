@@ -6,7 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -36,9 +36,9 @@ public class TestTopicCleanupServiceForParentController {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1000l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(2).when(config).getTopicCleanupDelayFactor();
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    doReturn(clusterConfig).when(config).getCommonConfig();
-    doReturn("dc1").when(clusterConfig).getChildDatacenters();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    doReturn(controllerConfig).when(config).getCommonConfig();
+    doReturn("dc1").when(controllerConfig).getChildDatacenters();
     TopicCleanupServiceStats topicCleanupServiceStats = mock(TopicCleanupServiceStats.class);
     doReturn(new ApacheKafkaAdminAdapterFactory()).when(pubSubClientsFactory).getAdminAdapterFactory();
     doReturn(new ApacheKafkaAdminAdapterFactory()).when(config).getSourceOfTruthAdminAdapterFactory();
