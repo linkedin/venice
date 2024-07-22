@@ -39,6 +39,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
@@ -119,6 +120,37 @@ public class ActiveActiveStoreIngestionTaskTest {
   @DataProvider(name = "CompressionStrategy")
   public static Object[] compressionStrategyProvider() {
     return new Object[] { CompressionStrategy.NO_OP, CompressionStrategy.GZIP, CompressionStrategy.ZSTD_WITH_DICT };
+  }
+
+  @Test
+  public void testHandleDeleteBeforeEOP() {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.isEndOfPushReceived()).thenReturn(false);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    when(consumerRecord.getKey()).thenReturn(kafkaKey);
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    when(consumerRecord.getValue()).thenReturn(kafkaValue);
+    when(consumerRecord.getOffset()).thenReturn(1L);
+    kafkaValue.messageType = MessageType.DELETE.getValue();
+    Delete deletePayload = new Delete();
+    kafkaValue.payloadUnion = deletePayload;
+    ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
+        ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
+    ingestionTask.processMessageAndMaybeProduceToKafka(consumerRecord, pcs, 0, "dummyUrl", 0, 0L, 0L);
+    verify(ingestionTask, times(1)).produceToLocalKafka(
+        any(),
+        any(),
+        leaderProducedRecordContextArgumentCaptor.capture(),
+        any(),
+        anyInt(),
+        anyString(),
+        anyInt(),
+        anyLong());
+    Assert.assertEquals(leaderProducedRecordContextArgumentCaptor.getAllValues().get(0).getValueUnion(), deletePayload);
   }
 
   @Test(dataProvider = "CompressionStrategy")
