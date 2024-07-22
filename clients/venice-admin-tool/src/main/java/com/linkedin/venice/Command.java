@@ -540,8 +540,8 @@ public enum Command {
   ),
   MIGRATE_VENICE_ZK_PATHS(
       "migrate-venice-zk-paths", "Migrate Venice-specific metadata from a source ZK to a destination ZK",
-      new Arg[] { SRC_ZOOKEEPER_URL, DEST_ZOOKEEPER_URL, CLUSTER_LIST, BASE_PATH },
-      new Arg[] { SRC_ZK_SSL_CONFIG_FILE, DEST_ZK_SSL_CONFIG_FILE }
+      new Arg[] { SRC_ZOOKEEPER_URL, SRC_ZK_SSL_CONFIG_FILE, DEST_ZOOKEEPER_URL, DEST_ZK_SSL_CONFIG_FILE, CLUSTER_LIST,
+          BASE_PATH }
   ),
   EXTRACT_VENICE_ZK_PATHS(
       "extract-venice-zk-paths",

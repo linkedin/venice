@@ -3100,9 +3100,9 @@ public class AdminTool {
   private static void migrateVeniceZKPaths(CommandLine cmd) throws Exception {
     Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
     String srcZKUrl = getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL);
-    String srcZKSSLConfigs = getOptionalArgument(cmd, Arg.SRC_ZK_SSL_CONFIG_FILE, "");
+    String srcZKSSLConfigs = getRequiredArgument(cmd, Arg.SRC_ZK_SSL_CONFIG_FILE);
     String destZKUrl = getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL);
-    String destZKSSLConfigs = getOptionalArgument(cmd, Arg.DEST_ZK_SSL_CONFIG_FILE, "");
+    String destZKSSLConfigs = getRequiredArgument(cmd, Arg.DEST_ZK_SSL_CONFIG_FILE);
     ZkClient srcZkClient = readZKConfigAndBuildZKClient(srcZKUrl, srcZKSSLConfigs);
     ZkClient destZkClient = readZKConfigAndBuildZKClient(destZKUrl, destZKSSLConfigs);
     try {
