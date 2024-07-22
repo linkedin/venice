@@ -459,7 +459,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
-    VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
+    VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
     this.controllerName =
         Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminHostname(), multiClusterConfigs.getAdminPort());
     this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
@@ -701,7 +701,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
-    VeniceControllerConfig controllerConfig = multiClusterConfigs.getCommonConfig();
+    VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getCommonConfig();
 
     VeniceProperties originalPros = controllerConfig.getProps();
     Properties clonedProperties = originalPros.toProperties();
@@ -710,7 +710,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     }
-    controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
+    controllerConfig = new VeniceControllerClusterConfig(new VeniceProperties(clonedProperties));
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
     if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
@@ -938,7 +938,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     LOGGER.info("Start creating store {} in cluster {} with owner {}", storeName, clusterName, owner);
     try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createStoreWriteLock(storeName)) {
       checkPreConditionForCreateStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, true);
-      VeniceControllerConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
+      VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
       Store newStore = new ZKStore(
           storeName,
           owner,
@@ -996,7 +996,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void configureNewStore(Store newStore, VeniceControllerConfig config, int largestUsedVersionNumber) {
+  private void configureNewStore(Store newStore, VeniceControllerClusterConfig config, int largestUsedVersionNumber) {
     newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
     newStore.setActiveActiveReplicationEnabled(
         config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly() && !newStore.isSystemStore());
@@ -1579,7 +1579,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public Map<String, ControllerClient> getControllerClientMap(String clusterName) {
     return clusterControllerClientPerColoMap.computeIfAbsent(clusterName, cn -> {
       Map<String, ControllerClient> controllerClients = new HashMap<>();
-      VeniceControllerConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
       controllerConfig.getChildDataCenterControllerUrlMap()
           .entrySet()
           .forEach(
@@ -2081,7 +2081,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         version.setPushType(pushType);
         store.addVersion(version);
         // Apply cluster-level native replication configs
-        VeniceControllerConfig clusterConfig = resources.getConfig();
+        VeniceControllerClusterConfig clusterConfig = resources.getConfig();
 
         boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
 
@@ -2180,7 +2180,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     checkControllerLeadershipFor(clusterName);
     try {
-      VeniceControllerConfig controllerConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+      VeniceControllerClusterConfig controllerConfig = getHelixVeniceClusterResources(clusterName).getConfig();
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
       topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
       createBatchTopics(
@@ -2301,7 +2301,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushType pushType,
       TopicManager topicManager,
       int partitionCount,
-      VeniceControllerConfig clusterConfig,
+      VeniceControllerClusterConfig clusterConfig,
       boolean useFastKafkaOperationTimeout) {
     List<PubSubTopic> topicNamesToCreate = new ArrayList<>(2);
     topicNamesToCreate.add(pubSubTopicRepository.getTopic(version.kafkaTopicName()));
@@ -2457,7 +2457,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     OfflinePushStrategy offlinePushStrategy;
     int currentVersionBeforePush = -1;
     boolean isRepush = Version.isPushIdRePush(pushJobId);
-    VeniceControllerConfig clusterConfig = resources.getConfig();
+    VeniceControllerClusterConfig clusterConfig = resources.getConfig();
     BackupStrategy backupStrategy;
 
     try {
@@ -2865,7 +2865,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           "Request of creating versions/topics for targeted region push should only be sent to parent controller");
     }
     checkControllerLeadershipFor(clusterName);
-    VeniceControllerConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+    VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersion();
     return pushType.isIncremental()
         ? getIncrementalPushVersion(clusterName, storeName)
@@ -2997,7 +2997,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
         }
 
-        VeniceControllerConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+        VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
         getTopicManager().createTopic(
             realTimeTopic,
             partitionCount,
@@ -3152,7 +3152,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Store store = getStore(clusterName, storeName);
     boolean isSSL = isSSLEnabledForPush(clusterName, storeName);
     String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
-    VeniceControllerConfig systemSchemaClusterConfig = multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
+    VeniceControllerClusterConfig systemSchemaClusterConfig =
+        multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
     String systemSchemaClusterD2Service = systemSchemaClusterConfig.getClusterToD2Map().get(systemSchemaClusterName);
     String systemSchemaClusterD2ZkHost = systemSchemaClusterConfig.getChildControllerD2ZkHost(getRegionName());
     int currentVersionNumber = store.getCurrentVersion();
@@ -3456,7 +3457,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void topicCleanupWhenPushComplete(String clusterName, String storeName, int versionNumber) {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    VeniceControllerConfig clusterConfig = resources.getConfig();
+    VeniceControllerClusterConfig clusterConfig = resources.getConfig();
     ReadWriteStoreRepository storeRepository = resources.getStoreMetadataRepository();
     Store store = storeRepository.getStore(storeName);
     if (store.isHybrid() && clusterConfig.isKafkaLogCompactionForHybridStoresEnabled()) {
@@ -4024,7 +4025,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
-    VeniceControllerConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+    VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     storeMetadataUpdate(clusterName, storeName, store -> {
       preCheckStorePartitionCountUpdate(clusterName, store, partitionCount);
       // Do not update the partitionCount on the store.version as version config is immutable. The
@@ -4043,7 +4044,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   void preCheckStorePartitionCountUpdate(String clusterName, Store store, int newPartitionCount) {
     String errorMessagePrefix = "Store update error for " + store.getName() + " in cluster: " + clusterName + ": ";
-    VeniceControllerConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+    VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     if (store.isHybrid() && store.getPartitionCount() != newPartitionCount) {
       // Allow the update if partition count is not configured and the new partition count matches RT partition count
       if (store.getPartitionCount() == 0) {
@@ -4261,7 +4262,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   void setIncrementalPushEnabled(String clusterName, String storeName, boolean incrementalPushEnabled) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      VeniceControllerConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
+      VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
       if (incrementalPushEnabled || store.isHybrid()) {
         // Enabling incremental push
         store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForHybrid());
@@ -4644,7 +4645,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
         ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
         int routerCount = routersClusterManager.getLiveRoutersCount();
-        VeniceControllerConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+        VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
         int defaultReadQuotaPerRouter = clusterConfig.getDefaultReadQuotaPerRouter();
 
         if (Math.max(defaultReadQuotaPerRouter, routerCount * defaultReadQuotaPerRouter) < readQuotaInCU.get()) {
@@ -4667,7 +4668,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
       }
 
-      VeniceControllerConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+      VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
       if (newHybridStoreConfig.isPresent()) {
         // To fix the final variable problem in the lambda expression
         final HybridStoreConfig finalHybridConfig = newHybridStoreConfig.get();
@@ -5301,7 +5302,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void validateValueSchemaUsingRandomGenerator(String schemaStr, String clusterName, String storeName) {
-    VeniceControllerConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
+    VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
     if (!config.isControllerSchemaValidationEnabled()) {
       return;
     }
@@ -6100,7 +6101,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
 
-    VeniceControllerConfig config = multiClusterConfigs.getControllerConfig(clusterName);
+    VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
     HelixConfigScope configScope =
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
     Map<String, String> helixClusterProperties = new HashMap<>();
@@ -6336,7 +6337,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     Store store = resources.getStoreMetadataRepository().getStoreOrThrow(storeName);
-    VeniceControllerConfig config = resources.getConfig();
+    VeniceControllerClusterConfig config = resources.getConfig();
     return PartitionUtils.calculatePartitionCount(
         storeName,
         store.getStorageQuotaInByte(),
@@ -7058,7 +7059,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return resources.get();
   }
 
-  void addConfig(VeniceControllerConfig config) {
+  void addConfig(VeniceControllerClusterConfig config) {
     multiClusterConfigs.addClusterConfig(config);
   }
 
@@ -7707,7 +7708,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Map<String, String> getChildDataCenterControllerUrlMap(String clusterName) {
     /**
-     * According to {@link VeniceControllerConfig#VeniceControllerConfig(VeniceProperties)}, the map is empty
+     * According to {@link VeniceControllerClusterConfig#VeniceControllerClusterConfig(VeniceProperties)}, the map is empty
      * if this is a child controller.
      */
     return multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterControllerUrlMap();

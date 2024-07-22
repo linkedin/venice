@@ -14,7 +14,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -59,7 +59,7 @@ public class TestAdminConsumerService {
         .put(CHILD_CLUSTER_ALLOWLIST, someClusterName)
         .put(SslUtils.getVeniceLocalSslProperties())
         .build();
-    VeniceControllerConfig controllerConfig = new VeniceControllerConfig(props);
+    VeniceControllerClusterConfig controllerConfig = new VeniceControllerClusterConfig(props);
 
     PubSubConsumerAdapterFactory consumerFactory = mock(PubSubConsumerAdapterFactory.class);
 

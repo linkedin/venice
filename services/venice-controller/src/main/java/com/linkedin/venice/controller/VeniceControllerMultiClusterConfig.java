@@ -16,26 +16,26 @@ import java.util.Set;
 
 
 public class VeniceControllerMultiClusterConfig {
-  private final Map<String, VeniceControllerConfig> clusterToControllerConfigMap;
+  private final Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap;
 
   public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> controllerClusterProperties) {
     clusterToControllerConfigMap = new HashMap<>();
     for (VeniceProperties properties: controllerClusterProperties) {
-      final VeniceControllerConfig controllerConfig = new VeniceControllerConfig(properties);
+      final VeniceControllerClusterConfig controllerConfig = new VeniceControllerClusterConfig(properties);
       clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
     }
   }
 
   // This contructor is used for testing.
-  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerConfig> clusterToControllerConfigMap) {
+  public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap) {
     this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
   }
 
-  public void addClusterConfig(VeniceControllerConfig controllerConfig) {
+  public void addClusterConfig(VeniceControllerClusterConfig controllerConfig) {
     clusterToControllerConfigMap.put(controllerConfig.getClusterName(), controllerConfig);
   }
 
-  public VeniceControllerConfig getControllerConfig(String clusterName) {
+  public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
     if (clusterToControllerConfigMap.containsKey(clusterName)) {
       return clusterToControllerConfigMap.get(clusterName);
     } else {
@@ -195,7 +195,7 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getParentControllerMaxErroredTopicNumToKeep();
   }
 
-  public VeniceControllerConfig getCommonConfig() {
+  public VeniceControllerClusterConfig getCommonConfig() {
     return clusterToControllerConfigMap.values().iterator().next();
   }
 

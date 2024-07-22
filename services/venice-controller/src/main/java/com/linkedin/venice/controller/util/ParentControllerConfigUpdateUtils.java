@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.util;
 
-import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -45,7 +45,7 @@ public class ParentControllerConfigUpdateUtils {
       UpdateStore setStore,
       boolean storeBeingConvertedToHybrid) {
     Store currentStore = parentHelixAdmin.getVeniceHelixAdmin().getStore(clusterName, storeName);
-    VeniceControllerConfig controllerConfig =
+    VeniceControllerClusterConfig controllerConfig =
         parentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
     boolean partialUpdateConfigChanged = false;
     setStore.writeComputationEnabled = currentStore.isWriteComputationEnabled();

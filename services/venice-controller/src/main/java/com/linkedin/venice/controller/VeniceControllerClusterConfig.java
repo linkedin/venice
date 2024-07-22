@@ -223,8 +223,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * Configuration which is specific to a Venice controller.
  */
-public class VeniceControllerConfig {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceControllerConfig.class);
+public class VeniceControllerClusterConfig {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceControllerClusterConfig.class);
   private static final String LIST_SEPARATOR = ",\\s*";
 
   private final VeniceProperties props;
@@ -573,7 +573,7 @@ public class VeniceControllerConfig {
 
   private final String childDatacenters;
 
-  public VeniceControllerConfig(VeniceProperties props) {
+  public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
     this.zkAddress = props.getString(ZOOKEEPER_ADDRESS);

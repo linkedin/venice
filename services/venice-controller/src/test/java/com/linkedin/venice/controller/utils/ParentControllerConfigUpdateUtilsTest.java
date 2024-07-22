@@ -5,7 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controller.HelixVeniceClusterResources;
-import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -30,7 +30,7 @@ public class ParentControllerConfigUpdateUtilsTest {
     when(parentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
     when(veniceHelixAdmin.getStore(anyString(), anyString())).thenReturn(store);
     HelixVeniceClusterResources helixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
-    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     when(helixVeniceClusterResources.getConfig()).thenReturn(controllerConfig);
     when(veniceHelixAdmin.getHelixVeniceClusterResources(anyString())).thenReturn(helixVeniceClusterResources);
     SchemaEntry schemaEntry = new SchemaEntry(1, TestWriteUtils.USER_WITH_DEFAULT_SCHEMA);
