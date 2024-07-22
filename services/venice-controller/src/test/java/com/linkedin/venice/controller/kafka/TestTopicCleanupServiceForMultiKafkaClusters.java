@@ -14,6 +14,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -40,7 +41,7 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
     VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
     doReturn(controllerConfig).when(config).getCommonConfig();
     doReturn(new ApacheKafkaAdminAdapterFactory()).when(config).getSourceOfTruthAdminAdapterFactory();
-    doReturn("fabric1,fabric2").when(controllerConfig).getChildDatacenters();
+    doReturn(Utils.setOf("fabric1", "fabric2")).when(controllerConfig).getChildDatacenters();
 
     String kafkaClusterKey1 = "fabric1";
     String kafkaClusterKey2 = "fabric2";

@@ -461,15 +461,14 @@ public class Utils {
   }
 
   public static List<String> parseCommaSeparatedStringToList(String rawString) {
-    String[] strArray = rawString.split(",\\s*");
-    if (strArray.length < 1) {
-      throw new VeniceException("Invalid input: " + rawString);
+    if (StringUtils.isEmpty(rawString)) {
+      return Collections.emptyList();
     }
-    return Arrays.asList(strArray);
+    return Arrays.asList(rawString.split(",\\s*"));
   }
 
   public static Set<String> parseCommaSeparatedStringToSet(String rawString) {
-    if (rawString == null || rawString.length() == 0) {
+    if (StringUtils.isEmpty(rawString)) {
       return Collections.emptySet();
     }
     return Utils.setOf(rawString.split(",\\s*"));
@@ -734,10 +733,6 @@ public class Utils {
   @SafeVarargs
   public static <T> Set<T> mutableSetOf(T... objs) {
     return new HashSet<>(Arrays.asList(objs));
-  }
-
-  public static long calculateDurationMs(Time time, long startTimeMs) {
-    return time.getMilliseconds() - startTimeMs;
   }
 
   public static void closeQuietlyWithErrorLogged(Closeable... closeables) {

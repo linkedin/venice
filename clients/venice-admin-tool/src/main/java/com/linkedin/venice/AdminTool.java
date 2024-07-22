@@ -471,12 +471,6 @@ public class AdminTool {
         case REMOVE_FROM_STORE_ACL:
           removeFromStoreAcl(cmd);
           break;
-        case ENABLE_NATIVE_REPLICATION_FOR_CLUSTER:
-          enableNativeReplicationForCluster(cmd);
-          break;
-        case DISABLE_NATIVE_REPLICATION_FOR_CLUSTER:
-          disableNativeReplicationForCluster(cmd);
-          break;
         case ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
           enableActiveActiveReplicationForCluster(cmd);
           break;
@@ -1810,7 +1804,7 @@ public class AdminTool {
       printSystemStoreMigrationStatus(destControllerClient, storeName, printFunction);
     } else {
       // This is a parent controller
-      System.err.println("\n=================== Parent Controllers ====================");
+      printFunction.apply("\n=================== Parent Controllers ====================");
       printMigrationStatus(srcControllerClient, storeName, printFunction);
       printMigrationStatus(destControllerClient, storeName, printFunction);
 
@@ -1821,7 +1815,7 @@ public class AdminTool {
       Map<String, ControllerClient> destChildControllerClientMap = getControllerClientMap(destClusterName, response);
 
       for (Map.Entry<String, ControllerClient> entry: srcChildControllerClientMap.entrySet()) {
-        System.err.println("\n\n=================== Child Datacenter " + entry.getKey() + " ====================");
+        printFunction.apply("\n\n=================== Child Datacenter " + entry.getKey() + " ====================");
 
         ControllerClient srcChildController = entry.getValue();
         ControllerClient destChildController = destChildControllerClientMap.get(entry.getKey());
@@ -2584,34 +2578,6 @@ public class AdminTool {
         System.out.println("No change in ACLs");
       }
     }
-  }
-
-  private static void enableNativeReplicationForCluster(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-    String sourceRegionParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
-    Optional<String> sourceRegion =
-        StringUtils.isEmpty(sourceRegionParam) ? Optional.empty() : Optional.of(sourceRegionParam);
-    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
-    Optional<String> regionsFilter =
-        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
-
-    ControllerResponse response =
-        controllerClient.configureNativeReplicationForCluster(true, storeType, sourceRegion, regionsFilter);
-    printObject(response);
-  }
-
-  private static void disableNativeReplicationForCluster(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-    String sourceFabricParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
-    Optional<String> sourceFabric =
-        StringUtils.isEmpty(sourceFabricParam) ? Optional.empty() : Optional.of(sourceFabricParam);
-    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
-    Optional<String> regionsFilter =
-        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
-
-    ControllerResponse response =
-        controllerClient.configureNativeReplicationForCluster(false, storeType, sourceFabric, regionsFilter);
-    printObject(response);
   }
 
   private static void enableActiveActiveReplicationForCluster(CommandLine cmd) {
