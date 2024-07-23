@@ -14,7 +14,6 @@ import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.MINUTES;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -2436,7 +2435,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
     super.waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
-    final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
 
     /**
      * In case of L/F model in Leader we first produce to local kafka then queue to drainer from kafka callback thread.

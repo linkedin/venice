@@ -33,4 +33,8 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
   public abstract long getMaxMemoryUsagePerDrainer();
 
   public abstract long getMinMemoryUsagePerDrainer();
+
+  abstract StoreBufferService.QueueNode execSyncOffsetCommandAsync(
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException;
 }

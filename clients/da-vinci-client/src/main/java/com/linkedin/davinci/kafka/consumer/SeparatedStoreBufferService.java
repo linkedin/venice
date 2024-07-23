@@ -86,6 +86,15 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   }
 
   @Override
+  StoreBufferService.QueueNode execSyncOffsetCommandAsync(
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
+    StoreBufferService chosenSBS =
+        ingestionTask.isHybridMode() ? unsortedStoreBufferServiceDelegate : sortedStoreBufferServiceDelegate;
+    return chosenSBS.execSyncOffsetCommandAsync(topicPartition, ingestionTask);
+  }
+
+  @Override
   public boolean startInner() throws Exception {
     sortedStoreBufferServiceDelegate.startInner();
     unsortedStoreBufferServiceDelegate.startInner();

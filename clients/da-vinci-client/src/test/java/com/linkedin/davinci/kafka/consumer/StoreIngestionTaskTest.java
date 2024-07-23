@@ -3773,6 +3773,8 @@ public abstract class StoreIngestionTaskTest {
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(1)).put(eq(topic), eq(PARTITION_FOO), any());
       Assert.assertEquals(offsetRecord.getLocalVersionTopicOffset(), 2L);
 
+      // Verify that the underlying storage engine sync function is invoked.
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(1)).sync(eq(PARTITION_FOO));
     }, aaConfig, configOverride -> {
       // set very high threshold so offsetRecord isn't be synced during regular consumption
       doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();

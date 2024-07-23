@@ -29,6 +29,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -211,6 +212,18 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
+  private static void processCommand(
+      CommandQueueNode cmd,
+      StoreIngestionTask ingestionTask,
+      PartitionConsumptionState pcs) {
+    // We only support SYNC_OFFSET command for now.
+    if (cmd.getCommandType() != CommandQueueNode.CommandType.SYNC_OFFSET) {
+      throw new VeniceException("Unsupported command type: " + cmd.getCommandType());
+    }
+
+    cmd.executeSync(() -> ingestionTask.updateOffsetMetadataAndSyncOffset(pcs));
+  }
+
   /**
    * This function is used to drain all the records for the specified topic + partition.
    * The reason is that we don't want overlap Kafka messages between two different subscriptions,
@@ -255,6 +268,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
         + retryNum + " times";
     LOGGER.error(errorMessage);
     throw new VeniceException(errorMessage);
+  }
+
+  @Override
+  QueueNode execSyncOffsetCommandAsync(PubSubTopicPartition topicPartition, StoreIngestionTask ingestionTask)
+      throws InterruptedException {
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
+    CommandQueueNode syncOffsetCmd =
+        new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
+    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
+    return syncOffsetCmd;
   }
 
   @Override
@@ -352,7 +375,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   /**
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
-  private static class QueueNode implements Measurable {
+  static class QueueNode implements Measurable {
     /**
      * Considering the overhead of {@link PubSubMessage} and its internal structures.
      */
@@ -423,6 +446,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     @Override
     public int getSize() {
+      // For FakePubSubMessage, the key and the value are null, return 0.
+      if (consumerRecord instanceof FakePubSubMessage) {
+        return 0;
+      }
+
       // N.B.: This is just an estimate. TODO: Consider if it is really useful, and whether to get rid of it.
       return this.consumerRecord.getKey().getEstimatedObjectSizeOnHeap()
           + getEstimateOfMessageEnvelopeSizeOnHeap(this.consumerRecord.getValue()) + QUEUE_NODE_OVERHEAD_IN_BYTE;
@@ -516,6 +544,58 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
+  static class CommandQueueNode extends QueueNode {
+    enum CommandType {
+      // only supports SYNC_OFFSET command today.
+      SYNC_OFFSET
+    }
+
+    private final CompletableFuture<Void> cmdExecutedFuture = new CompletableFuture<>();
+
+    private final CommandType commandType;
+
+    private boolean valid;
+
+    public CommandQueueNode(
+        CommandType commandType,
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        StoreIngestionTask ingestionTask) {
+      super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
+      this.commandType = commandType;
+      this.valid = true;
+    }
+
+    public CompletableFuture<Void> getCmdExecutedFuture() {
+      return cmdExecutedFuture;
+    }
+
+    public CommandType getCommandType() {
+      return commandType;
+    }
+
+    public synchronized void invalidate() {
+      valid = false;
+    }
+
+    // This method is used to execute the command synchronously. Once it is in execution, it cannot be invalidated.
+    public synchronized void executeSync(Runnable runnable) {
+      if (valid) {
+        runnable.run();
+      }
+      cmdExecutedFuture.complete(null);
+    }
+
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return super.equals(o);
+    }
+  }
+
   /**
    * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord}
    * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
@@ -551,11 +631,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
           node = blockingQueue.take();
 
           consumerRecord = node.getConsumerRecord();
+          int partitionNum = consumerRecord.getTopicPartition().getPartitionNumber();
           leaderProducedRecordContext = node.getLeaderProducedRecordContext();
           ingestionTask = node.getIngestionTask();
           recordPersistedFuture = node.getQueuedRecordPersistedFuture();
 
           long startTime = System.currentTimeMillis();
+
+          if (node instanceof CommandQueueNode) {
+            processCommand(
+                (CommandQueueNode) node,
+                ingestionTask,
+                ingestionTask.getPartitionConsumptionState(partitionNum));
+            continue;
+          }
+
           processRecord(
               consumerRecord,
               ingestionTask,
