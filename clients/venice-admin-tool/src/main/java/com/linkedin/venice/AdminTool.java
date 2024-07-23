@@ -573,6 +573,9 @@ public class AdminTool {
         case DUMP_TOPIC_PARTITION_INGESTION_CONTEXT:
           dumpTopicPartitionIngestionContext(cmd);
           break;
+        case MIGRATE_VENICE_ZK_PATHS:
+          migrateVeniceZKPaths(cmd);
+          break;
         case EXTRACT_VENICE_ZK_PATHS:
           extractVeniceZKPaths(cmd);
           break;
@@ -3091,6 +3094,22 @@ public class AdminTool {
           getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
+  private static void migrateVeniceZKPaths(CommandLine cmd) throws Exception {
+    Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
+    String srcZKUrl = getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL);
+    String srcZKSSLConfigs = getRequiredArgument(cmd, Arg.SRC_ZK_SSL_CONFIG_FILE);
+    String destZKUrl = getRequiredArgument(cmd, Arg.DEST_ZOOKEEPER_URL);
+    String destZKSSLConfigs = getRequiredArgument(cmd, Arg.DEST_ZK_SSL_CONFIG_FILE);
+    ZkClient srcZkClient = readZKConfigAndBuildZKClient(srcZKUrl, srcZKSSLConfigs);
+    ZkClient destZkClient = readZKConfigAndBuildZKClient(destZKUrl, destZKSSLConfigs);
+    try {
+      ZkCopier.migrateVenicePaths(srcZkClient, destZkClient, clusterNames, getRequiredArgument(cmd, Arg.BASE_PATH));
+    } finally {
+      srcZkClient.close();
+      destZkClient.close();
     }
   }
 
