@@ -238,7 +238,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Schema getUpdateSchema(int valueSchemaId) {
-    DerivedSchemaEntry updateSchemaEntry = maybeUpdateAndFetchUpdateSchemaEntryById(valueSchemaId, false);
+    DerivedSchemaEntry updateSchemaEntry = maybeUpdateAndFetchUpdateSchemaEntryById(valueSchemaId, true);
     if (isValidSchemaEntry(updateSchemaEntry)) {
       return updateSchemaEntry.getSchema();
     }
